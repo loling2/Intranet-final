@@ -152,14 +152,14 @@ function EmpleadosTagsTab() {
         supabase.from('sociedades').select('*').order('nombre'),
         supabase.from('tags').select('*').order('nombre'),
       ]);
-      if (empRes.error) throw empRes.error;
-      if (socRes.error) throw socRes.error;
-      if (tagRes.error) throw tagRes.error;
+      if (empRes.error) throw new Error(`empleados: ${empRes.error.message}`);
+      if (socRes.error) throw new Error(`sociedades: ${socRes.error.message}`);
+      if (tagRes.error) throw new Error(`tags: ${tagRes.error.message}`);
       setEmpleados(empRes.data ?? []);
       setSociedades(socRes.data ?? []);
       setTags(tagRes.data ?? []);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al cargar datos');
+      setError(e instanceof Error ? e.message : JSON.stringify(e));
     } finally {
       setLoading(false);
     }

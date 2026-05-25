@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FolderOpen, FolderPlus, Folder, FileText, Upload, Trash2,
   RefreshCw, AlertCircle, CheckCircle2, X, Download,
-  ChevronRight, Search, Plus,
+  ChevronRight, Search, Plus, Tag, Lock, Globe,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { uploadToWasabiKey, downloadFromWasabi } from '../lib/wasabi';
@@ -15,8 +15,10 @@ interface PrlFolder {
   descripcion: string;
   society_id: string;
   created_by: string | null;
+  access_tag_id: string | null;
   created_at: string;
   _docCount?: number;
+  _tagNombre?: string;
 }
 
 interface PrlDocument {
@@ -29,6 +31,11 @@ interface PrlDocument {
   subido_por_nombre: string;
   society_id: string;
   created_at: string;
+}
+
+interface TagRow {
+  id: string;
+  nombre: string;
 }
 
 function formatBytes(bytes: number): string {
@@ -48,12 +55,27 @@ function fileIcon(tipo: string) {
 
 // ─── Create Folder Modal ─────────────────────────────────────────────────────
 
-function CreateFolderModal({ onClose, onCreated, societyId }: { onClose: () => void; onCreated: () => void; societyId: string }) {
+function CreateFolderModal({ onClose, onCreated, societyId }: {
+  onClose: () => void;
+  onCreated: () => void;
+  societyId: string;
+}) {
   const { profile } = useAuth();
   const [nombre, setNombre] = useState('');
   const [descripcion, setDescripcion] = useState('');
+  const [accessTagId, setAccessTagId] = useState<string>('');
+  const [tags, setTags] = useState<TagRow[]>([]);
+  const [tagsLoading, setTagsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('tags').select('id, nombre').order('nombre');
+      setTags(data ?? []);
+      setTagsLoading(false);
+    })();
+  }, []);
 
   const handleCreate = async () => {
     if (!nombre.trim()) { setError('El nombre es obligatorio.'); return; }
@@ -63,11 +85,14 @@ function CreateFolderModal({ onClose, onCreated, societyId }: { onClose: () => v
       descripcion: descripcion.trim(),
       society_id: societyId,
       created_by: profile?.id ?? null,
+      access_tag_id: accessTagId || null,
     });
     if (err) { setError(err.message); setSaving(false); return; }
     onCreated();
     onClose();
   };
+
+  const selectedTag = tags.find((t) => t.id === accessTagId);
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
@@ -83,7 +108,9 @@ function CreateFolderModal({ onClose, onCreated, societyId }: { onClose: () => v
             <X size={14} />
           </button>
         </div>
+
         <div className="p-6 space-y-4">
+          {/* Nombre */}
           <div>
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Nombre *</label>
             <input
@@ -97,6 +124,8 @@ function CreateFolderModal({ onClose, onCreated, societyId }: { onClose: () => v
               style={{ border: `1.5px solid ${error ? '#FECACA' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }}
             />
           </div>
+
+          {/* Descripcion */}
           <div>
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Descripcion (opcional)</label>
             <input
@@ -108,12 +137,89 @@ function CreateFolderModal({ onClose, onCreated, societyId }: { onClose: () => v
               style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
             />
           </div>
+
+          {/* Tag de acceso */}
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
+              Tag de acceso
+            </label>
+            <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>
+              Solo los trabajadores con este tag podran ver esta carpeta. Sin tag = acceso libre.
+            </p>
+
+            {tagsLoading ? (
+              <div className="flex items-center gap-2 py-3">
+                <RefreshCw size={13} className="animate-spin" style={{ color: '#94A3B8' }} />
+                <span className="text-xs" style={{ color: '#94A3B8' }}>Cargando tags...</span>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {/* Sin restriccion */}
+                <button
+                  type="button"
+                  onClick={() => setAccessTagId('')}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all cursor-pointer"
+                  style={{
+                    border: `1.5px solid ${accessTagId === '' ? '#065F46' : '#E2E8F0'}`,
+                    backgroundColor: accessTagId === '' ? '#ECFDF5' : '#F8FAFC',
+                  }}
+                >
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: accessTagId === '' ? '#065F46' : '#E2E8F0' }}>
+                    <Globe size={13} style={{ color: accessTagId === '' ? '#FFFFFF' : '#94A3B8' }} />
+                  </div>
+                  <div className="text-left">
+                    <span className="font-semibold" style={{ color: '#1E293B' }}>Sin restriccion</span>
+                    <span className="block text-xs" style={{ color: '#94A3B8' }}>Todos los trabajadores pueden acceder</span>
+                  </div>
+                  {accessTagId === '' && <CheckCircle2 size={14} className="ml-auto" style={{ color: '#065F46' }} />}
+                </button>
+
+                {/* Tags */}
+                <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
+                  {tags.length === 0 ? (
+                    <p className="text-xs px-3 py-2" style={{ color: '#94A3B8' }}>No hay tags creados. Crea tags en Admin → Tags PRL.</p>
+                  ) : tags.map((tag) => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => setAccessTagId(tag.id)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all cursor-pointer"
+                      style={{
+                        border: `1.5px solid ${accessTagId === tag.id ? '#0369A1' : '#E2E8F0'}`,
+                        backgroundColor: accessTagId === tag.id ? '#EFF6FF' : '#F8FAFC',
+                      }}
+                    >
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: accessTagId === tag.id ? '#0369A1' : '#E2E8F0' }}>
+                        <Tag size={12} style={{ color: accessTagId === tag.id ? '#FFFFFF' : '#94A3B8' }} />
+                      </div>
+                      <span className="font-medium flex-1 text-left" style={{ color: '#1E293B' }}>{tag.nombre}</span>
+                      {accessTagId === tag.id && <CheckCircle2 size={14} className="flex-shrink-0" style={{ color: '#0369A1' }} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Preview */}
+          {selectedTag && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+              <Lock size={12} style={{ color: '#1D4ED8' }} />
+              <p className="text-xs" style={{ color: '#1D4ED8' }}>
+                Solo accesible para trabajadores con tag <strong>"{selectedTag.nombre}"</strong>
+              </p>
+            </div>
+          )}
+
           {error && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
               <AlertCircle size={13} style={{ color: '#DC2626' }} />
               <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
             </div>
           )}
+
           <div className="flex gap-3 pt-1">
             <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
             <button onClick={handleCreate} disabled={saving || !nombre.trim()}
@@ -189,21 +295,34 @@ export default function PrlDocsModule() {
 
   const loadFolders = useCallback(async () => {
     setLoadingFolders(true);
+    // Join with tags to get tag name
     const { data, error: err } = await supabase
       .from('prl_folders')
-      .select('*')
+      .select('*, tags:access_tag_id(id, nombre)')
       .eq('society_id', activeSocietyId)
       .order('nombre');
     if (err) { setError(err.message); setLoadingFolders(false); return; }
 
-    // count docs per folder
-    const folderList = (data ?? []) as PrlFolder[];
+    const folderList = (data ?? []) as (PrlFolder & { tags: { id: string; nombre: string } | null })[];
+
     const counts = await Promise.all(
       folderList.map((f) =>
         supabase.from('prl_documents').select('id', { count: 'exact', head: true }).eq('folder_id', f.id)
       )
     );
-    const enriched = folderList.map((f, i) => ({ ...f, _docCount: counts[i].count ?? 0 }));
+
+    const enriched: PrlFolder[] = folderList.map((f, i) => ({
+      id: f.id,
+      nombre: f.nombre,
+      descripcion: f.descripcion,
+      society_id: f.society_id,
+      created_by: f.created_by,
+      access_tag_id: f.access_tag_id,
+      created_at: f.created_at,
+      _docCount: counts[i].count ?? 0,
+      _tagNombre: (f as unknown as { tags: { nombre: string } | null }).tags?.nombre ?? undefined,
+    }));
+
     setFolders(enriched);
     setLoadingFolders(false);
   }, [activeSocietyId]);
@@ -226,8 +345,6 @@ export default function PrlDocsModule() {
     setExpandedFolder(folderId);
     if (!documents[folderId]) loadDocs(folderId);
   };
-
-  // ── Upload files ────────────────────────────────────────────────────────────
 
   const handleFilesSelected = async (files: FileList, folderId: string) => {
     if (!files.length) return;
@@ -266,8 +383,6 @@ export default function PrlDocsModule() {
     if (uploaded > 0) flash(`${uploaded} archivo${uploaded > 1 ? 's' : ''} subido${uploaded > 1 ? 's' : ''} correctamente`);
   };
 
-  // ── Delete ──────────────────────────────────────────────────────────────────
-
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -280,15 +395,12 @@ export default function PrlDocsModule() {
         await loadFolders();
         flash(`Carpeta "${deleteTarget.name}" eliminada`);
       } else {
-        const doc = documents[deleteTarget.folderId!]?.find((d) => d.id === deleteTarget.id);
         const { error: err } = await supabase.from('prl_documents').delete().eq('id', deleteTarget.id);
         if (err) throw err;
-        if (doc) {
-          setDocuments((prev) => ({
-            ...prev,
-            [deleteTarget.folderId!]: (prev[deleteTarget.folderId!] ?? []).filter((d) => d.id !== deleteTarget.id),
-          }));
-        }
+        setDocuments((prev) => ({
+          ...prev,
+          [deleteTarget.folderId!]: (prev[deleteTarget.folderId!] ?? []).filter((d) => d.id !== deleteTarget.id),
+        }));
         await loadFolders();
         flash(`Archivo "${deleteTarget.name}" eliminado`);
       }
@@ -299,8 +411,6 @@ export default function PrlDocsModule() {
       setDeleteTarget(null);
     }
   };
-
-  // ── Download ────────────────────────────────────────────────────────────────
 
   const handleDownload = async (doc: PrlDocument) => {
     try {
@@ -314,7 +424,6 @@ export default function PrlDocsModule() {
 
   return (
     <div className="space-y-5">
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -328,7 +437,6 @@ export default function PrlDocsModule() {
         }}
       />
 
-      {/* Modals */}
       {showCreateFolder && (
         <CreateFolderModal
           onClose={() => setShowCreateFolder(false)}
@@ -367,7 +475,6 @@ export default function PrlDocsModule() {
         </button>
       </div>
 
-      {/* Notifications */}
       {error && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
           <AlertCircle size={15} /><span className="flex-1">{error}</span>
@@ -429,6 +536,7 @@ export default function PrlDocsModule() {
             const docs = documents[folder.id] ?? [];
             const isLoadingDocs = loadingDocs[folder.id];
             const progress = uploadProgress[folder.id];
+            const hasTag = !!folder.access_tag_id;
 
             return (
               <div key={folder.id} className="rounded-2xl overflow-hidden transition-all duration-200"
@@ -446,8 +554,25 @@ export default function PrlDocsModule() {
                       ? <FolderOpen size={18} className="text-white" />
                       : <Folder size={18} style={{ color: '#065F46' }} />}
                   </div>
+
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{folder.nombre}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{folder.nombre}</p>
+                      {/* Access tag badge */}
+                      {hasTag ? (
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+                          style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
+                          <Lock size={9} />
+                          {folder._tagNombre}
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
+                          style={{ backgroundColor: '#F1F5F9', color: '#94A3B8', border: '1px solid #E2E8F0' }}>
+                          <Globe size={9} />
+                          Libre
+                        </span>
+                      )}
+                    </div>
                     {folder.descripcion && (
                       <p className="text-xs truncate mt-0.5" style={{ color: '#94A3B8' }}>{folder.descripcion}</p>
                     )}
@@ -459,7 +584,6 @@ export default function PrlDocsModule() {
                       {folder._docCount ?? 0} archivo{folder._docCount !== 1 ? 's' : ''}
                     </span>
 
-                    {/* Upload button */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -473,7 +597,6 @@ export default function PrlDocsModule() {
                       <Upload size={12} /> Subir
                     </button>
 
-                    {/* Delete folder */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -523,15 +646,12 @@ export default function PrlDocsModule() {
                       </div>
                     ) : (
                       <div className="divide-y" style={{ borderColor: '#E2E8F0' }}>
-                        {/* Drop zone header */}
                         <div
                           className="px-5 py-2.5 flex items-center justify-between"
                           onDragOver={(e) => e.preventDefault()}
                           onDrop={(e) => {
                             e.preventDefault();
-                            if (e.dataTransfer.files.length) {
-                              handleFilesSelected(e.dataTransfer.files, folder.id);
-                            }
+                            if (e.dataTransfer.files.length) handleFilesSelected(e.dataTransfer.files, folder.id);
                           }}
                         >
                           <p className="text-xs" style={{ color: '#94A3B8' }}>

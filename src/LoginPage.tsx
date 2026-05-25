@@ -13,6 +13,8 @@ import AdminPanel from './AdminPanel';
 import RRHHPanel from './RRHHPanel';
 import PrevencionPanel from './PrevencionPanel';
 import { supabase } from './supabaseClient';
+import { AuthProvider } from './context/AuthContext';
+import { SocietyProvider } from './context/SocietyContext';
 
 const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> = {
   'building-2': Building2,
@@ -504,31 +506,43 @@ export default function LoginPage() {
   if (session) {
     if (session.view === 'admin') {
       return (
-        <AdminPanel
-          email={session.email}
-          onLogout={handleLogout}
-          onNavigate={handleNavigate}
-        />
+        <AuthProvider>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+            <AdminPanel
+              email={session.email}
+              onLogout={handleLogout}
+              onNavigate={handleNavigate}
+            />
+          </SocietyProvider>
+        </AuthProvider>
       );
     }
 
     if (session.view === 'prevencion') {
       return (
-        <PrevencionPanel
-          email={session.email}
-          onLogout={handleLogout}
-        />
+        <AuthProvider>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+            <PrevencionPanel
+              email={session.email}
+              onLogout={handleLogout}
+            />
+          </SocietyProvider>
+        </AuthProvider>
       );
     }
 
     if (session.view === 'rrhh') {
       return (
-        <RRHHPanel
-          email={session.email}
-          onLogout={handleLogout}
-          onNavigateAdmin={session.role === 'admin' ? () => handleNavigate('admin') : undefined}
-          isAdmin={session.role === 'admin'}
-        />
+        <AuthProvider>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+            <RRHHPanel
+              email={session.email}
+              onLogout={handleLogout}
+              onNavigateAdmin={session.role === 'admin' ? () => handleNavigate('admin') : undefined}
+              isAdmin={session.role === 'admin'}
+            />
+          </SocietyProvider>
+        </AuthProvider>
       );
     }
 

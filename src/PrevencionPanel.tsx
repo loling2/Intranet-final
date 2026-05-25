@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
 import SocietySwitcher from './SocietySwitcher';
-import DocumentsModule from './DocumentsModule';
+import PrlDocsModule from './components/PrlDocsModule';
 
 interface Props {
   email: string;
@@ -113,7 +113,7 @@ export default function PrevencionPanel({ email, onLogout }: Props) {
         </div>
 
         {activeTab === 'empleados' && <EmpleadosTagsTab />}
-        {activeTab === 'documentos' && <DocumentsModule currentUserRole="prevencion" userEmail={email} />}
+        {activeTab === 'documentos' && <PrlDocsModule />}
       </div>
     </div>
   );

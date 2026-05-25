@@ -1,0 +1,587 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  FolderOpen, FolderPlus, Folder, FileText, Upload, Trash2,
+  RefreshCw, AlertCircle, CheckCircle2, X, Download,
+  ChevronRight, Search, Plus,
+} from 'lucide-react';
+import { supabase } from '../supabaseClient';
+import { uploadToWasabiKey, downloadFromWasabi } from '../lib/wasabi';
+import { useAuth } from '../context/AuthContext';
+import { useSociety } from '../context/SocietyContext';
+
+interface PrlFolder {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  society_id: string;
+  created_by: string | null;
+  created_at: string;
+  _docCount?: number;
+}
+
+interface PrlDocument {
+  id: string;
+  folder_id: string;
+  nombre_archivo: string;
+  wasabi_key: string;
+  tipo: string;
+  tamano_bytes: number;
+  subido_por_nombre: string;
+  society_id: string;
+  created_at: string;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+function fileIcon(tipo: string) {
+  if (tipo.includes('pdf')) return { color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' };
+  if (tipo.includes('word') || tipo.includes('document')) return { color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' };
+  if (tipo.includes('sheet') || tipo.includes('excel')) return { color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' };
+  if (tipo.includes('image')) return { color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' };
+  return { color: '#475569', bg: '#F8FAFC', border: '#E2E8F0' };
+}
+
+// ─── Create Folder Modal ─────────────────────────────────────────────────────
+
+function CreateFolderModal({ onClose, onCreated, societyId }: { onClose: () => void; onCreated: () => void; societyId: string }) {
+  const { profile } = useAuth();
+  const [nombre, setNombre] = useState('');
+  const [descripcion, setDescripcion] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleCreate = async () => {
+    if (!nombre.trim()) { setError('El nombre es obligatorio.'); return; }
+    setSaving(true); setError('');
+    const { error: err } = await supabase.from('prl_folders').insert({
+      nombre: nombre.trim(),
+      descripcion: descripcion.trim(),
+      society_id: societyId,
+      created_by: profile?.id ?? null,
+    });
+    if (err) { setError(err.message); setSaving(false); return; }
+    onCreated();
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #064E3B, #065F46)' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+              <FolderPlus size={16} className="text-white" />
+            </div>
+            <h2 className="text-white font-semibold text-sm">Nueva carpeta PRL</h2>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+            <X size={14} />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Nombre *</label>
+            <input
+              autoFocus
+              type="text"
+              value={nombre}
+              onChange={(e) => { setNombre(e.target.value); setError(''); }}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              placeholder="Ej: Evaluaciones de Riesgo 2024"
+              className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+              style={{ border: `1.5px solid ${error ? '#FECACA' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Descripcion (opcional)</label>
+            <input
+              type="text"
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder="Breve descripcion del contenido"
+              className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+              style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+            />
+          </div>
+          {error && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+              <AlertCircle size={13} style={{ color: '#DC2626' }} />
+              <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
+            </div>
+          )}
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+            <button onClick={handleCreate} disabled={saving || !nombre.trim()}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ backgroundColor: '#065F46' }}>
+              {saving ? <RefreshCw size={14} className="animate-spin" /> : <FolderPlus size={14} />}
+              Crear carpeta
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Delete Confirm Modal ────────────────────────────────────────────────────
+
+function ConfirmDeleteModal({ title, description, onConfirm, onClose, loading }: {
+  title: string; description: string; onConfirm: () => void; onClose: () => void; loading: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl w-full max-w-sm mx-4 shadow-2xl p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#FEF2F2' }}>
+            <Trash2 size={18} style={{ color: '#DC2626' }} />
+          </div>
+          <div>
+            <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>{title}</h3>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{description}</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+          <button onClick={onConfirm} disabled={loading}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+            style={{ backgroundColor: '#DC2626' }}>
+            {loading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
+
+export default function PrlDocsModule() {
+  const { profile } = useAuth();
+  const { activeSocietyId } = useSociety();
+
+  const [folders, setFolders] = useState<PrlFolder[]>([]);
+  const [documents, setDocuments] = useState<Record<string, PrlDocument[]>>({});
+  const [loadingFolders, setLoadingFolders] = useState(true);
+  const [loadingDocs, setLoadingDocs] = useState<Record<string, boolean>>({});
+  const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
+
+  const [search, setSearch] = useState('');
+  const [showCreateFolder, setShowCreateFolder] = useState(false);
+
+  const [uploadingFolder, setUploadingFolder] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'folder' | 'doc'; id: string; name: string; folderId?: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const flash = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(''), 3000); };
+
+  const loadFolders = useCallback(async () => {
+    setLoadingFolders(true);
+    const { data, error: err } = await supabase
+      .from('prl_folders')
+      .select('*')
+      .eq('society_id', activeSocietyId)
+      .order('nombre');
+    if (err) { setError(err.message); setLoadingFolders(false); return; }
+
+    // count docs per folder
+    const folderList = (data ?? []) as PrlFolder[];
+    const counts = await Promise.all(
+      folderList.map((f) =>
+        supabase.from('prl_documents').select('id', { count: 'exact', head: true }).eq('folder_id', f.id)
+      )
+    );
+    const enriched = folderList.map((f, i) => ({ ...f, _docCount: counts[i].count ?? 0 }));
+    setFolders(enriched);
+    setLoadingFolders(false);
+  }, [activeSocietyId]);
+
+  useEffect(() => { loadFolders(); }, [loadFolders]);
+
+  const loadDocs = useCallback(async (folderId: string) => {
+    setLoadingDocs((prev) => ({ ...prev, [folderId]: true }));
+    const { data, error: err } = await supabase
+      .from('prl_documents')
+      .select('*')
+      .eq('folder_id', folderId)
+      .order('created_at', { ascending: false });
+    if (!err) setDocuments((prev) => ({ ...prev, [folderId]: (data ?? []) as PrlDocument[] }));
+    setLoadingDocs((prev) => ({ ...prev, [folderId]: false }));
+  }, []);
+
+  const toggleFolder = (folderId: string) => {
+    if (expandedFolder === folderId) { setExpandedFolder(null); return; }
+    setExpandedFolder(folderId);
+    if (!documents[folderId]) loadDocs(folderId);
+  };
+
+  // ── Upload files ────────────────────────────────────────────────────────────
+
+  const handleFilesSelected = async (files: FileList, folderId: string) => {
+    if (!files.length) return;
+    setUploadingFolder(folderId);
+    setError('');
+    let uploaded = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const ts = Date.now();
+      const key = `prevencion/${activeSocietyId}/${folderId}/${ts}-${file.name}`;
+      try {
+        setUploadProgress((p) => ({ ...p, [folderId]: Math.round((i / files.length) * 100) }));
+        await uploadToWasabiKey(file, key);
+        await supabase.from('prl_documents').insert({
+          folder_id: folderId,
+          nombre_archivo: file.name,
+          wasabi_key: key,
+          tipo: file.type,
+          tamano_bytes: file.size,
+          subido_por: profile?.id ?? null,
+          subido_por_nombre: profile?.nombre ?? '',
+          society_id: activeSocietyId,
+        });
+        uploaded++;
+      } catch (e: unknown) {
+        setError(`Error al subir "${file.name}": ${e instanceof Error ? e.message : 'Error desconocido'}`);
+      }
+    }
+
+    setUploadProgress((p) => ({ ...p, [folderId]: 100 }));
+    setTimeout(() => setUploadProgress((p) => { const n = { ...p }; delete n[folderId]; return n; }), 1500);
+    setUploadingFolder(null);
+    await loadDocs(folderId);
+    await loadFolders();
+    if (uploaded > 0) flash(`${uploaded} archivo${uploaded > 1 ? 's' : ''} subido${uploaded > 1 ? 's' : ''} correctamente`);
+  };
+
+  // ── Delete ──────────────────────────────────────────────────────────────────
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      if (deleteTarget.type === 'folder') {
+        const { error: err } = await supabase.from('prl_folders').delete().eq('id', deleteTarget.id);
+        if (err) throw err;
+        setDocuments((prev) => { const n = { ...prev }; delete n[deleteTarget.id]; return n; });
+        if (expandedFolder === deleteTarget.id) setExpandedFolder(null);
+        await loadFolders();
+        flash(`Carpeta "${deleteTarget.name}" eliminada`);
+      } else {
+        const doc = documents[deleteTarget.folderId!]?.find((d) => d.id === deleteTarget.id);
+        const { error: err } = await supabase.from('prl_documents').delete().eq('id', deleteTarget.id);
+        if (err) throw err;
+        if (doc) {
+          setDocuments((prev) => ({
+            ...prev,
+            [deleteTarget.folderId!]: (prev[deleteTarget.folderId!] ?? []).filter((d) => d.id !== deleteTarget.id),
+          }));
+        }
+        await loadFolders();
+        flash(`Archivo "${deleteTarget.name}" eliminado`);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al eliminar');
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
+
+  // ── Download ────────────────────────────────────────────────────────────────
+
+  const handleDownload = async (doc: PrlDocument) => {
+    try {
+      await downloadFromWasabi(doc.wasabi_key, doc.nombre_archivo);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al descargar');
+    }
+  };
+
+  const filtered = folders.filter((f) => !search || f.nombre.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="space-y-5">
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && uploadingFolder) {
+            handleFilesSelected(e.target.files, uploadingFolder);
+          }
+          e.target.value = '';
+        }}
+      />
+
+      {/* Modals */}
+      {showCreateFolder && (
+        <CreateFolderModal
+          onClose={() => setShowCreateFolder(false)}
+          onCreated={loadFolders}
+          societyId={activeSocietyId}
+        />
+      )}
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          title={deleteTarget.type === 'folder' ? 'Eliminar carpeta' : 'Eliminar archivo'}
+          description={
+            deleteTarget.type === 'folder'
+              ? `Se eliminara "${deleteTarget.name}" y todos sus archivos. Esta accion no se puede deshacer.`
+              : `Se eliminara "${deleteTarget.name}" permanentemente.`
+          }
+          onConfirm={handleConfirmDelete}
+          onClose={() => setDeleteTarget(null)}
+          loading={deleting}
+        />
+      )}
+
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Documentos PRL</h2>
+          <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>
+            {folders.length} carpeta{folders.length !== 1 ? 's' : ''} &middot; Haz clic en una carpeta para ver o subir archivos
+          </p>
+        </div>
+        <button
+          onClick={() => setShowCreateFolder(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all duration-200 hover:opacity-90"
+          style={{ backgroundColor: '#065F46', boxShadow: '0 4px 12px rgba(6,95,70,0.3)' }}
+        >
+          <FolderPlus size={15} /> Crear carpeta
+        </button>
+      </div>
+
+      {/* Notifications */}
+      {error && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
+          <AlertCircle size={15} /><span className="flex-1">{error}</span>
+          <button onClick={() => setError('')} className="cursor-pointer"><X size={13} /></button>
+        </div>
+      )}
+      {success && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: '#ECFDF5', border: '1px solid #6EE7B7', color: '#065F46' }}>
+          <CheckCircle2 size={15} /><span>{success}</span>
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar en todas las carpetas..."
+          className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm outline-none"
+          style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer" style={{ color: '#94A3B8' }}>
+            <X size={13} />
+          </button>
+        )}
+      </div>
+
+      {/* Folders list */}
+      {loadingFolders ? (
+        <div className="flex items-center justify-center py-16">
+          <RefreshCw size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center py-20 rounded-2xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: '#ECFDF5' }}>
+            <Folder size={32} style={{ color: '#6EE7B7' }} />
+          </div>
+          <p className="text-base font-semibold" style={{ color: '#1E293B' }}>
+            {search ? 'Sin resultados' : 'Sin carpetas creadas'}
+          </p>
+          <p className="text-sm mt-1" style={{ color: '#94A3B8' }}>
+            {search ? 'Prueba con otro termino' : 'Crea una carpeta para empezar a subir documentos'}
+          </p>
+          {!search && (
+            <button onClick={() => setShowCreateFolder(true)}
+              className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer"
+              style={{ backgroundColor: '#065F46' }}>
+              <Plus size={14} /> Crear primera carpeta
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((folder) => {
+            const isOpen = expandedFolder === folder.id;
+            const docs = documents[folder.id] ?? [];
+            const isLoadingDocs = loadingDocs[folder.id];
+            const progress = uploadProgress[folder.id];
+
+            return (
+              <div key={folder.id} className="rounded-2xl overflow-hidden transition-all duration-200"
+                style={{ backgroundColor: '#FFFFFF', border: `1px solid ${isOpen ? '#6EE7B7' : '#E2E8F0'}` }}>
+
+                {/* Folder header row */}
+                <div
+                  className="px-5 py-4 flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors duration-150"
+                  onClick={() => toggleFolder(folder.id)}
+                  style={{ backgroundColor: isOpen ? '#F0FDF9' : undefined }}
+                >
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: isOpen ? '#065F46' : '#ECFDF5', border: `1px solid ${isOpen ? '#065F46' : '#6EE7B7'}` }}>
+                    {isOpen
+                      ? <FolderOpen size={18} className="text-white" />
+                      : <Folder size={18} style={{ color: '#065F46' }} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{folder.nombre}</p>
+                    {folder.descripcion && (
+                      <p className="text-xs truncate mt-0.5" style={{ color: '#94A3B8' }}>{folder.descripcion}</p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
+                      style={{ backgroundColor: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }}>
+                      {folder._docCount ?? 0} archivo{folder._docCount !== 1 ? 's' : ''}
+                    </span>
+
+                    {/* Upload button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setUploadingFolder(folder.id);
+                        fileInputRef.current?.click();
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 hover:opacity-80"
+                      style={{ backgroundColor: '#065F46', color: '#FFFFFF' }}
+                      title="Subir archivos"
+                    >
+                      <Upload size={12} /> Subir
+                    </button>
+
+                    {/* Delete folder */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget({ type: 'folder', id: folder.id, name: folder.nombre });
+                      }}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:bg-red-50"
+                      title="Eliminar carpeta"
+                      style={{ color: '#CBD5E1' }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+
+                    <ChevronRight size={16} className="transition-transform duration-200"
+                      style={{ color: '#94A3B8', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+                  </div>
+                </div>
+
+                {/* Upload progress bar */}
+                {progress !== undefined && (
+                  <div className="px-5 pb-2">
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#E2E8F0' }}>
+                      <div className="h-full rounded-full transition-all duration-300" style={{ width: `${progress}%`, backgroundColor: '#065F46' }} />
+                    </div>
+                    <p className="text-xs mt-1" style={{ color: '#065F46' }}>Subiendo... {progress}%</p>
+                  </div>
+                )}
+
+                {/* Folder contents */}
+                {isOpen && (
+                  <div style={{ borderTop: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+                    {isLoadingDocs ? (
+                      <div className="flex items-center justify-center py-8">
+                        <RefreshCw size={16} className="animate-spin" style={{ color: '#94A3B8' }} />
+                      </div>
+                    ) : docs.length === 0 ? (
+                      <div className="flex flex-col items-center py-10">
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-3" style={{ backgroundColor: '#ECFDF5' }}>
+                          <FileText size={22} style={{ color: '#6EE7B7' }} />
+                        </div>
+                        <p className="text-sm font-medium" style={{ color: '#64748B' }}>Carpeta vacia</p>
+                        <button
+                          onClick={() => { setUploadingFolder(folder.id); fileInputRef.current?.click(); }}
+                          className="mt-3 flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer"
+                          style={{ backgroundColor: '#065F46', color: '#FFFFFF' }}>
+                          <Upload size={12} /> Subir primer archivo
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="divide-y" style={{ borderColor: '#E2E8F0' }}>
+                        {/* Drop zone header */}
+                        <div
+                          className="px-5 py-2.5 flex items-center justify-between"
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (e.dataTransfer.files.length) {
+                              handleFilesSelected(e.dataTransfer.files, folder.id);
+                            }
+                          }}
+                        >
+                          <p className="text-xs" style={{ color: '#94A3B8' }}>
+                            {docs.length} archivo{docs.length !== 1 ? 's' : ''} &middot; Arrastra archivos aqui o usa el boton Subir
+                          </p>
+                        </div>
+                        {docs.map((doc) => {
+                          const fc = fileIcon(doc.tipo);
+                          return (
+                            <div key={doc.id} className="px-5 py-3 flex items-center gap-3 hover:bg-white transition-colors duration-100">
+                              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                                style={{ backgroundColor: fc.bg, border: `1px solid ${fc.border}` }}>
+                                <FileText size={14} style={{ color: fc.color }} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{doc.nombre_archivo}</p>
+                                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>
+                                  {formatBytes(doc.tamano_bytes)}
+                                  {doc.subido_por_nombre && ` \u00b7 ${doc.subido_por_nombre}`}
+                                  {` \u00b7 ${new Date(doc.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}`}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  onClick={() => handleDownload(doc)}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:bg-green-50"
+                                  title="Descargar"
+                                  style={{ color: '#94A3B8' }}>
+                                  <Download size={13} />
+                                </button>
+                                <button
+                                  onClick={() => setDeleteTarget({ type: 'doc', id: doc.id, name: doc.nombre_archivo, folderId: folder.id })}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:bg-red-50"
+                                  title="Eliminar"
+                                  style={{ color: '#CBD5E1' }}>
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

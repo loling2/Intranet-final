@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 
 const wasabiClient = new S3Client({
   endpoint: import.meta.env.VITE_WASABI_ENDPOINT as string,
@@ -74,6 +74,39 @@ export async function initWasabiFolder(folder: 'publico' | 'privado' | 'prevenci
     ContentType: 'application/octet-stream',
     ContentLength: 0,
   };
-  console.log(`Creando carpeta en bucket: ${params.Bucket} con Key: ${params.Key}`);
   await wasabiClient.send(new PutObjectCommand(params));
+}
+
+// Upload a file to any arbitrary key path (used by PRL module for dynamic folder paths)
+export async function uploadToWasabiKey(file: File, key: string): Promise<string> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const buffer = await file.arrayBuffer();
+  await wasabiClient.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: new Uint8Array(buffer),
+    ContentType: file.type || 'application/octet-stream',
+    ContentLength: file.size,
+  }));
+  return key;
+}
+
+// Download a file by key and trigger browser download
+export async function downloadFromWasabi(key: string, filename: string): Promise<void> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const resp = await wasabiClient.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const stream = resp.Body as ReadableStream;
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let done = false;
+  while (!done) {
+    const { value, done: d } = await reader.read();
+    if (value) chunks.push(value);
+    done = d;
+  }
+  const blob = new Blob(chunks, { type: resp.ContentType ?? 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
 }

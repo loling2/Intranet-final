@@ -15,6 +15,7 @@ export interface UserProfile {
   activo: boolean;
   societies: string[];
   invited_by: string | null;
+  pin: string | null;
   created_at: string;
   updated_at: string;
 }

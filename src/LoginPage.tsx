@@ -442,6 +442,14 @@ export default function LoginPage() {
         return;
       }
 
+      // Establish a real Supabase session so RLS policies work
+      if (body.access_token && body.refresh_token) {
+        await supabase.auth.setSession({
+          access_token: body.access_token,
+          refresh_token: body.refresh_token,
+        });
+      }
+
       const resolvedEmail: string = body.email ?? email.trim().toLowerCase();
       const resolvedRole: UserRole = (body.profile?.role as UserRole) ?? 'employee';
       const resolvedSocietyId: string | null = body.profile?.societies?.[0] ?? null;

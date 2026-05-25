@@ -34,12 +34,44 @@ Deno.serve(async (req: Request) => {
       p_password: password,
     });
 
-    // userId may come as string or as array element
     const resolvedId = Array.isArray(userId) ? userId[0] : userId;
 
     if (pwError || !resolvedId) {
-      return new Response(JSON.stringify({ error: "Credenciales incorrectas", debug: { pwError, userId } }), {
+      return new Response(JSON.stringify({ error: "Credenciales incorrectas" }), {
         status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Generate a real session token for this user
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: "magiclink",
+      email: email.trim().toLowerCase(),
+    });
+
+    if (linkError || !linkData) {
+      return new Response(JSON.stringify({ error: "Error generando sesion: " + linkError?.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Exchange the OTP token for a real session
+    const supabasePublic = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    const token = linkData.properties?.hashed_token;
+    const { data: sessionData, error: sessionError } = await supabasePublic.auth.verifyOtp({
+      token_hash: token,
+      type: "magiclink",
+    });
+
+    if (sessionError || !sessionData.session) {
+      return new Response(JSON.stringify({ error: "Error creando sesion: " + sessionError?.message }), {
+        status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -52,7 +84,13 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     return new Response(
-      JSON.stringify({ userId: resolvedId, email: email.trim().toLowerCase(), profile }),
+      JSON.stringify({
+        userId: resolvedId,
+        email: email.trim().toLowerCase(),
+        profile,
+        access_token: sessionData.session.access_token,
+        refresh_token: sessionData.session.refresh_token,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

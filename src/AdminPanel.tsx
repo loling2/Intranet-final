@@ -14,6 +14,7 @@ import SocietySwitcher from './SocietySwitcher';
 import TestUploader from './components/TestUploader';
 import { useSociety } from './context/SocietyContext';
 import VacationsModule from './components/VacationsModule';
+import EmployeesModule from './components/EmployeesModule';
 
 interface Props {
   email: string;
@@ -21,7 +22,7 @@ interface Props {
   onNavigate: (view: 'admin' | 'rrhh' | 'society', societyId?: string) => void;
 }
 
-type AdminTab = 'overview' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'audit';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'audit';
 
 export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -62,15 +63,16 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   ];
 
   const tabs: { id: AdminTab; label: string; icon: React.FC<{ size?: number; className?: string }> }[] = [
-    { id: 'overview', label: 'Panel General', icon: BarChart2 },
-    { id: 'users', label: 'Usuarios', icon: Users },
-    { id: 'societies', label: 'Sociedades', icon: Building2 },
-    { id: 'vehicles', label: 'Vehiculos', icon: Car },
-    { id: 'documents', label: 'Documentos', icon: FileText },
-    { id: 'devices', label: 'Dispositivos', icon: Laptop },
-    { id: 'vacations', label: 'Vacaciones', icon: Palmtree },
-    { id: 'prevencion', label: 'Prevencion/Calidad', icon: ShieldCheck },
-    { id: 'audit', label: 'Auditoria', icon: ScrollText },
+    { id: 'overview',   label: 'Panel General',      icon: BarChart2 },
+    { id: 'employees',  label: 'Empleados',           icon: Users },
+    { id: 'users',      label: 'Gestion de Usuarios', icon: Users },
+    { id: 'societies',  label: 'Sociedades',          icon: Building2 },
+    { id: 'vehicles',   label: 'Vehiculos',           icon: Car },
+    { id: 'documents',  label: 'Documentos',          icon: FileText },
+    { id: 'devices',    label: 'Dispositivos',        icon: Laptop },
+    { id: 'vacations',  label: 'Vacaciones',          icon: Palmtree },
+    { id: 'prevencion', label: 'Prevencion/Calidad',  icon: ShieldCheck },
+    { id: 'audit',      label: 'Auditoria',           icon: ScrollText },
   ];
 
   const filteredDocuments = allDocuments.filter((d) =>
@@ -311,6 +313,11 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
               </div>
             </div>
           </>
+        )}
+
+        {/* Employees Tab */}
+        {activeTab === 'employees' && (
+          <EmployeesModule currentUserRole="admin" />
         )}
 
         {/* Users Tab */}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Users, UserPlus, Search, Mail, CheckCircle2, XCircle,
+  Users, UserPlus, Search, Mail, CheckCircle2,
   CreditCard as Edit2, Key, X, Eye, EyeOff, AlertCircle,
   RefreshCw, Hash, Shield,
 } from 'lucide-react';
@@ -199,21 +199,16 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
 
 // ─── Edit User Modal ─────────────────────────────────────────────────────────
 
-type EditTab = 'info' | 'password' | 'pin';
+type EditTab = 'email' | 'password' | 'pin' | 'prevencion';
 
 interface EditUserModalProps { user: UserProfile; onClose: () => void; onSaved: () => void; currentUserRole: AppRole; }
 
 function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModalProps) {
   const { profile } = useAuth();
-  const { societies } = useSociety();
-  const [tab, setTab] = useState<EditTab>('info');
+  const [tab, setTab] = useState<EditTab>('email');
 
-  // info tab
-  const [nombre, setNombre] = useState(user.nombre);
+  // email tab
   const [email, setEmail] = useState(user.email);
-  const [role, setRole] = useState<AppRole>(user.role);
-  const [activo, setActivo] = useState(user.activo);
-  const [selectedSocieties, setSelectedSocieties] = useState<string[]>(user.societies ?? []);
 
   // password tab
   const [newPassword, setNewPassword] = useState('');
@@ -222,48 +217,29 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
 
   // pin tab
   const [pin, setPin] = useState(user.pin ?? '');
-  const [generatedPin, setGeneratedPin] = useState<string | null>(null);
+  const [savedPin, setSavedPin] = useState<string | null>(user.pin ?? null);
+
+  // prevencion tab — placeholder for NFC/tag assignment
+  const [tagId, setTagId] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'employee']
-    : ['rrhh', 'prevencion', 'employee'];
-
-  const toggleSociety = (id: string) =>
-    setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
-
   const clearFeedback = () => { setError(''); setSuccess(''); };
 
-  const handleSaveInfo = async () => {
+  const handleSaveEmail = async () => {
+    const trimmed = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('Correo electronico no valido.'); return; }
+    if (trimmed === user.email.toLowerCase()) { setError('El correo es identico al actual.'); return; }
     setLoading(true); clearFeedback();
     try {
-      // email changed → update via edge function
-      if (email.trim().toLowerCase() !== user.email.toLowerCase()) {
-        await callManageUser('set_email', user.id, { email: email.trim().toLowerCase() });
-      }
-      // role changed → update via edge function
-      if (role !== user.role) {
-        await callManageUser('set_role', user.id, { role });
-      }
-      // update nombre / activo / societies directly (no auth changes needed)
-      const { error: err } = await supabase
-        .from('user_profiles')
-        .update({ nombre, activo, societies: selectedSocieties })
-        .eq('id', user.id);
-      if (err) throw err;
-
+      await callManageUser('set_email', user.id, { email: trimmed });
       if (profile) {
-        if (role !== user.role) {
-          await writeAuditLog({ evento: 'user_role_changed', descripcion: `Rol de ${user.email} cambiado de ${user.role} a ${role}`, autor: profile, entidad: 'user', entidad_id: user.id, metadata: { from: user.role, to: role } });
-        }
-        if (activo !== user.activo) {
-          await writeAuditLog({ evento: activo ? 'user_activated' : 'user_deactivated', descripcion: `Usuario ${user.email} ${activo ? 'activado' : 'desactivado'}`, autor: profile, entidad: 'user', entidad_id: user.id });
-        }
+        await writeAuditLog({ evento: 'email_changed', descripcion: `Correo de ${user.nombre} cambiado a ${trimmed}`, autor: profile, entidad: 'user', entidad_id: user.id, metadata: { from: user.email, to: trimmed } });
       }
-      onSaved(); onClose();
+      setSuccess('Correo actualizado correctamente.');
+      onSaved();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al guardar');
     } finally { setLoading(false); }
@@ -294,8 +270,8 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
       if (profile) {
         await writeAuditLog({ evento: 'pin_set', descripcion: `PIN establecido para ${user.email}`, autor: profile, entidad: 'user', entidad_id: user.id });
       }
-      setSuccess(`PIN ${value} guardado correctamente.`);
-      setGeneratedPin(value);
+      setSuccess(`PIN ${value} guardado.`);
+      setSavedPin(value);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error');
     } finally { setLoading(false); }
@@ -304,23 +280,32 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const handleGeneratePin = () => {
     const p = generatePin();
     setPin(p);
-    setGeneratedPin(null);
     handleSetPin(p);
   };
 
   const tabs: { id: EditTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'info', label: 'Informacion', icon: <Edit2 size={13} /> },
-    { id: 'password', label: 'Contrasena', icon: <Key size={13} /> },
-    { id: 'pin', label: 'PIN', icon: <Hash size={13} /> },
+    { id: 'email',      label: 'Correo',      icon: <Mail size={13} /> },
+    { id: 'password',   label: 'Contrasena',  icon: <Key size={13} /> },
+    { id: 'pin',        label: 'PIN Fichaje', icon: <Hash size={13} /> },
+    { id: 'prevencion', label: 'TAG Prev.',   icon: <Shield size={13} /> },
   ];
+
+  // only admin can access prevencion tab
+  const visibleTabs = currentUserRole === 'admin' ? tabs : tabs.filter((t) => t.id !== 'prevencion');
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
       <div className="bg-white rounded-2xl max-w-lg w-full mx-4 overflow-hidden shadow-2xl">
+        {/* Header */}
         <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}>
-          <div>
-            <h2 className="text-white font-semibold">Editar Usuario</h2>
-            <p className="text-white/60 text-xs">{user.email}</p>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff' }}>
+              {user.nombre.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <h2 className="text-white font-semibold text-sm">{user.nombre}</h2>
+              <p className="text-white/50 text-xs">Credenciales de acceso</p>
+            </div>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
             <X size={15} />
@@ -329,7 +314,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
 
         {/* Tabs */}
         <div className="flex border-b" style={{ borderColor: '#E2E8F0' }}>
-          {tabs.map((t) => (
+          {visibleTabs.map((t) => (
             <button key={t.id} onClick={() => { setTab(t.id); clearFeedback(); }}
               className="flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors duration-200"
               style={{ color: tab === t.id ? '#0F172A' : '#94A3B8', borderBottom: tab === t.id ? '2px solid #0F172A' : '2px solid transparent' }}>
@@ -339,63 +324,22 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
         </div>
 
         <div className="p-6 space-y-4">
-          {/* INFO TAB */}
-          {tab === 'info' && (
+          {/* EMAIL TAB */}
+          {tab === 'email' && (
             <>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Nombre</label>
-                <input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none" style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
+              <div className="flex items-start gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                <Mail size={15} style={{ color: '#2563EB', flexShrink: 0, marginTop: 2 }} />
+                <p className="text-xs" style={{ color: '#1D4ED8' }}>
+                  Modifica el correo electronico que usa este empleado para iniciar sesion en el portal.
+                </p>
               </div>
               <div>
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Correo electronico</label>
                 <div className="relative">
                   <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none" style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Rol</label>
-                <div className="flex gap-2 flex-wrap">
-                  {availableRoles.map((r) => {
-                    const rc = ROLE_COLORS[r];
-                    return (
-                      <button key={r} onClick={() => setRole(r)}
-                        className="flex-1 py-2 rounded-xl text-xs font-semibold border transition-all duration-200 cursor-pointer min-w-[70px]"
-                        style={{ backgroundColor: role === r ? rc.bg : 'transparent', color: role === r ? rc.text : '#94A3B8', borderColor: role === r ? rc.border : '#E2E8F0' }}>
-                        {rc.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
-                <div className="flex gap-2">
-                  <button onClick={() => setActivo(true)} className="flex-1 py-2 rounded-xl text-xs font-semibold border transition-all duration-200 cursor-pointer"
-                    style={{ backgroundColor: activo ? '#F0FDF4' : 'transparent', color: activo ? '#16A34A' : '#94A3B8', borderColor: activo ? '#BBF7D0' : '#E2E8F0' }}>Activo</button>
-                  <button onClick={() => setActivo(false)} className="flex-1 py-2 rounded-xl text-xs font-semibold border transition-all duration-200 cursor-pointer"
-                    style={{ backgroundColor: !activo ? '#FEF2F2' : 'transparent', color: !activo ? '#DC2626' : '#94A3B8', borderColor: !activo ? '#FECACA' : '#E2E8F0' }}>Inactivo</button>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Sociedades</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {societies.map((s) => {
-                    const isSelected = selectedSocieties.includes(s.id);
-                    return (
-                      <button key={s.id} onClick={() => toggleSociety(s.id)}
-                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border transition-all duration-200 cursor-pointer text-left"
-                        style={{ backgroundColor: isSelected ? s.primaryLight : 'transparent', color: isSelected ? s.primary : '#64748B', borderColor: isSelected ? s.border : '#E2E8F0' }}>
-                        <div className="w-5 h-5 rounded flex items-center justify-center font-bold"
-                          style={{ backgroundColor: isSelected ? `${s.primary}20` : '#F1F5F9', color: isSelected ? s.primary : '#94A3B8', fontSize: '10px' }}>
-                          {s.logoLetter}
-                        </div>
-                        {s.name}
-                      </button>
-                    );
-                  })}
+                  <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); clearFeedback(); }}
+                    className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
+                    style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
                 </div>
               </div>
             </>
@@ -407,15 +351,16 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
               <div className="flex items-start gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
                 <Key size={15} style={{ color: '#2563EB', flexShrink: 0, marginTop: 2 }} />
                 <p className="text-xs" style={{ color: '#1D4ED8' }}>
-                  Establece directamente una nueva contrasena para este usuario. Minimo 8 caracteres.
+                  Establece la contrasena de acceso al portal para este empleado. Minimo 8 caracteres.
                 </p>
               </div>
               <div>
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Nueva contrasena</label>
                 <div className="relative">
-                  <input type={showPw ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                  <input type={showPw ? 'text' : 'password'} value={newPassword} onChange={(e) => { setNewPassword(e.target.value); clearFeedback(); }}
                     placeholder="Minimo 8 caracteres"
-                    className="w-full px-4 py-2.5 pr-10 rounded-xl text-sm outline-none" style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
+                    className="w-full px-4 py-2.5 pr-10 rounded-xl text-sm outline-none"
+                    style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
                   <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer" style={{ color: '#94A3B8' }}>
                     {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
@@ -423,13 +368,14 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
               </div>
               <div>
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Confirmar contrasena</label>
-                <input type={showPw ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                <input type={showPw ? 'text' : 'password'} value={confirmPassword} onChange={(e) => { setConfirmPassword(e.target.value); clearFeedback(); }}
                   placeholder="Repetir contrasena"
-                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none" style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
+                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ border: `1.5px solid ${confirmPassword && newPassword !== confirmPassword ? '#EF4444' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }} />
+                {confirmPassword && newPassword !== confirmPassword && (
+                  <p className="text-xs mt-1.5" style={{ color: '#DC2626' }}>Las contrasenas no coinciden</p>
+                )}
               </div>
-              {confirmPassword && newPassword !== confirmPassword && (
-                <p className="text-xs" style={{ color: '#DC2626' }}>Las contrasenas no coinciden</p>
-              )}
             </>
           )}
 
@@ -439,28 +385,25 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
               <div className="flex items-start gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
                 <Hash size={15} style={{ color: '#16A34A', flexShrink: 0, marginTop: 2 }} />
                 <p className="text-xs" style={{ color: '#166534' }}>
-                  El PIN se usara para el sistema de fichaje. Genera uno automaticamente o introduce uno manualmente (minimo 4 digitos).
+                  PIN de 4-6 digitos para el sistema de fichaje. Puedes generarlo automaticamente o introducir uno manualmente.
                 </p>
               </div>
-              {user.pin && !generatedPin && (
-                <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                  <span className="text-xs font-medium" style={{ color: '#64748B' }}>PIN actual:</span>
-                  <span className="text-sm font-bold font-mono tracking-widest" style={{ color: '#0F172A' }}>{user.pin}</span>
+
+              {savedPin && (
+                <div className="flex items-center justify-between px-4 py-3 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                  <span className="text-xs font-medium" style={{ color: '#64748B' }}>PIN actual</span>
+                  <span className="text-base font-bold font-mono tracking-[0.3em]" style={{ color: '#0F172A' }}>{savedPin}</span>
                 </div>
               )}
-              {generatedPin && (
-                <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #22C55E' }}>
-                  <CheckCircle2 size={15} style={{ color: '#22C55E' }} />
-                  <span className="text-xs font-medium" style={{ color: '#166534' }}>Nuevo PIN:</span>
-                  <span className="text-lg font-bold font-mono tracking-widest" style={{ color: '#15803D' }}>{generatedPin}</span>
-                </div>
-              )}
+
               <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>PIN manual</label>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Nuevo PIN</label>
                 <div className="flex gap-2">
-                  <input type="text" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setGeneratedPin(null); }}
+                  <input type="text" inputMode="numeric" maxLength={6} value={pin}
+                    onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); clearFeedback(); }}
                     placeholder="Ej: 4821"
-                    className="flex-1 px-4 py-2.5 rounded-xl text-sm outline-none font-mono tracking-widest" style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
+                    className="flex-1 px-4 py-2.5 rounded-xl text-sm outline-none font-mono tracking-widest text-center"
+                    style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC', fontSize: '18px' }} />
                   <button onClick={() => handleSetPin()} disabled={loading || pin.length < 4}
                     className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
                     style={{ backgroundColor: '#0F172A' }}>
@@ -471,8 +414,50 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
               <button onClick={handleGeneratePin} disabled={loading}
                 className="w-full py-2.5 rounded-xl text-sm font-semibold border cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2 transition-all duration-200 hover:bg-slate-50"
                 style={{ borderColor: '#E2E8F0', color: '#0F172A' }}>
-                <RefreshCw size={14} /> Generar PIN automaticamente
+                <RefreshCw size={14} /> Generar automaticamente
               </button>
+            </>
+          )}
+
+          {/* PREVENCION TAG TAB */}
+          {tab === 'prevencion' && (
+            <>
+              <div className="flex items-start gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                <Shield size={15} style={{ color: '#D97706', flexShrink: 0, marginTop: 2 }} />
+                <p className="text-xs" style={{ color: '#92400E' }}>
+                  Asigna o actualiza el identificador NFC/TAG de prevencion de riesgos laborales para este empleado.
+                </p>
+              </div>
+
+              {user.pin && (
+                <div className="flex items-center justify-between px-4 py-3 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                  <span className="text-xs font-medium" style={{ color: '#64748B' }}>TAG actual</span>
+                  <span className="text-xs font-mono font-bold" style={{ color: '#0F172A' }}>— sin asignar —</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>ID del TAG / NFC</label>
+                <div className="flex gap-2">
+                  <input type="text" value={tagId} onChange={(e) => { setTagId(e.target.value.toUpperCase()); clearFeedback(); }}
+                    placeholder="Ej: A3F2C1D4"
+                    className="flex-1 px-4 py-2.5 rounded-xl text-sm outline-none font-mono tracking-wider"
+                    style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
+                  <button
+                    disabled={!tagId.trim() || loading}
+                    onClick={() => { setSuccess('TAG asignado (funcionalidad pendiente de implementar).'); }}
+                    className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
+                    style={{ backgroundColor: '#D97706' }}>
+                    <Shield size={13} /> Asignar
+                  </button>
+                </div>
+              </div>
+
+              <div className="px-4 py-3 rounded-xl text-center" style={{ backgroundColor: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>
+                  Modulo NFC en desarrollo — los campos se guardaran en la base de datos cuando este disponible.
+                </p>
+              </div>
             </>
           )}
 
@@ -491,12 +476,12 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
           {/* Actions */}
           <div className="flex gap-3 pt-2">
             <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer"
-              style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
-            {tab === 'info' && (
-              <button onClick={handleSaveInfo} disabled={loading}
+              style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cerrar</button>
+            {tab === 'email' && (
+              <button onClick={handleSaveEmail} disabled={loading}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
                 style={{ backgroundColor: '#0F172A' }}>
-                {loading ? <RefreshCw size={14} className="animate-spin" /> : null} Guardar Cambios
+                {loading ? <RefreshCw size={14} className="animate-spin" /> : <Mail size={14} />} Guardar Correo
               </button>
             )}
             {tab === 'password' && (
@@ -506,7 +491,6 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
                 {loading ? <RefreshCw size={14} className="animate-spin" /> : <Key size={14} />} Establecer Contrasena
               </button>
             )}
-            {tab === 'pin' && null}
           </div>
         </div>
       </div>

@@ -121,6 +121,8 @@ export default function PrevencionPanel({ email, onLogout }: Props) {
 
 // ─── Empleados + Tags tab ────────────────────────────────────────────────────
 
+type AssignedTag = TagType & { etiquetado_id: string };
+
 function EmpleadosTagsTab() {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [sociedades, setSociedades] = useState<Sociedad[]>([]);
@@ -132,11 +134,14 @@ function EmpleadosTagsTab() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSociedad, setFilterSociedad] = useState('');
 
+  // expandedId → the employee panel currently open
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [empleadoTags, setEmpleadoTags] = useState<(TagType & { etiquetado_id: string })[]>([]);
+  // per-employee assigned tags cache: id → tags[]
+  const [tagCache, setTagCache] = useState<Record<string, AssignedTag[]>>({});
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const [newTagId, setNewTagId] = useState('');
-  const [savingDetail, setSavingDetail] = useState(false);
+  // selected tag ids (multi-select) per employee
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -170,13 +175,13 @@ function EmpleadosTagsTab() {
         .select('*, tags(id, nombre, created_at)')
         .eq('entidad_id', empleadoId);
       if (err) throw err;
-      const tgs = (data ?? []).map((et: { id: string; tag_id: string; entidad_id: string; created_at: string; tags: TagType | null }) => ({
+      const tgs: AssignedTag[] = (data ?? []).map((et: { id: string; tag_id: string; entidad_id: string; created_at: string; tags: TagType | null }) => ({
         id: et.tags?.id ?? et.tag_id,
         nombre: et.tags?.nombre ?? '',
         created_at: et.tags?.created_at ?? '',
         etiquetado_id: et.id,
       }));
-      setEmpleadoTags(tgs);
+      setTagCache((prev) => ({ ...prev, [empleadoId]: tgs }));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al cargar etiquetas');
     } finally {
@@ -184,42 +189,55 @@ function EmpleadosTagsTab() {
     }
   }, []);
 
-  useEffect(() => {
-    if (expandedId) loadDetail(expandedId);
-  }, [expandedId, loadDetail]);
+  const expand = (empleadoId: string) => {
+    if (expandedId === empleadoId) {
+      setExpandedId(null);
+      setSelectedTagIds(new Set());
+      return;
+    }
+    setExpandedId(empleadoId);
+    setSelectedTagIds(new Set());
+    loadDetail(empleadoId);
+  };
 
   const showSuccess = (msg: string) => {
     setSuccess(msg);
     setTimeout(() => setSuccess(null), 3000);
   };
 
-  const handleAddTag = async (empleadoId: string) => {
-    if (!newTagId) { setError('Selecciona un tag'); return; }
-    setSavingDetail(true);
+  const toggleTag = (tagId: string) => {
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tagId)) next.delete(tagId); else next.add(tagId);
+      return next;
+    });
+  };
+
+  const handleAssignSelected = async (empleadoId: string) => {
+    if (selectedTagIds.size === 0) { setError('Selecciona al menos un tag'); return; }
+    setSaving(true);
     setError(null);
     try {
-      const { error: err } = await supabase.from('etiquetado').insert({ entidad_id: empleadoId, tag_id: newTagId });
+      const rows = Array.from(selectedTagIds).map((tag_id) => ({ entidad_id: empleadoId, tag_id }));
+      const { error: err } = await supabase.from('etiquetado').insert(rows);
       if (err) throw err;
-      setNewTagId('');
+      setSelectedTagIds(new Set());
       await loadDetail(empleadoId);
-      showSuccess('Tag de prevencion asignado');
+      showSuccess(`${rows.length} tag${rows.length > 1 ? 's' : ''} asignado${rows.length > 1 ? 's' : ''} correctamente`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al asignar tag');
+      setError(e instanceof Error ? e.message : 'Error al asignar tags');
     } finally {
-      setSavingDetail(false);
+      setSaving(false);
     }
   };
 
   const handleRemoveTag = async (etiquetadoId: string, empleadoId: string) => {
-    setSavingDetail(true);
     try {
       const { error: err } = await supabase.from('etiquetado').delete().eq('id', etiquetadoId);
       if (err) throw err;
       await loadDetail(empleadoId);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al eliminar tag');
-    } finally {
-      setSavingDetail(false);
     }
   };
 
@@ -298,11 +316,20 @@ function EmpleadosTagsTab() {
             {filtered.map((emp) => {
               const soc = getSociedad(emp.id_sociedad);
               const isExpanded = expandedId === emp.id;
+              const assignedTags = tagCache[emp.id] ?? [];
+              const assignedTagIds = new Set(assignedTags.map((t) => t.id));
+              // tags not yet assigned to this employee
+              const availableTags = tags.filter((t) => !assignedTagIds.has(t.id));
+
               return (
                 <div key={emp.id}>
-                  <div className="px-6 py-4 flex items-center gap-4 hover:bg-slate-50 transition-colors duration-150">
+                  {/* Row */}
+                  <div
+                    className="px-6 py-4 flex items-center gap-4 transition-colors duration-150 cursor-pointer hover:bg-slate-50"
+                    onClick={() => expand(emp.id)}
+                  >
                     <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-                      style={{ backgroundColor: '#ECFDF5', color: '#065F46' }}>
+                      style={{ backgroundColor: isExpanded ? '#065F46' : '#ECFDF5', color: isExpanded ? '#FFFFFF' : '#065F46' }}>
                       {emp.nombre.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -312,94 +339,117 @@ function EmpleadosTagsTab() {
                         {emp.email && <p className="text-xs" style={{ color: '#94A3B8' }}>{emp.email}</p>}
                       </div>
                     </div>
+                    {/* tag count badge when collapsed */}
+                    {!isExpanded && tagCache[emp.id] && tagCache[emp.id].length > 0 && (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }}>
+                        {tagCache[emp.id].length} tag{tagCache[emp.id].length > 1 ? 's' : ''}
+                      </span>
+                    )}
                     {soc && (
                       <span className="hidden sm:inline text-xs font-medium px-2.5 py-1 rounded-md flex-shrink-0"
                         style={{ backgroundColor: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }}>
                         {soc.nombre}
                       </span>
                     )}
-                    <button
-                      onClick={() => setExpandedId(isExpanded ? null : emp.id)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 flex-shrink-0"
-                      style={{ backgroundColor: isExpanded ? '#ECFDF5' : '#F8FAFC', border: '1px solid #E2E8F0', color: isExpanded ? '#065F46' : '#94A3B8' }}
-                      title="Gestionar tags"
-                    >
-                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: isExpanded ? '#ECFDF5' : '#F8FAFC', border: '1px solid #E2E8F0', color: isExpanded ? '#065F46' : '#94A3B8' }}>
+                      {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    </div>
                   </div>
 
-                  {/* Expanded tag panel */}
+                  {/* Expanded panel */}
                   {isExpanded && (
-                    <div className="px-6 pb-5 pt-3" style={{ backgroundColor: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
-                      {loadingDetail ? (
+                    <div className="px-6 pb-6 pt-4" style={{ backgroundColor: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
+                      {loadingDetail && !tagCache[emp.id] ? (
                         <div className="py-4 text-center">
                           <RefreshCw size={16} className="animate-spin mx-auto" style={{ color: '#94A3B8' }} />
                         </div>
                       ) : (
-                        <div className="max-w-lg space-y-4">
-                          {/* Current tags */}
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>
-                              Tags de prevencion asignados
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                          {/* Left: assigned tags */}
+                          <div className="rounded-xl p-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                            <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#64748B' }}>
+                              Tags asignados
                             </p>
-                            <div className="flex flex-wrap gap-2">
-                              {empleadoTags.length === 0 && (
-                                <p className="text-xs" style={{ color: '#94A3B8' }}>Sin tags asignados</p>
-                              )}
-                              {empleadoTags.map((t) => {
-                                const tc = tagColor(t.nombre);
-                                return (
-                                  <span key={t.etiquetado_id}
-                                    className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
-                                    style={{ backgroundColor: tc.bg, color: tc.text, border: `1px solid ${tc.border}` }}>
-                                    <Tag size={10} />
-                                    {t.nombre}
-                                    <button onClick={() => handleRemoveTag(t.etiquetado_id, emp.id)} disabled={savingDetail}
-                                      className="cursor-pointer hover:opacity-70 ml-0.5" style={{ color: tc.text }}>
-                                      <X size={10} />
-                                    </button>
-                                  </span>
-                                );
-                              })}
-                            </div>
+                            {assignedTags.length === 0 ? (
+                              <p className="text-xs" style={{ color: '#94A3B8' }}>Sin tags asignados</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {assignedTags.map((t) => {
+                                  const tc = tagColor(t.nombre);
+                                  return (
+                                    <span key={t.etiquetado_id}
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
+                                      style={{ backgroundColor: tc.bg, color: tc.text, border: `1px solid ${tc.border}` }}>
+                                      <Tag size={9} />
+                                      {t.nombre}
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleRemoveTag(t.etiquetado_id, emp.id); }}
+                                        className="cursor-pointer hover:opacity-70 ml-0.5" style={{ color: tc.text }}>
+                                        <X size={9} />
+                                      </button>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
 
-                          {/* Add tag */}
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>
-                              Asignar nuevo tag
-                            </p>
-                            <div className="flex gap-2">
-                              <select value={newTagId} onChange={(e) => setNewTagId(e.target.value)}
-                                className="flex-1 px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
-                                style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
-                                <option value="">Seleccionar categoria de riesgo...</option>
-                                {tags
-                                  .filter((t) => !empleadoTags.find((et) => et.id === t.id))
-                                  .map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-                              </select>
-                              <button onClick={() => handleAddTag(emp.id)} disabled={savingDetail || !newTagId}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50 transition-all duration-200"
-                                style={{ backgroundColor: '#065F46', color: '#FFFFFF' }}>
-                                {savingDetail ? <RefreshCw size={12} className="animate-spin" /> : <Plus size={12} />}
-                                Asignar
-                              </button>
+                          {/* Right: multi-select checkboxes */}
+                          <div className="rounded-xl p-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                            <div className="flex items-center justify-between mb-3">
+                              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>
+                                Asignar tags
+                              </p>
+                              {selectedTagIds.size > 0 && (
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                                  style={{ backgroundColor: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }}>
+                                  {selectedTagIds.size} seleccionado{selectedTagIds.size > 1 ? 's' : ''}
+                                </span>
+                              )}
                             </div>
-                            {/* Tag color preview */}
-                            {newTagId && (() => {
-                              const t = tags.find((t) => t.id === newTagId);
-                              if (!t) return null;
-                              const tc = tagColor(t.nombre);
-                              return (
-                                <div className="mt-2 flex items-center gap-1.5">
-                                  <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
-                                    style={{ backgroundColor: tc.bg, color: tc.text, border: `1px solid ${tc.border}` }}>
-                                    <Tag size={9} />{t.nombre}
-                                  </span>
-                                  <span className="text-xs" style={{ color: '#94A3B8' }}>se asignara al empleado</span>
-                                </div>
-                              );
-                            })()}
+
+                            {availableTags.length === 0 ? (
+                              <p className="text-xs mb-3" style={{ color: '#94A3B8' }}>Todos los tags ya estan asignados</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                {availableTags.map((t) => {
+                                  const tc = tagColor(t.nombre);
+                                  const sel = selectedTagIds.has(t.id);
+                                  return (
+                                    <button
+                                      key={t.id}
+                                      onClick={(e) => { e.stopPropagation(); toggleTag(t.id); }}
+                                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all duration-150"
+                                      style={{
+                                        backgroundColor: sel ? tc.text : tc.bg,
+                                        color: sel ? '#FFFFFF' : tc.text,
+                                        border: `2px solid ${sel ? tc.text : tc.border}`,
+                                        transform: sel ? 'scale(1.05)' : 'scale(1)',
+                                      }}
+                                    >
+                                      {sel
+                                        ? <CheckCircle2 size={10} />
+                                        : <Tag size={9} />}
+                                      {t.nombre}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleAssignSelected(emp.id); }}
+                              disabled={saving || selectedTagIds.size === 0}
+                              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40 transition-all duration-150"
+                              style={{ backgroundColor: '#065F46', color: '#FFFFFF' }}
+                            >
+                              {saving
+                                ? <RefreshCw size={12} className="animate-spin" />
+                                : <Plus size={12} />}
+                              Asignar{selectedTagIds.size > 1 ? ` ${selectedTagIds.size} tags` : ' tag'}
+                            </button>
                           </div>
                         </div>
                       )}
@@ -414,7 +464,7 @@ function EmpleadosTagsTab() {
 
       {/* Tag legend */}
       <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-3">
           <Tag size={14} style={{ color: '#065F46' }} />
           <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>Categorias de Riesgo Disponibles</p>
         </div>

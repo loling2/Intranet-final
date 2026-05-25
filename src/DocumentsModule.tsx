@@ -20,7 +20,7 @@ const ACCEPTED_TYPES = [
   'application/msword',
 ];
 
-type Folder = 'publico' | 'privado';
+type Folder = 'publico' | 'privado' | 'prevencion';
 
 // A unified file entry: either from Supabase DB or Wasabi-only
 interface FileEntry {
@@ -247,19 +247,28 @@ function UploadModal({
               Carpeta de destino
             </label>
             <div className="flex gap-2">
-              {(['publico', 'privado'] as Folder[]).map((f) => {
+              {(targetFolder === 'prevencion'
+                ? ['prevencion'] as Folder[]
+                : ['publico', 'privado'] as Folder[]
+              ).map((f) => {
                 const isActive = folder === f;
-                const FolderIcon = f === 'privado' ? FolderLock : FolderOpen;
+                const FolderIcon = f === 'privado' ? FolderLock : f === 'prevencion' ? FolderOpen : FolderOpen;
+                const colors = f === 'privado'
+                  ? { active: '#FEF2F2', activeText: '#DC2626', activeBorder: '#FECACA' }
+                  : f === 'prevencion'
+                  ? { active: '#ECFDF5', activeText: '#065F46', activeBorder: '#6EE7B7' }
+                  : { active: '#F0FDF4', activeText: '#16A34A', activeBorder: '#BBF7D0' };
+                const label = f === 'publico' ? 'Publico' : f === 'privado' ? 'Privado' : 'Prevencion';
                 return (
                   <button key={f} onClick={() => setFolder(f)}
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all duration-150"
                     style={{
-                      backgroundColor: isActive ? (f === 'privado' ? '#FEF2F2' : '#F0FDF4') : '#F8FAFC',
-                      color: isActive ? (f === 'privado' ? '#DC2626' : '#16A34A') : '#64748B',
-                      border: `1.5px solid ${isActive ? (f === 'privado' ? '#FECACA' : '#BBF7D0') : '#E2E8F0'}`,
+                      backgroundColor: isActive ? colors.active : '#F8FAFC',
+                      color: isActive ? colors.activeText : '#64748B',
+                      border: `1.5px solid ${isActive ? colors.activeBorder : '#E2E8F0'}`,
                     }}>
                     <FolderIcon size={15} />
-                    {f === 'publico' ? 'Publico' : 'Privado'}
+                    {label}
                   </button>
                 );
               })}
@@ -372,10 +381,12 @@ function FolderPanel({
   onRefresh: () => void;
 }) {
   const isPrivado = folder === 'privado';
+  const isPrevencionFolder = folder === 'prevencion';
   const FolderIcon = isPrivado ? FolderLock : FolderOpen;
-  const folderColor = isPrivado ? '#DC2626' : '#16A34A';
-  const folderBg = isPrivado ? '#FEF2F2' : '#F0FDF4';
-  const folderBorder = isPrivado ? '#FECACA' : '#BBF7D0';
+  const folderColor = isPrivado ? '#DC2626' : isPrevencionFolder ? '#065F46' : '#16A34A';
+  const folderBg = isPrivado ? '#FEF2F2' : isPrevencionFolder ? '#ECFDF5' : '#F0FDF4';
+  const folderBorder = isPrivado ? '#FECACA' : isPrevencionFolder ? '#6EE7B7' : '#BBF7D0';
+  const folderLabel = isPrivado ? 'Privado' : isPrevencionFolder ? 'Prevencion PRL' : 'Publico';
 
   const [expanded, setExpanded] = useState(false);
   const [wasabiObjs, setWasabiObjs] = useState<WasabiObject[]>([]);
@@ -450,7 +461,7 @@ function FolderPanel({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-sm font-bold" style={{ color: folderColor }}>
-              {isPrivado ? 'Privado' : 'Publico'}
+              {folderLabel}
             </p>
             {expanded && (wasabiError || parentWasabiError) ? (
               <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
@@ -465,7 +476,7 @@ function FolderPanel({
             )}
           </div>
           <p className="text-xs mt-0.5" style={{ color: folderColor, opacity: 0.7 }}>
-            {isPrivado ? 'Solo visible para Admin / RRHH' : 'Accesible para todos los empleados'}
+            {isPrivado ? 'Solo visible para Admin / RRHH' : isPrevencionFolder ? 'Documentos de Prevencion de Riesgos Laborales' : 'Accesible para todos los empleados'}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -643,13 +654,16 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
   const [initializingFolders, setInitializingFolders] = useState(false);
   const [foldersInitialized, setFoldersInitialized] = useState(false);
 
-  const canManage = currentUserRole === 'admin' || currentUserRole === 'rrhh';
+  const isPrevencion = currentUserRole === 'prevencion';
+  const canManage = currentUserRole === 'admin' || currentUserRole === 'rrhh' || isPrevencion;
 
   // Only loads DB records — Wasabi is fetched lazily per folder on expand
   const loadAll = useCallback(async () => {
     try {
       let query = supabase.from('documents').select('*').order('fecha_subida', { ascending: false });
-      if (!canManage) {
+      if (isPrevencion) {
+        query = query.eq('society_id', activeSocietyId).eq('folder', 'prevencion');
+      } else if (!canManage) {
         query = query.eq('society_id', activeSocietyId).eq('folder', 'publico');
       } else {
         query = query.eq('society_id', activeSocietyId);
@@ -765,6 +779,7 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
 
   const publicDbEntries = buildDbEntries('publico');
   const privateDbEntries = buildDbEntries('privado');
+  const prevDbEntries = buildDbEntries('prevencion');
 
   return (
     <>
@@ -823,33 +838,66 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
 
         {/* Folder list */}
         <div className="flex flex-col gap-4">
-          <FolderPanel
-            folder="publico"
-            dbEntries={publicDbEntries}
-            canManage={canManage}
-            wasabiError={wasabiError}
-            onPreview={setPreviewEntry}
-            onDownload={handleDownload}
-            onDelete={handleDelete}
-            deleting={deleting}
-            search={search}
-            onUpload={() => openUpload('publico')}
-            onRefresh={loadAll}
-          />
-          {canManage && (
+          {isPrevencion ? (
             <FolderPanel
-              folder="privado"
-              dbEntries={privateDbEntries}
-              canManage={canManage}
+              folder="prevencion"
+              dbEntries={prevDbEntries}
+              canManage={true}
               wasabiError={wasabiError}
               onPreview={setPreviewEntry}
               onDownload={handleDownload}
               onDelete={handleDelete}
               deleting={deleting}
               search={search}
-              onUpload={() => openUpload('privado')}
+              onUpload={() => openUpload('prevencion')}
               onRefresh={loadAll}
             />
+          ) : (
+            <>
+              <FolderPanel
+                folder="publico"
+                dbEntries={publicDbEntries}
+                canManage={canManage}
+                wasabiError={wasabiError}
+                onPreview={setPreviewEntry}
+                onDownload={handleDownload}
+                onDelete={handleDelete}
+                deleting={deleting}
+                search={search}
+                onUpload={() => openUpload('publico')}
+                onRefresh={loadAll}
+              />
+              {canManage && (
+                <>
+                  <FolderPanel
+                    folder="privado"
+                    dbEntries={privateDbEntries}
+                    canManage={canManage}
+                    wasabiError={wasabiError}
+                    onPreview={setPreviewEntry}
+                    onDownload={handleDownload}
+                    onDelete={handleDelete}
+                    deleting={deleting}
+                    search={search}
+                    onUpload={() => openUpload('privado')}
+                    onRefresh={loadAll}
+                  />
+                  <FolderPanel
+                    folder="prevencion"
+                    dbEntries={prevDbEntries}
+                    canManage={canManage}
+                    wasabiError={wasabiError}
+                    onPreview={setPreviewEntry}
+                    onDownload={handleDownload}
+                    onDelete={handleDelete}
+                    deleting={deleting}
+                    search={search}
+                    onUpload={() => openUpload('prevencion')}
+                    onRefresh={loadAll}
+                  />
+                </>
+              )}
+            </>
           )}
         </div>
       </div>

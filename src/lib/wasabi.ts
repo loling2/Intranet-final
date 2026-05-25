@@ -12,7 +12,7 @@ const wasabiClient = new S3Client({
 
 export interface WasabiObject {
   key: string;          // e.g. "publico/1234-file.pdf"
-  folder: 'publico' | 'privado';
+  folder: 'publico' | 'privado' | 'prevencion';
   nombre: string;       // original filename portion
   size: number;
   lastModified: Date;
@@ -37,7 +37,7 @@ export async function uploadToWasabi(file: File, path: string): Promise<string> 
   return `${import.meta.env.VITE_WASABI_ENDPOINT as string}/${bucket}/${path}`;
 }
 
-export async function listWasabiFolder(folder: 'publico' | 'privado'): Promise<WasabiObject[]> {
+export async function listWasabiFolder(folder: 'publico' | 'privado' | 'prevencion'): Promise<WasabiObject[]> {
   const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
 
   const command = new ListObjectsV2Command({
@@ -65,7 +65,7 @@ export async function deleteFromWasabi(key: string): Promise<void> {
 }
 
 // Creates the folder prefix in Wasabi by uploading a zero-byte placeholder
-export async function initWasabiFolder(folder: 'publico' | 'privado'): Promise<void> {
+export async function initWasabiFolder(folder: 'publico' | 'privado' | 'prevencion'): Promise<void> {
   const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
   const params = {
     Bucket: bucket,

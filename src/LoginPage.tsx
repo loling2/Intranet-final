@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Palmtree, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle } from 'lucide-react';
 import { societies, SocietyTheme } from './themes';
-import { mockDocuments, mockDevices, mockVacations, mockCertificates, mockExams } from './mockData';
+import { mockDocuments, mockDevices, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
 type UserRole = AppRole;
 import DocumentsCard from './DocumentsCard';
 import DevicesCard from './DevicesCard';
-import VacationsCard from './VacationsCard';
 import CertificatesCard from './CertificatesCard';
 import ExamsCard from './ExamsCard';
+import PrevencionDocsCard from './PrevencionDocsCard';
 import AdminPanel from './AdminPanel';
 import RRHHPanel from './RRHHPanel';
+import PrevencionPanel from './PrevencionPanel';
 import { supabase } from './supabaseClient';
 
 const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> = {
@@ -352,7 +353,7 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-type AppView = 'login' | 'admin' | 'rrhh' | 'dashboard';
+type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard';
 
 interface SessionState {
   email: string;
@@ -459,6 +460,8 @@ export default function LoginPage() {
         initialView = 'admin';
       } else if (resolvedRole === 'rrhh') {
         initialView = 'rrhh';
+      } else if (resolvedRole === 'prevencion') {
+        initialView = 'prevencion';
       } else {
         initialView = 'dashboard';
         if (resolvedSocietyId) setSelectedId(resolvedSocietyId);
@@ -505,6 +508,15 @@ export default function LoginPage() {
           email={session.email}
           onLogout={handleLogout}
           onNavigate={handleNavigate}
+        />
+      );
+    }
+
+    if (session.view === 'prevencion') {
+      return (
+        <PrevencionPanel
+          email={session.email}
+          onLogout={handleLogout}
         />
       );
     }
@@ -817,7 +829,6 @@ function Dashboard({
 
   const docs = mockDocuments[theme.id] ?? [];
   const devices = mockDevices[theme.id] ?? [];
-  const vacations = mockVacations[theme.id] ?? { balance: { total: 0, used: 0, pending: 0 }, requests: [] };
   const certificates = mockCertificates[theme.id] ?? [];
   const exams = mockExams[theme.id] ?? [];
 
@@ -937,7 +948,7 @@ function Dashboard({
               {[
                 { label: 'Documentos', value: docs.length, color: theme.primary },
                 { label: 'Dispositivos', value: devices.filter((d) => d.active).length, color: '#22C55E' },
-                { label: 'Dias usados', value: vacations.balance.used, color: '#F59E0B' },
+                { label: 'Docs. Prevencion', value: '—', color: '#065F46' },
                 { label: 'Certificados', value: certificates.length, color: theme.primary },
               ].map((stat, i) => (
                 <div
@@ -958,7 +969,7 @@ function Dashboard({
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <DocumentsCard documents={docs} theme={theme} />
               <DevicesCard devices={devices} theme={theme} />
-              <VacationsCard balance={vacations.balance} requests={vacations.requests} theme={theme} />
+              <PrevencionDocsCard theme={theme} userEmail={email} />
             </div>
           </>
         )}

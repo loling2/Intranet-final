@@ -58,7 +58,7 @@ export interface DocumentRecord {
   id: string;
   nombre_archivo: string;
   tipo: string;
-  folder: 'publico' | 'privado';
+  folder: 'publico' | 'privado' | 'prevencion';
   usuario_destino_id: string | null;
   usuario_destino_email: string;
   society_id: string;

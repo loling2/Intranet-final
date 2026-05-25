@@ -28,7 +28,7 @@ Deno.serve(async (req: Request) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Verify password via SQL function
+    // Verify password via SQL function first
     const { data: userId, error: pwError } = await supabaseAdmin.rpc("check_user_password", {
       p_email: email.trim().toLowerCase(),
       p_password: password,
@@ -43,34 +43,20 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Generate a real session token for this user
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: "magiclink",
-      email: email.trim().toLowerCase(),
-    });
-
-    if (linkError || !linkData) {
-      return new Response(JSON.stringify({ error: "Error generando sesion: " + linkError?.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Exchange the OTP token for a real session
+    // Create a real session using signInWithPassword via anon client
     const supabasePublic = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    const token = linkData.properties?.hashed_token;
-    const { data: sessionData, error: sessionError } = await supabasePublic.auth.verifyOtp({
-      token_hash: token,
-      type: "magiclink",
+    const { data: signInData, error: signInError } = await supabasePublic.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
     });
 
-    if (sessionError || !sessionData.session) {
-      return new Response(JSON.stringify({ error: "Error creando sesion: " + sessionError?.message }), {
+    if (signInError || !signInData.session) {
+      return new Response(JSON.stringify({ error: "Error creando sesion: " + (signInError?.message ?? "unknown") }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -88,8 +74,8 @@ Deno.serve(async (req: Request) => {
         userId: resolvedId,
         email: email.trim().toLowerCase(),
         profile,
-        access_token: sessionData.session.access_token,
-        refresh_token: sessionData.session.refresh_token,
+        access_token: signInData.session.access_token,
+        refresh_token: signInData.session.refresh_token,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

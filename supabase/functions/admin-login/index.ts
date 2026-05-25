@@ -22,13 +22,15 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    // Verify password via SQL function first
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    // Step 1: verify password via SQL function
     const { data: userId, error: pwError } = await supabaseAdmin.rpc("check_user_password", {
       p_email: email.trim().toLowerCase(),
       p_password: password,
@@ -43,26 +45,27 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Create a real session using signInWithPassword via anon client
-    const supabasePublic = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
-
-    const { data: signInData, error: signInError } = await supabasePublic.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
-      password,
+    // Step 2: sign in via REST API directly (avoids schema introspection issues)
+    const signInResp = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": anonKey,
+        "Authorization": `Bearer ${anonKey}`,
+      },
+      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
     });
 
-    if (signInError || !signInData.session) {
-      return new Response(JSON.stringify({ error: "Error creando sesion: " + (signInError?.message ?? "unknown") }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const signInBody = await signInResp.json();
+
+    if (!signInResp.ok || !signInBody.access_token) {
+      return new Response(
+        JSON.stringify({ error: "Error creando sesion: " + (signInBody.error_description ?? signInBody.msg ?? "unknown") }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // Get profile
+    // Step 3: get profile
     const { data: profile } = await supabaseAdmin
       .from("user_profiles")
       .select("*")
@@ -74,8 +77,8 @@ Deno.serve(async (req: Request) => {
         userId: resolvedId,
         email: email.trim().toLowerCase(),
         profile,
-        access_token: signInData.session.access_token,
-        refresh_token: signInData.session.refresh_token,
+        access_token: signInBody.access_token,
+        refresh_token: signInBody.refresh_token,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

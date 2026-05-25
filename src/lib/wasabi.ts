@@ -91,6 +91,19 @@ export async function uploadToWasabiKey(file: File, key: string): Promise<string
   return key;
 }
 
+// Upload raw bytes to an arbitrary key (used by nominas module for in-memory PDFs)
+export async function uploadBytesToWasabi(bytes: Uint8Array, key: string, contentType: string): Promise<string> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  await wasabiClient.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: bytes,
+    ContentType: contentType,
+    ContentLength: bytes.byteLength,
+  }));
+  return key;
+}
+
 // Download a file by key and trigger browser download
 export async function downloadFromWasabi(key: string, filename: string): Promise<void> {
   const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;

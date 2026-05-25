@@ -64,7 +64,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
     { id: 'users', label: 'Gestion de Usuarios', icon: Users },
     { id: 'vehicles', label: 'Vehiculos', icon: Car },
     { id: 'documents', label: 'Documentos', icon: FileText },
-    { id: 'pdf-split', label: 'Separador de PDFs', icon: Zap },
+    { id: 'pdf-split', label: 'Nominas', icon: Zap },
     { id: 'vacations', label: 'Vacaciones', icon: Palmtree, badge: vacationsPending.length },
     { id: 'certificates', label: 'Certificaciones', icon: Award },
     { id: 'exams', label: 'Examenes', icon: ClipboardCheck },

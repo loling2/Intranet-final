@@ -416,46 +416,69 @@ export default function LoginPage() {
     setLoginError('');
     setLoginLoading(true);
     try {
+      // Try standard Supabase Auth first
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password,
       });
-      if (error) {
-        console.error('Supabase auth error:', error);
-        setLoginError(`Error: ${error.message} | status: ${error.status} | code: ${(error as { code?: string }).code ?? 'n/a'}`);
-        return;
-      }
-      if (!data.user) {
-        setLoginError('No se pudo autenticar. Intenta de nuevo.');
-        return;
-      }
 
-      // Load profile to get role
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .maybeSingle();
+      let resolvedEmail: string;
+      let resolvedRole: UserRole;
+      let resolvedSocietyId: string | null;
 
-      const role: UserRole = (profile?.role as UserRole) ?? 'employee';
-      const societyId = profile?.societies?.[0] ?? null;
+      if (!error && data.user) {
+        // Standard auth succeeded
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .maybeSingle();
+
+        resolvedEmail = data.user.email ?? email.trim().toLowerCase();
+        resolvedRole = (profile?.role as UserRole) ?? 'employee';
+        resolvedSocietyId = profile?.societies?.[0] ?? null;
+      } else {
+        // Fallback: verify via edge function (bypasses Auth provider config)
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+        const resp = await fetch(`${supabaseUrl}/functions/v1/admin-login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${anonKey}`,
+            'Apikey': anonKey,
+          },
+          body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        });
+
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({}));
+          setLoginError(body.error ?? 'Credenciales incorrectas');
+          return;
+        }
+
+        const result = await resp.json();
+        resolvedEmail = result.email ?? email.trim().toLowerCase();
+        resolvedRole = (result.profile?.role as UserRole) ?? 'employee';
+        resolvedSocietyId = result.profile?.societies?.[0] ?? null;
+      }
 
       let initialView: AppView;
-      if (role === 'admin') {
+      if (resolvedRole === 'admin') {
         initialView = 'admin';
-      } else if (role === 'rrhh') {
+      } else if (resolvedRole === 'rrhh') {
         initialView = 'rrhh';
       } else {
         initialView = 'dashboard';
-        if (societyId) setSelectedId(societyId);
+        if (resolvedSocietyId) setSelectedId(resolvedSocietyId);
       }
 
       setSession({
-        email: data.user.email ?? email.trim().toLowerCase(),
-        role,
-        societyId,
+        email: resolvedEmail,
+        role: resolvedRole,
+        societyId: resolvedSocietyId,
         view: initialView,
-        activeSocietyId: societyId,
+        activeSocietyId: resolvedSocietyId,
       });
     } finally {
       setLoginLoading(false);

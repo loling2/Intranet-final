@@ -416,58 +416,35 @@ export default function LoginPage() {
     setLoginError('');
     setLoginLoading(true);
     try {
-      // Try standard Supabase Auth first
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
-
-      let resolvedEmail: string;
-      let resolvedRole: UserRole;
-      let resolvedSocietyId: string | null;
-
-      if (!error && data.user) {
-        // Standard auth succeeded
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', data.user.id)
-          .maybeSingle();
-
-        resolvedEmail = data.user.email ?? email.trim().toLowerCase();
-        resolvedRole = (profile?.role as UserRole) ?? 'employee';
-        resolvedSocietyId = profile?.societies?.[0] ?? null;
-      } else {
-        // Fallback: verify via edge function (bypasses Auth provider config)
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-        let resp: Response;
-        try {
-          resp = await fetch(`${supabaseUrl}/functions/v1/admin-login`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${anonKey}`,
-              'Apikey': anonKey,
-            },
-            body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
-          });
-        } catch (fetchErr) {
-          setLoginError(`Error de red: ${String(fetchErr)}`);
-          return;
-        }
-
-        const body = await resp.json().catch(() => ({}));
-
-        if (!resp.ok) {
-          setLoginError(body.error ?? `Error ${resp.status}: Credenciales incorrectas`);
-          return;
-        }
-
-        resolvedEmail = body.email ?? email.trim().toLowerCase();
-        resolvedRole = (body.profile?.role as UserRole) ?? 'employee';
-        resolvedSocietyId = body.profile?.societies?.[0] ?? null;
+      // Verify credentials via edge function (direct password check against DB)
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      let resp: Response;
+      try {
+        resp = await fetch(`${supabaseUrl}/functions/v1/admin-login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${anonKey}`,
+            'Apikey': anonKey,
+          },
+          body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        });
+      } catch (fetchErr) {
+        setLoginError(`Error de red: ${String(fetchErr)}`);
+        return;
       }
+
+      const body = await resp.json().catch(() => ({}));
+
+      if (!resp.ok) {
+        setLoginError(body.error ?? 'Credenciales incorrectas');
+        return;
+      }
+
+      const resolvedEmail: string = body.email ?? email.trim().toLowerCase();
+      const resolvedRole: UserRole = (body.profile?.role as UserRole) ?? 'employee';
+      const resolvedSocietyId: string | null = body.profile?.societies?.[0] ?? null;
 
       let initialView: AppView;
       if (resolvedRole === 'admin') {

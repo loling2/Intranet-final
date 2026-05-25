@@ -421,7 +421,7 @@ export default function LoginPage() {
         password,
       });
       if (error) {
-        setLoginError('Credenciales incorrectas. Verifica tu correo y contrasena.');
+        setLoginError(`Error Supabase: ${error.message} (${error.status})`);
         return;
       }
       if (!data.user) {

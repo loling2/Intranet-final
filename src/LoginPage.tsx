@@ -521,10 +521,10 @@ export default function LoginPage() {
     }
   }
 
-  // Login form - admin/rrhh users don't need society selector
-  const isPrivilegedUser = email.trim().toLowerCase() === 'admin@empresa.com' ||
-    email.trim().toLowerCase() === 'rrhh@empresa.com';
-  const canLogin = isPrivilegedUser ? (email.trim() && password) : (selected && email && password);
+  // Show "privileged" hint when no society is selected — actual role is determined post-login from Supabase
+  const isPrivilegedUser = !selected && !!(email.trim());
+  // Allow login attempt with just email + password (society is optional — employees pick one for UX)
+  const canLogin = !!(email.trim() && password);
 
   return (
     <div

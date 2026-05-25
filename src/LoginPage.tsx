@@ -421,7 +421,8 @@ export default function LoginPage() {
         password,
       });
       if (error) {
-        setLoginError(`Error Supabase: ${error.message} (${error.status})`);
+        console.error('Supabase auth error:', error);
+        setLoginError(`Error: ${error.message} | status: ${error.status} | code: ${(error as { code?: string }).code ?? 'n/a'}`);
         return;
       }
       if (!data.user) {

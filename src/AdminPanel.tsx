@@ -3,7 +3,7 @@ import {
   Shield, Users, Building2, Laptop, FileText, Palmtree, Award,
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
   Search, Eye, CheckCircle2, XCircle, Clock,
-  Activity, Lock, Unlock, Car, ScrollText, ChevronLeft
+  Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck
 } from 'lucide-react';
 import { societies } from './themes';
 import { validUsers, mockDocuments, mockDevices, mockVacations, mockCertificates, mockExams } from './mockData';
@@ -22,7 +22,7 @@ interface Props {
   onNavigate: (view: 'admin' | 'rrhh' | 'society', societyId?: string) => void;
 }
 
-type AdminTab = 'overview' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'audit';
+type AdminTab = 'overview' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'audit';
 
 export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -70,6 +70,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     { id: 'documents', label: 'Documentos', icon: FileText },
     { id: 'devices', label: 'Dispositivos', icon: Laptop },
     { id: 'vacations', label: 'Vacaciones', icon: Palmtree },
+    { id: 'prevencion', label: 'Prevencion/Calidad', icon: ShieldCheck },
     { id: 'audit', label: 'Auditoria', icon: ScrollText },
   ];
 
@@ -451,6 +452,52 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
         {/* Vacations Tab — Supabase-backed */}
         {activeTab === 'vacations' && (
           <VacationsModule role="admin" />
+        )}
+
+        {/* Prevencion/Calidad Tab */}
+        {activeTab === 'prevencion' && (
+          <div className="space-y-6">
+            {/* KPIs */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {[
+                { label: 'Evaluaciones activas', value: 0, color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
+                { label: 'Incidencias abiertas', value: 0, color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+                { label: 'Auditorias programadas', value: 0, color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+                { label: 'Acciones correctivas', value: 0, color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' },
+              ].map((kpi, i) => (
+                <div key={i} className="rounded-xl p-5" style={{ backgroundColor: kpi.bg, border: `1px solid ${kpi.border}` }}>
+                  <p className="text-3xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
+                  <p className="text-sm font-semibold mt-1" style={{ color: kpi.color }}>{kpi.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Placeholder content */}
+            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+              <div className="px-6 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid #E2E8F0' }}>
+                <ShieldCheck size={16} style={{ color: '#0369A1' }} />
+                <h3 className="font-semibold" style={{ color: '#0F172A' }}>Modulo de Prevencion y Calidad</h3>
+              </div>
+              <div className="px-6 py-16 text-center">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: '#EFF6FF' }}>
+                  <ShieldCheck size={32} style={{ color: '#0369A1' }} />
+                </div>
+                <p className="text-base font-semibold mb-2" style={{ color: '#1E293B' }}>Modulo en desarrollo</p>
+                <p className="text-sm max-w-md mx-auto" style={{ color: '#94A3B8' }}>
+                  Aqui se gestionaran evaluaciones de riesgos, registro de incidencias, auditorias internas
+                  y acciones correctivas y preventivas (ACAP) para todas las sociedades.
+                </p>
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
+                  {['Evaluacion de Riesgos', 'Registro de Incidencias', 'Auditorias Internas', 'Planes de Accion', 'Indicadores PRL', 'Documentacion ISO'].map((item) => (
+                    <span key={item} className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                      style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Audit Tab - NEW */}

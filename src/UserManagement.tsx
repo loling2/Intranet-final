@@ -201,19 +201,25 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
 
 type ActiveField = 'email' | 'password' | 'pin' | null;
 
-interface EditUserModalProps { user: UserProfile; onClose: () => void; onSaved: () => void; }
+interface EditUserModalProps { user: UserProfile; onClose: () => void; onSaved: () => void; currentUserRole: AppRole; }
 
-function EditUserModal({ user, onClose, onSaved }: EditUserModalProps) {
+function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModalProps) {
   const { profile } = useAuth();
   const [activeField, setActiveField] = useState<ActiveField>(null);
 
-  // field state
+  // credential fields
   const [email, setEmail] = useState(user.email);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [pin, setPin] = useState('');
   const [currentPin] = useState<string | null>(user.pin ?? null);
+
+  // role / status fields
+  const [role, setRole] = useState<AppRole>(user.role);
+  const [activo, setActivo] = useState(user.activo);
+  const [savingMeta, setSavingMeta] = useState(false);
+  const [metaSuccess, setMetaSuccess] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [fieldSuccess, setFieldSuccess] = useState<ActiveField>(null);
@@ -280,11 +286,32 @@ function EditUserModal({ user, onClose, onSaved }: EditUserModalProps) {
     handleSetPin(p);
   };
 
+  const handleSaveMeta = async () => {
+    setSavingMeta(true); setError('');
+    try {
+      const { error: err } = await supabase.from('user_profiles').update({ role, activo }).eq('id', user.id);
+      if (err) throw err;
+      if (profile) await writeAuditLog({ evento: 'user_meta_changed', descripcion: `Rol/estado de ${user.nombre} actualizado: rol=${role}, activo=${activo}`, autor: profile, entidad: 'user', entidad_id: user.id });
+      setMetaSuccess(true);
+      setTimeout(() => setMetaSuccess(false), 2500);
+      onSaved();
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Error al guardar'); }
+    finally { setSavingMeta(false); }
+  };
+
+  const roleChanged = role !== user.role;
+  const activoChanged = activo !== user.activo;
+  const metaDirty = roleChanged || activoChanged;
+
+  const availableRoles: AppRole[] = currentUserRole === 'admin'
+    ? ['admin', 'rrhh', 'prevencion', 'employee']
+    : ['rrhh', 'prevencion', 'employee'];
+
   const rc = ROLE_COLORS[user.role];
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-white rounded-2xl max-w-md w-full mx-4 overflow-hidden shadow-2xl">
+      <div className="bg-white rounded-2xl max-w-md w-full mx-4 overflow-y-auto shadow-2xl" style={{ maxHeight: '92vh' }}>
         {/* Header */}
         <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}>
           <div className="flex items-center gap-3">
@@ -304,6 +331,63 @@ function EditUserModal({ user, onClose, onSaved }: EditUserModalProps) {
         </div>
 
         <div className="p-5 space-y-3">
+
+          {/* ── Rol y Estado ── */}
+          <div className="rounded-xl p-4 space-y-4" style={{ border: '1px solid #E2E8F0', backgroundColor: '#FAFAFA' }}>
+            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>Rol y Estado</p>
+
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: '#94A3B8' }}>Rol de acceso</p>
+              <div className="flex flex-wrap gap-2">
+                {availableRoles.map((r) => {
+                  const rCol = ROLE_COLORS[r];
+                  const isActive = role === r;
+                  return (
+                    <button key={r} onClick={() => setRole(r)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer"
+                      style={{
+                        backgroundColor: isActive ? rCol.bg : 'transparent',
+                        color: isActive ? rCol.text : '#94A3B8',
+                        borderColor: isActive ? rCol.border : '#E2E8F0',
+                      }}>
+                      {rCol.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: '#94A3B8' }}>Estado de la cuenta</p>
+              <div className="flex gap-2">
+                <button onClick={() => setActivo(true)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer"
+                  style={{ backgroundColor: activo ? '#F0FDF4' : 'transparent', color: activo ? '#16A34A' : '#94A3B8', borderColor: activo ? '#BBF7D0' : '#E2E8F0' }}>
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: activo ? '#22C55E' : '#CBD5E1' }} />
+                  Activo
+                </button>
+                <button onClick={() => setActivo(false)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer"
+                  style={{ backgroundColor: !activo ? '#FEF2F2' : 'transparent', color: !activo ? '#DC2626' : '#94A3B8', borderColor: !activo ? '#FECACA' : '#E2E8F0' }}>
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: !activo ? '#EF4444' : '#CBD5E1' }} />
+                  Inactivo
+                </button>
+              </div>
+            </div>
+
+            {error && !activeField && <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>}
+
+            <button
+              onClick={handleSaveMeta}
+              disabled={savingMeta || !metaDirty}
+              className="w-full py-2 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 transition-all duration-150"
+              style={{ backgroundColor: metaSuccess ? '#16A34A' : '#0F172A' }}
+            >
+              {savingMeta ? <RefreshCw size={12} className="animate-spin" /> : metaSuccess ? <CheckCircle2 size={12} /> : null}
+              {metaSuccess ? 'Guardado' : 'Guardar cambios'}
+            </button>
+          </div>
+
           {/* ── Correo ── */}
           <CredentialRow
             icon={<Mail size={15} />}
@@ -511,7 +595,7 @@ export default function UserManagement({ currentUserRole }: Props) {
   return (
     <div>
       {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={loadUsers} currentUserRole={currentUserRole} />}
-      {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} />}
+      {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} currentUserRole={currentUserRole} />}
 
       <div className="flex items-center justify-between mb-6">
         <div>

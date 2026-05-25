@@ -83,3 +83,70 @@ export interface AuditLog {
   society_id: string | null;
   created_at: string;
 }
+
+export interface Sociedad {
+  id: string;
+  nombre: string;
+  created_at: string;
+}
+
+export interface Empleado {
+  id: string;
+  user_id: string | null;
+  id_sociedad: string;
+  nombre: string;
+  email: string;
+  dni: string | null;
+  telefono: string | null;
+  fecha_nacimiento: string | null;
+  tipo_contrato: string | null;
+  fecha_alta: string | null;
+  fin_periodo_prueba: string | null;
+  observaciones_contrato: string | null;
+  turno: string | null;
+  puesto: string | null;
+  centro_trabajo: string | null;
+  titulacion_habilitante: string | null;
+  fecha_pago_tasas: string | null;
+  observaciones: string | null;
+  activo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Centro {
+  id: string;
+  nombre: string;
+  id_sociedad: string;
+  created_at: string;
+}
+
+export interface Asignacion {
+  id: string;
+  id_empleado: string;
+  id_centro: string;
+  rol: 'Empleado' | 'Supervisor' | 'Admin';
+  created_at: string;
+}
+
+export interface Tag {
+  id: string;
+  nombre: string;
+  created_at: string;
+}
+
+export interface Etiquetado {
+  id: string;
+  entidad_id: string;
+  tag_id: string;
+  created_at: string;
+}
+
+export interface DocumentoCentro {
+  id: string;
+  path: string;
+  nombre_archivo: string;
+  id_centro: string;
+  tag_id: string | null;
+  fecha_creacion: string;
+}

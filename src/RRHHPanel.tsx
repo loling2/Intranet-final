@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import {
   Users, FileText, Palmtree, Award, ClipboardCheck,
   LogOut, CheckCircle2, XCircle, Clock, Search,
-  Calendar, ChevronRight, Lock, Car, ScrollText, TrendingUp, ChevronLeft, Zap
+  Car, ScrollText, ChevronLeft, Zap
 } from 'lucide-react';
 import { societies } from './themes';
-import { validUsers, mockDocuments, mockVacations, mockCertificates, mockExams } from './mockData';
+import { mockVacations, mockCertificates, mockExams, mockDocuments } from './mockData';
 import UserManagement from './UserManagement';
 import VehiclesModule from './VehiclesModule';
 import DocumentsModule from './DocumentsModule';
@@ -13,8 +13,8 @@ import PDFSplitModule from './PDFSplitModule';
 import AuditLogPanel from './AuditLogPanel';
 import SocietySwitcher from './SocietySwitcher';
 import { useSociety } from './context/SocietyContext';
-import EmployeeDocumentsSection from './components/EmployeeDocumentsSection';
 import VacationsModule from './components/VacationsModule';
+import EmployeesModule from './components/EmployeesModule';
 
 interface Props {
   email: string;
@@ -30,15 +30,12 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSociety, setFilterSociety] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
-  const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   const { activeSocietyId } = useSociety();
 
   // Sync filter with active society when it changes
   useEffect(() => {
     setFilterSociety(activeSocietyId);
   }, [activeSocietyId]);
-
-  const employees = validUsers.filter((u) => u.role === 'employee');
 
   const allVacations = Object.entries(mockVacations).flatMap(([sId, v]) =>
     v.requests.map((r) => ({ ...r, societyId: sId }))
@@ -193,7 +190,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
             {/* KPI Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
               {[
-                { label: 'Total Empleados', value: employees.length, sub: 'en todas las sociedades', color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
+                { label: 'Total Empleados', value: '—', sub: 'ver pestana Empleados', color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
                 { label: 'Vacaciones pendientes', value: vacationsPending.length, sub: 'requieren aprobacion', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
                 { label: 'Examenes aprobados', value: examsCompleted.length, sub: 'este periodo', color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' },
                 { label: 'Certificados por vencer', value: certExpiring.length, sub: 'en menos de 90 dias', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
@@ -351,87 +348,9 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
           </>
         )}
 
-        {/* Employees Tab */}
+        {/* Employees Tab — Supabase-backed */}
         {activeTab === 'employees' && (
-          <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-            <div className="px-6 py-4 flex items-center justify-between gap-4" style={{ borderBottom: '1px solid #E2E8F0' }}>
-              <div>
-                <h3 className="font-semibold" style={{ color: '#0F172A' }}>Directorio de Empleados</h3>
-                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{employees.length} empleados</p>
-              </div>
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
-                <input
-                  type="text"
-                  placeholder="Buscar empleado..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-3 py-2 rounded-lg text-xs outline-none"
-                  style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B', width: '220px' }}
-                />
-              </div>
-            </div>
-            <div className="divide-y" style={{ borderColor: '#F8FAFC' }}>
-              {employees
-                .filter((u) => !searchQuery || u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.email.toLowerCase().includes(searchQuery.toLowerCase()))
-                .map((user, i) => {
-                  const s = user.societyId ? getSociety(user.societyId) : null;
-                  const userDocs = user.societyId ? (mockDocuments[user.societyId]?.length ?? 0) : 0;
-                  const userCerts = user.societyId ? (mockCertificates[user.societyId]?.length ?? 0) : 0;
-                  const userVacs = user.societyId ? (mockVacations[user.societyId]?.balance) : null;
-                  const isExpanded = expandedEmployee === user.email;
-                  return (
-                    <div key={i}>
-                      <button
-                        onClick={() => setExpandedEmployee(isExpanded ? null : user.email)}
-                        className="w-full px-6 py-4 flex items-center gap-4 text-left transition-colors duration-150 cursor-pointer hover:bg-slate-50"
-                      >
-                        <div
-                          className="w-11 h-11 rounded-full flex items-center justify-center font-bold flex-shrink-0"
-                          style={{ backgroundColor: s ? `${s.primary}15` : '#F1F5F9', color: s ? s.primary : '#64748B', fontSize: '16px' }}
-                        >
-                          {user.name.charAt(0)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{user.name}</p>
-                          <p className="text-xs" style={{ color: '#94A3B8' }}>{user.email}</p>
-                        </div>
-                        <div className="hidden md:flex items-center gap-4 text-center">
-                          <div>
-                            <p className="text-sm font-bold" style={{ color: '#0369A1' }}>{userDocs}</p>
-                            <p className="text-xs" style={{ color: '#94A3B8' }}>Docs</p>
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold" style={{ color: '#16A34A' }}>{userVacs ? userVacs.total - userVacs.used - userVacs.pending : 0}</p>
-                            <p className="text-xs" style={{ color: '#94A3B8' }}>Vac. disp.</p>
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold" style={{ color: '#EC4899' }}>{userCerts}</p>
-                            <p className="text-xs" style={{ color: '#94A3B8' }}>Certs</p>
-                          </div>
-                        </div>
-                        {s && (
-                          <span className="text-xs font-medium px-2.5 py-1 rounded-md flex-shrink-0" style={{ backgroundColor: s.primaryLight, color: s.primary, border: `1px solid ${s.border}` }}>
-                            {s.name}
-                          </span>
-                        )}
-                        <TrendingUp size={14} className={`flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} style={{ color: '#94A3B8' }} />
-                      </button>
-                      {isExpanded && user.societyId && (
-                        <div className="px-6 pb-5 pt-2" style={{ backgroundColor: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
-                          <EmployeeDocumentsSection
-                            employeeId={user.email}
-                            employeeNombre={user.name}
-                            societyId={user.societyId}
-                            viewerRole={isAdmin ? 'admin' : 'rrhh'}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
+          <EmployeesModule currentUserRole={isAdmin ? 'admin' : 'rrhh'} />
         )}
 
         {/* Vacations Tab — Supabase-backed */}

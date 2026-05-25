@@ -16,6 +16,7 @@ import { useSociety } from './context/SocietyContext';
 import VacationsModule from './components/VacationsModule';
 import EmployeesModule from './components/EmployeesModule';
 import TagsManager from './components/TagsManager';
+import RolesManager from './components/RolesManager';
 
 interface Props {
   email: string;
@@ -23,7 +24,7 @@ interface Props {
   onNavigate: (view: 'admin' | 'rrhh' | 'society', societyId?: string) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'audit';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'audit';
 
 export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -74,6 +75,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     { id: 'vacations',  label: 'Vacaciones',          icon: Palmtree },
     { id: 'prevencion', label: 'Prevencion/Calidad',  icon: ShieldCheck },
     { id: 'tags',       label: 'Tags PRL',            icon: Activity },
+    { id: 'roles',      label: 'Roles',               icon: ShieldCheck },
     { id: 'audit',      label: 'Auditoria',           icon: ScrollText },
   ];
 
@@ -511,6 +513,11 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
         {/* Tags Tab */}
         {activeTab === 'tags' && (
           <TagsManager />
+        )}
+
+        {/* Roles Tab */}
+        {activeTab === 'roles' && (
+          <RolesManager />
         )}
 
         {/* Audit Tab */}

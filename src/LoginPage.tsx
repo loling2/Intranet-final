@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Building2, Landmark, Gem, Shield, ChevronDown, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Palmtree, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle } from 'lucide-react';
 import { societies, SocietyTheme } from './themes';
-import { validUsers, mockDocuments, mockDevices, mockVacations, mockCertificates, mockExams, UserRole } from './mockData';
+import { mockDocuments, mockDevices, mockVacations, mockCertificates, mockExams } from './mockData';
+import type { AppRole } from './supabaseClient';
+type UserRole = AppRole;
 import DocumentsCard from './DocumentsCard';
 import DevicesCard from './DevicesCard';
 import VacationsCard from './VacationsCard';
@@ -368,6 +370,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
   const [session, setSession] = useState<SessionState | null>(null);
   const [showVehicleModal, setShowVehicleModal] = useState(false);
 
@@ -409,36 +412,57 @@ export default function LoginPage() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setLoginError('');
-    const user = validUsers.find(
-      (u) => u.email === email.trim().toLowerCase() && u.password === password
-    );
-    if (!user) {
-      setLoginError('Credenciales incorrectas. Verifica tu correo y contrasena.');
-      return;
-    }
+    setLoginLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      if (error) {
+        setLoginError('Credenciales incorrectas. Verifica tu correo y contrasena.');
+        return;
+      }
+      if (!data.user) {
+        setLoginError('No se pudo autenticar. Intenta de nuevo.');
+        return;
+      }
 
-    let initialView: AppView;
-    if (user.role === 'admin') {
-      initialView = 'admin';
-    } else if (user.role === 'rrhh') {
-      initialView = 'rrhh';
-    } else {
-      initialView = 'dashboard';
-      setSelectedId(user.societyId ?? '');
-    }
+      // Load profile to get role
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .maybeSingle();
 
-    setSession({
-      email: user.email,
-      role: user.role,
-      societyId: user.societyId,
-      view: initialView,
-      activeSocietyId: user.societyId,
-    });
+      const role: UserRole = (profile?.role as UserRole) ?? 'employee';
+      const societyId = profile?.societies?.[0] ?? null;
+
+      let initialView: AppView;
+      if (role === 'admin') {
+        initialView = 'admin';
+      } else if (role === 'rrhh') {
+        initialView = 'rrhh';
+      } else {
+        initialView = 'dashboard';
+        if (societyId) setSelectedId(societyId);
+      }
+
+      setSession({
+        email: data.user.email ?? email.trim().toLowerCase(),
+        role,
+        societyId,
+        view: initialView,
+        activeSocietyId: societyId,
+      });
+    } finally {
+      setLoginLoading(false);
+    }
   };
 
   const handleLogout = () => {
+    supabase.auth.signOut();
     setSession(null);
     setSelectedId('');
     setEmail('');
@@ -726,16 +750,15 @@ export default function LoginPage() {
           {/* Submit */}
           <button
             onClick={handleLogin}
-            disabled={!canLogin}
+            disabled={!canLogin || loginLoading}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-white font-semibold text-sm transition-all duration-300 cursor-pointer disabled:cursor-not-allowed"
             style={{
               backgroundColor: selected ? selected.primary : isPrivilegedUser && email && password ? '#0F172A' : '#CBD5E1',
-              opacity: canLogin ? 1 : 0.6,
+              opacity: canLogin && !loginLoading ? 1 : 0.6,
               boxShadow: selected ? `0 4px 14px ${selected.primary}40` : isPrivilegedUser ? '0 4px 14px rgba(0,0,0,0.3)' : 'none',
             }}
           >
-            Entrar
-            <ArrowRight size={16} />
+            {loginLoading ? <RefreshCw size={16} className="animate-spin" /> : <><span>Entrar</span><ArrowRight size={16} /></>}
           </button>
 
           <p className="text-center mt-6 text-xs transition-colors duration-500" style={{ color: selected?.textSecondary ?? '#94A3B8' }}>

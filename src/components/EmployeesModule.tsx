@@ -90,6 +90,11 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     setLoading(true);
     setError(null);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setError('Sin sesion activa — vuelve a iniciar sesion');
+        return;
+      }
       const [empRes, socRes, cenRes, tagRes] = await Promise.all([
         supabase.from('empleados').select('*').order('nombre'),
         supabase.from('sociedades').select('*').order('nombre'),

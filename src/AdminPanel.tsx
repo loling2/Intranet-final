@@ -5,7 +5,6 @@ import {
   Search, Eye, CheckCircle2, XCircle, Clock,
   Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck
 } from 'lucide-react';
-import { societies } from './themes';
 import { validUsers, mockDocuments, mockDevices, mockVacations, mockCertificates, mockExams } from './mockData';
 import UserManagement from './UserManagement';
 import VehiclesModule from './VehiclesModule';
@@ -28,7 +27,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSociety, setSelectedSociety] = useState<string | null>(null);
-  const { activeSocietyId } = useSociety();
+  const { activeSocietyId, societies } = useSociety();
 
   // Reload data when active society changes
   useEffect(() => {

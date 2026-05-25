@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { Users, UserPlus, Search, Filter, Mail, Shield, CheckCircle2, XCircle, CreditCard as Edit2, Key, Building2, X, Eye, EyeOff, AlertCircle, RefreshCw, ChevronDown, Clock } from 'lucide-react';
 import { supabase, UserProfile, AppRole } from './supabaseClient';
 import { useAuth } from './context/AuthContext';
-import { societies } from './themes';
+import { useSociety } from './context/SocietyContext';
 import { writeAuditLog } from './lib/auditLog';
 
 const ROLE_COLORS: Record<AppRole, { bg: string; text: string; border: string; label: string }> = {
   admin: { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA', label: 'Admin' },
   rrhh: { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE', label: 'RRHH' },
   employee: { bg: '#F0FDF4', text: '#16A34A', border: '#BBF7D0', label: 'Empleado' },
+  prevencion: { bg: '#FFFBEB', text: '#D97706', border: '#FDE68A', label: 'Prevencion' },
 };
 
 interface InviteModalProps {
@@ -19,6 +20,7 @@ interface InviteModalProps {
 
 function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) {
   const { profile } = useAuth();
+  const { societies } = useSociety();
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<AppRole>('employee');
@@ -28,8 +30,8 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
   const [success, setSuccess] = useState(false);
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'employee']
-    : ['rrhh', 'employee'];
+    ? ['admin', 'rrhh', 'prevencion', 'employee']
+    : ['rrhh', 'prevencion', 'employee'];
 
   const toggleSociety = (id: string) => {
     setSelectedSocieties((prev) =>
@@ -241,6 +243,7 @@ interface EditUserModalProps {
 
 function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModalProps) {
   const { profile } = useAuth();
+  const { societies } = useSociety();
   const [nombre, setNombre] = useState(user.nombre);
   const [role, setRole] = useState<AppRole>(user.role);
   const [activo, setActivo] = useState(user.activo);
@@ -504,6 +507,7 @@ interface Props {
 }
 
 export default function UserManagement({ currentUserRole }: Props) {
+  const { societies } = useSociety();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');

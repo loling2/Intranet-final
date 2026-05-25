@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { societies } from './themes';
 import { useSociety } from './context/SocietyContext';
 
 interface Props {
@@ -12,7 +11,7 @@ interface Props {
 }
 
 export default function SocietySwitcher({ allowedSocieties, textColor = '#CBD5E1', bgColor = 'rgba(255,255,255,0.08)', borderColor = 'rgba(255,255,255,0.1)' }: Props) {
-  const { activeSocietyId, setActiveSocietyId } = useSociety();
+  const { activeSocietyId, setActiveSocietyId, societies } = useSociety();
   const [open, setOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
   const buttonRef = useRef<HTMLButtonElement>(null);

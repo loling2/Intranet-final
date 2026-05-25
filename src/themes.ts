@@ -16,10 +16,11 @@ export interface SocietyTheme {
   logoIcon: string;
 }
 
+// IDs sincronizados con la tabla `sociedades` de Supabase
 export const societies: SocietyTheme[] = [
   {
-    id: 'alfa',
-    name: 'Sociedad Alfa',
+    id: '85e3c3bc-a789-4b12-986c-ca91b8653f03',
+    name: 'Apedeca',
     primary: '#0E7C6B',
     primaryDark: '#095E51',
     primaryLight: '#E6F5F2',
@@ -35,8 +36,8 @@ export const societies: SocietyTheme[] = [
     logoIcon: 'building-2',
   },
   {
-    id: 'beta',
-    name: 'Sociedad Beta',
+    id: '78125129-dcb0-4f5a-b559-480379812b15',
+    name: 'Eleda',
     primary: '#1D4ED8',
     primaryDark: '#1E3A8A',
     primaryLight: '#EFF6FF',
@@ -48,12 +49,12 @@ export const societies: SocietyTheme[] = [
     border: '#BFDBFE',
     gradientFrom: '#1D4ED8',
     gradientTo: '#1E3A8A',
-    logoLetter: 'B',
+    logoLetter: 'E',
     logoIcon: 'landmark',
   },
   {
-    id: 'gamma',
-    name: 'Sociedad Gamma',
+    id: 'fdb5114a-c6b4-4b3a-8eb9-420bd188ad52',
+    name: 'Serca Gestion',
     primary: '#B45309',
     primaryDark: '#92400E',
     primaryLight: '#FFFBEB',
@@ -65,12 +66,12 @@ export const societies: SocietyTheme[] = [
     border: '#FDE68A',
     gradientFrom: '#B45309',
     gradientTo: '#92400E',
-    logoLetter: 'G',
+    logoLetter: 'S',
     logoIcon: 'gem',
   },
   {
-    id: 'delta',
-    name: 'Sociedad Delta',
+    id: '6632d8d1-c4e7-4540-aab7-515b9d7913f7',
+    name: 'Gerontalia',
     primary: '#0F766E',
     primaryDark: '#115E59',
     primaryLight: '#F0FDFA',
@@ -78,11 +79,11 @@ export const societies: SocietyTheme[] = [
     bg: '#F0FDFA',
     bgCard: '#FFFFFF',
     textPrimary: '#134E4A',
-    textSecondary: '#5EEAD4',
+    textSecondary: '#0F766E',
     border: '#99F6E4',
     gradientFrom: '#0F766E',
     gradientTo: '#115E59',
-    logoLetter: 'D',
+    logoLetter: 'G',
     logoIcon: 'shield',
   },
 ];

@@ -4,7 +4,6 @@ import {
   LogOut, CheckCircle2, XCircle, Clock, Search,
   Car, ScrollText, ChevronLeft, Zap
 } from 'lucide-react';
-import { societies } from './themes';
 import { mockVacations, mockCertificates, mockExams, mockDocuments } from './mockData';
 import UserManagement from './UserManagement';
 import VehiclesModule from './VehiclesModule';
@@ -30,7 +29,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSociety, setFilterSociety] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
-  const { activeSocietyId } = useSociety();
+  const { activeSocietyId, societies } = useSociety();
 
   // Sync filter with active society when it changes
   useEffect(() => {

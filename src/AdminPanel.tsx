@@ -15,6 +15,7 @@ import TestUploader from './components/TestUploader';
 import { useSociety } from './context/SocietyContext';
 import VacationsModule from './components/VacationsModule';
 import EmployeesModule from './components/EmployeesModule';
+import TagsManager from './components/TagsManager';
 
 interface Props {
   email: string;
@@ -22,7 +23,7 @@ interface Props {
   onNavigate: (view: 'admin' | 'rrhh' | 'society', societyId?: string) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'audit';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'audit';
 
 export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -72,6 +73,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     { id: 'devices',    label: 'Dispositivos',        icon: Laptop },
     { id: 'vacations',  label: 'Vacaciones',          icon: Palmtree },
     { id: 'prevencion', label: 'Prevencion/Calidad',  icon: ShieldCheck },
+    { id: 'tags',       label: 'Tags PRL',            icon: Activity },
     { id: 'audit',      label: 'Auditoria',           icon: ScrollText },
   ];
 
@@ -506,7 +508,12 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
           </div>
         )}
 
-        {/* Audit Tab - NEW */}
+        {/* Tags Tab */}
+        {activeTab === 'tags' && (
+          <TagsManager />
+        )}
+
+        {/* Audit Tab */}
         {activeTab === 'audit' && (
           <AuditLogPanel />
         )}

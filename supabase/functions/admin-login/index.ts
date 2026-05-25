@@ -28,24 +28,18 @@ Deno.serve(async (req: Request) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Verify password via SQL function (bypasses Auth provider config)
+    // Verify password via SQL function
     const { data: userId, error: pwError } = await supabaseAdmin.rpc("check_user_password", {
       p_email: email.trim().toLowerCase(),
       p_password: password,
     });
 
-    if (pwError || !userId) {
-      return new Response(JSON.stringify({ error: "Credenciales incorrectas" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // userId may come as string or as array element
+    const resolvedId = Array.isArray(userId) ? userId[0] : userId;
 
-    // Get full user info
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "User not found" }), {
-        status: 404,
+    if (pwError || !resolvedId) {
+      return new Response(JSON.stringify({ error: "Credenciales incorrectas", debug: { pwError, userId } }), {
+        status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -54,11 +48,11 @@ Deno.serve(async (req: Request) => {
     const { data: profile } = await supabaseAdmin
       .from("user_profiles")
       .select("*")
-      .eq("id", userId)
+      .eq("id", resolvedId)
       .maybeSingle();
 
     return new Response(
-      JSON.stringify({ userId, email: user.email, profile }),
+      JSON.stringify({ userId: resolvedId, email: email.trim().toLowerCase(), profile }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

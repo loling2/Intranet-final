@@ -441,26 +441,32 @@ export default function LoginPage() {
         // Fallback: verify via edge function (bypasses Auth provider config)
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
         const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-        const resp = await fetch(`${supabaseUrl}/functions/v1/admin-login`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${anonKey}`,
-            'Apikey': anonKey,
-          },
-          body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
-        });
-
-        if (!resp.ok) {
-          const body = await resp.json().catch(() => ({}));
-          setLoginError(body.error ?? 'Credenciales incorrectas');
+        let resp: Response;
+        try {
+          resp = await fetch(`${supabaseUrl}/functions/v1/admin-login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${anonKey}`,
+              'Apikey': anonKey,
+            },
+            body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+          });
+        } catch (fetchErr) {
+          setLoginError(`Error de red: ${String(fetchErr)}`);
           return;
         }
 
-        const result = await resp.json();
-        resolvedEmail = result.email ?? email.trim().toLowerCase();
-        resolvedRole = (result.profile?.role as UserRole) ?? 'employee';
-        resolvedSocietyId = result.profile?.societies?.[0] ?? null;
+        const body = await resp.json().catch(() => ({}));
+
+        if (!resp.ok) {
+          setLoginError(body.error ?? `Error ${resp.status}: Credenciales incorrectas`);
+          return;
+        }
+
+        resolvedEmail = body.email ?? email.trim().toLowerCase();
+        resolvedRole = (body.profile?.role as UserRole) ?? 'employee';
+        resolvedSocietyId = body.profile?.societies?.[0] ?? null;
       }
 
       let initialView: AppView;

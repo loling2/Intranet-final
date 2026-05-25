@@ -215,9 +215,11 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const [pin, setPin] = useState('');
   const [currentPin] = useState<string | null>(user.pin ?? null);
 
-  // role / status fields
+  // role / status / societies fields
+  const { societies } = useSociety();
   const [role, setRole] = useState<AppRole>(user.role);
   const [activo, setActivo] = useState(user.activo);
+  const [selectedSocieties, setSelectedSocieties] = useState<string[]>(user.societies ?? []);
   const [savingMeta, setSavingMeta] = useState(false);
   const [metaSuccess, setMetaSuccess] = useState(false);
 
@@ -286,12 +288,15 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     handleSetPin(p);
   };
 
+  const toggleSociety = (id: string) =>
+    setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
+
   const handleSaveMeta = async () => {
     setSavingMeta(true); setError('');
     try {
-      const { error: err } = await supabase.from('user_profiles').update({ role, activo }).eq('id', user.id);
+      const { error: err } = await supabase.from('user_profiles').update({ role, activo, societies: selectedSocieties }).eq('id', user.id);
       if (err) throw err;
-      if (profile) await writeAuditLog({ evento: 'user_meta_changed', descripcion: `Rol/estado de ${user.nombre} actualizado: rol=${role}, activo=${activo}`, autor: profile, entidad: 'user', entidad_id: user.id });
+      if (profile) await writeAuditLog({ evento: 'user_meta_changed', descripcion: `Perfil de ${user.nombre} actualizado: rol=${role}, activo=${activo}`, autor: profile, entidad: 'user', entidad_id: user.id });
       setMetaSuccess(true);
       setTimeout(() => setMetaSuccess(false), 2500);
       onSaved();
@@ -299,9 +304,8 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     finally { setSavingMeta(false); }
   };
 
-  const roleChanged = role !== user.role;
-  const activoChanged = activo !== user.activo;
-  const metaDirty = roleChanged || activoChanged;
+  const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());
+  const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
     ? ['admin', 'rrhh', 'prevencion', 'employee']
@@ -373,6 +377,39 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
                   Inactivo
                 </button>
               </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: '#94A3B8' }}>Sociedades asignadas</p>
+              {societies.length === 0 ? (
+                <p className="text-xs" style={{ color: '#CBD5E1' }}>No hay sociedades disponibles</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {societies.map((s) => {
+                    const sel = selectedSocieties.includes(s.id);
+                    return (
+                      <button key={s.id} onClick={() => toggleSociety(s.id)}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-all duration-150 cursor-pointer text-left"
+                        style={{
+                          backgroundColor: sel ? s.primaryLight : 'transparent',
+                          color: sel ? s.primary : '#64748B',
+                          borderColor: sel ? s.border : '#E2E8F0',
+                        }}>
+                        <div className="w-5 h-5 rounded flex items-center justify-center font-bold flex-shrink-0"
+                          style={{
+                            backgroundColor: sel ? `${s.primary}20` : '#F1F5F9',
+                            color: sel ? s.primary : '#94A3B8',
+                            fontSize: '10px',
+                          }}>
+                          {s.logoLetter}
+                        </div>
+                        <span className="truncate">{s.name}</span>
+                        {sel && <CheckCircle2 size={12} className="ml-auto flex-shrink-0" style={{ color: s.primary }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {error && !activeField && <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>}

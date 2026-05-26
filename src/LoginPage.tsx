@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap } from 'lucide-react';
 import { societies, SocietyTheme } from './themes';
 import { mockDocuments, mockDevices, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
@@ -1079,6 +1079,153 @@ function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
   );
 }
 
+// ─── Employee Nominas View ────────────────────────────────────────────────────
+
+const MES_NOMBRES_EMP = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+interface NominaRow {
+  id: string;
+  dni: string;
+  anio: number;
+  mes: number;
+  wasabi_key: string;
+  nombre_archivo: string;
+  tamano_bytes: number;
+  created_at: string;
+}
+
+function MisNominasView({ theme }: { theme: SocietyTheme }) {
+  const [nominas, setNominas] = useState<NominaRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState<Set<string>>(new Set());
+  const [filterAnio, setFilterAnio] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase
+        .from('nominas')
+        .select('id, dni, anio, mes, wasabi_key, nombre_archivo, tamano_bytes, created_at')
+        .order('anio', { ascending: false })
+        .order('mes', { ascending: false });
+      setNominas((data ?? []) as NominaRow[]);
+      setLoading(false);
+    })();
+  }, []);
+
+  const aniosDisponibles = [...new Set(nominas.map((n) => n.anio))].sort((a, b) => b - a);
+  const filtered = filterAnio ? nominas.filter((n) => String(n.anio) === filterAnio) : nominas;
+
+  const handleDownload = async (nomina: NominaRow) => {
+    if (downloading.has(nomina.id)) return;
+    setDownloading((prev) => new Set(prev).add(nomina.id));
+    try {
+      await downloadFromWasabi(nomina.wasabi_key, nomina.nombre_archivo);
+    } catch { /* silent */ } finally {
+      setDownloading((prev) => { const s = new Set(prev); s.delete(nomina.id); return s; });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: theme.primaryLight }}>
+            <Zap size={18} style={{ color: theme.primary }} />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold" style={{ color: theme.textPrimary }}>Mis Nominas</h3>
+            {!loading && (
+              <p className="text-xs" style={{ color: theme.textSecondary }}>
+                {filtered.length} nomina{filtered.length !== 1 ? 's' : ''} disponible{filtered.length !== 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
+        </div>
+        {aniosDisponibles.length > 0 && (
+          <select
+            value={filterAnio}
+            onChange={(e) => setFilterAnio(e.target.value)}
+            className="px-3 py-2 rounded-xl text-sm outline-none cursor-pointer"
+            style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
+          >
+            <option value="">Todos los anos</option>
+            {aniosDisponibles.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <RefreshCw size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center py-16 rounded-2xl text-center" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: theme.primaryLight }}>
+            <Zap size={26} style={{ color: theme.primary, opacity: 0.4 }} />
+          </div>
+          <p className="text-sm font-semibold" style={{ color: theme.textPrimary }}>No hay nominas disponibles</p>
+          <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>Tu departamento de RRHH las subira aqui</p>
+        </div>
+      ) : (
+        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+          {/* Group by year */}
+          {(() => {
+            const byYear = new Map<number, NominaRow[]>();
+            for (const n of filtered) {
+              if (!byYear.has(n.anio)) byYear.set(n.anio, []);
+              byYear.get(n.anio)!.push(n);
+            }
+            return Array.from(byYear.entries()).map(([anio, rows]) => (
+              <div key={anio}>
+                <div className="px-5 py-2.5 flex items-center gap-2" style={{ backgroundColor: theme.primaryLight, borderBottom: `1px solid ${theme.border}` }}>
+                  <span className="text-xs font-bold uppercase tracking-wider" style={{ color: theme.primary }}>{anio}</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: theme.bg, color: theme.textSecondary }}>{rows.length}</span>
+                </div>
+                <div className="divide-y" style={{ borderColor: theme.border }}>
+                  {rows.map((n) => {
+                    const isInProgress = downloading.has(n.id);
+                    return (
+                      <div key={n.id} className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: theme.primaryLight, border: `1px solid ${theme.border}` }}>
+                          <FileText size={16} style={{ color: theme.primary }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold" style={{ color: theme.textPrimary }}>
+                            Nomina {MES_NOMBRES_EMP[n.mes]} {n.anio}
+                          </p>
+                          <p className="text-xs mt-0.5" style={{ color: theme.textSecondary }}>
+                            {(n.tamano_bytes / 1024).toFixed(0)} KB · {new Date(n.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleDownload(n)}
+                          disabled={isInProgress}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-all duration-150 disabled:opacity-50"
+                          style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}
+                        >
+                          {isInProgress
+                            ? <RefreshCw size={13} className="animate-spin" />
+                            : <Download size={13} />}
+                          {isInProgress ? 'Descargando...' : 'Descargar'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
 function Dashboard({
   theme,
   onLogout,
@@ -1102,6 +1249,7 @@ function Dashboard({
 
   const tabs = [
     { id: 'resumen', label: 'Resumen', icon: FileText },
+    { id: 'nominas', label: 'Mis Nominas', icon: Zap },
     { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
     { id: 'certificados', label: 'Mis Certificados', icon: Award },
     { id: 'examenes', label: 'Mis Examenes', icon: ClipboardCheck },
@@ -1241,6 +1389,10 @@ function Dashboard({
               <PrevencionDocsCard theme={theme} userEmail={email} />
             </div>
           </>
+        )}
+
+        {activeTab === 'nominas' && (
+          <MisNominasView theme={theme} />
         )}
 
         {activeTab === 'prevencion' && (

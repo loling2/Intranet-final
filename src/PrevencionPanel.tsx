@@ -7,13 +7,14 @@ import {
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
 import SocietySwitcher from './SocietySwitcher';
 import PrlDocsModule from './components/PrlDocsModule';
+import TrazabilidadModule from './components/TrazabilidadModule';
 
 interface Props {
   email: string;
   onLogout: () => void;
 }
 
-type PrevTab = 'empleados' | 'documentos';
+type PrevTab = 'empleados' | 'documentos' | 'trazabilidad';
 
 // Colors per prevention tag category
 const TAG_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -37,8 +38,9 @@ export default function PrevencionPanel({ email, onLogout }: Props) {
   const [activeTab, setActiveTab] = useState<PrevTab>('empleados');
 
   const tabs: { id: PrevTab; label: string; icon: React.FC<{ size?: number }> }[] = [
-    { id: 'empleados',  label: 'Empleados y Tags',   icon: Users },
-    { id: 'documentos', label: 'Documentos PRL',      icon: FileText },
+    { id: 'empleados',     label: 'Empleados y Tags',   icon: Users },
+    { id: 'documentos',    label: 'Documentos PRL',      icon: FileText },
+    { id: 'trazabilidad',  label: 'Trazabilidad',        icon: CheckCircle2 },
   ];
 
   return (
@@ -114,6 +116,7 @@ export default function PrevencionPanel({ email, onLogout }: Props) {
 
         {activeTab === 'empleados' && <EmpleadosTagsTab />}
         {activeTab === 'documentos' && <PrlDocsModule />}
+        {activeTab === 'trazabilidad' && <TrazabilidadModule />}
       </div>
     </div>
   );

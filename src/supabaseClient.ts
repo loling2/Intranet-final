@@ -91,6 +91,19 @@ export interface Sociedad {
   created_at: string;
 }
 
+export type EstadoContrato = 'pendiente' | 'avisado' | 'firmado';
+
+export interface HistorialContrato {
+  id: string;
+  empleado_id: string;
+  estado_anterior: EstadoContrato;
+  estado_nuevo: EstadoContrato;
+  justificacion: string;
+  cambiado_por: string | null;
+  cambiado_por_nombre: string;
+  created_at: string;
+}
+
 export interface Empleado {
   id: string;
   user_id: string | null;
@@ -111,6 +124,7 @@ export interface Empleado {
   fecha_pago_tasas: string | null;
   observaciones: string | null;
   activo: boolean;
+  estado_contrato: EstadoContrato;
   created_at: string;
   updated_at: string;
 }

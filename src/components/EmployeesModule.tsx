@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Users, Plus, Search, X, Save, ChevronDown, ChevronUp,
-  Pencil, Trash2, AlertCircle, CheckCircle2, Building2, Tag, RefreshCw, UserPlus
+  Pencil, Trash2, AlertCircle, CheckCircle2, Building2, Tag, RefreshCw, UserPlus,
+  FileSignature, Clock, Bell
 } from 'lucide-react';
-import { supabase, type Empleado, type Sociedad, type Centro, type Asignacion, type Tag as TagType } from '../supabaseClient';
+import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad, type Centro, type Asignacion, type Tag as TagType } from '../supabaseClient';
 
 interface Props {
   currentUserRole: 'admin' | 'rrhh';
@@ -11,6 +12,12 @@ interface Props {
 
 const TIPOS_CONTRATO = ['Indefinido', 'Temporal', 'Practicas', 'Obra y Servicio', 'Formacion', 'Relevo', 'Interinidad'];
 const TURNOS = ['Manana', 'Tarde', 'Noche', 'Partido', 'Flexible'];
+
+const ESTADOS_CONTRATO: { value: EstadoContrato; label: string; color: string; bg: string; border: string; Icon: React.FC<{ size?: number }> }[] = [
+  { value: 'pendiente', label: 'Pendiente', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', Icon: Clock },
+  { value: 'avisado',   label: 'Avisado',   color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE', Icon: Bell },
+  { value: 'firmado',   label: 'Firmado',   color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0', Icon: FileSignature },
+];
 
 const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   user_id: null,
@@ -31,6 +38,7 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   fecha_pago_tasas: null,
   observaciones: null,
   activo: true,
+  estado_contrato: 'pendiente',
 };
 
 function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
@@ -53,6 +61,7 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     fecha_pago_tasas: e.fecha_pago_tasas,
     observaciones: e.observaciones,
     activo: e.activo,
+    estado_contrato: e.estado_contrato ?? 'pendiente',
   };
 }
 
@@ -177,6 +186,17 @@ export default function EmployeesModule({ currentUserRole }: Props) {
 
   // Create user access
   const [creatingAccess, setCreatingAccess] = useState(false);
+
+  // Estado contrato — change modal
+  const [contratoModal, setContratoModal] = useState<{
+    empleadoId: string;
+    estadoActual: EstadoContrato;
+    estadoNuevo: EstadoContrato;
+  } | null>(null);
+  const [contratoJustificacion, setContratoJustificacion] = useState('');
+  const [savingContrato, setSavingContrato] = useState(false);
+  const [historialContrato, setHistorialContrato] = useState<HistorialContrato[]>([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -413,6 +433,53 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     }
   };
 
+  const loadHistorialContrato = useCallback(async (empleadoId: string) => {
+    setLoadingHistorial(true);
+    try {
+      const { data } = await supabase
+        .from('historial_contrato')
+        .select('*')
+        .eq('empleado_id', empleadoId)
+        .order('created_at', { ascending: false });
+      setHistorialContrato((data ?? []) as HistorialContrato[]);
+    } finally {
+      setLoadingHistorial(false);
+    }
+  }, []);
+
+  const openContratoModal = (empleadoId: string, estadoActual: EstadoContrato, estadoNuevo: EstadoContrato) => {
+    setContratoModal({ empleadoId, estadoActual, estadoNuevo });
+    setContratoJustificacion('');
+  };
+
+  const handleContratoChange = async () => {
+    if (!contratoModal) return;
+    if (!contratoJustificacion.trim()) return;
+    setSavingContrato(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data: profile } = await supabase.from('user_profiles').select('nombre').eq('id', session?.user?.id ?? '').maybeSingle();
+      await supabase.from('empleados').update({ estado_contrato: contratoModal.estadoNuevo }).eq('id', contratoModal.empleadoId);
+      await supabase.from('historial_contrato').insert({
+        empleado_id: contratoModal.empleadoId,
+        estado_anterior: contratoModal.estadoActual,
+        estado_nuevo: contratoModal.estadoNuevo,
+        justificacion: contratoJustificacion.trim(),
+        cambiado_por: session?.user?.id ?? null,
+        cambiado_por_nombre: (profile as { nombre?: string } | null)?.nombre ?? session?.user?.email ?? '',
+      });
+      setContratoModal(null);
+      setContratoJustificacion('');
+      await loadData();
+      await loadHistorialContrato(contratoModal.empleadoId);
+      showSuccess('Estado de contrato actualizado');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al cambiar estado');
+    } finally {
+      setSavingContrato(false);
+    }
+  };
+
   const handleRemoveTag = async (etiquetadoId: string, empleadoId: string) => {
     setSavingDetail(true);
     try {
@@ -474,6 +541,64 @@ export default function EmployeesModule({ currentUserRole }: Props) {
             f('centro_trabajo', centro.nombre);
           }}
         />
+      )}
+
+      {/* Contrato change modal */}
+      {contratoModal && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0C4A6E, #0369A1)' }}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+                  <FileSignature size={14} className="text-white" />
+                </div>
+                <h2 className="text-white font-semibold text-sm">Cambiar estado del contrato</h2>
+              </div>
+              <button onClick={() => setContratoModal(null)} className="w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+                <X size={13} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                {(() => {
+                  const prev = ESTADOS_CONTRATO.find((e) => e.value === contratoModal.estadoActual);
+                  const next = ESTADOS_CONTRATO.find((e) => e.value === contratoModal.estadoNuevo);
+                  return (
+                    <>
+                      {prev && <span className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5" style={{ backgroundColor: prev.bg, color: prev.color, border: `1px solid ${prev.border}` }}><prev.Icon size={12} />{prev.label}</span>}
+                      <span className="text-sm font-bold" style={{ color: '#94A3B8' }}>→</span>
+                      {next && <span className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5" style={{ backgroundColor: next.bg, color: next.color, border: `1px solid ${next.border}` }}><next.Icon size={12} />{next.label}</span>}
+                    </>
+                  );
+                })()}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Justificacion *</label>
+                <textarea
+                  value={contratoJustificacion}
+                  onChange={(e) => setContratoJustificacion(e.target.value)}
+                  rows={3}
+                  placeholder={`Ej: Se avisa el dia ${new Date().toLocaleDateString('es-ES')}`}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setContratoModal(null)} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleContratoChange}
+                  disabled={savingContrato || !contratoJustificacion.trim()}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: '#0369A1' }}
+                >
+                  {savingContrato ? <><RefreshCw size={13} className="animate-spin" />Guardando...</> : 'Confirmar cambio'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Header + filters */}
@@ -652,6 +777,73 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               </FormField>
             </div>
 
+            {/* Section: Estado del contrato */}
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Estado del contrato</p>
+            <div className="rounded-xl p-4 mb-5" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+              <div className="flex gap-2 flex-wrap mb-3">
+                {ESTADOS_CONTRATO.map(({ value, label, color, bg, border, Icon }) => {
+                  const isActive = (form.estado_contrato ?? 'pendiente') === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        const current = (form.estado_contrato ?? 'pendiente') as EstadoContrato;
+                        if (value === current) return;
+                        if (editingId) {
+                          openContratoModal(editingId, current, value);
+                        } else {
+                          f('estado_contrato', value);
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                      style={{
+                        backgroundColor: isActive ? bg : '#FFFFFF',
+                        color: isActive ? color : '#94A3B8',
+                        border: `1.5px solid ${isActive ? border : '#E2E8F0'}`,
+                      }}
+                    >
+                      <Icon size={13} />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={() => loadHistorialContrato(editingId)}
+                  className="text-xs font-medium cursor-pointer transition-opacity hover:opacity-70"
+                  style={{ color: '#0369A1' }}
+                >
+                  {loadingHistorial ? 'Cargando...' : 'Ver historial de cambios'}
+                </button>
+              )}
+              {historialContrato.length > 0 && (
+                <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
+                  {historialContrato.map((h) => {
+                    const estadoNew = ESTADOS_CONTRATO.find((e) => e.value === h.estado_nuevo);
+                    return (
+                      <div key={h.id} className="flex items-start gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #F1F5F9' }}>
+                        <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: estadoNew?.bg ?? '#F8FAFC' }}>
+                          {estadoNew && <estadoNew.Icon size={10} style={{ color: estadoNew.color }} />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium" style={{ color: '#1E293B' }}>
+                            {h.estado_anterior} → {h.estado_nuevo}
+                          </p>
+                          <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{h.justificacion}</p>
+                          <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>
+                            {h.cambiado_por_nombre} · {new Date(h.created_at).toLocaleString('es-ES')}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center gap-2 justify-end flex-wrap">
               {editingId && !form.user_id && (
                 <button onClick={handleCreateAccess} disabled={creatingAccess}
@@ -720,6 +912,18 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         {emp.tipo_contrato && <p className="text-xs" style={{ color: '#94A3B8' }}>{emp.tipo_contrato}</p>}
                       </div>
                     </div>
+
+                    {/* Contrato estado badge */}
+                    {(() => {
+                      const ec = ESTADOS_CONTRATO.find((e) => e.value === (emp.estado_contrato ?? 'pendiente'));
+                      return ec ? (
+                        <span className="hidden sm:inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-md flex-shrink-0"
+                          style={{ backgroundColor: ec.bg, color: ec.color, border: `1px solid ${ec.border}` }}>
+                          <ec.Icon size={11} />
+                          {ec.label}
+                        </span>
+                      ) : null;
+                    })()}
 
                     {/* Society badge */}
                     {soc && (

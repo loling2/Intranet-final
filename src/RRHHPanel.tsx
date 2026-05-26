@@ -1,9 +1,5 @@
 import { useState, useEffect } from 'react';
-import {
-  Users, FileText, Palmtree, Award, ClipboardCheck,
-  LogOut, CheckCircle2, XCircle, Clock, Search,
-  Car, ScrollText, ChevronLeft, Zap
-} from 'lucide-react';
+import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature } from 'lucide-react';
 import { mockVacations, mockCertificates, mockExams, mockDocuments } from './mockData';
 import UserManagement from './UserManagement';
 import VehiclesModule from './VehiclesModule';
@@ -14,6 +10,8 @@ import SocietySwitcher from './SocietySwitcher';
 import { useSociety } from './context/SocietyContext';
 import VacationsModule from './components/VacationsModule';
 import EmployeesModule from './components/EmployeesModule';
+import ContratosModule from './components/ContratosModule';
+import { supabase } from './supabaseClient';
 
 interface Props {
   email: string;
@@ -22,7 +20,7 @@ interface Props {
   isAdmin?: boolean;
 }
 
-type RRHHTab = 'overview' | 'employees' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit';
+type RRHHTab = 'overview' | 'employees' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos';
 
 export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
@@ -30,11 +28,20 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
   const [filterSociety, setFilterSociety] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const { activeSocietyId, societies } = useSociety();
+  const [contratosPendientes, setContratosPendientes] = useState(0);
 
   // Sync filter with active society when it changes
   useEffect(() => {
     setFilterSociety(activeSocietyId);
   }, [activeSocietyId]);
+
+  // Load contratos pendientes + avisados count
+  useEffect(() => {
+    (async () => {
+      const { count } = await supabase.from('empleados').select('id', { count: 'exact', head: true }).in('estado_contrato', ['pendiente', 'avisado']);
+      setContratosPendientes(count ?? 0);
+    })();
+  }, []);
 
   const allVacations = Object.entries(mockVacations).flatMap(([sId, v]) =>
     v.requests.map((r) => ({ ...r, societyId: sId }))
@@ -65,6 +72,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
     { id: 'vehicles', label: 'Vehiculos', icon: Car },
     { id: 'documents', label: 'Documentos', icon: FileText },
     { id: 'pdf-split', label: 'Nominas', icon: Zap },
+    { id: 'contratos', label: 'Contratos', icon: FileSignature, badge: contratosPendientes > 0 ? contratosPendientes : undefined },
     { id: 'vacations', label: 'Vacaciones', icon: Palmtree, badge: vacationsPending.length },
     { id: 'certificates', label: 'Certificaciones', icon: Award },
     { id: 'exams', label: 'Examenes', icon: ClipboardCheck },
@@ -187,18 +195,21 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
         {activeTab === 'overview' && (
           <>
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-8">
               {[
-                { label: 'Total Empleados', value: '—', sub: 'ver pestana Empleados', color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
-                { label: 'Vacaciones pendientes', value: vacationsPending.length, sub: 'requieren aprobacion', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
-                { label: 'Examenes aprobados', value: examsCompleted.length, sub: 'este periodo', color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' },
-                { label: 'Certificados por vencer', value: certExpiring.length, sub: 'en menos de 90 dias', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+                { label: 'Total Empleados', value: '—', sub: 'ver pestana Empleados', color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE', onClick: undefined },
+                { label: 'Vacaciones pendientes', value: vacationsPending.length, sub: 'requieren aprobacion', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', onClick: undefined },
+                { label: 'Examenes aprobados', value: examsCompleted.length, sub: 'este periodo', color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0', onClick: undefined },
+                { label: 'Certificados por vencer', value: certExpiring.length, sub: 'en menos de 90 dias', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA', onClick: undefined },
+                { label: 'Contratos pendientes', value: contratosPendientes, sub: 'pendiente o avisado', color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', onClick: () => setActiveTab('contratos') },
               ].map((kpi, i) => (
                 <div
                   key={i}
                   className="rounded-xl p-5 transition-all duration-200"
-                  style={{ backgroundColor: kpi.bg, border: `1px solid ${kpi.border}` }}
+                  style={{ backgroundColor: kpi.bg, border: `1px solid ${kpi.border}`, cursor: kpi.onClick ? 'pointer' : 'default' }}
+                  onClick={kpi.onClick}
                 >
+                  {i === 4 && <FileSignature size={16} style={{ color: kpi.color, marginBottom: '6px' }} />}
                   <p className="text-3xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
                   <p className="text-sm font-semibold mt-1" style={{ color: kpi.color }}>{kpi.label}</p>
                   <p className="text-xs mt-0.5" style={{ color: kpi.color, opacity: 0.7 }}>{kpi.sub}</p>
@@ -510,6 +521,11 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
               })}
             </div>
           </div>
+        )}
+
+        {/* Contratos Tab */}
+        {activeTab === 'contratos' && (
+          <ContratosModule currentUserRole={isAdmin ? 'admin' : 'rrhh'} />
         )}
 
         {/* Users Tab - NEW */}

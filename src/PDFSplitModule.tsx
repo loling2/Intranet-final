@@ -2,9 +2,10 @@ import { useState, useRef, useCallback } from 'react';
 import {
   Upload, FileText, AlertCircle, RefreshCw, X,
   ChevronLeft, ChevronRight, Loader2, CheckCircle2,
-  Eye, Trash2, Download, Search, Calendar, User, Info
+  Trash2, Download, Search, Calendar, User, Info
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
+import { PDFDocument } from 'pdf-lib';
 import { uploadBytesToWasabi, downloadFromWasabi } from './lib/wasabi';
 import { supabase } from './supabaseClient';
 import { writeAuditLog } from './lib/auditLog';
@@ -53,7 +54,6 @@ const MES_NOMBRES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 function extractDNI(text: string): string | null {
-  // Matches DNI (8 digits + letter) and NIE (X/Y/Z + 7 digits + letter)
   const match = text.match(/\b([XYZxyz]?\d{7,8}[A-Za-z])\b/);
   if (!match) return null;
   return match[1].toUpperCase();
@@ -66,13 +66,11 @@ function extractAnio(text: string): number | null {
 
 function extractMes(text: string): { mes: number; nombre: string } | null {
   const lower = text.toLowerCase();
-  // Try "mes/año" pattern like "03/2024" or "3/2024"
   const numMatch = lower.match(/\b(0?[1-9]|1[0-2])[/\-](20\d{2})\b/);
   if (numMatch) {
     const m = parseInt(numMatch[1]);
     return { mes: m, nombre: MES_NOMBRES[m] };
   }
-  // Try named month
   for (const [name, num] of Object.entries(MESES)) {
     if (lower.includes(name)) {
       return { mes: num, nombre: MES_NOMBRES[num] };
@@ -81,83 +79,18 @@ function extractMes(text: string): { mes: number; nombre: string } | null {
   return null;
 }
 
-// Extracts a single-page PDF as Uint8Array using pdfjs rendered to canvas then re-encoded
-// We use the PDF copy approach: copy the original bytes for the specific page range
-// Since pdf-lib isn't available, we store the rendered page as a PDF-wrapped image
-async function renderPageToPdfBytes(page: pdfjsLib.PDFPageProxy): Promise<Uint8Array> {
-  const viewport = page.getViewport({ scale: 2 });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  const ctx = canvas.getContext('2d')!;
-  await page.render({ canvasContext: ctx, viewport }).promise;
-
-  // Convert canvas to PNG blob, then wrap in a minimal PDF
-  const pngDataUrl = canvas.toDataURL('image/jpeg', 0.92);
-  const base64 = pngDataUrl.split(',')[1];
-  const imgBytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-
-  // Build a minimal PDF with the image embedded
-  const w = Math.round(viewport.width / 2);  // back to pt (96dpi → 72pt ratio ~0.75)
-  const h = Math.round(viewport.height / 2);
-  const pdfBytes = buildMinimalPDF(imgBytes, w, h);
-  return pdfBytes;
+// Yield control to the browser between heavy iterations
+function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function buildMinimalPDF(jpegBytes: Uint8Array, widthPx: number, heightPx: number): Uint8Array {
-  const encoder = new TextEncoder();
-
-  const imageObj = jpegBytes;
-  const imageLen = imageObj.length;
-
-  // PDF structure
-  const header = '%PDF-1.4\n';
-  const obj1 = '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n';
-  const obj2 = `2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n`;
-  const obj3 = `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${widthPx} ${heightPx}] /Contents 4 0 R /Resources << /XObject << /Im1 5 0 R >> >> >>\nendobj\n`;
-  const streamContent = `q\n${widthPx} 0 0 ${heightPx} 0 0 cm\n/Im1 Do\nQ\n`;
-  const obj4 = `4 0 obj\n<< /Length ${streamContent.length} >>\nstream\n${streamContent}\nendstream\nendobj\n`;
-  const obj5Header = `5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${widthPx} /Height ${heightPx} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageLen} >>\nstream\n`;
-  const obj5Footer = '\nendstream\nendobj\n';
-
-  const parts: (string | Uint8Array)[] = [header, obj1, obj2, obj3, obj4, obj5Header];
-  let offset = 0;
-  const offsets: number[] = [];
-
-  // Calculate cross-reference offsets
-  const headerBytes = encoder.encode(header);
-  const obj1Bytes = encoder.encode(obj1);
-  const obj2Bytes = encoder.encode(obj2);
-  const obj3Bytes = encoder.encode(obj3);
-  const obj4Bytes = encoder.encode(obj4);
-  const obj5HeaderBytes = encoder.encode(obj5Header);
-  const obj5FooterBytes = encoder.encode(obj5Footer);
-
-  offsets[1] = headerBytes.length;
-  offsets[2] = offsets[1] + obj1Bytes.length;
-  offsets[3] = offsets[2] + obj2Bytes.length;
-  offsets[4] = offsets[3] + obj3Bytes.length;
-  offsets[5] = offsets[4] + obj4Bytes.length;
-
-  const xrefOffset = offsets[5] + obj5HeaderBytes.length + imageLen + obj5FooterBytes.length;
-
-  const xref = `xref\n0 6\n0000000000 65535 f \n${String(offsets[1]).padStart(10, '0')} 00000 n \n${String(offsets[2]).padStart(10, '0')} 00000 n \n${String(offsets[3]).padStart(10, '0')} 00000 n \n${String(offsets[4]).padStart(10, '0')} 00000 n \n${String(offsets[5]).padStart(10, '0')} 00000 n \n`;
-  const trailer = `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
-
-  // Assemble all parts into a single Uint8Array
-  const allParts: Uint8Array[] = [
-    headerBytes, obj1Bytes, obj2Bytes, obj3Bytes, obj4Bytes,
-    obj5HeaderBytes, imageObj, obj5FooterBytes,
-    encoder.encode(xref), encoder.encode(trailer),
-  ];
-  const totalLen = allParts.reduce((s, p) => s + p.length, 0);
-  const result = new Uint8Array(totalLen);
-  offset = 0;
-  for (const p of allParts) {
-    result.set(p, offset);
-    offset += p.length;
-  }
-  return result;
+// Extract a single page from the original PDF bytes using pdf-lib (preserves text/vectors)
+async function extractPageBytes(srcBytes: Uint8Array, pageIndex: number): Promise<Uint8Array> {
+  const src = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
+  const dest = await PDFDocument.create();
+  const [copied] = await dest.copyPages(src, [pageIndex]);
+  dest.addPage(copied);
+  return dest.save();
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -168,9 +101,10 @@ export default function PDFSplitModule() {
 
   // Upload state
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
   const [pages, setPages] = useState<PageInfo[]>([]);
-  const [rawPdf, setRawPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -201,7 +135,6 @@ export default function PDFSplitModule() {
     setListLoading(false);
   }, []);
 
-  // Handle PDF file selection
   const handleFileSelect = async (file: File) => {
     if (!file.type.includes('pdf')) {
       setError('Por favor selecciona un archivo PDF');
@@ -210,27 +143,33 @@ export default function PDFSplitModule() {
     setError('');
     setPdfFile(file);
     setLoading(true);
+    setLoadProgress(0);
     setPages([]);
     setCurrentPageIndex(0);
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      setRawPdf(pdf);
+      const bytes = new Uint8Array(arrayBuffer);
+      setPdfBytes(bytes);
+
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const total = pdf.numPages;
       const extractedPages: PageInfo[] = [];
 
-      for (let i = 1; i <= pdf.numPages; i++) {
+      // Process in batches of 10 to keep UI responsive
+      const BATCH = 10;
+      for (let i = 1; i <= total; i++) {
         const page = await pdf.getPage(i);
 
-        // Render preview
-        const viewport = page.getViewport({ scale: 1.5 });
+        // Thumbnail at low scale (for preview only)
+        const viewport = page.getViewport({ scale: 1.2 });
         const canvas = document.createElement('canvas');
         canvas.width = viewport.width;
         canvas.height = viewport.height;
         await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
 
-        // Extract text for DNI/año/mes detection
+        // Extract text for detection
         const textContent = await page.getTextContent();
         const text = textContent.items.map((item) => ('str' in item ? item.str : '')).join(' ');
 
@@ -247,6 +186,11 @@ export default function PDFSplitModule() {
           mes: mesInfo?.mes ?? null,
           mesNombre: mesInfo?.nombre ?? null,
         });
+
+        setLoadProgress(Math.round((i / total) * 100));
+
+        // Yield every batch to avoid blocking
+        if (i % BATCH === 0) await yieldToMain();
       }
 
       setPages(extractedPages);
@@ -254,6 +198,7 @@ export default function PDFSplitModule() {
       setError(err instanceof Error ? err.message : 'Error al procesar PDF');
     } finally {
       setLoading(false);
+      setLoadProgress(0);
     }
   };
 
@@ -266,8 +211,8 @@ export default function PDFSplitModule() {
 
   const reset = () => {
     setPdfFile(null);
+    setPdfBytes(null);
     setPages([]);
-    setRawPdf(null);
     setCurrentPageIndex(0);
     setUploadProgress(0);
     setError('');
@@ -275,12 +220,12 @@ export default function PDFSplitModule() {
 
   const flashSuccess = (msg: string) => {
     setSuccess(msg);
-    setTimeout(() => setSuccess(''), 4000);
+    setTimeout(() => setSuccess(''), 5000);
   };
 
-  // Separate and upload
+  // Separate and upload — extract real PDF pages using pdf-lib
   const handleSeparate = async () => {
-    if (!pages.length || !pdfFile || !profile || !rawPdf) return;
+    if (!pages.length || !pdfFile || !profile || !pdfBytes) return;
     setSeparating(true);
     setError('');
     let uploaded = 0;
@@ -297,15 +242,15 @@ export default function PDFSplitModule() {
           continue;
         }
 
-        // Render page to PDF bytes
-        const page = await rawPdf.getPage(pageNum);
-        const pdfBytes = await renderPageToPdfBytes(page);
+        // Extract the page as a real PDF (preserves text, vectors, fonts)
+        const singlePageBytes = await extractPageBytes(pdfBytes, pageNum - 1);
 
         const safeDni = dni.replace(/[^A-Z0-9]/g, '');
-        const wasabiKey = `rrhh/publico/${anio}/${String(mes).padStart(2, '0')}/${safeDni}-${String(mes).padStart(2, '0')}-${anio}.pdf`;
-        const nombreArchivo = `${safeDni}-${String(mes).padStart(2, '0')}-${anio}.pdf`;
+        const mesStr = String(mes).padStart(2, '0');
+        const wasabiKey = `rrhh/publico/${anio}/${mesStr}/${safeDni}-${mesStr}-${anio}.pdf`;
+        const nombreArchivo = `${safeDni}-${mesStr}-${anio}.pdf`;
 
-        await uploadBytesToWasabi(pdfBytes, wasabiKey, 'application/pdf');
+        await uploadBytesToWasabi(singlePageBytes, wasabiKey, 'application/pdf');
 
         await supabase.from('nominas').insert({
           society_id: activeSocietyId ?? '',
@@ -314,7 +259,7 @@ export default function PDFSplitModule() {
           mes,
           wasabi_key: wasabiKey,
           nombre_archivo: nombreArchivo,
-          tamano_bytes: pdfBytes.byteLength,
+          tamano_bytes: singlePageBytes.byteLength,
           subido_por: profile.id,
           subido_por_nombre: profile.nombre,
           pdf_origen: pdfFile.name,
@@ -322,11 +267,14 @@ export default function PDFSplitModule() {
 
         uploaded++;
         setUploadProgress(Math.round((uploaded / pages.length) * 100));
+
+        // Yield every 5 uploads to keep UI alive
+        if (uploaded % 5 === 0) await yieldToMain();
       }
 
       await writeAuditLog({
         evento: 'nominas_separated',
-        descripcion: `Nóminas separadas: ${uploaded - skipped} procesadas, ${skipped} sin DNI/fecha`,
+        descripcion: `Nominas separadas: ${uploaded - skipped} procesadas, ${skipped} sin DNI/fecha`,
         autor: profile,
         entidad: 'nomina',
         metadata: { archivo_original: pdfFile.name, total_paginas: pages.length, skipped },
@@ -344,20 +292,19 @@ export default function PDFSplitModule() {
     }
   };
 
-  // Delete nomina
-  const handleDelete = async (id: string, key: string) => {
+  const handleDelete = async (id: string) => {
     setDeletingId(id);
     try {
       await supabase.from('nominas').delete().eq('id', id);
       setNominas((prev) => prev.filter((n) => n.id !== id));
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
     setDeletingId(null);
     setConfirmDeleteId(null);
   };
 
   const currentPage = pages[currentPageIndex];
+  const detected = pages.filter((p) => p.dni && p.anio && p.mes).length;
+  const undetected = pages.length - detected;
 
   const filteredNominas = nominas.filter((n) => {
     if (listSearch && !n.dni.toLowerCase().includes(listSearch.toLowerCase())) return false;
@@ -367,10 +314,6 @@ export default function PDFSplitModule() {
   });
 
   const aniosDisponibles = [...new Set(nominas.map((n) => n.anio))].sort((a, b) => b - a);
-
-  // Detected info summary
-  const detected = pages.filter((p) => p.dni && p.anio && p.mes).length;
-  const undetected = pages.length - detected;
 
   return (
     <div className="space-y-5">
@@ -436,7 +379,7 @@ export default function PDFSplitModule() {
                 <p className="text-sm font-medium mt-3" style={{ color: '#1E293B' }}>Arrastra el PDF de nominas</p>
                 <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>o haz clic para seleccionar</p>
                 <p className="text-xs mt-3 px-4 text-center" style={{ color: '#CBD5E1' }}>
-                  Se subira a rrhh/privado y se separara automaticamente por DNI
+                  Soporta PDFs masivos con cientos de nominas
                 </p>
               </div>
             ) : (
@@ -459,7 +402,7 @@ export default function PDFSplitModule() {
                     <div className="flex items-start gap-2 p-2 rounded-lg" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
                       <Info size={12} style={{ color: '#D97706', flexShrink: 0, marginTop: 1 }} />
                       <p className="text-xs" style={{ color: '#92400E' }}>
-                        {undetected} pagina{undetected > 1 ? 's' : ''} sin DNI/fecha — se ignoraran al separar
+                        {undetected} pagina{undetected > 1 ? 's' : ''} sin DNI/fecha — se ignoraran
                       </p>
                     </div>
                   )}
@@ -474,10 +417,21 @@ export default function PDFSplitModule() {
               </div>
             )}
 
+            {/* Loading progress */}
             {loading && (
-              <div className="flex items-center justify-center gap-2 py-4">
-                <RefreshCw size={16} className="animate-spin" style={{ color: '#94A3B8' }} />
-                <span className="text-xs" style={{ color: '#94A3B8' }}>Analizando PDF...</span>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <RefreshCw size={14} className="animate-spin" style={{ color: '#94A3B8' }} />
+                  <span className="text-xs" style={{ color: '#94A3B8' }}>
+                    Analizando paginas... {loadProgress}%
+                  </span>
+                </div>
+                <div className="w-full rounded-full overflow-hidden" style={{ backgroundColor: '#E2E8F0', height: 4 }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-200"
+                    style={{ width: `${loadProgress}%`, backgroundColor: '#0F172A' }}
+                  />
+                </div>
               </div>
             )}
 
@@ -503,11 +457,16 @@ export default function PDFSplitModule() {
             )}
 
             {separating && (
-              <div className="w-full rounded-full overflow-hidden" style={{ backgroundColor: '#E2E8F0', height: 6 }}>
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{ width: `${uploadProgress}%`, backgroundColor: '#0F172A' }}
-                />
+              <div className="space-y-1.5">
+                <div className="w-full rounded-full overflow-hidden" style={{ backgroundColor: '#E2E8F0', height: 6 }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%`, backgroundColor: '#0F172A' }}
+                  />
+                </div>
+                <p className="text-xs text-center" style={{ color: '#94A3B8' }}>
+                  Subiendo nominas a Wasabi ({uploadProgress}%)
+                </p>
               </div>
             )}
           </div>
@@ -535,7 +494,7 @@ export default function PDFSplitModule() {
                   </span>
                 </div>
 
-                {/* Image */}
+                {/* Image preview */}
                 <div className="p-4 flex items-center justify-center min-h-64 max-h-[500px] overflow-hidden" style={{ backgroundColor: '#F1F5F9' }}>
                   {currentPage && (
                     <img
@@ -689,7 +648,7 @@ export default function PDFSplitModule() {
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs" style={{ color: '#DC2626' }}>Confirmar?</span>
                         <button
-                          onClick={() => handleDelete(n.id, n.wasabi_key)}
+                          onClick={() => handleDelete(n.id)}
                           disabled={deletingId === n.id}
                           className="px-2 py-1 rounded-lg text-xs font-semibold text-white cursor-pointer"
                           style={{ backgroundColor: '#DC2626' }}

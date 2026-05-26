@@ -53,10 +53,45 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { action, userId, password, email, role, pin } = await req.json();
+    const { action, userId, password, email, role, pin, nombre, societies } = await req.json();
 
-    if (!userId || !action) {
+    if (!action) {
       return new Response(JSON.stringify({ error: "Faltan parametros" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Create a new auth user + user_profile from an existing empleado
+    if (action === "create_user") {
+      if (!email || !nombre) {
+        return new Response(JSON.stringify({ error: "Email y nombre son obligatorios" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const tempPassword = crypto.randomUUID().replace(/-/g, "") + "Aa1!";
+      const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+        email: email.trim().toLowerCase(),
+        password: tempPassword,
+        email_confirm: true,
+      });
+      if (createErr) throw createErr;
+      const uid = newUser.user.id;
+      const { error: profileErr } = await supabaseAdmin.from("user_profiles").insert({
+        id: uid,
+        nombre: nombre.trim(),
+        email: email.trim().toLowerCase(),
+        role: role ?? "employee",
+        activo: true,
+        societies: societies ?? [],
+      });
+      if (profileErr) throw profileErr;
+      return new Response(JSON.stringify({ ok: true, userId: uid, tempPassword }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Falta userId" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

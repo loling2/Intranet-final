@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Users, Plus, Search, X, Save, ChevronDown, ChevronUp,
-  Pencil, Trash2, AlertCircle, CheckCircle2, Building2, Tag, RefreshCw
+  Pencil, Trash2, AlertCircle, CheckCircle2, Building2, Tag, RefreshCw, UserPlus
 } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Centro, type Asignacion, type Tag as TagType } from '../supabaseClient';
 
@@ -175,6 +175,9 @@ export default function EmployeesModule({ currentUserRole }: Props) {
   // Create centro modal
   const [showCreateCentro, setShowCreateCentro] = useState(false);
 
+  // Create user access
+  const [creatingAccess, setCreatingAccess] = useState(false);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -311,6 +314,47 @@ export default function EmployeesModule({ currentUserRole }: Props) {
       await loadData();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al eliminar');
+    }
+  };
+
+  const handleCreateAccess = async () => {
+    if (!editingId || !form.email?.trim()) {
+      setError('El empleado debe tener un email para crear acceso');
+      return;
+    }
+    setCreatingAccess(true);
+    setError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const resp = await fetch(`${supabaseUrl}/functions/v1/manage-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'create_user',
+          email: form.email.trim(),
+          nombre: form.nombre.trim(),
+          role: 'employee',
+          societies: form.id_sociedad ? [form.id_sociedad] : [],
+        }),
+      });
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error ?? 'Error al crear acceso');
+      // Link the auth user_id to this empleado record
+      const { error: linkErr } = await supabase
+        .from('empleados')
+        .update({ user_id: result.userId })
+        .eq('id', editingId);
+      if (linkErr) throw linkErr;
+      showSuccess(`Acceso creado. Contrasena temporal: ${result.tempPassword}`);
+      await loadData();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al crear acceso');
+    } finally {
+      setCreatingAccess(false);
     }
   };
 
@@ -608,7 +652,16 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               </FormField>
             </div>
 
-            <div className="flex items-center gap-2 justify-end">
+            <div className="flex items-center gap-2 justify-end flex-wrap">
+              {editingId && !form.user_id && form.email?.trim() && (
+                <button onClick={handleCreateAccess} disabled={creatingAccess}
+                  title="Crear usuario de login para este empleado"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 hover:opacity-90 disabled:opacity-60"
+                  style={{ backgroundColor: '#059669', color: '#FFFFFF' }}>
+                  <UserPlus size={13} />
+                  {creatingAccess ? 'Creando acceso...' : 'Crear acceso de usuario'}
+                </button>
+              )}
               <button onClick={cancelForm} className="px-4 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200"
                 style={{ backgroundColor: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}>
                 Cancelar

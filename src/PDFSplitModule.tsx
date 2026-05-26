@@ -159,10 +159,13 @@ export default function PDFSplitModule() {
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      setPdfBytes(bytes);
+      // Keep one copy for pdf-lib (extractPageBytes) — pdfjs transfers the buffer to its worker
+      const bytesForPdfLib = new Uint8Array(arrayBuffer.slice(0));
+      setPdfBytes(bytesForPdfLib);
 
-      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      // Give pdfjs its own copy so it can transfer without detaching bytesForPdfLib
+      const bytesForPdfjs = new Uint8Array(arrayBuffer.slice(0));
+      const pdf = await pdfjsLib.getDocument({ data: bytesForPdfjs }).promise;
       const total = pdf.numPages;
       const extractedPages: PageInfo[] = [];
 

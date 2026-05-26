@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, ZoomIn, Folder, Tag } from 'lucide-react';
 import { societies, SocietyTheme } from './themes';
 import { mockDocuments, mockDevices, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
@@ -15,6 +15,7 @@ import PrevencionPanel from './PrevencionPanel';
 import { supabase } from './supabaseClient';
 import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
+import { downloadFromWasabi, getWasabiBlobUrl } from './lib/wasabi';
 
 const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> = {
   'building-2': Building2,
@@ -825,6 +826,313 @@ export default function LoginPage() {
   );
 }
 
+// ─── PrevencionDocsFullView ───────────────────────────────────────────────────
+
+interface PrevDoc {
+  id: string;
+  nombre_archivo: string;
+  tipo: string | null;
+  created_at: string;
+  wasabi_key: string | null;
+  folder_id: string;
+  folder_nombre: string;
+  society_id: string;
+  society_nombre: string;
+}
+
+function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
+  const [allDocs, setAllDocs] = useState<PrevDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [expandedSocieties, setExpandedSocieties] = useState<Set<string>>(new Set());
+  const [previewDoc, setPreviewDoc] = useState<PrevDoc | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const { data } = await supabase.rpc('get_my_prl_documents');
+        const docs = (data ?? []) as PrevDoc[];
+        setAllDocs(docs);
+        const societies = new Set(docs.map((d) => d.society_id));
+        setExpandedSocieties(societies);
+      } catch {
+        setAllDocs([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const filtered = search.trim()
+    ? allDocs.filter((d) =>
+        d.nombre_archivo.toLowerCase().includes(search.toLowerCase()) ||
+        d.folder_nombre.toLowerCase().includes(search.toLowerCase()) ||
+        d.society_nombre.toLowerCase().includes(search.toLowerCase())
+      )
+    : allDocs;
+
+  const groups = (() => {
+    const map = new Map<string, { society_id: string; society_nombre: string; docs: PrevDoc[] }>();
+    for (const doc of filtered) {
+      if (!map.has(doc.society_id)) {
+        map.set(doc.society_id, { society_id: doc.society_id, society_nombre: doc.society_nombre, docs: [] });
+      }
+      map.get(doc.society_id)!.docs.push(doc);
+    }
+    return Array.from(map.values()).sort((a, b) => a.society_nombre.localeCompare(b.society_nombre));
+  })();
+
+  const toggleSociety = (id: string) => {
+    setExpandedSocieties((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const isPdf = (d: PrevDoc) => d.tipo === 'application/pdf' || /\.pdf$/i.test(d.nombre_archivo);
+  const isImage = (d: PrevDoc) => d.tipo?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(d.nombre_archivo);
+  const canPreview = (d: PrevDoc) => isPdf(d) || isImage(d);
+
+  const openPreview = async (doc: PrevDoc) => {
+    if (!doc.wasabi_key) return;
+    setPreviewDoc(doc);
+    setPreviewUrl(null);
+    setPreviewLoading(true);
+    try {
+      const url = await getWasabiBlobUrl(doc.wasabi_key);
+      setPreviewUrl(url);
+    } catch { /* silent */ } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const closePreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewDoc(null);
+    setPreviewUrl(null);
+  };
+
+  const handleDownload = async (doc: PrevDoc) => {
+    if (!doc.wasabi_key) return;
+    try { await downloadFromWasabi(doc.wasabi_key, doc.nombre_archivo); } catch { /* silent */ }
+  };
+
+  function fileColor(d: PrevDoc) {
+    if (isPdf(d)) return { color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' };
+    if (isImage(d)) return { color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' };
+    if (d.tipo?.includes('word') || d.tipo?.includes('document')) return { color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' };
+    if (d.tipo?.includes('sheet') || d.tipo?.includes('excel')) return { color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' };
+    return { color: '#475569', bg: '#F8FAFC', border: '#E2E8F0' };
+  }
+
+  return (
+    <>
+      {/* Preview Modal */}
+      {previewDoc && (
+        <div
+          className="fixed inset-0 z-[500] flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
+          onClick={closePreview}
+        >
+          <div
+            className="relative bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+            style={{ maxWidth: '90vw', maxHeight: '90vh', width: isPdf(previewDoc) ? '800px' : 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ borderBottom: '1px solid #E2E8F0' }}>
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText size={15} style={{ color: '#64748B', flexShrink: 0 }} />
+                <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{previewDoc.nombre_archivo}</p>
+              </div>
+              <button onClick={closePreview} className="ml-3 w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#64748B' }}>
+                <X size={15} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto flex items-center justify-center p-2" style={{ minHeight: '200px' }}>
+              {previewLoading && (
+                <div className="flex flex-col items-center gap-3 py-12">
+                  <RefreshCw size={22} className="animate-spin" style={{ color: '#94A3B8' }} />
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>Cargando...</p>
+                </div>
+              )}
+              {previewUrl && !previewLoading && isImage(previewDoc) && (
+                <img src={previewUrl} alt={previewDoc.nombre_archivo} className="max-w-full max-h-full rounded-lg object-contain" style={{ maxHeight: 'calc(90vh - 80px)' }} />
+              )}
+              {previewUrl && !previewLoading && isPdf(previewDoc) && (
+                <iframe src={previewUrl} title={previewDoc.nombre_archivo} className="w-full rounded-lg" style={{ height: 'calc(90vh - 80px)', minHeight: '500px', border: 'none' }} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {/* Header + search */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#ECFDF5' }}>
+              <ShieldCheck size={18} style={{ color: '#065F46' }} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold" style={{ color: theme.textPrimary }}>Documentos Prevención</h3>
+              {!loading && (
+                <p className="text-xs" style={{ color: theme.textSecondary }}>
+                  {allDocs.length} documento{allDocs.length !== 1 ? 's' : ''} disponible{allDocs.length !== 1 ? 's' : ''}
+                  {search.trim() && filtered.length !== allDocs.length && ` · ${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`}
+                </p>
+              )}
+            </div>
+          </div>
+          {/* Search */}
+          <div className="relative flex-1 max-w-xs">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
+            <input
+              type="text"
+              placeholder="Buscar documentos..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 text-sm rounded-xl transition-all duration-200 outline-none"
+              style={{
+                backgroundColor: theme.bgCard,
+                border: `1px solid ${theme.border}`,
+                color: theme.textPrimary,
+              }}
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer hover:opacity-70 transition-opacity"
+                style={{ color: '#94A3B8' }}
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Content */}
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <RefreshCw size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
+          </div>
+        ) : groups.length === 0 ? (
+          <div className="flex flex-col items-center py-16 text-center rounded-2xl" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: '#ECFDF5' }}>
+              <ShieldCheck size={26} style={{ color: '#6EE7B7' }} />
+            </div>
+            <p className="text-sm font-semibold" style={{ color: theme.textPrimary }}>
+              {search.trim() ? 'Sin resultados para tu búsqueda' : 'Sin documentos de prevención'}
+            </p>
+            <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>
+              {search.trim() ? 'Prueba con otro término' : 'Tu responsable de PRL los subirá aquí'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {groups.map((group) => {
+              const isOpen = expandedSocieties.has(group.society_id);
+              return (
+                <div key={group.society_id} className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+                  {/* Society header */}
+                  <button
+                    onClick={() => toggleSociety(group.society_id)}
+                    className="w-full flex items-center justify-between px-5 py-3.5 cursor-pointer transition-colors duration-150 hover:opacity-90"
+                    style={{ backgroundColor: '#ECFDF5', borderBottom: isOpen ? `1px solid ${theme.border}` : 'none' }}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Building2 size={15} style={{ color: '#065F46' }} />
+                      <span className="text-sm font-semibold" style={{ color: '#065F46' }}>{group.society_nombre}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}>
+                        {group.docs.length}
+                      </span>
+                    </div>
+                    {isOpen
+                      ? <ChevronUp size={15} style={{ color: '#065F46' }} />
+                      : <ChevronDown size={15} style={{ color: '#065F46' }} />}
+                  </button>
+
+                  {/* Docs grid */}
+                  {isOpen && (
+                    <div className="divide-y" style={{ borderColor: theme.border }}>
+                      {group.docs.map((doc) => {
+                        const fc = fileColor(doc);
+                        const cp = canPreview(doc);
+                        return (
+                          <div key={doc.id} className="flex items-center gap-3 px-5 py-3 transition-colors duration-100 hover:bg-slate-50">
+                            <button
+                              onClick={() => cp && openPreview(doc)}
+                              disabled={!cp}
+                              className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform duration-150 ${cp ? 'cursor-pointer hover:scale-110' : 'cursor-default'}`}
+                              style={{ backgroundColor: fc.bg, border: `1px solid ${fc.border}` }}
+                            >
+                              {cp ? <ZoomIn size={14} style={{ color: fc.color }} /> : <FileText size={14} style={{ color: fc.color }} />}
+                            </button>
+
+                            <div className="flex-1 min-w-0">
+                              <button
+                                onClick={() => cp && openPreview(doc)}
+                                disabled={!cp}
+                                className={`text-left w-full ${cp ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
+                              >
+                                <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{doc.nombre_archivo}</p>
+                              </button>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <Folder size={10} style={{ color: '#94A3B8' }} />
+                                <p className="text-xs truncate" style={{ color: '#94A3B8' }}>
+                                  {doc.folder_nombre} · {new Date(doc.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {cp && (
+                                <button
+                                  onClick={() => openPreview(doc)}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:opacity-70 transition-opacity"
+                                  style={{ color: '#065F46', backgroundColor: '#ECFDF5' }}
+                                  title="Ver"
+                                >
+                                  <ZoomIn size={12} />
+                                </button>
+                              )}
+                              {doc.wasabi_key && (
+                                <button
+                                  onClick={() => handleDownload(doc)}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:opacity-70 transition-opacity"
+                                  style={{ color: '#475569', backgroundColor: '#F1F5F9' }}
+                                  title="Descargar"
+                                >
+                                  <Download size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Tags info */}
+        <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl" style={{ backgroundColor: theme.primaryLight, border: `1px solid ${theme.border}` }}>
+          <Tag size={11} style={{ color: theme.textSecondary }} />
+          <p className="text-xs" style={{ color: theme.textSecondary }}>
+            Tus tags de prevención determinan los documentos que recibes
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function Dashboard({
   theme,
   onLogout,
@@ -848,6 +1156,7 @@ function Dashboard({
 
   const tabs = [
     { id: 'resumen', label: 'Resumen', icon: FileText },
+    { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
     { id: 'certificados', label: 'Mis Certificados', icon: Award },
     { id: 'examenes', label: 'Mis Examenes', icon: ClipboardCheck },
   ];
@@ -986,6 +1295,10 @@ function Dashboard({
               <PrevencionDocsCard theme={theme} userEmail={email} />
             </div>
           </>
+        )}
+
+        {activeTab === 'prevencion' && (
+          <PrevencionDocsFullView theme={theme} />
         )}
 
         {activeTab === 'certificados' && (

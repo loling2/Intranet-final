@@ -59,24 +59,52 @@ function extractDNI(text: string): string | null {
   return match[1].toUpperCase();
 }
 
-function extractAnio(text: string): number | null {
-  const match = text.match(/\b(20\d{2})\b/);
-  return match ? parseInt(match[1]) : null;
-}
-
-function extractMes(text: string): { mes: number; nombre: string } | null {
+// Extract period month/year from nómina text.
+// Priority order:
+// 1. "Mensual - D MesNombre YYYY a D MesNombre YYYY"  (the PERIODO field)
+// 2. "MesNombre YYYY" standalone
+// 3. Numeric "MM/YYYY" or "MM-YYYY"
+// We deliberately avoid picking up dates from ANTIGÜEDAD or FECHA fields.
+function extractMesAnio(text: string): { mes: number; nombre: string; anio: number } | null {
   const lower = text.toLowerCase();
-  const numMatch = lower.match(/\b(0?[1-9]|1[0-2])[/\-](20\d{2})\b/);
-  if (numMatch) {
-    const m = parseInt(numMatch[1]);
-    return { mes: m, nombre: MES_NOMBRES[m] };
+
+  // Pattern 1: "mensual - \d+ mesNombre YYYY a \d+ mesNombre YYYY"
+  // e.g. "Mensual - 1 Abril 2026 a 30 Abril 2026"
+  const periodoMatch = lower.match(
+    /mensual\s*-\s*\d+\s+([a-záéíóúü]+)\s+(20\d{2})\s+a\s+\d+\s+([a-záéíóúü]+)\s+(20\d{2})/
+  );
+  if (periodoMatch) {
+    const mesNombre = periodoMatch[1];
+    const anio = parseInt(periodoMatch[4]); // end year
+    const endMes = periodoMatch[3];
+    const num = MESES[endMes] ?? MESES[mesNombre];
+    if (num) return { mes: num, nombre: MES_NOMBRES[num], anio };
   }
-  for (const [name, num] of Object.entries(MESES)) {
-    if (lower.includes(name)) {
-      return { mes: num, nombre: MES_NOMBRES[num] };
+
+  // Pattern 2: "MesNombre YYYY" — pick the one with the latest year to avoid antigüedad
+  const mesAnioMatches = [...lower.matchAll(/\b([a-záéíóúü]+)\s+(20\d{2})\b/g)];
+  let best: { mes: number; nombre: string; anio: number } | null = null;
+  for (const m of mesAnioMatches) {
+    const num = MESES[m[1]];
+    if (!num) continue;
+    const anio = parseInt(m[2]);
+    if (!best || anio > best.anio || (anio === best.anio && num > best.mes)) {
+      best = { mes: num, nombre: MES_NOMBRES[num], anio };
     }
   }
-  return null;
+  if (best) return best;
+
+  // Pattern 3: numeric MM/YYYY — pick latest year
+  const numMatches = [...lower.matchAll(/\b(0?[1-9]|1[0-2])[/\-](20\d{2})\b/g)];
+  let bestNum: { mes: number; nombre: string; anio: number } | null = null;
+  for (const m of numMatches) {
+    const mes = parseInt(m[1]);
+    const anio = parseInt(m[2]);
+    if (!bestNum || anio > bestNum.anio) {
+      bestNum = { mes, nombre: MES_NOMBRES[mes], anio };
+    }
+  }
+  return bestNum;
 }
 
 // Yield control to the browser between heavy iterations
@@ -187,17 +215,16 @@ export default function PDFSplitModule() {
         const text = textContent.items.map((item) => ('str' in item ? item.str : '')).join(' ');
 
         const dni = extractDNI(text);
-        const anio = extractAnio(text);
-        const mesInfo = extractMes(text);
+        const periodoInfo = extractMesAnio(text);
 
         extractedPages.push({
           pageNum: i,
           dataUrl,
           text,
           dni,
-          anio,
-          mes: mesInfo?.mes ?? null,
-          mesNombre: mesInfo?.nombre ?? null,
+          anio: periodoInfo?.anio ?? null,
+          mes: periodoInfo?.mes ?? null,
+          mesNombre: periodoInfo?.nombre ?? null,
         });
 
         setLoadProgress(Math.round((i / total) * 100));

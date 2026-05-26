@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ShieldCheck, FileText, Download, Tag, RefreshCw, Folder, X, ZoomIn, ChevronDown, ChevronUp, Building2 } from 'lucide-react';
 import { supabase } from './supabaseClient';
+import { downloadFromWasabi } from './lib/wasabi';
 import type { SocietyTheme } from './themes';
 
 interface PrevDoc {
@@ -42,9 +43,11 @@ function PreviewModal({ doc, onClose, getUrl }: {
 
   useEffect(() => {
     if (!doc.wasabi_key) { setError('Sin archivo adjunto'); setLoading(false); return; }
+    let blobUrl: string | null = null;
     getUrl(doc.wasabi_key)
-      .then((u) => { setUrl(u); setLoading(false); })
+      .then((u) => { blobUrl = u; setUrl(u); setLoading(false); })
       .catch(() => { setError('No se pudo cargar el archivo'); setLoading(false); });
+    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
   }, [doc.wasabi_key, getUrl]);
 
   return (
@@ -164,25 +167,35 @@ export default function PrevencionDocsCard({ theme }: Props) {
   }, []);
 
   const getPreviewUrl = async (wasabiKey: string): Promise<string> => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-    const resp = await fetch(`${supabaseUrl}/functions/v1/wasabi-download`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
-      body: JSON.stringify({ key: wasabiKey }),
+    const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3');
+    const client = new S3Client({
+      endpoint: import.meta.env.VITE_WASABI_ENDPOINT as string,
+      region: 'eu-central-2',
+      credentials: {
+        accessKeyId: import.meta.env.VITE_WASABI_ACCESS_KEY as string,
+        secretAccessKey: import.meta.env.VITE_WASABI_SECRET_KEY as string,
+      },
+      forcePathStyle: true,
     });
-    if (!resp.ok) throw new Error('Error al obtener URL');
-    const { url } = await resp.json();
-    return url;
+    const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+    const resp = await client.send(new GetObjectCommand({ Bucket: bucket, Key: wasabiKey }));
+    const stream = resp.Body as ReadableStream;
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    let done = false;
+    while (!done) {
+      const { value, done: d } = await reader.read();
+      if (value) chunks.push(value);
+      done = d;
+    }
+    const blob = new Blob(chunks, { type: resp.ContentType ?? 'application/octet-stream' });
+    return URL.createObjectURL(blob);
   };
 
   const handleDownload = async (doc: PrevDoc) => {
     if (!doc.wasabi_key) return;
     try {
-      const url = await getPreviewUrl(doc.wasabi_key);
-      const a = document.createElement('a');
-      a.href = url; a.download = doc.nombre_archivo; a.target = '_blank';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      await downloadFromWasabi(doc.wasabi_key, doc.nombre_archivo);
     } catch { /* silent */ }
   };
 

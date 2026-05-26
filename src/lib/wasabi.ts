@@ -104,6 +104,23 @@ export async function uploadBytesToWasabi(bytes: Uint8Array, key: string, conten
   return key;
 }
 
+// Fetch a file from Wasabi and return an object URL for in-browser preview
+export async function getWasabiBlobUrl(key: string): Promise<string> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const resp = await wasabiClient.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const stream = resp.Body as ReadableStream;
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let done = false;
+  while (!done) {
+    const { value, done: d } = await reader.read();
+    if (value) chunks.push(value);
+    done = d;
+  }
+  const blob = new Blob(chunks, { type: resp.ContentType ?? 'application/octet-stream' });
+  return URL.createObjectURL(blob);
+}
+
 // Download a file by key and trigger browser download
 export async function downloadFromWasabi(key: string, filename: string): Promise<void> {
   const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ShieldCheck, FileText, Download, Tag, RefreshCw, Folder, X, ZoomIn, ChevronDown, ChevronUp, Building2 } from 'lucide-react';
 import { supabase } from './supabaseClient';
-import { downloadFromWasabi } from './lib/wasabi';
+import { downloadFromWasabi, getWasabiBlobUrl } from './lib/wasabi';
 import type { SocietyTheme } from './themes';
 
 interface PrevDoc {
@@ -166,31 +166,7 @@ export default function PrevencionDocsCard({ theme }: Props) {
     load();
   }, []);
 
-  const getPreviewUrl = async (wasabiKey: string): Promise<string> => {
-    const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3');
-    const client = new S3Client({
-      endpoint: import.meta.env.VITE_WASABI_ENDPOINT as string,
-      region: 'eu-central-2',
-      credentials: {
-        accessKeyId: import.meta.env.VITE_WASABI_ACCESS_KEY as string,
-        secretAccessKey: import.meta.env.VITE_WASABI_SECRET_KEY as string,
-      },
-      forcePathStyle: true,
-    });
-    const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
-    const resp = await client.send(new GetObjectCommand({ Bucket: bucket, Key: wasabiKey }));
-    const stream = resp.Body as ReadableStream;
-    const reader = stream.getReader();
-    const chunks: Uint8Array[] = [];
-    let done = false;
-    while (!done) {
-      const { value, done: d } = await reader.read();
-      if (value) chunks.push(value);
-      done = d;
-    }
-    const blob = new Blob(chunks, { type: resp.ContentType ?? 'application/octet-stream' });
-    return URL.createObjectURL(blob);
-  };
+  const getPreviewUrl = (wasabiKey: string): Promise<string> => getWasabiBlobUrl(wasabiKey);
 
   const handleDownload = async (doc: PrevDoc) => {
     if (!doc.wasabi_key) return;

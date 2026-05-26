@@ -1257,8 +1257,14 @@ function Dashboard({
 }) {
   const Icon = iconMap[theme.logoIcon];
   const [activeTab, setActiveTab] = useState('resumen');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  const docs = mockDocuments[theme.id] ?? [];
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUserId(session?.user?.id ?? null);
+    });
+  }, []);
+
   const devices = mockDevices[theme.id] ?? [];
   const certificates = mockCertificates[theme.id] ?? [];
   const exams = mockExams[theme.id] ?? [];
@@ -1379,7 +1385,7 @@ function Dashboard({
             {/* Quick Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
               {[
-                { label: 'Documentos', value: docs.length, color: theme.primary },
+                { label: 'Documentos', value: '—', color: theme.primary },
                 { label: 'Dispositivos', value: devices.filter((d) => d.active).length, color: '#22C55E' },
                 { label: 'Docs. Prevencion', value: '—', color: '#065F46' },
                 { label: 'Certificados', value: certificates.length, color: theme.primary },
@@ -1400,7 +1406,7 @@ function Dashboard({
 
             {/* Main Cards */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <DocumentsCard documents={docs} theme={theme} />
+              <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
               <DevicesCard devices={devices} theme={theme} />
               <PrevencionDocsCard theme={theme} userEmail={email} />
             </div>

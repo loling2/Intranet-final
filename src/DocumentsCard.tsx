@@ -1,28 +1,86 @@
-import { FileText, Download, ChevronRight } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { FileText, Download, ChevronRight, RefreshCw, File, Image, FileSpreadsheet } from 'lucide-react';
 import { SocietyTheme } from './themes';
-import { Document } from './mockData';
-import { useState } from 'react';
+import { supabase, type DocumentRecord } from './supabaseClient';
 
 interface Props {
-  documents: Document[];
   theme: SocietyTheme;
+  userEmail: string;
+  userId?: string | null;
+  societyId: string;
 }
 
-export default function DocumentsCard({ documents, theme }: Props) {
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+function getFileIcon(tipo: string) {
+  if (tipo.includes('pdf')) return { Icon: FileText, color: '#DC2626' };
+  if (tipo.includes('image')) return { Icon: Image, color: '#0EA5E9' };
+  if (tipo.includes('sheet') || tipo.includes('excel') || tipo.includes('spreadsheet'))
+    return { Icon: FileSpreadsheet, color: '#16A34A' };
+  return { Icon: File, color: '#64748B' };
+}
 
-  const handleDownload = (doc: Document) => {
-    setDownloadingId(doc.id);
-    setTimeout(() => setDownloadingId(null), 1500);
+function formatBytes(bytes: number): string {
+  if (!bytes) return '';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+export default function DocumentsCard({ theme, userEmail, userId, societyId }: Props) {
+  const [docs, setDocs] = useState<DocumentRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  const loadDocs = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Fetch public docs assigned to this employee specifically
+      // Also include public docs with no specific user (general docs for the society)
+      let query = supabase
+        .from('documents')
+        .select('*')
+        .eq('folder', 'publico')
+        .eq('society_id', societyId)
+        .order('fecha_subida', { ascending: false });
+
+      if (userId) {
+        // Docs targeted to this user by id or email, or general docs (no specific user)
+        query = query.or(
+          `usuario_destino_id.eq.${userId},usuario_destino_email.eq.${userEmail},usuario_destino_id.is.null`
+        );
+      } else {
+        query = query.or(
+          `usuario_destino_email.eq.${userEmail},usuario_destino_id.is.null`
+        );
+      }
+
+      const { data } = await query;
+      setDocs((data ?? []) as DocumentRecord[]);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, userEmail, societyId]);
+
+  useEffect(() => { loadDocs(); }, [loadDocs]);
+
+  const handleDownload = async (doc: DocumentRecord) => {
+    setDownloading(doc.id);
+    try {
+      const key = doc.wasabi_key ?? `publico/${doc.indexeddb_key}`;
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/wasabi-download?key=${encodeURIComponent(key)}`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.nombre_archivo;
+      a.click();
+    } finally {
+      setTimeout(() => setDownloading(null), 1500);
+    }
   };
 
   return (
     <div
-      className="rounded-2xl overflow-hidden transition-all duration-500"
-      style={{
-        backgroundColor: theme.bgCard,
-        border: `1px solid ${theme.border}`,
-      }}
+      className="rounded-2xl overflow-hidden transition-all duration-500 flex flex-col"
+      style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
     >
       {/* Header */}
       <div
@@ -41,87 +99,99 @@ export default function DocumentsCard({ documents, theme }: Props) {
               Mis Documentos
             </h3>
             <p className="text-xs" style={{ color: theme.textSecondary }}>
-              {documents.length} documentos disponibles
+              {loading ? 'Cargando...' : `${docs.length} documentos disponibles`}
             </p>
           </div>
         </div>
         <button
-          className="text-xs font-medium px-3 py-1.5 rounded-lg transition-all duration-200 cursor-pointer"
-          style={{
-            color: theme.primary,
-            backgroundColor: theme.primaryLight,
-          }}
+          onClick={loadDocs}
+          className="text-xs font-medium px-3 py-1.5 rounded-lg transition-all duration-200 cursor-pointer hover:opacity-80"
+          style={{ color: theme.primary, backgroundColor: theme.primaryLight }}
         >
           Ver todos
         </button>
       </div>
 
       {/* Document List */}
-      <div className="divide-y" style={{ borderColor: theme.border }}>
-        {documents.map((doc) => (
-          <div
-            key={doc.id}
-            className="px-6 py-3.5 flex items-center justify-between group transition-colors duration-200"
-            style={{ borderColor: theme.border }}
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${theme.primary}0A` }}
-              >
-                <FileText size={14} style={{ color: theme.primary }} />
-              </div>
-              <div className="min-w-0">
-                <p
-                  className="text-sm font-medium truncate"
-                  style={{ color: theme.textPrimary }}
-                >
-                  {doc.name}
-                </p>
-                <p className="text-xs" style={{ color: theme.textSecondary }}>
-                  {doc.date} &middot; {doc.size}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => handleDownload(doc)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex-shrink-0 cursor-pointer"
-              style={{
-                backgroundColor: downloadingId === doc.id ? theme.primary : theme.primaryLight,
-                color: downloadingId === doc.id ? '#FFFFFF' : theme.primary,
-              }}
-            >
-              {downloadingId === doc.id ? (
-                <span className="flex items-center gap-1">
-                  <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Descargando
-                </span>
-              ) : (
-                <>
-                  <Download size={12} />
-                  Descargar
-                </>
-              )}
-            </button>
+      <div className="flex-1 divide-y" style={{ borderColor: theme.border }}>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-8">
+            <RefreshCw size={14} className="animate-spin" style={{ color: theme.primary }} />
+            <span className="text-xs" style={{ color: theme.textSecondary }}>Cargando documentos...</span>
           </div>
-        ))}
+        ) : docs.length === 0 ? (
+          <div className="flex flex-col items-center py-8 gap-2">
+            <FileText size={28} style={{ color: `${theme.primary}30` }} />
+            <p className="text-xs" style={{ color: theme.textSecondary }}>Sin documentos disponibles</p>
+          </div>
+        ) : (
+          docs.slice(0, 5).map((doc) => {
+            const { Icon, color } = getFileIcon(doc.tipo);
+            return (
+              <div
+                key={doc.id}
+                className="px-6 py-3.5 flex items-center justify-between group transition-colors duration-200"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${theme.primary}0A` }}
+                  >
+                    <Icon size={14} style={{ color }} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate" style={{ color: theme.textPrimary }}>
+                      {doc.nombre_archivo}
+                    </p>
+                    <p className="text-xs" style={{ color: theme.textSecondary }}>
+                      {new Date(doc.fecha_subida).toLocaleDateString('es-ES')}
+                      {doc.tamano_bytes ? ` · ${formatBytes(doc.tamano_bytes)}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDownload(doc)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex-shrink-0 cursor-pointer"
+                  style={{
+                    backgroundColor: downloading === doc.id ? theme.primary : theme.primaryLight,
+                    color: downloading === doc.id ? '#FFFFFF' : theme.primary,
+                  }}
+                >
+                  {downloading === doc.id ? (
+                    <span className="flex items-center gap-1">
+                      <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Descargando
+                    </span>
+                  ) : (
+                    <>
+                      <Download size={12} />
+                      Descargar
+                    </>
+                  )}
+                </button>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* Footer */}
-      <div
-        className="px-6 py-3 flex items-center justify-center gap-1 text-xs font-medium cursor-pointer transition-colors duration-200"
-        style={{
-          color: theme.primary,
-          backgroundColor: theme.primaryLight,
-          borderTop: `1px solid ${theme.border}`,
-        }}
-      >
-        Descargar todos
-        <ChevronRight size={14} />
-      </div>
+      {docs.length > 0 && (
+        <div
+          className="px-6 py-3 flex items-center justify-center gap-1 text-xs font-medium cursor-pointer transition-colors duration-200 hover:opacity-80"
+          style={{
+            color: theme.primary,
+            backgroundColor: theme.primaryLight,
+            borderTop: `1px solid ${theme.border}`,
+          }}
+        >
+          {docs.length > 5 ? `Ver todos (${docs.length})` : 'Descargar todos'}
+          <ChevronRight size={14} />
+        </div>
+      )}
     </div>
   );
 }

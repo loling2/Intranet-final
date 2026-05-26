@@ -17,7 +17,7 @@ interface Props {
   userEmail: string;
 }
 
-export default function PrevencionDocsCard({ theme, userEmail }: Props) {
+export default function PrevencionDocsCard({ theme, userEmail: _userEmail }: Props) {
   const [docs, setDocs] = useState<PrevDoc[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -25,74 +25,9 @@ export default function PrevencionDocsCard({ theme, userEmail }: Props) {
     async function load() {
       setLoading(true);
       try {
-        // 1. Find the empleado record — try by user_id (auth session) first, fallback to email
-        const { data: { session } } = await supabase.auth.getSession();
-        let empId: string | null = null;
-
-        if (session?.user?.id) {
-          const { data: empByUid } = await supabase
-            .from('empleados')
-            .select('id')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-          empId = empByUid?.id ?? null;
-        }
-
-        // Fallback: search by email (requires admin/rrhh policy or matching row)
-        if (!empId) {
-          const { data: empByEmail } = await supabase
-            .from('empleados')
-            .select('id')
-            .eq('email', userEmail)
-            .maybeSingle();
-          empId = empByEmail?.id ?? null;
-        }
-
-        if (!empId) { setDocs([]); return; }
-
-        // 2. Get all tag ids assigned to this employee
-        const { data: etiquetas } = await supabase
-          .from('etiquetado')
-          .select('tag_id')
-          .eq('entidad_id', empId);
-
-        const tagIds = (etiquetas ?? []).map((e: { tag_id: string }) => e.tag_id);
-
-        if (tagIds.length === 0) { setDocs([]); return; }
-
-        // 3. Find prl_folders whose access_tag_id is in the employee's tags (or null = public)
-        const { data: folders } = await supabase
-          .from('prl_folders')
-          .select('id, nombre')
-          .or(`access_tag_id.in.(${tagIds.join(',')}),access_tag_id.is.null`);
-
-        if (!folders || folders.length === 0) { setDocs([]); return; }
-
-        const folderIds = folders.map((f: { id: string }) => f.id);
-        const folderMap: Record<string, string> = {};
-        folders.forEach((f: { id: string; nombre: string }) => { folderMap[f.id] = f.nombre; });
-
-        // 4. Get documents from those folders
-        const { data: documents } = await supabase
-          .from('prl_documents')
-          .select('id, nombre_archivo, tipo, created_at, wasabi_key, folder_id')
-          .in('folder_id', folderIds)
-          .order('created_at', { ascending: false })
-          .limit(10);
-
-        const result: PrevDoc[] = (documents ?? []).map((d: {
-          id: string; nombre_archivo: string; tipo: string | null;
-          created_at: string; wasabi_key: string | null; folder_id: string;
-        }) => ({
-          id: d.id,
-          nombre_archivo: d.nombre_archivo,
-          tipo: d.tipo,
-          created_at: d.created_at,
-          wasabi_key: d.wasabi_key,
-          folder_nombre: folderMap[d.folder_id] ?? '',
-        }));
-
-        setDocs(result);
+        const { data, error } = await supabase.rpc('get_my_prl_documents');
+        if (error) throw error;
+        setDocs((data ?? []) as PrevDoc[]);
       } catch {
         setDocs([]);
       } finally {
@@ -100,7 +35,7 @@ export default function PrevencionDocsCard({ theme, userEmail }: Props) {
       }
     }
     load();
-  }, [userEmail]);
+  }, []);
 
   const handleDownload = async (wasabiKey: string, nombre: string) => {
     try {

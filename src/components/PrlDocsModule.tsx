@@ -352,14 +352,18 @@ export default function PrlDocsModule() {
     setError('');
     let uploaded = 0;
 
+    // Use the folder's own society_id — avoids stale context value issues
+    const folderObj = folders.find((f) => f.id === folderId);
+    const resolvedSocietyId = folderObj?.society_id ?? activeSocietyId;
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const ts = Date.now();
-      const key = `prevencion/${activeSocietyId}/${folderId}/${ts}-${file.name}`;
+      const key = `prevencion/${resolvedSocietyId}/${folderId}/${ts}-${file.name}`;
       try {
         setUploadProgress((p) => ({ ...p, [folderId]: Math.round((i / files.length) * 100) }));
         await uploadToWasabiKey(file, key);
-        await supabase.from('prl_documents').insert({
+        const { error: insertErr } = await supabase.from('prl_documents').insert({
           folder_id: folderId,
           nombre_archivo: file.name,
           wasabi_key: key,
@@ -367,8 +371,9 @@ export default function PrlDocsModule() {
           tamano_bytes: file.size,
           subido_por: profile?.id ?? null,
           subido_por_nombre: profile?.nombre ?? '',
-          society_id: activeSocietyId,
+          society_id: resolvedSocietyId,
         });
+        if (insertErr) throw new Error(`DB: ${insertErr.message}`);
         uploaded++;
       } catch (e: unknown) {
         setError(`Error al subir "${file.name}": ${e instanceof Error ? e.message : 'Error desconocido'}`);

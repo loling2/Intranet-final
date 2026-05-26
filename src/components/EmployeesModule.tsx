@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Users, Plus, Search, X, Save, ChevronDown, ChevronUp,
-  Pencil, Trash2, AlertCircle, CheckCircle2, Building2, Tag
+  Pencil, Trash2, AlertCircle, CheckCircle2, Building2, Tag, RefreshCw
 } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Centro, type Asignacion, type Tag as TagType } from '../supabaseClient';
 
@@ -56,6 +56,92 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
   };
 }
 
+function CreateCentroModal({ societyId, sociedades, onClose, onCreated }: {
+  societyId: string;
+  sociedades: Sociedad[];
+  onClose: () => void;
+  onCreated: (centro: Centro) => void;
+}) {
+  const [nombre, setNombre] = useState('');
+  const [selectedSociety, setSelectedSociety] = useState(societyId);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleCreate = async () => {
+    if (!nombre.trim()) { setError('El nombre es obligatorio'); return; }
+    if (!selectedSociety) { setError('Selecciona una sociedad'); return; }
+    setSaving(true);
+    const { data, error: err } = await supabase
+      .from('centros')
+      .insert({ nombre: nombre.trim(), id_sociedad: selectedSociety })
+      .select()
+      .single();
+    if (err) { setError(err.message); setSaving(false); return; }
+    onCreated(data as Centro);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[400] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden">
+        <div className="px-5 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0C4A6E, #0369A1)' }}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+              <Building2 size={14} className="text-white" />
+            </div>
+            <h2 className="text-white font-semibold text-sm">Nuevo centro de trabajo</h2>
+          </div>
+          <button onClick={onClose} className="w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+            <X size={13} />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Nombre *</label>
+            <input
+              autoFocus
+              type="text"
+              value={nombre}
+              onChange={(e) => { setNombre(e.target.value); setError(''); }}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              placeholder="Nombre del centro..."
+              className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+              style={{ border: `1.5px solid ${error && !nombre ? '#FECACA' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Sociedad *</label>
+            <select
+              value={selectedSociety}
+              onChange={(e) => setSelectedSociety(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl text-sm outline-none cursor-pointer"
+              style={{ border: `1.5px solid ${error && !selectedSociety ? '#FECACA' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }}
+            >
+              <option value="">Seleccionar...</option>
+              {sociedades.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+          </div>
+          {error && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+              <AlertCircle size={12} style={{ color: '#DC2626' }} />
+              <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
+            </div>
+          )}
+          <div className="flex gap-2 pt-1">
+            <button onClick={onClose} className="flex-1 py-2 rounded-xl text-xs font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+            <button onClick={handleCreate} disabled={saving || !nombre.trim()}
+              className="flex-1 py-2 rounded-xl text-xs font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+              style={{ backgroundColor: '#0369A1' }}>
+              {saving ? <RefreshCw size={12} className="animate-spin" /> : <Plus size={12} />}
+              Crear centro
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EmployeesModule({ currentUserRole }: Props) {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [sociedades, setSociedades] = useState<Sociedad[]>([]);
@@ -85,6 +171,9 @@ export default function EmployeesModule({ currentUserRole }: Props) {
   const [newRol, setNewRol] = useState<'Empleado' | 'Supervisor' | 'Admin'>('Empleado');
   const [newTagId, setNewTagId] = useState('');
   const [savingDetail, setSavingDetail] = useState(false);
+
+  // Create centro modal
+  const [showCreateCentro, setShowCreateCentro] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -331,6 +420,18 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         </div>
       )}
 
+      {showCreateCentro && (
+        <CreateCentroModal
+          societyId={form.id_sociedad}
+          sociedades={sociedades}
+          onClose={() => setShowCreateCentro(false)}
+          onCreated={(centro) => {
+            setCentros((prev) => [...prev, centro].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+            f('centro_trabajo', centro.nombre);
+          }}
+        />
+      )}
+
       {/* Header + filters */}
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
         <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3" style={{ borderBottom: '1px solid #E2E8F0' }}>
@@ -461,8 +562,27 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                   className="form-input" placeholder="Tecnico, Operario..." />
               </FormField>
               <FormField label="Centro de trabajo">
-                <input value={form.centro_trabajo ?? ''} onChange={(e) => f('centro_trabajo', e.target.value)}
-                  className="form-input" placeholder="Sede principal..." />
+                <div className="flex gap-1.5">
+                  <select
+                    value={form.centro_trabajo ?? ''}
+                    onChange={(e) => f('centro_trabajo', e.target.value)}
+                    className="form-input flex-1"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {centros
+                      .filter((c) => !form.id_sociedad || c.id_sociedad === form.id_sociedad)
+                      .map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateCentro(true)}
+                    title="Crear nuevo centro"
+                    className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80"
+                    style={{ backgroundColor: '#0369A1', color: '#FFFFFF', marginTop: '0px' }}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
               </FormField>
               <FormField label="Titulacion habilitante" className="sm:col-span-2">
                 <input value={form.titulacion_habilitante ?? ''} onChange={(e) => f('titulacion_habilitante', e.target.value)}

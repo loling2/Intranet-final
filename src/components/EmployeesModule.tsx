@@ -653,7 +653,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
             </div>
 
             <div className="flex items-center gap-2 justify-end flex-wrap">
-              {editingId && !form.user_id && form.email?.trim() && (
+              {editingId && !form.user_id && (
                 <button onClick={handleCreateAccess} disabled={creatingAccess}
                   title="Crear usuario de login para este empleado"
                   className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 hover:opacity-90 disabled:opacity-60"

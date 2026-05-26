@@ -46,7 +46,7 @@ function PreviewModal({ doc, onClose, getUrl }: {
     let blobUrl: string | null = null;
     getUrl(doc.wasabi_key)
       .then((u) => { blobUrl = u; setUrl(u); setLoading(false); })
-      .catch(() => { setError('No se pudo cargar el archivo'); setLoading(false); });
+      .catch((e: unknown) => { setError(`Error: ${e instanceof Error ? e.message : String(e)}`); setLoading(false); });
     return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
   }, [doc.wasabi_key, getUrl]);
 

@@ -1102,16 +1102,32 @@ function MisNominasView({ theme }: { theme: SocietyTheme }) {
   const [filterAnio, setFilterAnio] = useState('');
 
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+    const load = async () => {
       setLoading(true);
+      // Wait until a real session is available (setSession may still be resolving)
+      let session = (await supabase.auth.getSession()).data.session;
+      if (!session) {
+        await new Promise<void>((resolve) => {
+          const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+            if (s) { subscription.unsubscribe(); resolve(); }
+          });
+          setTimeout(resolve, 3000); // fallback
+        });
+      }
+      if (cancelled) return;
       const { data } = await supabase
         .from('nominas')
         .select('id, dni, anio, mes, wasabi_key, nombre_archivo, tamano_bytes, created_at')
         .order('anio', { ascending: false })
         .order('mes', { ascending: false });
-      setNominas((data ?? []) as NominaRow[]);
-      setLoading(false);
-    })();
+      if (!cancelled) {
+        setNominas((data ?? []) as NominaRow[]);
+        setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
   }, []);
 
   const aniosDisponibles = [...new Set(nominas.map((n) => n.anio))].sort((a, b) => b - a);

@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  Users, Plus, Search, X, Save, ChevronDown, ChevronUp,
-  Pencil, Trash2, AlertCircle, CheckCircle2, Building2, Tag, RefreshCw, UserPlus,
-  FileSignature, Clock, Bell
-} from 'lucide-react';
-import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad, type Centro, type Asignacion, type Tag as TagType } from '../supabaseClient';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Users, Plus, Search, X, Save, ChevronDown, ChevronUp, Pencil, Trash2, AlertCircle, CheckCircle2, Building2, Tag, RefreshCw, UserPlus, Ligature as FileSignature, Clock, Bell, Upload } from 'lucide-react';
+import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad, type Centro, type Asignacion, type Tag as TagType, type UserProfile } from '../supabaseClient';
+import { useAuth } from '../context/AuthContext';
+import { uploadToWasabi } from '../lib/wasabi';
+import { writeAuditLog } from '../lib/auditLog';
 
 interface Props {
   currentUserRole: 'admin' | 'rrhh';
@@ -151,6 +150,134 @@ function CreateCentroModal({ societyId, sociedades, onClose, onCreated }: {
   );
 }
 
+function QuickUploadModal({ empleado, onClose, onUploaded }: { empleado: Empleado; onClose: () => void; onUploaded: () => void }) {
+  const { profile } = useAuth();
+  const [files, setFiles] = useState<File[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const ACCEPTED = ['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword'];
+
+  const addFiles = (fl: FileList | null) => {
+    if (!fl) return;
+    setFiles((prev) => [...prev, ...Array.from(fl).filter((f) => ACCEPTED.includes(f.type) || f.type === '')]);
+  };
+
+  const handleUpload = async () => {
+    if (files.length === 0 || !profile) { setError('Selecciona al menos un archivo'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      for (const file of files) {
+        const sanitized = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const wasabiKey = `publico/${Date.now()}-${sanitized}`;
+        await uploadToWasabi(file, wasabiKey);
+        const { error: dbErr } = await supabase.from('documents').insert({
+          nombre_archivo: file.name,
+          tipo: file.type || 'application/octet-stream',
+          folder: 'publico',
+          usuario_destino_id: empleado.user_id ?? null,
+          usuario_destino_email: empleado.email ?? '',
+          society_id: empleado.id_sociedad,
+          subido_por: profile.id,
+          subido_por_nombre: profile.nombre,
+          tamano_bytes: file.size,
+          indexeddb_key: `pub_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          wasabi_key: wasabiKey,
+        });
+        if (dbErr) throw dbErr;
+        await writeAuditLog({
+          evento: 'document_uploaded',
+          descripcion: `Documento subido en carpeta publica para ${empleado.nombre}: ${file.name}`,
+          autor: profile as UserProfile,
+          entidad: 'document',
+          metadata: { nombre_archivo: file.name, folder: 'publico', empleado_id: empleado.id, wasabi_key: wasabiKey },
+          society_id: empleado.id_sociedad,
+        });
+      }
+      onUploaded();
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al subir');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[400] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+        <div className="px-5 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0C4A6E, #0369A1)' }}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+              <Upload size={14} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-white font-semibold text-sm">Subir a carpeta publica</h2>
+              <p className="text-white/70 text-xs">{empleado.nombre} · visible para el empleado</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+            <X size={13} />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
+            onClick={() => fileRef.current?.click()}
+            className="flex flex-col items-center justify-center py-7 rounded-xl cursor-pointer transition-all duration-200"
+            style={{ border: `2px dashed ${dragging ? '#0369A1' : '#CBD5E1'}`, backgroundColor: dragging ? '#EFF6FF' : '#F8FAFC' }}
+          >
+            <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
+            <Upload size={22} style={{ color: '#94A3B8' }} />
+            <p className="text-sm font-medium mt-2" style={{ color: '#1E293B' }}>Arrastra o haz clic</p>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>PDF, Imagenes, Excel, Word</p>
+          </div>
+          {files.length > 0 && (
+            <div className="space-y-1.5 max-h-32 overflow-y-auto">
+              {files.map((f, i) => (
+                <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                  <p className="text-xs flex-1 truncate" style={{ color: '#1E293B' }}>{f.name}</p>
+                  <button onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="cursor-pointer flex-shrink-0" style={{ color: '#94A3B8' }}>
+                    <X size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {error && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+              <AlertCircle size={13} style={{ color: '#DC2626' }} />
+              <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
+              Cancelar
+            </button>
+            <button
+              onClick={handleUpload}
+              disabled={loading || files.length === 0}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+              style={{ backgroundColor: '#0369A1' }}
+            >
+              {loading ? <><RefreshCw size={13} className="animate-spin" /> Subiendo...</> : <><Upload size={13} /> Subir {files.length > 1 ? `${files.length} archivos` : 'archivo'}</>}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EmployeesModule({ currentUserRole }: Props) {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [sociedades, setSociedades] = useState<Sociedad[]>([]);
@@ -186,6 +313,9 @@ export default function EmployeesModule({ currentUserRole }: Props) {
 
   // Create user access
   const [creatingAccess, setCreatingAccess] = useState(false);
+
+  // Quick upload to public folder
+  const [uploadEmpModal, setUploadEmpModal] = useState<Empleado | null>(null);
 
   // Estado contrato — change modal
   const [contratoModal, setContratoModal] = useState<{
@@ -540,6 +670,15 @@ export default function EmployeesModule({ currentUserRole }: Props) {
             setCentros((prev) => [...prev, centro].sort((a, b) => a.nombre.localeCompare(b.nombre)));
             f('centro_trabajo', centro.nombre);
           }}
+        />
+      )}
+
+      {/* Quick upload to public folder */}
+      {uploadEmpModal && (
+        <QuickUploadModal
+          empleado={uploadEmpModal}
+          onClose={() => setUploadEmpModal(null)}
+          onUploaded={() => showSuccess('Archivo subido y visible para el empleado')}
         />
       )}
 
@@ -935,6 +1074,14 @@ export default function EmployeesModule({ currentUserRole }: Props) {
 
                     {/* Actions */}
                     <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setUploadEmpModal(emp); }}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:opacity-80"
+                        style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', color: '#16A34A' }}
+                        title="Subir archivo a carpeta publica del empleado"
+                      >
+                        <Upload size={13} />
+                      </button>
                       <button
                         onClick={() => setExpandedId(isExpanded ? null : emp.id)}
                         className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200"

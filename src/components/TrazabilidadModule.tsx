@@ -47,24 +47,28 @@ export default function TrazabilidadModule() {
     setSelectedDoc(null);
     setTrace([]);
     try {
-      // Fetch folders first (filtered by society if needed)
-      let foldersQuery = supabase
-        .from('prl_folders')
-        .select('id, nombre, society_id, sociedades(id, nombre)');
-      if (activeSocietyId) {
-        foldersQuery = foldersQuery.eq('society_id', activeSocietyId);
-      }
-      const { data: folders, error: fErr } = await foldersQuery;
+      // prl_folders.society_id has no FK to sociedades, so join manually
+      const [{ data: folders, error: fErr }, { data: societies, error: sErr }] = await Promise.all([
+        supabase.from('prl_folders').select('id, nombre, society_id'),
+        supabase.from('sociedades').select('id, nombre'),
+      ]);
       if (fErr) throw fErr;
+      if (sErr) throw sErr;
 
-      if (!folders || folders.length === 0) {
+      const societyMap = new Map((societies ?? []).map((s: any) => [s.id, s.nombre as string]));
+
+      const filteredFolders = activeSocietyId
+        ? (folders ?? []).filter((f: any) => f.society_id === activeSocietyId)
+        : (folders ?? []);
+
+      if (filteredFolders.length === 0) {
         setDocs([]);
         setLoading(false);
         return;
       }
 
-      const folderIds = folders.map((f: any) => f.id);
-      const folderMap = new Map(folders.map((f: any) => [f.id, f]));
+      const folderIds = filteredFolders.map((f: any) => f.id as string);
+      const folderMap = new Map(filteredFolders.map((f: any) => [f.id as string, f]));
 
       const { data: docsData, error: dErr } = await supabase
         .from('prl_documents')
@@ -83,12 +87,11 @@ export default function TrazabilidadModule() {
           folder_id: d.folder_id,
           folder_nombre: folder?.nombre ?? '',
           society_id: folder?.society_id ?? '',
-          society_nombre: (folder?.sociedades as any)?.nombre ?? '',
+          society_nombre: societyMap.get(folder?.society_id) ?? '',
         };
       });
 
       setDocs(mapped);
-      // Expand all societies in doc list by default
       setExpandedDocSocieties(new Set(mapped.map((d) => d.society_id)));
     } catch {
       setDocs([]);

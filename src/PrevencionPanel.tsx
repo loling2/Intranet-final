@@ -233,8 +233,12 @@ function EmpleadosTagsTab() {
 
   const handleRemoveTag = async (etiquetadoId: string, empleadoId: string) => {
     try {
-      const { error: err } = await supabase.from('etiquetado').delete().eq('id', etiquetadoId);
-      if (err) throw err;
+      const { error: err, count } = await supabase
+        .from('etiquetado')
+        .delete({ count: 'exact' })
+        .eq('id', etiquetadoId);
+      if (err) throw new Error(`RLS/DB: ${err.message} (code: ${err.code})`);
+      if (count === 0) throw new Error(`No se encontró el registro (id: ${etiquetadoId}). Puede ser un problema de permisos.`);
       await loadDetail(empleadoId);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al eliminar tag');

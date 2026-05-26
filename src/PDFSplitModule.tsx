@@ -5,7 +5,7 @@ import {
   Trash2, Download, Search, Calendar, User, Info
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFName } from 'pdf-lib';
 import { uploadBytesToWasabi, downloadFromWasabi } from './lib/wasabi';
 import { supabase } from './supabaseClient';
 import { writeAuditLog } from './lib/auditLog';
@@ -85,11 +85,21 @@ function yieldToMain(): Promise<void> {
 }
 
 // Extract a single page from the original PDF bytes using pdf-lib (preserves text/vectors)
+// Removes CropBox/BleedBox/TrimBox/ArtBox so the full page content is visible
 async function extractPageBytes(srcBytes: Uint8Array, pageIndex: number): Promise<Uint8Array> {
   const src = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
   const dest = await PDFDocument.create();
   const [copied] = await dest.copyPages(src, [pageIndex]);
   dest.addPage(copied);
+
+  // Remove restrictive boxes so the full MediaBox is used by viewers
+  const page = dest.getPages()[0];
+  const node = page.node;
+  node.delete(PDFName.of('CropBox'));
+  node.delete(PDFName.of('BleedBox'));
+  node.delete(PDFName.of('TrimBox'));
+  node.delete(PDFName.of('ArtBox'));
+
   return dest.save();
 }
 

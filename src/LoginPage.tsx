@@ -700,7 +700,7 @@ export default function LoginPage() {
                         </div>
                         <div>
                           <div className="font-medium text-sm" style={{ color: society.textPrimary }}>{society.name}</div>
-                          <div className="text-xs" style={{ color: society.textSecondary }}>Portal {society.logoLetter}</div>
+                          <div className="text-xs" style={{ color: society.textSecondary }}></div>
                         </div>
                         {selectedId === society.id && <div className="ml-auto w-2 h-2 rounded-full" style={{ backgroundColor: society.primary }} />}
                       </button>

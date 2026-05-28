@@ -8,8 +8,8 @@ export default function PersonalDocumentsPanel() {
   const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState<any>(null);
   const [rutaActual, setRutaActual] = useState('rrhh/documentos personal/');
   const [contenido, setContenido] = useState<any[]>([]);
-  const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
 
   useEffect(() => {
     supabase.from('empleados').select('id, nombre, dni').then(({ data }) => {
@@ -26,13 +26,18 @@ export default function PersonalDocumentsPanel() {
   async function fetchContenido() {
     setCargando(true);
     try {
-      // Llamada a tu Edge Function (asegúrate de que devuelva un array en response.data)
+      console.log("Consultando archivos en ruta:", rutaActual);
+      
       const { data, error } = await supabase.functions.invoke('listar-archivos-wasabi', {
         body: { prefix: rutaActual }
       });
       
       if (error) throw error;
-      // Asumimos que la función devuelve un array de objetos con propiedad 'name'
+      
+      // LOG DE DEPURACIÓN: Mira esto en la consola del navegador (F12)
+      console.log("Respuesta recibida de Wasabi:", data);
+
+      // Si data es un array, lo guardamos. Si viene otra cosa, vaciamos.
       setContenido(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Error al listar:", err);
@@ -51,7 +56,7 @@ export default function PersonalDocumentsPanel() {
       const fullPath = `${rutaActual}${file.name}`;
       await uploadToWasabi(file, fullPath);
       
-      // Esperamos un momento a que Wasabi procese el nuevo archivo y refrescamos
+      // Espera 1s para asegurar consistencia en S3 antes de refrescar
       await new Promise(resolve => setTimeout(resolve, 1000));
       fetchContenido(); 
     } catch (err: any) {
@@ -65,7 +70,7 @@ export default function PersonalDocumentsPanel() {
 
   const irAtras = () => {
     const partes = rutaActual.split('/').filter(Boolean);
-    if (partes.length > 2) { // Evita salir de la ruta base
+    if (partes.length > 2) {
       partes.pop();
       setRutaActual(partes.join('/') + '/');
     }
@@ -118,7 +123,7 @@ export default function PersonalDocumentsPanel() {
                 <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded border border-slate-100">
                   <div className="flex items-center gap-3 w-full">
                     <FileText className="text-blue-500" />
-                    <span className="text-sm text-slate-700">{item.name}</span>
+                    <span className="text-sm text-slate-700">{item.name || item}</span>
                   </div>
                 </div>
               ))}

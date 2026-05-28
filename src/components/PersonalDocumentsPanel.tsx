@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { FileText, Upload, Folder, ChevronLeft, User, Loader2 } from 'lucide-react';
+import { FileText, Upload, ChevronLeft, User, Loader2 } from 'lucide-react';
 import { uploadToWasabi } from '../lib/wasabi'; 
 
 export default function PersonalDocumentsPanel() {
@@ -24,15 +24,21 @@ export default function PersonalDocumentsPanel() {
   }, [rutaActual, empleadoSeleccionado]);
 
   async function fetchContenido() {
-    // IMPORTANTE: Aquí debes llamar a tu Edge Function de "listar" 
-    // o usar una lógica similar a tu archivo de "descarga" que ya funciona.
+    setCargando(true);
     try {
-      const response = await supabase.functions.invoke('listar-archivos-wasabi', {
+      // Llamada a tu Edge Function (asegúrate de que devuelva un array en response.data)
+      const { data, error } = await supabase.functions.invoke('listar-archivos-wasabi', {
         body: { prefix: rutaActual }
       });
-      if (response.data) setContenido(response.data);
+      
+      if (error) throw error;
+      // Asumimos que la función devuelve un array de objetos con propiedad 'name'
+      setContenido(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Error al listar:", err);
+      setContenido([]);
+    } finally {
+      setCargando(false);
     }
   }
 
@@ -44,7 +50,9 @@ export default function PersonalDocumentsPanel() {
     try {
       const fullPath = `${rutaActual}${file.name}`;
       await uploadToWasabi(file, fullPath);
-      alert("Archivo subido correctamente");
+      
+      // Esperamos un momento a que Wasabi procese el nuevo archivo y refrescamos
+      await new Promise(resolve => setTimeout(resolve, 1000));
       fetchContenido(); 
     } catch (err: any) {
       console.error(err);
@@ -57,8 +65,10 @@ export default function PersonalDocumentsPanel() {
 
   const irAtras = () => {
     const partes = rutaActual.split('/').filter(Boolean);
-    partes.pop();
-    setRutaActual(partes.length > 1 ? partes.join('/') + '/' : 'rrhh/documentos personal/');
+    if (partes.length > 2) { // Evita salir de la ruta base
+      partes.pop();
+      setRutaActual(partes.join('/') + '/');
+    }
   };
 
   return (
@@ -104,15 +114,15 @@ export default function PersonalDocumentsPanel() {
             </div>
             
             <div className="space-y-2">
-              {contenido.map((item: any) => (
-                <div key={item.name} className="flex items-center justify-between p-3 bg-slate-50 rounded border border-slate-100">
-                  <div className="flex items-center gap-3 cursor-pointer w-full">
+              {contenido.map((item: any, index: number) => (
+                <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded border border-slate-100">
+                  <div className="flex items-center gap-3 w-full">
                     <FileText className="text-blue-500" />
                     <span className="text-sm text-slate-700">{item.name}</span>
                   </div>
                 </div>
               ))}
-              {contenido.length === 0 && <p className="text-slate-400 text-sm">Esta carpeta está vacía.</p>}
+              {!cargando && contenido.length === 0 && <p className="text-slate-400 text-sm">Esta carpeta está vacía.</p>}
             </div>
           </>
         ) : (

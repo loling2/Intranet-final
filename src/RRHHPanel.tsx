@@ -11,7 +11,7 @@ import { useSociety } from './context/SocietyContext';
 import VacationsModule from './components/VacationsModule';
 import EmployeesModule from './components/EmployeesModule';
 import ContratosModule from './components/ContratosModule';
-import PersonalDocumentsPanel from './PersonalDocumentsPanel';
+import PersonalDocumentsPanel from './components/PersonalDocumentsPanel';
 import { supabase } from './supabaseClient';
 
 interface Props {

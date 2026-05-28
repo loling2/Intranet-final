@@ -11,7 +11,6 @@ import { useSociety } from './context/SocietyContext';
 import VacationsModule from './components/VacationsModule';
 import EmployeesModule from './components/EmployeesModule';
 import ContratosModule from './components/ContratosModule';
-import PersonalDocumentsPanel from './components/PersonalDocumentsPanel';
 import { supabase } from './supabaseClient';
 
 interface Props {
@@ -21,7 +20,7 @@ interface Props {
   isAdmin?: boolean;
 }
 
-type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos';
+type RRHHTab = 'overview' | 'employees' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos';
 
 export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
@@ -71,8 +70,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
     { id: 'employees', label: 'Empleados', icon: Users },
     { id: 'users', label: 'Gestion de Usuarios', icon: Users },
     { id: 'vehicles', label: 'Vehiculos', icon: Car },
-    { id: 'documents', label: 'Documentos', icon: FileText }, 
-    { id: 'personal-docs', label: 'Documentos Personales', icon: FileText },
+    { id: 'documents', label: 'Documentos', icon: FileText },
     { id: 'pdf-split', label: 'Nominas', icon: Zap },
     { id: 'contratos', label: 'Contratos', icon: FileSignature, badge: contratosPendientes > 0 ? contratosPendientes : undefined },
     { id: 'vacations', label: 'Vacaciones', icon: Palmtree, badge: vacationsPending.length },
@@ -369,7 +367,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
         {activeTab === 'vacations' && (
           <VacationsModule role={isAdmin ? 'admin' : 'rrhh'} />
         )}
-       
+
         {/* Certificates Tab */}
         {activeTab === 'certificates' && (
           <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
@@ -554,11 +552,6 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
         {activeTab === 'audit' && (
           <AuditLogPanel />
         )}
-        {/* documentos personales */}
-         {activeTab === 'personal-docs' && (
-          <PersonalDocumentsPanel />
-        )}  
-
       </div>
     </div>
   );

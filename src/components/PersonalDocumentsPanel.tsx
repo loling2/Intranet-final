@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { FileText, Upload, Folder, ChevronLeft, User, Loader2 } from 'lucide-react';
+import { uploadToWasabi } from '../lib/wasabi'; 
 
 export default function PersonalDocumentsPanel() {
   const [empleados, setEmpleados] = useState<any[]>([]);
@@ -23,9 +24,16 @@ export default function PersonalDocumentsPanel() {
   }, [rutaActual, empleadoSeleccionado]);
 
   async function fetchContenido() {
-    const { data, error } = await supabase.storage.from('documentacion').list(rutaActual);
-    if (data) setContenido(data);
-    if (error) console.error("Error al listar:", error);
+    // IMPORTANTE: Aquí debes llamar a tu Edge Function de "listar" 
+    // o usar una lógica similar a tu archivo de "descarga" que ya funciona.
+    try {
+      const response = await supabase.functions.invoke('listar-archivos-wasabi', {
+        body: { prefix: rutaActual }
+      });
+      if (response.data) setContenido(response.data);
+    } catch (err) {
+      console.error("Error al listar:", err);
+    }
   }
 
   const handleSubir = async (e: any) => {
@@ -33,17 +41,18 @@ export default function PersonalDocumentsPanel() {
     if (!file) return;
 
     setCargando(true);
-    const { error } = await supabase.storage
-      .from('documentacion')
-      .upload(`${rutaActual}${file.name}`, file);
-
-    if (error) {
-      alert(`Error al subir: ${error.message}`);
-    } else {
-      fetchContenido();
+    try {
+      const fullPath = `${rutaActual}${file.name}`;
+      await uploadToWasabi(file, fullPath);
+      alert("Archivo subido correctamente");
+      fetchContenido(); 
+    } catch (err: any) {
+      console.error(err);
+      alert(`Error al subir: ${err.message || 'Error desconocido'}`);
+    } finally {
+      setCargando(false);
+      e.target.value = '';
     }
-    setCargando(false);
-    e.target.value = ''; // Resetear input
   };
 
   const irAtras = () => {
@@ -54,7 +63,6 @@ export default function PersonalDocumentsPanel() {
 
   return (
     <div className="flex h-[700px] gap-6 p-6 bg-white rounded-xl border border-slate-200">
-      {/* Columna Izquierda: Buscador */}
       <div className="w-1/3 border-r pr-6 space-y-4">
         <input 
           placeholder="Buscar trabajador..."
@@ -81,7 +89,6 @@ export default function PersonalDocumentsPanel() {
         </div>
       </div>
 
-      {/* Columna Derecha: Explorador */}
       <div className="w-2/3">
         {empleadoSeleccionado ? (
           <>
@@ -97,13 +104,10 @@ export default function PersonalDocumentsPanel() {
             </div>
             
             <div className="space-y-2">
-              {contenido.map((item) => (
+              {contenido.map((item: any) => (
                 <div key={item.name} className="flex items-center justify-between p-3 bg-slate-50 rounded border border-slate-100">
-                  <div 
-                    className="flex items-center gap-3 cursor-pointer w-full"
-                    onClick={() => item.id === null && setRutaActual(`${rutaActual}${item.name}/`)}
-                  >
-                    {item.id === null ? <Folder className="text-yellow-500" /> : <FileText className="text-blue-500" />}
+                  <div className="flex items-center gap-3 cursor-pointer w-full">
+                    <FileText className="text-blue-500" />
                     <span className="text-sm text-slate-700">{item.name}</span>
                   </div>
                 </div>

@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { FileText, Upload, ChevronLeft, User, Loader2, Trash2 } from 'lucide-react';
-import { uploadToWasabi } from '../lib/wasabi'; 
-// Importa tu función para borrar de Wasabi (si la tienes creada, ej: deleteFromWasabi)
-// import { deleteFromWasabi } from '../lib/wasabi'; 
+import { FileText, Upload, User, Loader2, Trash2 } from 'lucide-react';
+import { uploadToWasabi, deleteFromWasabi } from '../lib/wasabi'; 
 
 export default function PersonalDocumentsPanel() {
   const [empleados, setEmpleados] = useState<any[]>([]);
@@ -21,14 +19,20 @@ export default function PersonalDocumentsPanel() {
   async function fetchContenido() {
     if (!empleadoSeleccionado) return;
     setCargando(true);
+    
+    // Consultamos la tabla que creamos en el SQL Editor
     const { data, error } = await supabase
       .from('personal_documents') 
       .select('*')
       .eq('empleado_id', empleadoSeleccionado.id)
       .order('created_at', { ascending: false });
     
-    if (error) console.error("Error al cargar:", error);
-    setContenido(data || []);
+    if (error) {
+      console.error("Error al cargar:", error);
+    } else {
+      console.log("Documentos cargados:", data);
+      setContenido(data || []);
+    }
     setCargando(false);
   }
 
@@ -42,19 +46,26 @@ export default function PersonalDocumentsPanel() {
 
     setCargando(true);
     try {
-      const key = `rrhh/documentos personal/${empleadoSeleccionado.dni}-${empleadoSeleccionado.nombre}/${Date.now()}-${file.name}`;
+      const key = `rrhh/documentos_personal/${empleadoSeleccionado.dni}-${empleadoSeleccionado.nombre}/${Date.now()}-${file.name}`;
+      
+      // 1. Subir a Wasabi
       await uploadToWasabi(file, key);
-      await supabase.from('personal_documents').insert({
+      
+      // 2. Registrar en base de datos
+      const { error } = await supabase.from('personal_documents').insert({
         empleado_id: empleadoSeleccionado.id,
         nombre_archivo: file.name,
         wasabi_key: key,
         tipo: file.type,
         tamano_bytes: file.size
       });
+
+      if (error) throw error;
+      
       await fetchContenido();
     } catch (err: any) {
-      console.error(err);
-      alert("Error al subir archivo");
+      console.error("Error completo:", err);
+      alert("Error al subir archivo: " + err.message);
     } finally {
       setCargando(false);
       e.target.value = '';
@@ -62,24 +73,30 @@ export default function PersonalDocumentsPanel() {
   };
 
   const handleEliminar = async (doc: any) => {
-    if (!confirm("¿Estás seguro de eliminar este archivo?")) return;
+    if (!confirm("¿Estás seguro de eliminar este archivo permanentemente?")) return;
 
     try {
-      // 1. Borrar de la base de datos
-      await supabase.from('personal_documents').delete().eq('id', doc.id);
+      setCargando(true);
+      // 1. Borrar de Wasabi
+      await deleteFromWasabi(doc.wasabi_key);
       
-      // 2. Aquí llamarías a tu función de borrar en Wasabi si la tienes:
-      // await deleteFromWasabi(doc.wasabi_key);
+      // 2. Borrar de la base de datos
+      const { error } = await supabase.from('personal_documents').delete().eq('id', doc.id);
       
-      // 3. Refrescar lista
+      if (error) throw error;
+      
       await fetchContenido();
     } catch (err) {
       console.error("Error al eliminar:", err);
+      alert("Error al intentar borrar el archivo");
+    } finally {
+      setCargando(false);
     }
   };
 
   return (
     <div className="flex h-[700px] gap-6 p-6 bg-white rounded-xl border border-slate-200">
+      {/* Listado de empleados igual que tenías */}
       <div className="w-1/3 border-r pr-6 space-y-4">
         <input placeholder="Buscar trabajador..." className="w-full p-2 border rounded-lg" onChange={(e) => setBusqueda(e.target.value)} />
         <div className="overflow-y-auto h-[600px]">
@@ -112,7 +129,7 @@ export default function PersonalDocumentsPanel() {
                     <span className="text-sm text-slate-700">{doc.nombre_archivo}</span>
                   </div>
                   <button onClick={() => handleEliminar(doc)} className="text-red-500 hover:bg-red-50 p-2 rounded">
-                    <Trash2 size={16} />
+                    {cargando ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                   </button>
                 </div>
               ))}
@@ -120,7 +137,7 @@ export default function PersonalDocumentsPanel() {
             </div>
           </>
         ) : (
-          <div className="h-full flex items-center justify-center text-slate-400">Selecciona un empleado</div>
+          <div className="h-full flex items-center justify-center text-slate-400">Selecciona un empleado para gestionar sus documentos</div>
         )}
       </div>
     </div>

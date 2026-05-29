@@ -11,12 +11,14 @@ export default function PersonalDocumentsPanel() {
   const [cargando, setCargando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
 
+  // 1. Obtener lista de empleados
   useEffect(() => {
     supabase.from('empleados').select('id, nombre, dni').then(({ data }) => {
       if (data) setEmpleados(data);
     });
   }, []);
 
+  // 2. Escuchar cambios de ruta o empleado para listar archivos
   useEffect(() => {
     if (empleadoSeleccionado) {
       fetchContenido();
@@ -31,6 +33,7 @@ export default function PersonalDocumentsPanel() {
       });
       
       if (error) throw error;
+      // Actualizamos el estado con la respuesta nueva
       setContenido(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Error al listar:", err);
@@ -40,6 +43,7 @@ export default function PersonalDocumentsPanel() {
     }
   }
 
+  // 3. LOGICA REPARADA: Refresco tras subida
   const handleSubir = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -49,17 +53,19 @@ export default function PersonalDocumentsPanel() {
       const fullPath = `${rutaActual}${file.name}`;
       await uploadToWasabi(file, fullPath);
       
-      // Espera para asegurar consistencia en S3 antes de refrescar
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Damos un pequeño respiro para que el almacenamiento S3 sea consistente
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Refresco explícito
+      // Llamamos a fetchContenido() aquí para forzar una nueva petición y refrescar la UI
       await fetchContenido(); 
+      
+      console.log("Archivo subido y lista refrescada.");
     } catch (err: any) {
       console.error(err);
       alert(`Error al subir: ${err.message || 'Error desconocido'}`);
     } finally {
       setCargando(false);
-      // Limpiar input para permitir subidas consecutivas
+      // Reseteamos el input para permitir subidas consecutivas
       e.target.value = '';
     }
   };

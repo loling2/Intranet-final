@@ -25,6 +25,7 @@ export default function PersonalDocumentsPanel() {
     }
   }, [rutaActual, empleadoSeleccionado]);
 
+  // Función para listar archivos desde Wasabi (via Edge Function)
   async function fetchContenido() {
     setCargando(true);
     try {
@@ -33,7 +34,6 @@ export default function PersonalDocumentsPanel() {
       });
       
       if (error) throw error;
-      // Actualizamos el estado con la respuesta nueva
       setContenido(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Error al listar:", err);
@@ -43,7 +43,7 @@ export default function PersonalDocumentsPanel() {
     }
   }
 
-  // 3. LOGICA REPARADA: Refresco tras subida
+  // 3. LOGICA INTEGRADA: Subida y refresco forzado
   const handleSubir = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -51,21 +51,24 @@ export default function PersonalDocumentsPanel() {
     setCargando(true);
     try {
       const fullPath = `${rutaActual}${file.name}`;
+      
+      // A. Subir a Wasabi
       await uploadToWasabi(file, fullPath);
       
-      // Damos un pequeño respiro para que el almacenamiento S3 sea consistente
+      // B. Espera estratégica (Consistency delay)
+      // A veces el servidor S3 tarda unos milisegundos en indexar el nuevo archivo
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Llamamos a fetchContenido() aquí para forzar una nueva petición y refrescar la UI
+      // C. Recargar listado para que el usuario vea el archivo nuevo
       await fetchContenido(); 
       
-      console.log("Archivo subido y lista refrescada.");
+      console.log("Archivo procesado correctamente.");
     } catch (err: any) {
       console.error(err);
       alert(`Error al subir: ${err.message || 'Error desconocido'}`);
     } finally {
       setCargando(false);
-      // Reseteamos el input para permitir subidas consecutivas
+      // Limpiar input
       e.target.value = '';
     }
   };
@@ -80,6 +83,7 @@ export default function PersonalDocumentsPanel() {
 
   return (
     <div className="flex h-[700px] gap-6 p-6 bg-white rounded-xl border border-slate-200">
+      {/* Columna Izquierda: Empleados */}
       <div className="w-1/3 border-r pr-6 space-y-4">
         <input 
           placeholder="Buscar trabajador..."
@@ -106,6 +110,7 @@ export default function PersonalDocumentsPanel() {
         </div>
       </div>
 
+      {/* Columna Derecha: Documentos */}
       <div className="w-2/3">
         {empleadoSeleccionado ? (
           <>
@@ -129,7 +134,9 @@ export default function PersonalDocumentsPanel() {
                   </div>
                 </div>
               ))}
-              {!cargando && contenido.length === 0 && <p className="text-slate-400 text-sm">Esta carpeta está vacía.</p>}
+              {!cargando && contenido.length === 0 && (
+                <p className="text-slate-400 text-sm">Esta carpeta está vacía.</p>
+              )}
             </div>
           </>
         ) : (

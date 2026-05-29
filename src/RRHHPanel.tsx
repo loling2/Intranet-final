@@ -369,7 +369,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
         {activeTab === 'vacations' && (
           <VacationsModule role={isAdmin ? 'admin' : 'rrhh'} />
         )}
-        {activeTab === 'personal-docs' && <PersonalDocumentsPanel />}
+
         {/* Certificates Tab */}
         {activeTab === 'certificates' && (
           <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>

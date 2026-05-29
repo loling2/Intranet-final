@@ -26,18 +26,11 @@ export default function PersonalDocumentsPanel() {
   async function fetchContenido() {
     setCargando(true);
     try {
-      console.log("Consultando archivos en ruta:", rutaActual);
-      
       const { data, error } = await supabase.functions.invoke('listar-archivos-wasabi', {
         body: { prefix: rutaActual }
       });
       
       if (error) throw error;
-      
-      // LOG DE DEPURACIÓN: Mira esto en la consola del navegador (F12)
-      console.log("Respuesta recibida de Wasabi:", data);
-
-      // Si data es un array, lo guardamos. Si viene otra cosa, vaciamos.
       setContenido(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Error al listar:", err);
@@ -47,8 +40,8 @@ export default function PersonalDocumentsPanel() {
     }
   }
 
-  const handleSubir = async (e: any) => {
-    const file = e.target.files[0];
+  const handleSubir = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
     setCargando(true);
@@ -56,14 +49,17 @@ export default function PersonalDocumentsPanel() {
       const fullPath = `${rutaActual}${file.name}`;
       await uploadToWasabi(file, fullPath);
       
-      // Espera 1s para asegurar consistencia en S3 antes de refrescar
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      fetchContenido(); 
+      // Espera para asegurar consistencia en S3 antes de refrescar
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Refresco explícito
+      await fetchContenido(); 
     } catch (err: any) {
       console.error(err);
       alert(`Error al subir: ${err.message || 'Error desconocido'}`);
     } finally {
       setCargando(false);
+      // Limpiar input para permitir subidas consecutivas
       e.target.value = '';
     }
   };

@@ -20,7 +20,7 @@ interface Props {
   isAdmin?: boolean;
 }
 
-type RRHHTab = 'overview' | 'employees' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos';
+type RRHHTab = 'overview' | 'employees' | 'vacations' | 'documentos-personales'| 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos';
 
 export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
@@ -71,6 +71,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
     { id: 'users', label: 'Gestion de Usuarios', icon: Users },
     { id: 'vehicles', label: 'Vehiculos', icon: Car },
     { id: 'documents', label: 'Documentos', icon: FileText },
+    { id: 'documentos-personales', label: 'Documentos Personales', icon: FileText },
     { id: 'pdf-split', label: 'Nominas', icon: Zap },
     { id: 'contratos', label: 'Contratos', icon: FileSignature, badge: contratosPendientes > 0 ? contratosPendientes : undefined },
     { id: 'vacations', label: 'Vacaciones', icon: Palmtree, badge: vacationsPending.length },
@@ -366,6 +367,11 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
         {/* Vacations Tab — Supabase-backed */}
         {activeTab === 'vacations' && (
           <VacationsModule role={isAdmin ? 'admin' : 'rrhh'} />
+        )}
+
+        {/* Documentos Personales Tab */}
+        {activeTab === 'documentos-personales' && (
+          <EmployeeDocumentsSection currentUserRole="rrhh" userEmail={email} />
         )}
 
         {/* Certificates Tab */}

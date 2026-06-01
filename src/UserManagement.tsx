@@ -610,32 +610,46 @@ export default function UserManagement({ currentUserRole }: Props) {
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
 
+// ... importaciones ...
+
+const UserManagement = () => {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // MANTÉN ESTO (Función de carga)
   const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Vamos a traer TODO de user_profiles, sin filtros
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*');
-  
-      if (error) {
-        console.error("Error al cargar perfiles:", error);
-        return;
-      }
-  
-      // 2. LOG DE DIAGNÓSTICO: Esto nos dirá qué está pasando
+      const { data, error } = await supabase.from('user_profiles').select('*');
+      if (error) console.error("Error:", error);
       console.log("Usuarios cargados en Gestión:", data);
-  
-      // 3. Si 'data' tiene los usuarios, los asignamos. 
-      // Si 'data' llega vacío, es que el problema es la consulta.
       setUsers(data || []);
-      
     } catch (err) {
       console.error("Error inesperado:", err);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  return (
+    <div>
+      {/* ... otros elementos de tu página ... */}
+
+      {/* AQUÍ SUSTITUYES EL BLOQUE ANTIGUO POR EL NUEVO DE RENDERIZADO */}
+      <div className="divide-y divide-slate-100">
+        {users && users.length > 0 ? (
+          users.map((u) => (
+            /* ... aquí va la lógica de renderizado que te pasé ... */
+          ))
+        ) : (
+          <div>{loading ? "Cargando..." : "No hay usuarios"}</div>
+        )}
+      </div>
+    </div>
+  );
+};
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
 

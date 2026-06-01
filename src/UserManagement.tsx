@@ -292,17 +292,18 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 
   const handleSaveMeta = async () => {
-    setSavingMeta(true); setError('');
-    try {
-      // Detectamos la tabla basándonos en una propiedad (necesitas añadir 'source' en el loadUsers)
-      // O simplemente intenta en una y si falla, en la otra:
-      
-      let table = 'user_profiles';
-      // Si tu objeto tiene un campo que indique su origen (ej: 'source'), úsalo:
-      if ((user as any).source === 'employee') {
-        table = 'empleados';
-      }
+    setSavingMeta(true);
+    setError('');
+    
+    // 1. Definimos la tabla fuera del try para que sea accesible globalmente en la función
+    let table = 'user_profiles';
+    
+    // Determinamos la tabla
+    if ((user as any).source === 'employee') {
+      table = 'empleados';
+    }
   
+    try {
       const { error: err } = await supabase
         .from(table) 
         .update({ role, activo, societies: selectedSocieties })
@@ -313,7 +314,9 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
       onSaved();
       setMetaSuccess(true);
     } catch (err: unknown) {
-      setError('Error al guardar en ' + table);
+      // 2. Ahora 'table' es accesible aquí sin problemas
+      console.error(`Error al guardar en ${table}:`, err);
+      setError(`Error al guardar en ${table}: ${err instanceof Error ? err.message : 'Error desconocido'}`);
     } finally {
       setSavingMeta(false);
     }

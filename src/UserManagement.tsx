@@ -292,43 +292,46 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 
   const handleSaveMeta = async () => {
+    // 1. Validación de seguridad
+    if (!user || !user.id) {
+      console.error("Error: El usuario o su ID no están definidos.");
+      setError("Error: No se puede identificar al usuario.");
+      return;
+    }
+  
     setSavingMeta(true);
     setError('');
   
     const esEmpleado = (user as any).source === 'employee';
     const tablaDestino = esEmpleado ? 'empleados' : 'user_profiles';
   
-    // 1. Construimos el payload de forma segura
-    const payload: any = {
-      activo: activo
-    };
-  
-    // Solo añadimos campos si no son undefined
+    // 2. Construcción limpia del payload
+    const payload: any = { activo: activo };
+    
     if (!esEmpleado) {
       payload.role = role;
       payload.societies = selectedSocieties;
     }
   
-    // 2. Depuración: ¡Mira qué vas a enviar antes de hacerlo!
-    console.log("Enviando a Supabase:", { tabla: tablaDestino, id: user.id, payload });
-  
     try {
-      // 3. Validación crítica: Aseguramos que el ID no sea undefined
-      if (!user.id) throw new Error("ID de usuario no encontrado.");
+      console.log(`Intentando guardar en ${tablaDestino} con ID: ${user.id}`);
   
-      const { error: err } = await supabase
+      // 3. Ejecución segura
+      const { data, error } = await supabase
         .from(tablaDestino)
         .update(payload)
-        .eq('id', user.id); 
+        .eq('id', user.id) // Aquí es donde antes se filtraba 'undefined'
+        .select();
   
-      if (err) throw err;
+      if (error) throw error;
   
+      console.log("Guardado exitoso:", data);
       setMetaSuccess(true);
       setTimeout(() => setMetaSuccess(false), 2500);
       onSaved();
     } catch (err: any) {
-      console.error("Error al guardar:", err);
-      setError(`Error: ${err.message}`);
+      console.error("Error crítico de Supabase:", err);
+      setError(`Error al guardar: ${err.message}`);
     } finally {
       setSavingMeta(false);
     }

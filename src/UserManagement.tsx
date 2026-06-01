@@ -292,16 +292,46 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 
   const handleSaveMeta = async () => {
-    setSavingMeta(true); setError('');
+    setSavingMeta(true); 
+    setError('');
+    
+    // 1. Determinamos la tabla dinámicamente según el origen (source)
+    const tablaDestino = (user as any).source === 'employee' ? 'empleados' : 'user_profiles';
+  
     try {
-      const { error: err } = await supabase.from('user_profiles').update({ role, activo, societies: selectedSocieties }).eq('id', user.id);
+      // 2. Realizamos el update en la tabla correcta
+      const { error: err } = await supabase
+        .from(tablaDestino) 
+        .update({ 
+          role, 
+          activo, 
+          societies: selectedSocieties 
+        })
+        .eq('id', user.id);
+  
       if (err) throw err;
-      if (profile) await writeAuditLog({ evento: 'user_meta_changed', descripcion: `Perfil de ${user.nombre} actualizado: rol=${role}, activo=${activo}`, autor: profile, entidad: 'user', entidad_id: user.id });
+  
+      // 3. Log de auditoría (opcional: indicamos en qué tabla se hizo)
+      if (profile) await writeAuditLog({ 
+        evento: 'user_meta_changed', 
+        descripcion: `Perfil de ${user.nombre} actualizado en ${tablaDestino}: rol=${role}, activo=${activo}`, 
+        autor: profile, 
+        entidad: 'user', 
+        entidad_id: user.id 
+      });
+  
       setMetaSuccess(true);
       setTimeout(() => setMetaSuccess(false), 2500);
+      
+      // 4. Refrescamos la lista en el componente padre
       onSaved();
-    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Error al guardar'); }
-    finally { setSavingMeta(false); }
+      
+    } catch (err: unknown) { 
+      console.error("Error al guardar:", err);
+      setError(err instanceof Error ? err.message : 'Error al guardar en ' + tablaDestino); 
+    } finally { 
+      setSavingMeta(false); 
+    }
   };
 
   const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());

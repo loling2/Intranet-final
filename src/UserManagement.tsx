@@ -291,51 +291,24 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const toggleSociety = (id: string) =>
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 
-  const handleSaveMeta = async () => {
-    // 1. Validación de seguridad
-    if (!user || !user.id) {
-      console.error("Error: El usuario o su ID no están definidos.");
-      setError("Error: No se puede identificar al usuario.");
-      return;
-    }
-  
-    setSavingMeta(true);
-    setError('');
-  
-    const esEmpleado = (user as any).source === 'employee';
-    const tablaDestino = esEmpleado ? 'empleados' : 'user_profiles';
-  
-    // 2. Construcción limpia del payload
-    const payload: any = { activo: activo };
-    
-    if (!esEmpleado) {
-      payload.role = role;
-      payload.societies = selectedSocieties;
-    }
-  
-    try {
-      console.log(`Intentando guardar en ${tablaDestino} con ID: ${user.id}`);
-  
-      // 3. Ejecución segura
-      const { data, error } = await supabase
-        .from(tablaDestino)
-        .update(payload)
-        .eq('id', user.id) // Aquí es donde antes se filtraba 'undefined'
-        .select();
-  
-      if (error) throw error;
-  
-      console.log("Guardado exitoso:", data);
-      setMetaSuccess(true);
-      setTimeout(() => setMetaSuccess(false), 2500);
-      onSaved();
-    } catch (err: any) {
-      console.error("Error crítico de Supabase:", err);
-      setError(`Error al guardar: ${err.message}`);
-    } finally {
-      setSavingMeta(false);
-    }
-  };
+// ... dentro de tu try { ...
+const { data, error } = await supabase
+  .from(tablaDestino)
+  .update(payload)
+  .eq('id', user.id)
+  .select(); // <--- Esto es vital
+
+if (error) throw error;
+
+// ¡Aquí está la verdad!
+if (!data || data.length === 0) {
+  console.warn("ADVERTENCIA: La consulta se ejecutó, pero NO se encontró ninguna fila con ID:", user.id);
+  setError("El usuario no existe en la tabla " + tablaDestino + " con ese ID.");
+} else {
+  console.log("¡Éxito! Fila actualizada:", data);
+  setMetaSuccess(true);
+  onSaved();
+}
 
   const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());
   const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;

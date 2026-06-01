@@ -292,44 +292,33 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 
   const handleSaveMeta = async () => {
-    console.log("1. Iniciando guardado...");
-    setSavingMeta(true);
-    
-    const { data: { session } } = await supabase.auth.getSession();
-    console.log("2. Sesión obtenida:", session ? "Sí" : "No");
-  
+    setSavingMeta(true); setError('');
     try {
-      console.log("3. Intentando actualizar perfil...");
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .update({ activo, societies: selectedSocieties })
-        .eq('id', user.id);
+      // Detectamos la tabla basándonos en una propiedad (necesitas añadir 'source' en el loadUsers)
+      // O simplemente intenta en una y si falla, en la otra:
       
-      if (profileError) throw profileError;
-      console.log("4. Perfil actualizado correctamente");
+      let table = 'user_profiles';
+      // Si tu objeto tiene un campo que indique su origen (ej: 'source'), úsalo:
+      if ((user as any).source === 'employee') {
+        table = 'empleados';
+      }
   
-      console.log("5. Actualizando roles...");
-
-      // 1. Borramos el rol existente de forma segura
-      const { error: deleteError } = await supabase
-        .from('user_roles')
-        .delete()
-        .eq('user_id', user.id); // Asegúrate de usar el ID correcto del usuario
+      const { error: err } = await supabase
+        .from(table) 
+        .update({ role, activo, societies: selectedSocieties })
+        .eq('id', user.id);
+  
+      if (err) throw err;
       
-      if (deleteError) throw deleteError;
+      onSaved();
+      setMetaSuccess(true);
+    } catch (err: unknown) {
+      setError('Error al guardar en ' + table);
+    } finally {
+      setSavingMeta(false);
+    }
+  };
 
-      // 2. Insertamos el nuevo rol. 
-      // 'role' debe ser el valor que viene de tu estado o formulario.
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({ 
-          user_id: user.id, 
-          role_name: role 
-        });
-        
-      if (roleError) throw roleError;
-      
-      console.log("5.1 Roles actualizados correctamente");
   const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());
   const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;
 

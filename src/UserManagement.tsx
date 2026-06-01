@@ -298,32 +298,32 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     const esEmpleado = (user as any).source === 'employee';
     const tablaDestino = esEmpleado ? 'empleados' : 'user_profiles';
   
-    // 1. Preparamos el payload según la tabla
-    const payload: any = {
-      activo: activo // Esto existe en ambas tablas (¡Correcto!)
-    };
-  
-    // Solo añadimos campos que realmente existan en cada tabla
+    // --- SOLUCIÓN: Ajustamos el filtro de búsqueda ---
+    // Si es empleado, probamos buscar por 'user_id' (que es el UUID del usuario)
+    // Si no encuentra nada, es porque tu tabla empleados usa otro campo como ID
+    const columnaBusqueda = esEmpleado ? 'user_id' : 'id';
+    
+    // Payload corregido (solo campos comunes o existentes)
+    const payload: any = { activo: activo };
     if (!esEmpleado) {
       payload.role = role;
       payload.societies = selectedSocieties;
     }
   
     try {
-      // 2. Ejecutamos el update
       const { error: err } = await supabase
         .from(tablaDestino)
         .update(payload)
-        .eq('id', user.id); // <--- ¡IMPORTANTE!
+        .eq(columnaBusqueda, user.id); // <--- Aquí está el cambio crítico
   
       if (err) throw err;
   
-      // 3. Éxito
       setMetaSuccess(true);
       setTimeout(() => setMetaSuccess(false), 2500);
-      onSaved(); 
+      onSaved();
     } catch (err: unknown) {
-      setError('Error al guardar: ' + (err as Error).message);
+      console.error("Error al guardar:", err);
+      setError(`Error al guardar: ${(err as Error).message}`);
     } finally {
       setSavingMeta(false);
     }

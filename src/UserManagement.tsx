@@ -298,41 +298,30 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     const esEmpleado = (user as any).source === 'employee';
     const tablaDestino = esEmpleado ? 'empleados' : 'user_profiles';
   
+    // payload solo con lo permitido para cada tabla
+    const payload: any = { activo: activo };
+    if (!esEmpleado) {
+      payload.role = role;
+      payload.societies = selectedSocieties;
+    }
+  
     try {
-      let { error: err } = await supabase
+      // Usamos el ID original que siempre existe en todas las filas
+      const { error: err } = await supabase
         .from(tablaDestino)
-        .update({ activo: activo })
-        .eq('email', user.email); // <--- CAMBIO CRÍTICO: Buscar por EMAIL
+        .update(payload)
+        .eq('id', user.id); // Usamos el ID que viene del 'loadUsers'
   
-      // Si no encuentra nada por email, intentamos por ID (por si acaso)
-      if (err || !data) {
-          const { error: err2 } = await supabase
-            .from(tablaDestino)
-            .update({ activo: activo })
-            .eq('id', user.id);
-          if (err2) throw err2;
+      if (err) {
+        console.error("Error detallado:", err);
+        throw err;
       }
   
-      // SI ES EMPLEADO Y AÚN NO TENÍA user_id, le asignamos el ID del usuario de auth
-      if (esEmpleado && !(user as any).user_id) {
-         // Buscamos el ID en auth.users por el email
-         const { data: authUser } = await supabase
-           .from('user_profiles') 
-           .select('id')
-           .eq('email', user.email)
-           .single();
-         
-         if (authUser) {
-           await supabase.from('empleados')
-             .update({ user_id: authUser.id })
-             .eq('email', user.email);
-         }
-      }
-  
-      onSaved();
       setMetaSuccess(true);
-    } catch (err) {
-      setError('Error al actualizar automáticamente.');
+      setTimeout(() => setMetaSuccess(false), 2500);
+      onSaved();
+    } catch (err: any) {
+      setError('Error: ' + err.message);
     } finally {
       setSavingMeta(false);
     }

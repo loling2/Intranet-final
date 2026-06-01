@@ -298,30 +298,32 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     const esEmpleado = (user as any).source === 'employee';
     const tablaDestino = esEmpleado ? 'empleados' : 'user_profiles';
   
-    // payload solo con lo permitido para cada tabla
+    // Construimos el objeto de datos dinámicamente
+    // 'activo' existe en ambas tablas, así que lo enviamos siempre
     const payload: any = { activo: activo };
+  
+    // Solo enviamos role y societies si estamos en 'user_profiles'
     if (!esEmpleado) {
       payload.role = role;
       payload.societies = selectedSocieties;
     }
   
     try {
-      // Usamos el ID original que siempre existe en todas las filas
+      // IMPORTANTE: Buscamos por 'id', asegurándote que en tu 'loadUsers' 
+      // el 'id' sea el valor correcto (UUID).
       const { error: err } = await supabase
         .from(tablaDestino)
         .update(payload)
-        .eq('id', user.id); // Usamos el ID que viene del 'loadUsers'
+        .eq('id', user.id); // Usamos el identificador único
   
-      if (err) {
-        console.error("Error detallado:", err);
-        throw err;
-      }
+      if (err) throw err;
   
       setMetaSuccess(true);
       setTimeout(() => setMetaSuccess(false), 2500);
-      onSaved();
+      onSaved(); // Refresca la lista
     } catch (err: any) {
-      setError('Error: ' + err.message);
+      console.error("Error al guardar:", err);
+      setError(`Error al guardar: ${err.message}`);
     } finally {
       setSavingMeta(false);
     }

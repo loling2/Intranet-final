@@ -684,37 +684,39 @@ export default function UserManagement({ currentUserRole }: Props) {
     return matchSearch && matchRole && matchStatus;
   });
 
-// ... dentro de UserManagement, ANTES del 'return ('
+// Dentro de UserManagement, ANTES del 'return ('
 const handleSaved = () => {
   console.log("Refrescando datos desde Supabase...");
-  loadUsers();
+  loadUsers(); 
   setEditingUser(null);
 };
 
-
-    {/* ... */}
-
   return (
-    <div>
-      {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={loadUsers} currentUserRole={currentUserRole} />}
-      {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} currentUserRole={currentUserRole} />}
-      const handleSaved = () => {
-  console.log("Refrescando datos desde Supabase...");
-  loadUsers();          // Esto recarga la lista de la DB
-  setEditingUser(null); // Esto cierra el modal automáticamente
-};
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Gestion de Usuarios</h2>
-          <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{users.length} usuarios registrados</p>
-        </div>
-        <button onClick={() => setShowInvite(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all duration-200 hover:opacity-90"
-          style={{ backgroundColor: '#0F172A', boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}>
-          <UserPlus size={15} /> Nuevo Usuario
-        </button>
-      </div>
+<div>
+    {/* Modales - Nota cómo solo hay UNO de cada tipo y bien configurado */}
+    {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={loadUsers} currentUserRole={currentUserRole} />}
+    
+    {editingUser && (
+      <EditUserModal 
+        user={editingUser} 
+        onClose={() => setEditingUser(null)} 
+        onSaved={handleSaved} 
+        currentUserRole={currentUserRole} 
+      />
+    )}
 
+    {/* Encabezado */}
+    <div className="flex items-center justify-between mb-6">
+      <div>
+        <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Gestion de Usuarios</h2>
+        <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{users.length} usuarios registrados</p>
+      </div>
+      <button onClick={() => setShowInvite(true)}
+        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all duration-200 hover:opacity-90"
+        style={{ backgroundColor: '#0F172A', boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}>
+        <UserPlus size={15} /> Nuevo Usuario
+      </button>
+    </div>
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-5">
         <div className="relative flex-1 min-w-[200px]">

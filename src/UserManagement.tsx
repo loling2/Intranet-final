@@ -291,18 +291,30 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const toggleSociety = (id: string) =>
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 
-// Cambia esto:
-const { data, error } = await supabase...
-
-// Por esto (usando alias):
-const { data, error: supaError } = await supabase
-  .from(tablaDestino)
-  .update(payload)
-  .eq('id', user.id)
-  .select();
-
-// Y luego usa supaError en lugar de error:
-if (supaError) throw supaError;
+  const handleSaveMeta = async () => {
+    // ... resto de tu código ...
+    
+    try {
+      // Usamos 'supaResponse' para evitar cualquier conflicto con variables llamadas 'error'
+      const supaResponse = await supabase
+        .from(tablaDestino)
+        .update(payload)
+        .eq('id', user.id)
+        .select();
+  
+      // Accedemos a los datos y al error desde supaResponse
+      if (supaResponse.error) throw supaResponse.error;
+      
+      console.log("Datos actualizados:", supaResponse.data);
+      
+      // ... éxito ...
+    } catch (err: any) {
+      // Aquí 'err' es el error que atrapamos, no hay conflicto
+      console.error("Error capturado:", err);
+      setError(err.message);
+    }
+    // ...
+  };
 
   const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());
   const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;

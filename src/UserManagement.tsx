@@ -684,11 +684,21 @@ export default function UserManagement({ currentUserRole }: Props) {
     return matchSearch && matchRole && matchStatus;
   });
 
+  const handleSaved = () => {
+    console.log("Refrescando datos desde Supabase...");
+    loadUsers();          // Esto recarga la lista de la DB
+    setEditingUser(null); // Esto cierra el modal automáticamente
+  };
+
   return (
     <div>
       {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={loadUsers} currentUserRole={currentUserRole} />}
       {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} currentUserRole={currentUserRole} />}
-
+      const handleSaved = () => {
+  console.log("Refrescando datos desde Supabase...");
+  loadUsers();          // Esto recarga la lista de la DB
+  setEditingUser(null); // Esto cierra el modal automáticamente
+};
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Gestion de Usuarios</h2>

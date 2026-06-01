@@ -290,35 +290,47 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
 
   const toggleSociety = (id: string) =>
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
+// ... dentro de EditUserModal ...
 
-  const handleSaveMeta = async () => {
-    setSavingMeta(true); setError('');
-    try {
-      // Detectamos la tabla basándonos en una propiedad (necesitas añadir 'source' en el loadUsers)
-      // O simplemente intenta en una y si falla, en la otra:
-      
-      let table = 'user_profiles';
-      // Si tu objeto tiene un campo que indique su origen (ej: 'source'), úsalo:
-      if ((user as any).source === 'employee') {
-        table = 'empleados';
-      }
+const handleSaveMeta = async () => {
+  setSavingMeta(true); 
+  setError('');
   
-      const { error: err } = await supabase
-        .from(table) 
-        .update({ role, activo, societies: selectedSocieties })
-        .eq('id', user.id);
-  
-      if (err) throw err;
-      
-      onSaved();
-      setMetaSuccess(true);
-    } catch (err: unknown) {
-      setError('Error al guardar en ' + table);
-    } finally {
-      setSavingMeta(false);
+  try {
+    // 1. PRIMERO: Intentar obtener el usuario de Auth para ver si es un usuario "real" de sistema
+    const { data: { user: authUser }, error: authError } = await supabase.auth.admin.getUserById(user.id);
+
+    // 2. Lógica condicional:
+    if (authUser) {
+      // Si el usuario existe en Auth, procedemos con las operaciones administrativas
+      // Aquí puedes llamar a tu RPC o hacer los updates que necesites
+      console.log("Usuario sincronizado, procediendo...");
+    } else {
+      // Si el usuario NO existe en Auth, es un usuario local (huérfano).
+      // NO intentes llamar a funciones de gestión de Auth/RPC que requieran ID en Auth.
+      console.warn("Usuario no encontrado en Auth, gestionando solo como perfil local.");
     }
-  };
 
+    // 3. ACTUALIZACIÓN LOCAL (Esto siempre debe ejecutarse si el usuario existe en tus tablas)
+    let table = (user as any).source === 'employee' ? 'empleados' : 'user_profiles';
+
+    const { error: err } = await supabase
+      .from(table) 
+      .update({ role, activo, societies: selectedSocieties })
+      .eq('id', user.id);
+
+    if (err) throw err;
+    
+    onSaved();
+    setMetaSuccess(true);
+    
+  } catch (err: unknown) {
+    console.error("Error al guardar:", err);
+    setError('Error al actualizar datos en base de datos local.');
+  } finally {
+    setSavingMeta(false);
+  }
+};
   const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());
   const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;
 

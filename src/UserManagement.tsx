@@ -610,85 +610,89 @@ export default function UserManagement({ currentUserRole }: Props) {
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
 
-// 1. Función para cargar usuarios
-const loadUsers = useCallback(async () => {
-  setLoading(true);
-  try {
-    const { data, error } = await supabase.from('user_profiles').select('*');
-    if (error) console.error("Error:", error);
-    console.log("Usuarios cargados en Gestión:", data);
-    setUsers(data || []);
-  } catch (err) {
-    console.error("Error inesperado:", err);
-  } finally {
-    setLoading(false);
-  }
-}, []);
-
-useEffect(() => { loadUsers(); }, [loadUsers]);
-
-// 2. Filtro robusto (protegido contra null/undefined)
-const filtered = users.filter((u) => {
-  const nombre = (u.nombre || "").toLowerCase();
-  const email = (u.email || "").toLowerCase();
-  const searchLower = (search || "").toLowerCase();
-
-  const matchSearch = !search || nombre.includes(searchLower) || email.includes(searchLower);
-  const matchRole = !filterRole || u.role === filterRole;
-  const matchStatus = filterStatus === '' ? true : filterStatus === 'activo' ? (u.activo === true) : (u.activo === false);
+  const UserManagement = () => {
+    // ... aquí irían tus estados: const [users, setUsers] = useState([]);, etc.
   
-  return matchSearch && matchRole && matchStatus;
-});
-
-return (
-  <div>
-    {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={loadUsers} currentUserRole={currentUserRole} />}
-    {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} currentUserRole={currentUserRole} />}
-
-    <div className="flex items-center justify-between mb-6">
-      <div>
-        <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Gestion de Usuarios</h2>
-        <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{filtered.length} usuarios registrados</p>
-      </div>
-      <button onClick={() => setShowInvite(true)}
-        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all duration-200 hover:opacity-90"
-        style={{ backgroundColor: '#0F172A', boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}>
-        <UserPlus size={15} /> Nuevo Usuario
-      </button>
-    </div>
-
-    {/* 3. Renderizado de la lista filtrada */}
-    <div className="divide-y divide-slate-100">
-      {filtered && filtered.length > 0 ? (
-        filtered.map((u) => {
-          const roleKey = u.role && ROLE_COLORS[u.role] ? u.role : 'employee';
-          const rc = ROLE_COLORS[roleKey];
-
-          return (
-            <div key={u.id} className="px-6 py-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-center hover:bg-slate-50 transition-colors">
-              <div className="sm:col-span-3 min-w-0">
-                <p className="text-sm font-semibold text-slate-900 truncate">{u.nombre || u.email || 'Sin nombre'}</p>
-                {u.nombre && u.nombre !== u.email && <p className="text-xs text-slate-400 truncate">{u.email}</p>}
-              </div>
-              <div className="sm:col-span-2">
-                <span className="text-[10px] font-bold px-2 py-1 rounded" style={{ backgroundColor: rc.bg, color: rc.text }}>{rc.label}</span>
-              </div>
-              <div className="sm:col-span-6 text-xs text-slate-500">{u.activo ? '✅ Activo' : '❌ Inactivo'}</div>
-              <div className="sm:col-span-1 text-right">
-                <button onClick={() => setEditingUser(u)} className="p-2 hover:bg-slate-200 rounded">Editar</button>
-              </div>
-            </div>
-          );
-        })
-      ) : (
-        <div className="p-8 text-center text-slate-500">
-          {loading ? "Cargando usuarios..." : "No hay usuarios que coincidan con los filtros."}
+    // 1. Función para cargar usuarios
+    const loadUsers = useCallback(async () => {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase.from('user_profiles').select('*');
+        if (error) console.error("Error:", error);
+        console.log("Usuarios cargados en Gestión:", data);
+        setUsers(data || []);
+      } catch (err) {
+        console.error("Error inesperado:", err);
+      } finally {
+        setLoading(false);
+      }
+    }, []);
+  
+    useEffect(() => { loadUsers(); }, [loadUsers]);
+  
+    // 2. Filtro robusto
+    const filtered = users.filter((u) => {
+      const nombre = (u.nombre || "").toLowerCase();
+      const email = (u.email || "").toLowerCase();
+      const searchLower = (search || "").toLowerCase();
+  
+      const matchSearch = !search || nombre.includes(searchLower) || email.includes(searchLower);
+      const matchRole = !filterRole || u.role === filterRole;
+      const matchStatus = filterStatus === '' ? true : filterStatus === 'activo' ? (u.activo === true) : (u.activo === false);
+      
+      return matchSearch && matchRole && matchStatus;
+    });
+  
+    // 3. RETORNO DEL COMPONENTE
+    return (
+      <div className="w-full"> 
+        {/* Todo tu contenido debe estar dentro de este div o un <></> */}
+        {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={loadUsers} currentUserRole={currentUserRole} />}
+        {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} currentUserRole={currentUserRole} />}
+  
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Gestion de Usuarios</h2>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{filtered.length} usuarios registrados</p>
+          </div>
+          <button onClick={() => setShowInvite(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all duration-200 hover:opacity-90"
+            style={{ backgroundColor: '#0F172A', boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}>
+            <UserPlus size={15} /> Nuevo Usuario
+          </button>
         </div>
-      )}
-    </div>
-  </div>
-);
-
+  
+        <div className="divide-y divide-slate-100">
+          {filtered && filtered.length > 0 ? (
+            filtered.map((u) => {
+              const roleKey = u.role && ROLE_COLORS[u.role] ? u.role : 'employee';
+              const rc = ROLE_COLORS[roleKey];
+  
+              return (
+                <div key={u.id} className="px-6 py-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-center hover:bg-slate-50 transition-colors">
+                  <div className="sm:col-span-3 min-w-0">
+                    <p className="text-sm font-semibold text-slate-900 truncate">{u.nombre || u.email || 'Sin nombre'}</p>
+                    {u.nombre && u.nombre !== u.email && <p className="text-xs text-slate-400 truncate">{u.email}</p>}
+                  </div>
+                  <div className="sm:col-span-2">
+                    <span className="text-[10px] font-bold px-2 py-1 rounded" style={{ backgroundColor: rc.bg, color: rc.text }}>{rc.label}</span>
+                  </div>
+                  <div className="sm:col-span-6 text-xs text-slate-500">{u.activo ? '✅ Activo' : '❌ Inactivo'}</div>
+                  <div className="sm:col-span-1 text-right">
+                    <button onClick={() => setEditingUser(u)} className="p-2 hover:bg-slate-200 rounded">Editar</button>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="p-8 text-center text-slate-500">
+              {loading ? "Cargando usuarios..." : "No hay usuarios que coincidan con los filtros."}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-5">
         <div className="relative flex-1 min-w-[200px]">

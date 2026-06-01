@@ -294,29 +294,32 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const handleSaveMeta = async () => {
     setSavingMeta(true);
     setError('');
-    
-    // 1. Definimos la tabla fuera del try para que sea accesible globalmente en la función
-    let table = 'user_profiles';
-    
-    // Determinamos la tabla
-    if ((user as any).source === 'employee') {
-      table = 'empleados';
-    }
   
+    // Depuración: mira qué está pasando realmente
+    console.log("Editando usuario:", user); 
+    
+    // Opción segura: determina la tabla basándote en un identificador único 
+    // o asegura que el campo source exista siempre al cargar los usuarios.
+    const table = (user as any).source === 'employee' ? 'empleados' : 'user_profiles';
+    
     try {
-      const { error: err } = await supabase
+      const { data, error: err } = await supabase
         .from(table) 
-        .update({ role, activo, societies: selectedSocieties })
-        .eq('id', user.id);
+        .update({ 
+          role: role, 
+          activo: activo, 
+          societies: selectedSocieties 
+        })
+        .eq('id', user.id); // Asegúrate de que user.id existe
   
       if (err) throw err;
       
+      console.log(`Guardado exitoso en ${table}`);
       onSaved();
       setMetaSuccess(true);
-    } catch (err: unknown) {
-      // 2. Ahora 'table' es accesible aquí sin problemas
-      console.error(`Error al guardar en ${table}:`, err);
-      setError(`Error al guardar en ${table}: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } catch (err: any) {
+      console.error("Error técnico:", err);
+      setError(`No se pudo actualizar en ${table}: ${err.message}`);
     } finally {
       setSavingMeta(false);
     }

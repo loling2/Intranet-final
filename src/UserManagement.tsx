@@ -609,31 +609,39 @@ export default function UserManagement({ currentUserRole }: Props) {
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
-
   const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Llamamos a ambas tablas
+      // 1. Cargar ambas fuentes
       const [resProfiles, resEmpleados] = await Promise.all([
         supabase.from('user_profiles').select('*'),
         supabase.from('empleados').select('*')
       ]);
   
-      const profiles = resProfiles.data || [];
-      const empleados = resEmpleados.data || [];
+      // 2. Normalizar: forzar que todos los objetos tengan la misma forma
+      const profiles = (resProfiles.data || []).map(p => ({
+        ...p,
+        source: 'profile' as const
+      }));
   
-      // 2. Aquí añadimos el origen (source) a cada uno
-      const usuariosConOrigen = [
-        ...profiles.map(u => ({ ...u, source: 'profile' })),
-        ...empleados.map(e => ({ ...e, source: 'employee' }))
-      ];
+      const empleados = (resEmpleados.data || []).map(e => ({
+        id: e.id,
+        nombre: e.nombre || e.nombre_completo || 'Sin nombre', // Maneja diferentes nombres de columna
+        email: e.email || '',
+        role: e.role || 'employee',
+        activo: e.activo ?? true,
+        pin: e.pin || null,
+        societies: e.societies || [],
+        source: 'employee' as const
+      }));
   
-      // 3. Eliminamos posibles duplicados por email para que no aparezcan dos veces
-      const unicos = Array.from(new Map(usuariosConOrigen.map(u => [u.email, u])).values());
+      // 3. Unir y limpiar duplicados (si el email ya está en profiles, no agregamos el de empleados)
+      const combined = [...profiles, ...empleados];
+      const unique = Array.from(new Map(combined.map(u => [u.email, u])).values());
   
-      setUsers(unicos as UserProfile[]); // Asegúrate de que UserProfile acepte la prop source
+      setUsers(unique as UserProfile[]);
     } catch (err) {
-      console.error("Error al cargar:", err);
+      console.error("Error al cargar usuarios:", err);
     } finally {
       setLoading(false);
     }

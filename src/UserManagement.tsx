@@ -296,34 +296,36 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     setError('');
   
     const esEmpleado = (user as any).source === 'employee';
-    const tablaDestino = esEmpleado ? 'empleados' : 'user_profiles';
-  
-    // Construimos el objeto de datos dinámicamente
-    // 'activo' existe en ambas tablas, así que lo enviamos siempre
-    const payload: any = { activo: activo };
-  
-    // Solo enviamos role y societies si estamos en 'user_profiles'
-    if (!esEmpleado) {
-      payload.role = role;
-      payload.societies = selectedSocieties;
-    }
   
     try {
-      // IMPORTANTE: Buscamos por 'id', asegurándote que en tu 'loadUsers' 
-      // el 'id' sea el valor correcto (UUID).
-      const { error: err } = await supabase
-        .from(tablaDestino)
-        .update(payload)
-        .eq('id', user.id); // Usamos el identificador único
+      // 1. Siempre guardamos el estado 'activo' en su tabla de origen
+      const { error: err1 } = await supabase
+        .from(esEmpleado ? 'empleados' : 'user_profiles')
+        .update({ activo: activo })
+        .eq('id', user.id);
+      if (err1) throw err1;
   
-      if (err) throw err;
+      // 2. Guardamos rol y sociedades SOLO en user_profiles
+      // (Si es empleado, necesitamos su user_id para actualizar su perfil)
+      if (esEmpleado) {
+        const { error: err2 } = await supabase
+          .from('user_profiles')
+          .update({ role, societies: selectedSocieties })
+          .eq('id', (user as any).user_id); // Usamos el ID del perfil vinculado
+        if (err2) throw err2;
+      } else {
+        // Si ya era un perfil, guardamos directo
+        const { error: err3 } = await supabase
+          .from('user_profiles')
+          .update({ role, societies: selectedSocieties })
+          .eq('id', user.id);
+        if (err3) throw err3;
+      }
   
+      onSaved();
       setMetaSuccess(true);
-      setTimeout(() => setMetaSuccess(false), 2500);
-      onSaved(); // Refresca la lista
     } catch (err: any) {
-      console.error("Error al guardar:", err);
-      setError(`Error al guardar: ${err.message}`);
+      setError('Error: ' + err.message);
     } finally {
       setSavingMeta(false);
     }

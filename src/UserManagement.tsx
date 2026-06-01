@@ -292,28 +292,44 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 
   const handleSaveMeta = async () => {
-    // ... resto de tu código ...
-    
+    // 1. Declaración segura de la variable
+    const esEmpleado = (user as any).source === 'employee';
+    const tablaDestino = esEmpleado ? 'empleados' : 'user_profiles';
+  
+    setSavingMeta(true);
+    setError('');
+  
+    // 2. Construcción del payload
+    const payload: any = { activo: activo };
+    if (!esEmpleado) {
+      payload.role = role;
+      payload.societies = selectedSocieties;
+    }
+  
     try {
-      // Usamos 'supaResponse' para evitar cualquier conflicto con variables llamadas 'error'
+      // 3. Ejecución con nombre único para evitar conflictos con 'error'
       const supaResponse = await supabase
         .from(tablaDestino)
         .update(payload)
         .eq('id', user.id)
         .select();
   
-      // Accedemos a los datos y al error desde supaResponse
       if (supaResponse.error) throw supaResponse.error;
+  
+      console.log("¡Éxito! Datos actualizados en", tablaDestino, supaResponse.data);
       
-      console.log("Datos actualizados:", supaResponse.data);
+      setMetaSuccess(true);
+      setTimeout(() => setMetaSuccess(false), 2500);
       
-      // ... éxito ...
+      // IMPORTANTE: Esto refresca la lista en el padre
+      if (onSaved) onSaved(); 
+  
     } catch (err: any) {
-      // Aquí 'err' es el error que atrapamos, no hay conflicto
       console.error("Error capturado:", err);
-      setError(err.message);
+      setError(err.message || "Error desconocido");
+    } finally {
+      setSavingMeta(false);
     }
-    // ...
   };
 
   const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());

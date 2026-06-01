@@ -291,24 +291,18 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const toggleSociety = (id: string) =>
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 
-// ... dentro de tu try { ...
-const { data, error } = await supabase
+// Cambia esto:
+const { data, error } = await supabase...
+
+// Por esto (usando alias):
+const { data, error: supaError } = await supabase
   .from(tablaDestino)
   .update(payload)
   .eq('id', user.id)
-  .select(); // <--- Esto es vital
+  .select();
 
-if (error) throw error;
-
-// ¡Aquí está la verdad!
-if (!data || data.length === 0) {
-  console.warn("ADVERTENCIA: La consulta se ejecutó, pero NO se encontró ninguna fila con ID:", user.id);
-  setError("El usuario no existe en la tabla " + tablaDestino + " con ese ID.");
-} else {
-  console.log("¡Éxito! Fila actualizada:", data);
-  setMetaSuccess(true);
-  onSaved();
-}
+// Y luego usa supaError en lugar de error:
+if (supaError) throw supaError;
 
   const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());
   const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;

@@ -613,22 +613,23 @@ export default function UserManagement({ currentUserRole }: Props) {
   const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
-      // Realizamos ambas consultas en paralelo para ser más rápidos
-      const [profilesResult, employeesResult] = await Promise.all([
-        supabase.from('user_profiles').select('*'),
-        supabase.from('empleados').select('*')
-      ]);
+      // Ejecutamos por separado para capturar errores individuales
+      const { data: profiles, error: err1 } = await supabase.from('user_profiles').select('*');
+      if (err1) console.error("Error en user_profiles:", err1);
   
-      const profiles = profilesResult.data || [];
-      const employees = employeesResult.data || [];
+      const { data: employees, error: err2 } = await supabase.from('empleados').select('*');
+      if (err2) console.error("Error en empleados:", err2);
   
-      // Combinamos las listas (asegúrate de evitar duplicados si es necesario)
-      // Aquí simplemente unimos ambos arrays
-      const combinedData = [...profiles, ...employees];
+      const p = profiles || [];
+      const e = employees || [];
       
-      setUsers(combinedData);
+      // Combinamos y filtramos duplicados por email
+      const combined = [...p, ...e];
+      const unique = Array.from(new Map(combined.map(item => [item.email, item])).values());
+      
+      setUsers(unique);
     } catch (err) {
-      console.error("Error al cargar datos:", err);
+      console.error("Error general:", err);
     } finally {
       setLoading(false);
     }
@@ -705,51 +706,63 @@ export default function UserManagement({ currentUserRole }: Props) {
               <div className="col-span-1 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Acc.</div>
             </div>
             {filtered.map((u) => {
-              const rc = ROLE_COLORS[u.role];
-              const userSocieties = (u.societies ?? []).map((sid) => societies.find((s) => s.id === sid)).filter(Boolean);
-              return (
-                <div key={u.id} className="px-6 py-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-center hover:bg-slate-50 transition-colors duration-150">
-                  <div className="sm:col-span-4 flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
-                      {u.nombre.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>{u.nombre}</p>
-                      <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{u.email}</p>
-                    </div>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-md" style={{ backgroundColor: rc.bg, color: rc.text, border: `1px solid ${rc.border}` }}>
-                      {rc.label}
-                    </span>
-                  </div>
-                  <div className="sm:col-span-2 flex flex-wrap gap-1">
-                    {userSocieties.length === 0
-                      ? <span className="text-xs" style={{ color: '#94A3B8' }}>Todas</span>
-                      : userSocieties.slice(0, 3).map((s) => s && (
-                        <span key={s.id} className="text-xs font-medium px-1.5 py-0.5 rounded" style={{ backgroundColor: s.primaryLight, color: s.primary }}>{s.logoLetter}</span>
-                      ))}
-                  </div>
-                  <div className="sm:col-span-1">
-                    {u.pin
-                      ? <span className="text-xs font-mono font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>{u.pin}</span>
-                      : <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>}
-                  </div>
-                  <div className="sm:col-span-2">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: u.activo ? '#22C55E' : '#EF4444' }} />
-                      <span className="text-xs" style={{ color: u.activo ? '#16A34A' : '#DC2626' }}>{u.activo ? 'Activo' : 'Inactivo'}</span>
-                    </div>
-                  </div>
-                  <div className="sm:col-span-1 flex items-center gap-1">
-                    <button onClick={() => setEditingUser(u)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-slate-100" title="Editar usuario">
-                      <Edit2 size={13} style={{ color: '#64748B' }} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+  // Estandarizamos los campos: si falta 'nombre', busca 'full_name' o 'nombre_completo'
+  const nombre = u.nombre || u.full_name || u.nombre_completo || 'Sin nombre';
+  const role = u.role || 'employee'; // Fallback a 'employee' si no tiene rol
+  const rc = ROLE_COLORS[role] || ROLE_COLORS.employee;
+  
+  // Seguridad: Si 'societies' no existe, lo tratamos como array vacío
+  const sociedades = u.societies || [];
+  const userSocieties = sociedades.map((sid) => societies.find((s) => s.id === sid)).filter(Boolean);
+
+  return (
+    <div key={u.id} className="px-6 py-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-center hover:bg-slate-50 transition-colors duration-150">
+      <div className="sm:col-span-4 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
+          {nombre.charAt(0).toUpperCase()}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>{nombre}</p>
+          <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{u.email}</p>
+        </div>
+      </div>
+
+      <div className="sm:col-span-2">
+        <span className="text-xs font-semibold px-2.5 py-1 rounded-md" style={{ backgroundColor: rc.bg, color: rc.text, border: `1px solid ${rc.border}` }}>
+          {rc.label}
+        </span>
+      </div>
+
+      <div className="sm:col-span-2 flex flex-wrap gap-1">
+        {userSocieties.length === 0
+          ? <span className="text-xs" style={{ color: '#94A3B8' }}>Todas</span>
+          : userSocieties.slice(0, 3).map((s) => s && (
+            <span key={s.id} className="text-xs font-medium px-1.5 py-0.5 rounded" style={{ backgroundColor: s.primaryLight, color: s.primary }}>{s.logoLetter}</span>
+          ))}
+      </div>
+
+      <div className="sm:col-span-1">
+        {u.pin
+          ? <span className="text-xs font-mono font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>{u.pin}</span>
+          : <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>}
+      </div>
+
+      <div className="sm:col-span-2">
+        <div className="flex items-center gap-1.5">
+          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: u.activo ? '#22C55E' : '#EF4444' }} />
+          <span className="text-xs" style={{ color: u.activo ? '#16A34A' : '#DC2626' }}>{u.activo ? 'Activo' : 'Inactivo'}</span>
+        </div>
+      </div>
+
+      <div className="sm:col-span-1 flex items-center gap-1">
+        <button onClick={() => setEditingUser(u)}
+          className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-slate-100" title="Editar usuario">
+          <Edit2 size={13} style={{ color: '#64748B' }} />
+        </button>
+      </div>
+    </div>
+  );
+})}
           </div>
         )}
       </div>

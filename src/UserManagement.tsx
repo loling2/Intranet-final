@@ -733,12 +733,84 @@ export default function UserManagement({ currentUserRole }: Props) {
                       <span className="text-xs" style={{ color: u.activo ? '#16A34A' : '#DC2626' }}>{u.activo ? 'Activo' : 'Inactivo'}</span>
                     </div>
                   </div>
-                  <div className="sm:col-span-1 flex items-center gap-1">
-                    <button onClick={() => setEditingUser(u)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-slate-100" title="Editar usuario">
-                      <Edit2 size={13} style={{ color: '#64748B' }} />
-                    </button>
-                  </div>
+                 {/* Bloque de renderizado seguro */}
+<div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
+  {filtered && filtered.length > 0 ? (
+    filtered.map((u) => {
+      // 1. Fallback: Si u.role no existe, asignamos 'employee' por defecto
+      const roleKey = u.role && ROLE_COLORS[u.role] ? u.role : 'employee';
+      const rc = ROLE_COLORS[roleKey];
+
+      return (
+        <div key={u.id} className="px-6 py-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-center hover:bg-slate-50 transition-colors duration-150">
+          {/* Columna Nombre y Email */}
+          <div className="sm:col-span-3 min-w-0">
+            <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>
+              {u.nombre || 'Sin nombre'}
+            </p>
+            <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{u.email}</p>
+          </div>
+
+          {/* Columna Rol */}
+          <div className="sm:col-span-2">
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-md" 
+                  style={{ backgroundColor: rc.bg, color: rc.text, border: `1px solid ${rc.border}` }}>
+              {rc.label}
+            </span>
+          </div>
+
+          {/* Columna Sociedades */}
+          <div className="sm:col-span-2 flex flex-wrap gap-1">
+            {u.societies?.map((socId: string) => {
+              const soc = societies.find(s => s.id === socId);
+              return soc ? (
+                <span key={socId} className="text-[10px] font-bold px-1.5 py-0.5 rounded" 
+                      style={{ backgroundColor: `${soc.primary}20`, color: soc.primary }}>
+                  {soc.logoLetter}
+                </span>
+              ) : null;
+            })}
+          </div>
+
+          {/* Columna PIN */}
+          <div className="sm:col-span-1">
+            {u.pin ? (
+              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded" 
+                    style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                {u.pin}
+              </span>
+            ) : <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>}
+          </div>
+
+          {/* Columna Estado */}
+          <div className="sm:col-span-2">
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: u.activo ? '#22C55E' : '#EF4444' }} />
+              <span className="text-xs" style={{ color: u.activo ? '#16A34A' : '#DC2626' }}>
+                {u.activo ? 'Activo' : 'Inactivo'}
+              </span>
+            </div>
+          </div>
+
+          {/* Botón de Edición (EL DIV QUE PEDISTE) */}
+          <div className="sm:col-span-1 flex items-center justify-end gap-1">
+            <button 
+              onClick={() => setEditingUser(u)}
+              className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-slate-100" 
+              title="Editar usuario"
+            >
+              <Edit2 size={13} style={{ color: '#64748B' }} />
+            </button>
+          </div>
+        </div>
+      );
+    })
+  ) : (
+    <div className="p-10 text-center" style={{ color: '#94A3B8' }}>
+      No hay usuarios que coincidan con los filtros.
+    </div>
+  )}
+</div>
                 </div>
               );
             })}

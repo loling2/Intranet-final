@@ -610,72 +610,84 @@ export default function UserManagement({ currentUserRole }: Props) {
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
 
-// ... importaciones ...
+// 1. Función para cargar usuarios
+const loadUsers = useCallback(async () => {
+  setLoading(true);
+  try {
+    const { data, error } = await supabase.from('user_profiles').select('*');
+    if (error) console.error("Error:", error);
+    console.log("Usuarios cargados en Gestión:", data);
+    setUsers(data || []);
+  } catch (err) {
+    console.error("Error inesperado:", err);
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
-const UserManagement = () => {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(false);
+useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  // MANTÉN ESTO (Función de carga)
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.from('user_profiles').select('*');
-      if (error) console.error("Error:", error);
-      console.log("Usuarios cargados en Gestión:", data);
-      setUsers(data || []);
-    } catch (err) {
-      console.error("Error inesperado:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+// 2. Filtro robusto (protegido contra null/undefined)
+const filtered = users.filter((u) => {
+  const nombre = (u.nombre || "").toLowerCase();
+  const email = (u.email || "").toLowerCase();
+  const searchLower = (search || "").toLowerCase();
 
-  useEffect(() => { loadUsers(); }, [loadUsers]);
+  const matchSearch = !search || nombre.includes(searchLower) || email.includes(searchLower);
+  const matchRole = !filterRole || u.role === filterRole;
+  const matchStatus = filterStatus === '' ? true : filterStatus === 'activo' ? (u.activo === true) : (u.activo === false);
+  
+  return matchSearch && matchRole && matchStatus;
+});
 
-  return (
-    <div>
-      {/* ... otros elementos de tu página ... */}
+return (
+  <div>
+    {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={loadUsers} currentUserRole={currentUserRole} />}
+    {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} currentUserRole={currentUserRole} />}
 
-      {/* AQUÍ SUSTITUYES EL BLOQUE ANTIGUO POR EL NUEVO DE RENDERIZADO */}
-      <div className="divide-y divide-slate-100">
-        {users && users.length > 0 ? (
-          users.map((u) => (
-            /* ... aquí va la lógica de renderizado que te pasé ... */
-          ))
-        ) : (
-          <div>{loading ? "Cargando..." : "No hay usuarios"}</div>
-        )}
+    <div className="flex items-center justify-between mb-6">
+      <div>
+        <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Gestion de Usuarios</h2>
+        <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{filtered.length} usuarios registrados</p>
       </div>
+      <button onClick={() => setShowInvite(true)}
+        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all duration-200 hover:opacity-90"
+        style={{ backgroundColor: '#0F172A', boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}>
+        <UserPlus size={15} /> Nuevo Usuario
+      </button>
     </div>
-  );
-};
 
-  useEffect(() => { loadUsers(); }, [loadUsers]);
+    {/* 3. Renderizado de la lista filtrada */}
+    <div className="divide-y divide-slate-100">
+      {filtered && filtered.length > 0 ? (
+        filtered.map((u) => {
+          const roleKey = u.role && ROLE_COLORS[u.role] ? u.role : 'employee';
+          const rc = ROLE_COLORS[roleKey];
 
-  const filtered = users.filter((u) => {
-    const matchSearch = !search || u.nombre.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
-    const matchRole = !filterRole || u.role === filterRole;
-    const matchStatus = filterStatus === '' ? true : filterStatus === 'activo' ? u.activo : !u.activo;
-    return matchSearch && matchRole && matchStatus;
-  });
-
-  return (
-    <div>
-      {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={loadUsers} currentUserRole={currentUserRole} />}
-      {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} currentUserRole={currentUserRole} />}
-
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Gestion de Usuarios</h2>
-          <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{users.length} usuarios registrados</p>
+          return (
+            <div key={u.id} className="px-6 py-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-center hover:bg-slate-50 transition-colors">
+              <div className="sm:col-span-3 min-w-0">
+                <p className="text-sm font-semibold text-slate-900 truncate">{u.nombre || u.email || 'Sin nombre'}</p>
+                {u.nombre && u.nombre !== u.email && <p className="text-xs text-slate-400 truncate">{u.email}</p>}
+              </div>
+              <div className="sm:col-span-2">
+                <span className="text-[10px] font-bold px-2 py-1 rounded" style={{ backgroundColor: rc.bg, color: rc.text }}>{rc.label}</span>
+              </div>
+              <div className="sm:col-span-6 text-xs text-slate-500">{u.activo ? '✅ Activo' : '❌ Inactivo'}</div>
+              <div className="sm:col-span-1 text-right">
+                <button onClick={() => setEditingUser(u)} className="p-2 hover:bg-slate-200 rounded">Editar</button>
+              </div>
+            </div>
+          );
+        })
+      ) : (
+        <div className="p-8 text-center text-slate-500">
+          {loading ? "Cargando usuarios..." : "No hay usuarios que coincidan con los filtros."}
         </div>
-        <button onClick={() => setShowInvite(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all duration-200 hover:opacity-90"
-          style={{ backgroundColor: '#0F172A', boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}>
-          <UserPlus size={15} /> Nuevo Usuario
-        </button>
-      </div>
+      )}
+    </div>
+  </div>
+);
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-5">

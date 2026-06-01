@@ -292,43 +292,53 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 
   const handleSaveMeta = async () => {
-    setSavingMeta(true); 
+    setSavingMeta(true);
     setError('');
   
-    // 1. Detectamos la tabla basándonos en la propiedad 'source' que normalizamos en loadUsers
-    const tablaDestino = (user as any).source === 'employee' ? 'empleados' : 'user_profiles';
+    const esEmpleado = (user as any).source === 'employee';
+    const tablaDestino = esEmpleado ? 'empleados' : 'user_profiles';
+  
+    // Construimos el objeto dinámicamente según la tabla
+    const payload: any = {
+      activo: activo // Existe en ambas tablas
+    };
+  
+    // Solo añadimos los campos que existen en cada tabla
+    if (!esEmpleado) {
+      // Si es user_profiles
+      payload.role = role;
+      payload.societies = selectedSocieties;
+    } else {
+      // Si es empleados, añadimos lo que SÍ existe en empleados
+      // (Por ejemplo: puesto, turno, etc., si quisieras editarlos)
+      // Pero NO añadimos role ni societies porque no existen en esa tabla
+    }
   
     try {
-      // 2. Realizamos el update en la tabla correcta dinámicamente
       const { error: err } = await supabase
-        .from(tablaDestino) 
-        .update({ 
-          role, 
-          activo, 
-          societies: selectedSocieties 
-        })
+        .from(tablaDestino)
+        .update(payload)
         .eq('id', user.id);
   
       if (err) throw err;
   
-      // 3. Log de auditoría
+      // Log de auditoría
       if (profile) {
-        await writeAuditLog({ 
-          evento: 'user_meta_changed', 
-          descripcion: `Perfil de ${user.nombre} actualizado en ${tablaDestino}: rol=${role}, activo=${activo}`, 
-          autor: profile, 
-          entidad: 'user', 
-          entidad_id: user.id 
+        await writeAuditLog({
+          evento: 'user_meta_changed',
+          descripcion: `Perfil de ${user.nombre} actualizado en ${tablaDestino}`,
+          autor: profile,
+          entidad: 'user',
+          entidad_id: user.id
         });
       }
   
-      // 4. Éxito
       setMetaSuccess(true);
       setTimeout(() => setMetaSuccess(false), 2500);
-      onSaved(); // Esto refresca la lista completa en el componente padre
+      onSaved();
     } catch (err: unknown) {
       console.error("Error al guardar:", err);
-      setError(`Error al guardar en ${tablaDestino}: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+      setError(`Error al guardar en ${tablaDestino}.`);
     } finally {
       setSavingMeta(false);
     }

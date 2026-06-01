@@ -292,15 +292,18 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 // ... dentro de EditUserModal ...
 
-// En tu EditUserModal (dentro de handleSaveMeta)
 const handleSaveMeta = async () => {
   setSavingMeta(true); 
   setError('');
   
   try {
-    // 1. Intentamos actualizar solo la tabla pública (que es lo que sí existe)
-    let table = (user as any).source === 'employee' ? 'empleados' : 'user_profiles';
-    
+    // 1. Detectar la tabla correcta
+    let table = 'user_profiles';
+    if ((user as any).source === 'employee') {
+      table = 'empleados';
+    }
+
+    // 2. Intentar actualizar la tabla pública (operación segura)
     const { error: updateErr } = await supabase
       .from(table) 
       .update({ role, activo, societies: selectedSocieties })
@@ -308,21 +311,24 @@ const handleSaveMeta = async () => {
 
     if (updateErr) throw updateErr;
 
-    // 2. Solo intentamos operaciones de Auth si sabemos que el usuario existe ahí
-    // Nota: Como no podemos consultar fácilmente auth.users desde el cliente,
-    // podemos usar un try/catch específico para las llamadas a callManageUser
+    // 3. Bloque de protección:
+    // Aquí es donde intentarías llamar a cualquier función externa (RPC o Admin API).
+    // Si la función falla porque el usuario no está en Auth, el catch interno evitará
+    // que el formulario marque un error global o se bloquee.
     try {
-      // Si el usuario tenía un PIN o password pendiente, 
-      // solo ejecutamos esto si es estrictamente necesario.
-      console.log("Actualización local exitosa.");
+      // Si tienes llamadas adicionales de sincronización, ponlas aquí:
+      // await callManageUser('update_role', user.id, { role });
+      console.log("Actualización de metadatos completada con éxito.");
     } catch (authErr) {
-      console.warn("No se pudo sincronizar con Auth, pero el perfil local se guardó.");
+      console.warn("Advertencia: El usuario no pudo sincronizarse con Auth, pero los datos locales se guardaron.");
+      // No lanzamos el error aquí para permitir que el usuario vea el éxito del guardado local
     }
       
     onSaved();
     setMetaSuccess(true);
   } catch (err: unknown) {
-    setError('Error al guardar: ' + (err as Error).message);
+    // Si falla el update de la base de datos (paso 2), ahí sí mostramos el error
+    setError('Error al guardar en ' + table + ': ' + (err as Error).message);
   } finally {
     setSavingMeta(false);
   }

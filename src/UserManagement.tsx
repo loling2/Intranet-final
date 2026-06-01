@@ -298,47 +298,32 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     const esEmpleado = (user as any).source === 'employee';
     const tablaDestino = esEmpleado ? 'empleados' : 'user_profiles';
   
-    // Construimos el objeto dinámicamente según la tabla
+    // 1. Preparamos el payload según la tabla
     const payload: any = {
-      activo: activo // Existe en ambas tablas
+      activo: activo // Esto existe en ambas tablas (¡Correcto!)
     };
   
-    // Solo añadimos los campos que existen en cada tabla
+    // Solo añadimos campos que realmente existan en cada tabla
     if (!esEmpleado) {
-      // Si es user_profiles
       payload.role = role;
       payload.societies = selectedSocieties;
-    } else {
-      // Si es empleados, añadimos lo que SÍ existe en empleados
-      // (Por ejemplo: puesto, turno, etc., si quisieras editarlos)
-      // Pero NO añadimos role ni societies porque no existen en esa tabla
     }
   
     try {
+      // 2. Ejecutamos el update
       const { error: err } = await supabase
         .from(tablaDestino)
         .update(payload)
-        .eq('id', user.id);
+        .eq('id', user.id); // <--- ¡IMPORTANTE!
   
       if (err) throw err;
   
-      // Log de auditoría
-      if (profile) {
-        await writeAuditLog({
-          evento: 'user_meta_changed',
-          descripcion: `Perfil de ${user.nombre} actualizado en ${tablaDestino}`,
-          autor: profile,
-          entidad: 'user',
-          entidad_id: user.id
-        });
-      }
-  
+      // 3. Éxito
       setMetaSuccess(true);
       setTimeout(() => setMetaSuccess(false), 2500);
-      onSaved();
+      onSaved(); 
     } catch (err: unknown) {
-      console.error("Error al guardar:", err);
-      setError(`Error al guardar en ${tablaDestino}.`);
+      setError('Error al guardar: ' + (err as Error).message);
     } finally {
       setSavingMeta(false);
     }

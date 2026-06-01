@@ -684,11 +684,15 @@ export default function UserManagement({ currentUserRole }: Props) {
     return matchSearch && matchRole && matchStatus;
   });
 
-  const handleSaved = () => {
-    console.log("Refrescando datos desde Supabase...");
-    loadUsers();          // Esto recarga la lista de la DB
-    setEditingUser(null); // Esto cierra el modal automáticamente
-  };
+// ... dentro de UserManagement, ANTES del 'return ('
+const handleSaved = () => {
+  console.log("Refrescando datos desde Supabase...");
+  loadUsers();
+  setEditingUser(null);
+};
+
+
+    {/* ... */}
 
   return (
     <div>

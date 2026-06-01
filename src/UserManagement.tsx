@@ -612,12 +612,29 @@ export default function UserManagement({ currentUserRole }: Props) {
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-    setUsers((data ?? []) as UserProfile[]);
-    setLoading(false);
+    try {
+      // 1. Vamos a traer TODO de user_profiles, sin filtros
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*');
+  
+      if (error) {
+        console.error("Error al cargar perfiles:", error);
+        return;
+      }
+  
+      // 2. LOG DE DIAGNÓSTICO: Esto nos dirá qué está pasando
+      console.log("Usuarios cargados en Gestión:", data);
+  
+      // 3. Si 'data' tiene los usuarios, los asignamos. 
+      // Si 'data' llega vacío, es que el problema es la consulta.
+      setUsers(data || []);
+      
+    } catch (err) {
+      console.error("Error inesperado:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);

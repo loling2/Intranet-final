@@ -294,6 +294,18 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const handleSaveMeta = async () => {
     setSavingMeta(true);
     
+    // Añadimos el diagnóstico de sesión
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log("Sesión actual:", session);
+    const userId = session?.user?.id;
+    console.log("User ID detectado:", userId);
+  
+    if (!userId) {
+      setError('Error: No se ha detectado una sesión válida. Por favor, inicia sesión de nuevo.');
+      setSavingMeta(false);
+      return; // Detenemos la ejecución aquí si no hay sesión
+    }
+  
     try {
       // 1. Actualizar datos básicos en la tabla de perfil
       const { error: profileError } = await supabase
@@ -303,7 +315,6 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
       if (profileError) throw profileError;
   
       // 2. Actualizar el rol en la nueva tabla 'user_roles'
-      // Primero borramos el rol anterior y luego insertamos el nuevo
       await supabase.from('user_roles').delete().eq('user_id', user.id);
       const { error: roleError } = await supabase
         .from('user_roles')

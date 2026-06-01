@@ -292,40 +292,33 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 
   const handleSaveMeta = async () => {
+    console.log("1. Iniciando guardado...");
     setSavingMeta(true);
     
-    // Añadimos el diagnóstico de sesión
     const { data: { session } } = await supabase.auth.getSession();
-    console.log("Sesión actual:", session);
-    const userId = session?.user?.id;
-    console.log("User ID detectado:", userId);
-  
-    if (!userId) {
-      setError('Error: No se ha detectado una sesión válida. Por favor, inicia sesión de nuevo.');
-      setSavingMeta(false);
-      return; // Detenemos la ejecución aquí si no hay sesión
-    }
+    console.log("2. Sesión obtenida:", session ? "Sí" : "No");
   
     try {
-      // 1. Actualizar datos básicos en la tabla de perfil
+      console.log("3. Intentando actualizar perfil...");
       const { error: profileError } = await supabase
         .from('user_profiles')
         .update({ activo, societies: selectedSocieties })
         .eq('id', user.id);
+      
       if (profileError) throw profileError;
+      console.log("4. Perfil actualizado correctamente");
   
-      // 2. Actualizar el rol en la nueva tabla 'user_roles'
-      await supabase.from('user_roles').delete().eq('user_id', user.id);
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({ user_id: user.id, role_name: role });
-      if (roleError) throw roleError;
-  
+      console.log("5. Actualizando roles...");
+      // ... resto del código
+      
       onSaved();
+      console.log("6. Guardado completado con éxito");
     } catch (err: any) {
+      console.error("ERROR DETECTADO:", err); // <-- ESTO TIENE QUE SALIR EN LA CONSOLA
       setError('Error al actualizar: ' + err.message);
     } finally {
       setSavingMeta(false);
+      console.log("7. Proceso finalizado (finally)");
     }
   };
   const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());

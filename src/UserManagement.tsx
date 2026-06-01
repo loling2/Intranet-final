@@ -294,12 +294,12 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const handleSaveMeta = async () => {
     setSavingMeta(true); 
     setError('');
-    
-    // 1. Determinamos la tabla dinámicamente según el origen (source)
+  
+    // 1. Detectamos la tabla basándonos en la propiedad 'source' que normalizamos en loadUsers
     const tablaDestino = (user as any).source === 'employee' ? 'empleados' : 'user_profiles';
   
     try {
-      // 2. Realizamos el update en la tabla correcta
+      // 2. Realizamos el update en la tabla correcta dinámicamente
       const { error: err } = await supabase
         .from(tablaDestino) 
         .update({ 
@@ -311,26 +311,26 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   
       if (err) throw err;
   
-      // 3. Log de auditoría (opcional: indicamos en qué tabla se hizo)
-      if (profile) await writeAuditLog({ 
-        evento: 'user_meta_changed', 
-        descripcion: `Perfil de ${user.nombre} actualizado en ${tablaDestino}: rol=${role}, activo=${activo}`, 
-        autor: profile, 
-        entidad: 'user', 
-        entidad_id: user.id 
-      });
+      // 3. Log de auditoría
+      if (profile) {
+        await writeAuditLog({ 
+          evento: 'user_meta_changed', 
+          descripcion: `Perfil de ${user.nombre} actualizado en ${tablaDestino}: rol=${role}, activo=${activo}`, 
+          autor: profile, 
+          entidad: 'user', 
+          entidad_id: user.id 
+        });
+      }
   
+      // 4. Éxito
       setMetaSuccess(true);
       setTimeout(() => setMetaSuccess(false), 2500);
-      
-      // 4. Refrescamos la lista en el componente padre
-      onSaved();
-      
-    } catch (err: unknown) { 
+      onSaved(); // Esto refresca la lista completa en el componente padre
+    } catch (err: unknown) {
       console.error("Error al guardar:", err);
-      setError(err instanceof Error ? err.message : 'Error al guardar en ' + tablaDestino); 
-    } finally { 
-      setSavingMeta(false); 
+      setError(`Error al guardar en ${tablaDestino}: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } finally {
+      setSavingMeta(false);
     }
   };
 

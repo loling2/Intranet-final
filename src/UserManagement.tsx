@@ -292,41 +292,37 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 // ... dentro de EditUserModal ...
 
+// En tu EditUserModal (dentro de handleSaveMeta)
 const handleSaveMeta = async () => {
   setSavingMeta(true); 
   setError('');
   
   try {
-    // 1. PRIMERO: Intentar obtener el usuario de Auth para ver si es un usuario "real" de sistema
-    const { data: { user: authUser }, error: authError } = await supabase.auth.admin.getUserById(user.id);
-
-    // 2. Lógica condicional:
-    if (authUser) {
-      // Si el usuario existe en Auth, procedemos con las operaciones administrativas
-      // Aquí puedes llamar a tu RPC o hacer los updates que necesites
-      console.log("Usuario sincronizado, procediendo...");
-    } else {
-      // Si el usuario NO existe en Auth, es un usuario local (huérfano).
-      // NO intentes llamar a funciones de gestión de Auth/RPC que requieran ID en Auth.
-      console.warn("Usuario no encontrado en Auth, gestionando solo como perfil local.");
-    }
-
-    // 3. ACTUALIZACIÓN LOCAL (Esto siempre debe ejecutarse si el usuario existe en tus tablas)
+    // 1. Intentamos actualizar solo la tabla pública (que es lo que sí existe)
     let table = (user as any).source === 'employee' ? 'empleados' : 'user_profiles';
-
-    const { error: err } = await supabase
+    
+    const { error: updateErr } = await supabase
       .from(table) 
       .update({ role, activo, societies: selectedSocieties })
       .eq('id', user.id);
 
-    if (err) throw err;
-    
+    if (updateErr) throw updateErr;
+
+    // 2. Solo intentamos operaciones de Auth si sabemos que el usuario existe ahí
+    // Nota: Como no podemos consultar fácilmente auth.users desde el cliente,
+    // podemos usar un try/catch específico para las llamadas a callManageUser
+    try {
+      // Si el usuario tenía un PIN o password pendiente, 
+      // solo ejecutamos esto si es estrictamente necesario.
+      console.log("Actualización local exitosa.");
+    } catch (authErr) {
+      console.warn("No se pudo sincronizar con Auth, pero el perfil local se guardó.");
+    }
+      
     onSaved();
     setMetaSuccess(true);
-    
   } catch (err: unknown) {
-    console.error("Error al guardar:", err);
-    setError('Error al actualizar datos en base de datos local.');
+    setError('Error al guardar: ' + (err as Error).message);
   } finally {
     setSavingMeta(false);
   }

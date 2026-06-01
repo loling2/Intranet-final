@@ -612,12 +612,26 @@ export default function UserManagement({ currentUserRole }: Props) {
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-    setUsers((data ?? []) as UserProfile[]);
-    setLoading(false);
+    try {
+      // Realizamos ambas consultas en paralelo para ser más rápidos
+      const [profilesResult, employeesResult] = await Promise.all([
+        supabase.from('user_profiles').select('*'),
+        supabase.from('empleados').select('*')
+      ]);
+  
+      const profiles = profilesResult.data || [];
+      const employees = employeesResult.data || [];
+  
+      // Combinamos las listas (asegúrate de evitar duplicados si es necesario)
+      // Aquí simplemente unimos ambos arrays
+      const combinedData = [...profiles, ...employees];
+      
+      setUsers(combinedData);
+    } catch (err) {
+      console.error("Error al cargar datos:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);

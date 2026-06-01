@@ -613,23 +613,36 @@ export default function UserManagement({ currentUserRole }: Props) {
   const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
-      // Ejecutamos por separado para capturar errores individuales
-      const { data: profiles, error: err1 } = await supabase.from('user_profiles').select('*');
-      if (err1) console.error("Error en user_profiles:", err1);
+      // 1. Cargamos ambas tablas
+      const [{ data: profiles }, { data: employees }] = await Promise.all([
+        supabase.from('user_profiles').select('*'),
+        supabase.from('empleados').select('*')
+      ]);
   
-      const { data: employees, error: err2 } = await supabase.from('empleados').select('*');
-      if (err2) console.error("Error en empleados:", err2);
+      // 2. Normalizamos los datos para que siempre tengan las mismas llaves
+      const normalizedProfiles = (profiles || []).map(p => ({
+        ...p,
+        source: 'profile'
+      }));
   
-      const p = profiles || [];
-      const e = employees || [];
-      
-      // Combinamos y filtramos duplicados por email
-      const combined = [...p, ...e];
+      const normalizedEmployees = (employees || []).map(e => ({
+        id: e.id,
+        nombre: e.nombre || e.nombre_completo || 'Sin nombre', // Normalizamos el nombre
+        email: e.email || '',
+        role: e.role || 'employee',
+        activo: e.activo ?? true,
+        pin: e.pin || null,
+        societies: e.societies || [],
+        source: 'employee'
+      }));
+  
+      // 3. Unimos, eliminando duplicados por email
+      const combined = [...normalizedProfiles, ...normalizedEmployees];
       const unique = Array.from(new Map(combined.map(item => [item.email, item])).values());
       
       setUsers(unique);
     } catch (err) {
-      console.error("Error general:", err);
+      console.error("Error al cargar:", err);
     } finally {
       setLoading(false);
     }

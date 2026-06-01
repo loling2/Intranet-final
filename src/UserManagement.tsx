@@ -612,11 +612,14 @@ export default function UserManagement({ currentUserRole }: Props) {
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('user_profiles')
+    // Cambiamos 'user_profiles' por la nueva vista 'all_users_view'
+    const { data, error } = await supabase
+      .from('all_users_view') 
       .select('*')
       .order('created_at', { ascending: false });
-    setUsers((data ?? []) as UserProfile[]);
+      
+    if (error) console.error("Error cargando usuarios:", error);
+    setUsers((data ?? []) as UserProfile[]); // Asegúrate de que el tipo UserProfile coincida
     setLoading(false);
   }, []);
 
@@ -700,9 +703,12 @@ export default function UserManagement({ currentUserRole }: Props) {
                       {u.nombre.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>{u.nombre}</p>
-                      <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{u.email}</p>
-                    </div>
+                    <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>
+  {u.nombre || 'Sin perfil configurado'}
+</p>
+<p className="text-xs truncate" style={{ color: '#94A3B8' }}>
+  {u.email}
+</p> </div>
                   </div>
                   <div className="sm:col-span-2">
                     <span className="text-xs font-semibold px-2.5 py-1 rounded-md" style={{ backgroundColor: rc.bg, color: rc.text, border: `1px solid ${rc.border}` }}>

@@ -293,38 +293,30 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
 
   const handleSaveMeta = async () => {
     setSavingMeta(true);
-    setError('');
-  
-    // Depuración: mira qué está pasando realmente
-    console.log("Editando usuario:", user); 
-    
-    // Opción segura: determina la tabla basándote en un identificador único 
-    // o asegura que el campo source exista siempre al cargar los usuarios.
-    const table = (user as any).source === 'employee' ? 'empleados' : 'user_profiles';
     
     try {
-      const { data, error: err } = await supabase
-        .from(table) 
-        .update({ 
-          role: role, 
-          activo: activo, 
-          societies: selectedSocieties 
-        })
-        .eq('id', user.id); // Asegúrate de que user.id existe
+      // 1. Actualizar datos básicos en la tabla de perfil
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .update({ activo, societies: selectedSocieties })
+        .eq('id', user.id);
+      if (profileError) throw profileError;
   
-      if (err) throw err;
-      
-      console.log(`Guardado exitoso en ${table}`);
+      // 2. Actualizar el rol en la nueva tabla 'user_roles'
+      // Primero borramos el rol anterior y luego insertamos el nuevo
+      await supabase.from('user_roles').delete().eq('user_id', user.id);
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({ user_id: user.id, role_name: role });
+      if (roleError) throw roleError;
+  
       onSaved();
-      setMetaSuccess(true);
     } catch (err: any) {
-      console.error("Error técnico:", err);
-      setError(`No se pudo actualizar en ${table}: ${err.message}`);
+      setError('Error al actualizar: ' + err.message);
     } finally {
       setSavingMeta(false);
     }
   };
-
   const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());
   const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;
 

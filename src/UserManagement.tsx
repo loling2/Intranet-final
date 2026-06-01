@@ -291,27 +291,45 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const toggleSociety = (id: string) =>
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 
-  console.log("5. Actualizando roles...");
-      
-  // 1. Borramos el rol existente de forma segura
-  const { error: deleteError } = await supabase
-    .from('user_roles')
-    .delete()
-    .eq('user_id', user.id);
-  
-  if (deleteError) throw deleteError;
-
-  // 2. Insertamos el nuevo rol (usando la variable 'role' que ya tienes)
-  const { error: roleError } = await supabase
-    .from('user_roles')
-    .insert({ user_id: user.id, role_name: role });
+  const handleSaveMeta = async () => {
+    console.log("1. Iniciando guardado...");
+    setSavingMeta(true);
     
-  if (roleError) throw roleError;
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log("2. Sesión obtenida:", session ? "Sí" : "No");
   
-  console.log("5.1 Roles actualizados correctamente");
+    try {
+      console.log("3. Intentando actualizar perfil...");
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .update({ activo, societies: selectedSocieties })
+        .eq('id', user.id);
+      
+      if (profileError) throw profileError;
+      console.log("4. Perfil actualizado correctamente");
   
-  onSaved();
-  console.log("6. Guardado completado con éxito");
+      console.log("5. Actualizando roles...");
+
+      // 1. Borramos el rol existente de forma segura
+      const { error: deleteError } = await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', user.id); // Asegúrate de usar el ID correcto del usuario
+      
+      if (deleteError) throw deleteError;
+
+      // 2. Insertamos el nuevo rol. 
+      // 'role' debe ser el valor que viene de tu estado o formulario.
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({ 
+          user_id: user.id, 
+          role_name: role 
+        });
+        
+      if (roleError) throw roleError;
+      
+      console.log("5.1 Roles actualizados correctamente");
   const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());
   const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;
 

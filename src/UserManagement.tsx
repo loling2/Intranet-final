@@ -294,14 +294,29 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const handleSaveMeta = async () => {
     setSavingMeta(true); setError('');
     try {
-      const { error: err } = await supabase.from('user_profiles').update({ role, activo, societies: selectedSocieties }).eq('id', user.id);
+      // Detectamos la tabla basándonos en una propiedad (necesitas añadir 'source' en el loadUsers)
+      // O simplemente intenta en una y si falla, en la otra:
+      
+      let table = 'user_profiles';
+      // Si tu objeto tiene un campo que indique su origen (ej: 'source'), úsalo:
+      if ((user as any).source === 'employee') {
+        table = 'empleados';
+      }
+  
+      const { error: err } = await supabase
+        .from(table) 
+        .update({ role, activo, societies: selectedSocieties })
+        .eq('id', user.id);
+  
       if (err) throw err;
-      if (profile) await writeAuditLog({ evento: 'user_meta_changed', descripcion: `Perfil de ${user.nombre} actualizado: rol=${role}, activo=${activo}`, autor: profile, entidad: 'user', entidad_id: user.id });
-      setMetaSuccess(true);
-      setTimeout(() => setMetaSuccess(false), 2500);
+      
       onSaved();
-    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Error al guardar'); }
-    finally { setSavingMeta(false); }
+      setMetaSuccess(true);
+    } catch (err: unknown) {
+      setError('Error al guardar en ' + table);
+    } finally {
+      setSavingMeta(false);
+    }
   };
 
   const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());

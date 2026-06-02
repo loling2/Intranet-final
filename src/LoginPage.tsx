@@ -536,6 +536,7 @@ export default function LoginPage() {
             <PrevencionPanel
               email={session.email}
               onLogout={handleLogout}
+              onNavigateEmployee={() => handleNavigate('dashboard')}
             />
           </SocietyProvider>
         </AuthProvider>
@@ -580,6 +581,7 @@ export default function LoginPage() {
             <AdministracionPanel
               email={session.email}
               onLogout={handleLogout}
+              onNavigateEmployee={() => handleNavigate('dashboard')}
             />
           </SocietyProvider>
         </AuthProvider>

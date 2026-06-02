@@ -1,9 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  ShieldCheck, Users, FileText, LogOut, Search, Plus, X,
-  ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle,
-  CheckCircle2, Upload, RefreshCw,
-} from 'lucide-react';
+import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
 import SocietySwitcher from './SocietySwitcher';
 import PrlDocsModule from './components/PrlDocsModule';
@@ -12,6 +8,7 @@ import TrazabilidadModule from './components/TrazabilidadModule';
 interface Props {
   email: string;
   onLogout: () => void;
+  onNavigateEmployee?: () => void;
 }
 
 type PrevTab = 'empleados' | 'documentos' | 'trazabilidad';
@@ -34,7 +31,7 @@ function tagColor(nombre: string) {
   return TAG_COLORS[nombre] ?? { bg: '#F8FAFC', text: '#475569', border: '#E2E8F0' };
 }
 
-export default function PrevencionPanel({ email, onLogout }: Props) {
+export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }: Props) {
   const [activeTab, setActiveTab] = useState<PrevTab>('empleados');
 
   const tabs: { id: PrevTab; label: string; icon: React.FC<{ size?: number }> }[] = [
@@ -70,6 +67,16 @@ export default function PrevencionPanel({ email, onLogout }: Props) {
           </div>
           <div className="flex items-center gap-3">
             <SocietySwitcher textColor="#A7F3D0" bgColor="rgba(255,255,255,0.08)" borderColor="rgba(255,255,255,0.1)" />
+            {onNavigateEmployee && (
+              <button
+                onClick={onNavigateEmployee}
+                className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+                style={{ backgroundColor: 'rgba(16,185,129,0.15)', color: '#6EE7B7', border: '1px solid rgba(16,185,129,0.2)' }}
+              >
+                <UserCircle size={14} />
+                <span>Mi perfil empleado</span>
+              </button>
+            )}
             <div className="text-right hidden sm:block">
               <p className="text-white text-sm font-medium">{email}</p>
               <p className="text-white/50 text-xs">Prevencion</p>

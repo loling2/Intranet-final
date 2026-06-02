@@ -370,7 +370,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
         {activeTab === 'vacations' && (
           <VacationsModule role={isAdmin ? 'admin' : 'rrhh'} />
         )}
-        {activeTab === 'personal-docs' && <PersonalDocumentsPanel />}
+        {activeTab === 'personal-docs' && <PersonalDocumentsPanel isRrhh={true} />}
         {/* Certificates Tab */}
         {activeTab === 'certificates' && (
           <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
@@ -556,8 +556,8 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
           <AuditLogPanel />
         )}
         {/* documentos personales */}
-         {activeTab === 'personal-docs' && (
-          <PersonalDocumentsPanel />
+        {activeTab === 'personal-docs' && (
+          <PersonalDocumentsPanel isRrhh={true} />
         )}
 
         {/* Prevencion/Calidad Tab */}

@@ -121,6 +121,122 @@ export async function getWasabiBlobUrl(key: string): Promise<string> {
   return URL.createObjectURL(blob);
 }
 
+// ─── RRHH helpers ────────────────────────────────────────────────────────────
+
+export interface RrhhFolder {
+  key: string;        // full S3 key of the folder prefix, e.g. "rrhh/privado/12345678A-Juan Perez/"
+  name: string;       // display name, e.g. "12345678A-Juan Perez"
+  type: 'privado' | 'publico';
+}
+
+export interface RrhhFile {
+  key: string;
+  name: string;
+  size: number;
+  lastModified: Date;
+}
+
+// List all employee folders under rrhh/privado/ or rrhh/publico/
+export async function listRrhhFolders(type: 'privado' | 'publico'): Promise<RrhhFolder[]> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const prefix = `rrhh/${type}/`;
+  const command = new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, Delimiter: '/' });
+  const resp = await wasabiClient.send(command);
+  const prefixes = resp.CommonPrefixes ?? [];
+  return prefixes
+    .filter(p => p.Prefix && p.Prefix !== prefix)
+    .map(p => ({
+      key: p.Prefix!,
+      name: p.Prefix!.replace(prefix, '').replace(/\/$/, ''),
+      type,
+    }));
+}
+
+// List files inside an employee folder (non-recursive)
+export async function listRrhhEmployeeFiles(folderKey: string): Promise<RrhhFile[]> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const command = new ListObjectsV2Command({ Bucket: bucket, Prefix: folderKey });
+  const resp = await wasabiClient.send(command);
+  return (resp.Contents ?? [])
+    .filter(obj => obj.Key && obj.Key !== folderKey && !obj.Key!.endsWith('/'))
+    .map(obj => ({
+      key: obj.Key!,
+      name: obj.Key!.replace(folderKey, ''),
+      size: obj.Size ?? 0,
+      lastModified: obj.LastModified ?? new Date(),
+    }));
+}
+
+// Ensure a folder prefix exists by uploading a zero-byte placeholder if not present
+export async function ensureRrhhFolder(folderKey: string): Promise<void> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const keepKey = `${folderKey}.keep`;
+  // Try listing — if at least one object exists under this prefix, folder exists
+  const resp = await wasabiClient.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: folderKey, MaxKeys: 1 }));
+  if (!resp.Contents?.length) {
+    await wasabiClient.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: keepKey,
+      Body: new Uint8Array(0),
+      ContentType: 'application/octet-stream',
+      ContentLength: 0,
+    }));
+  }
+}
+
+// Upload a document to rrhh/privado/<dni>-<nombre>/filename
+export async function uploadRrhhPrivado(file: File, dni: string, nombre: string): Promise<string> {
+  const folderKey = `rrhh/privado/${dni}-${nombre}/`;
+  await ensureRrhhFolder(folderKey);
+  const key = `${folderKey}${file.name}`;
+  await uploadToWasabiKey(file, key);
+  return key;
+}
+
+// List nomina files under rrhh/publico/<año>/<mes>/ that start with <dni>
+export async function listNominasForDni(dni: string): Promise<RrhhFile[]> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const prefix = `rrhh/publico/`;
+  const command = new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix });
+  const resp = await wasabiClient.send(command);
+  return (resp.Contents ?? [])
+    .filter(obj => {
+      if (!obj.Key || obj.Key.endsWith('/')) return false;
+      const filename = obj.Key.split('/').pop() ?? '';
+      return filename.startsWith(dni);
+    })
+    .map(obj => ({
+      key: obj.Key!,
+      name: obj.Key!.split('/').pop()!,
+      size: obj.Size ?? 0,
+      lastModified: obj.LastModified ?? new Date(),
+    }));
+}
+
+// Upload a nomina PDF: rrhh/publico/<año>/<mes>/<dni>.pdf
+export async function uploadNomina(file: File, dni: string, anio: string, mes: string): Promise<string> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  // Ensure year folder
+  const yearKey = `rrhh/publico/${anio}/`;
+  const monthKey = `rrhh/publico/${anio}/${mes}/`;
+  for (const fk of [yearKey, monthKey]) {
+    const resp = await wasabiClient.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: fk, MaxKeys: 1 }));
+    if (!resp.Contents?.length) {
+      await wasabiClient.send(new PutObjectCommand({
+        Bucket: bucket, Key: `${fk}.keep`,
+        Body: new Uint8Array(0), ContentType: 'application/octet-stream', ContentLength: 0,
+      }));
+    }
+  }
+  const key = `rrhh/publico/${anio}/${mes}/${dni}.pdf`;
+  const buffer = await file.arrayBuffer();
+  await wasabiClient.send(new PutObjectCommand({
+    Bucket: bucket, Key: key,
+    Body: new Uint8Array(buffer), ContentType: 'application/pdf', ContentLength: file.size,
+  }));
+  return key;
+}
+
 // Download a file by key and trigger browser download
 export async function downloadFromWasabi(key: string, filename: string): Promise<void> {
   const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;

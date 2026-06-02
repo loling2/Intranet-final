@@ -12,6 +12,7 @@ import PrevencionDocsCard from './PrevencionDocsCard';
 import AdminPanel from './AdminPanel';
 import RRHHPanel from './RRHHPanel';
 import PrevencionPanel from './PrevencionPanel';
+import AdministracionPanel from './AdministracionPanel';
 import { supabase } from './supabaseClient';
 import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
@@ -356,7 +357,7 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor';
+type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion';
 
 interface SessionState {
   email: string;
@@ -467,6 +468,8 @@ export default function LoginPage() {
         initialView = 'prevencion';
       } else if (resolvedRole === 'supervisor') {
         initialView = 'supervisor';
+      } else if (resolvedRole === 'administracion') {
+        initialView = 'administracion';
       } else {
         initialView = 'dashboard';
         if (resolvedSocietyId) setSelectedId(resolvedSocietyId);
@@ -564,6 +567,19 @@ export default function LoginPage() {
               onLogout={handleLogout}
               isSupervisor={true}
               onNavigateEmployee={() => handleNavigate('dashboard')}
+            />
+          </SocietyProvider>
+        </AuthProvider>
+      );
+    }
+
+    if (session.view === 'administracion') {
+      return (
+        <AuthProvider>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+            <AdministracionPanel
+              email={session.email}
+              onLogout={handleLogout}
             />
           </SocietyProvider>
         </AuthProvider>

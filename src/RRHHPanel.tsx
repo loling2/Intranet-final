@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck } from 'lucide-react';
+import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt } from 'lucide-react';
 import { mockVacations, mockCertificates, mockExams, mockDocuments } from './mockData';
 import UserManagement from './UserManagement';
 import VehiclesModule from './VehiclesModule';
@@ -12,6 +12,7 @@ import VacationsModule from './components/VacationsModule';
 import EmployeesModule from './components/EmployeesModule';
 import ContratosModule from './components/ContratosModule';
 import PersonalDocumentsPanel from './components/PersonalDocumentsPanel';
+import FacturasModule from './components/FacturasModule';
 import { supabase } from './supabaseClient';
 
 interface Props {
@@ -23,7 +24,7 @@ interface Props {
   onNavigateEmployee?: () => void;
 }
 
-type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion';
+type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'facturas';
 
 export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, onNavigateEmployee }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
@@ -81,10 +82,11 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     { id: 'vacations', label: 'Vacaciones', icon: Palmtree, badge: vacationsPending.length },
     { id: 'certificates', label: 'Certificaciones', icon: Award },
     { id: 'exams', label: 'Examenes', icon: ClipboardCheck },
+    { id: 'facturas', label: 'Facturas', icon: Receipt },
     { id: 'audit', label: 'Auditoria', icon: ScrollText },
   ];
 
-  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'vacations', 'certificates', 'exams'];
+  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'vacations', 'certificates', 'exams', 'facturas'];
 
   const tabs = isSupervisor
     ? allTabs.filter(t => supervisorTabIds.includes(t.id))
@@ -572,6 +574,10 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
         {/* Audit Tab - NEW */}
         {activeTab === 'audit' && (
           <AuditLogPanel />
+        )}
+        {/* Facturas Tab */}
+        {activeTab === 'facturas' && (
+          <FacturasModule isAdmin={false} />
         )}
         {/* documentos personales */}
         {activeTab === 'personal-docs' && (

@@ -96,23 +96,32 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
 const [facturas, setFacturas] = useState<any[]>([]);
 const [loadingFacturas, setLoadingFacturas] = useState(false);
 
-// 2. Crea un efecto para cargar los datos
 useEffect(() => {
   const fetchFacturas = async () => {
+    if (!activeSocietyId) return;
+
     setLoadingFacturas(true);
+    
+    // MODIFICACIÓN: Supabase maneja mejor las relaciones con filtros específicos
     const { data, error } = await supabase
       .from('facturas')
-      .select('*, empleados(nombre), centros(nombre)')
-      .eq('centros.id_sociedad', activeSocietyId); // Asegúrate de que esto sea correcto
-    
-    if (data) setFacturas(data);
+      .select(`
+        *,
+        empleados(nombre),
+        centros!inner(id, nombre, id_sociedad)
+      `)
+      .eq('centros.id_sociedad', activeSocietyId); 
+
+    if (error) {
+      console.error("Error al cargar facturas:", error);
+    } else {
+      setFacturas(data || []);
+    }
     setLoadingFacturas(false);
   };
 
-  if (activeSocietyId) {
-    fetchFacturas();
-  }
-}, [activeSocietyId]); // Se re-ejecuta si cambia la sociedad
+  fetchFacturas();
+}, [activeSocietyId]);
 
   const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
 

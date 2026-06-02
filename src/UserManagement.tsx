@@ -71,40 +71,40 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Introduce un correo electronico valido.'); return; }
     setLoading(true); setError('');
     try {
-      const tempPassword = crypto.randomUUID().replace(/-/g, '') + 'Aa1!';
-      const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
-        password: tempPassword,
-        options: { emailRedirectTo: `${window.location.origin}/?type=invite`, data: { nombre: nombre.trim() } },
+      const session = (await supabase.auth.getSession()).data.session;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const resp = await fetch(`${supabaseUrl}/functions/v1/manage-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          action: 'create_user',
+          email: email.trim().toLowerCase(),
+          nombre: nombre.trim(),
+          role,
+          societies: selectedSocieties,
+        }),
       });
-      if (signUpErr) throw signUpErr;
-      if (!signUpData.user) throw new Error('No se pudo crear el usuario.');
-
-      const { error: profileErr } = await supabase.from('user_profiles').insert({
-        id: signUpData.user.id,
-        nombre: nombre.trim(),
-        email: email.trim().toLowerCase(),
-        role,
-        activo: true,
-        societies: selectedSocieties,
-        invited_by: profile?.id ?? null,
-      });
-      if (profileErr) throw profileErr;
+      const result = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(result.error ?? `Error ${resp.status}`);
 
       if (profile) {
         await writeAuditLog({
           evento: 'user_invited',
-          descripcion: `Usuario invitado: ${email} con rol ${role}`,
+          descripcion: `Usuario creado: ${email} con rol ${role}`,
           autor: profile,
           entidad: 'user',
-          entidad_id: signUpData.user.id,
+          entidad_id: result.userId,
           metadata: { email, role, societies: selectedSocieties },
         });
       }
       setSuccess(true);
       setTimeout(() => { onInvited(); onClose(); }, 2000);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al invitar usuario');
+      setError(err instanceof Error ? err.message : 'Error al crear usuario');
     } finally {
       setLoading(false);
     }
@@ -129,7 +129,7 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
                 <CheckCircle2 size={32} style={{ color: '#22C55E' }} />
               </div>
               <h3 className="font-semibold text-base" style={{ color: '#1E293B' }}>Usuario creado</h3>
-              <p className="text-sm mt-1" style={{ color: '#64748B' }}>Ahora puedes asignarle una contrasena desde Gestion de Usuarios.</p>
+              <p className="text-sm mt-1" style={{ color: '#64748B' }}>El usuario ha sido creado. Puedes asignarle una contrasena desde Gestion de Usuarios.</p>
             </div>
           ) : (
             <>

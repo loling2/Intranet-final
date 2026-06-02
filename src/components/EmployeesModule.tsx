@@ -782,6 +782,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
+          'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({
           action: 'create_user',
@@ -973,7 +974,6 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         />
       )}
 
-      {/* Quick upload to public folder */}
       {showImport && (
         <ImportUsersModal
           sociedades={sociedades}
@@ -982,6 +982,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         />
       )}
 
+      {/* Quick upload to public folder */}
       {uploadEmpModal && (
         <QuickUploadModal
           empleado={uploadEmpModal}
@@ -1090,7 +1091,6 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               <option value="inactivo">Inactivos</option>
             </select>
             <button
-              onClick={openNew}
               onClick={() => setShowImport(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 hover:opacity-90"
               style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
@@ -1099,6 +1099,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               Importar usuarios
             </button>
             <button
+              onClick={openNew}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 hover:opacity-90"
               style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
             >

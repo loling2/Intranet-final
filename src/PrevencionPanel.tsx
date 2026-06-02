@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle } from 'lucide-react';
+import {
+  ShieldCheck, Users, FileText, LogOut, Search, Plus, X,
+  ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle,
+  CheckCircle2, Upload, RefreshCw, UserCircle,
+} from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
 import SocietySwitcher from './SocietySwitcher';
 import PrlDocsModule from './components/PrlDocsModule';

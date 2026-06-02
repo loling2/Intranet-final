@@ -1,4 +1,4 @@
-import { LogOut, Receipt, Building2, UserCircle } from 'lucide-react';
+import { LogOut, Receipt, Building2, CircleUser as UserCircle } from 'lucide-react';
 import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
 import FacturasModule from './components/FacturasModule';

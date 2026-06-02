@@ -332,8 +332,9 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      // Use getUser() to validate the token server-side (avoids stale localStorage sessions)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
         setError('Sin sesion activa — vuelve a iniciar sesion');
         return;
       }
@@ -437,11 +438,17 @@ export default function EmployeesModule({ currentUserRole }: Props) {
       };
       if (editingId) {
         const { error: err } = await supabase.from('empleados').update(payload).eq('id', editingId);
-        if (err) throw err;
+        if (err) {
+          if (err.code === '42501' || err.message?.includes('security')) throw new Error('Sin permiso para modificar empleados. Vuelve a iniciar sesion.');
+          throw err;
+        }
         showSuccess('Empleado actualizado correctamente');
       } else {
         const { error: err } = await supabase.from('empleados').insert(payload);
-        if (err) throw err;
+        if (err) {
+          if (err.code === '42501' || err.message?.includes('security')) throw new Error('Sin permiso para crear empleados. Vuelve a iniciar sesion.');
+          throw err;
+        }
         showSuccess('Empleado creado correctamente');
       }
       cancelForm();
@@ -476,12 +483,13 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     setError(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
       const resp = await fetch(`${supabaseUrl}/functions/v1/manage-user`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           action: 'create_user',

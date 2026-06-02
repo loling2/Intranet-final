@@ -92,29 +92,23 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     (!selectedSociety || v.societyId === selectedSociety)
   );
 
-// 1. Añade estos estados al inicio de tu componente
-const [facturas, setFacturas] = useState<any[]>([]);
-const [loadingFacturas, setLoadingFacturas] = useState(false);
-
-useEffect(() => {
+/useEffect(() => {
   const fetchFacturas = async () => {
     if (!activeSocietyId) return;
 
     setLoadingFacturas(true);
     
-    // MODIFICACIÓN: Supabase maneja mejor las relaciones con filtros específicos
+    // Consulta mínima sin relaciones
     const { data, error } = await supabase
       .from('facturas')
-      .select(`
-        *,
-        empleados(nombre),
-        centros!inner(id, nombre, id_sociedad)
-      `)
-      .eq('centros.id_sociedad', activeSocietyId); 
+      .select('*'); 
+      // Si esto trae datos, el problema es el 'join' con centros.
+      // Si esto trae vacío, el problema es RLS en la tabla facturas.
 
     if (error) {
-      console.error("Error al cargar facturas:", error);
+      console.error("Error crítico:", error);
     } else {
+      console.log("Datos brutos sin filtros:", data);
       setFacturas(data || []);
     }
     setLoadingFacturas(false);

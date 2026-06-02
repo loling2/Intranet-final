@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSociety } from '../context/SocietyContext';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../utils/supabase';
 
 export function FacturasModule({ currentUserRole }) {
   const [data, setData] = useState([]);

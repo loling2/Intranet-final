@@ -34,27 +34,25 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId }: P
   const loadDocs = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch public docs assigned to this employee specifically
-      // Also include public docs with no specific user (general docs for the society)
-      let query = supabase
+      // Only show documents explicitly assigned to this employee (by id or email)
+      // Never include documents with no specific recipient
+      const orParts: string[] = [];
+      if (userId) orParts.push(`usuario_destino_id.eq.${userId}`);
+      if (userEmail) orParts.push(`usuario_destino_email.eq.${userEmail}`);
+
+      if (!orParts.length) {
+        setDocs([]);
+        return;
+      }
+
+      const { data } = await supabase
         .from('documents')
         .select('*')
         .eq('folder', 'publico')
         .eq('society_id', societyId)
+        .or(orParts.join(','))
         .order('fecha_subida', { ascending: false });
 
-      if (userId) {
-        // Docs targeted to this user by id or email, or general docs (no specific user)
-        query = query.or(
-          `usuario_destino_id.eq.${userId},usuario_destino_email.eq.${userEmail},usuario_destino_id.is.null`
-        );
-      } else {
-        query = query.or(
-          `usuario_destino_email.eq.${userEmail},usuario_destino_id.is.null`
-        );
-      }
-
-      const { data } = await query;
       setDocs((data ?? []) as DocumentRecord[]);
     } finally {
       setLoading(false);

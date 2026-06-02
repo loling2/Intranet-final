@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { Receipt, Upload, FileText, CheckCircle2, AlertCircle, X, Eye, Loader2, Building2, Hash, Calendar, Euro, Search, Filter, ChevronDown, Download, RefreshCw } from 'lucide-react';
 import { supabase } from '../supabaseClient';
@@ -298,7 +298,7 @@ export default function FacturasModule({ isAdmin = false }: Props) {
     setLoading(false);
   }, [isAdmin, profile?.id]);
 
-  useState(() => { loadInvoices(); });
+  useEffect(() => { loadInvoices(); }, [loadInvoices]);
 
   async function handleConfirm(form: InvoiceData) {
     if (!pendingFile || !profile) return;

@@ -1,3 +1,8 @@
+
+import React, { useState, useEffect } from 'react';
+import { useSociety } from '../context/SocietyContext';
+import { supabase } from '../utils/supabase';
+
 export function FacturasModule({ currentUserRole }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true); // Añadimos estado de carga
@@ -6,17 +11,21 @@ export function FacturasModule({ currentUserRole }) {
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
+      // Quitamos el .eq para ver TODO lo que hay en la tabla
       const { data, error } = await supabase
         .from('facturas')
-        .select('*, empleados(nombre), centros(nombre)')
-        .eq('centros.id_sociedad', activeSocietyId);
+        .select('*, empleados(nombre), centros(nombre)');
       
-      if (!error) setData(data || []);
+      if (error) console.error("Error Supabase:", error);
+      else {
+        console.log("Datos recibidos desde Supabase:", data); // Mira esto en F12
+        setData(data || []);
+      }
       setLoading(false);
     }
     
-    if (activeSocietyId) fetchData();
-  }, [activeSocietyId]);
+    fetchData(); // Quitamos el if(activeSocietyId) temporalmente
+  }, []); // Array vacío para que solo se ejecute al cargar
 
   // Aquí está el cambio: ahora sí pintamos algo
   if (loading) return <div>Cargando facturas...</div>;

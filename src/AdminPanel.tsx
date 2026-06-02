@@ -125,6 +125,14 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
               <Users size={14} />
               Panel RRHH
             </button>
+            <button
+              onClick={() => setActiveTab('prevencion')}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+              style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#CBD5E1', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              <ShieldCheck size={14} />
+              Prevencion
+            </button>
             <div className="text-right hidden sm:block">
               <p className="text-white text-sm font-medium">{email}</p>
               <p className="text-white/50 text-xs flex items-center gap-1 justify-end">

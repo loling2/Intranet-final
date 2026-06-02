@@ -7,12 +7,76 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const CREATE_AUTH_USER_SQL = `
+CREATE OR REPLACE FUNCTION public.create_auth_user(
+  p_email text,
+  p_password text,
+  p_nombre text DEFAULT ''
+) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth AS $$
+DECLARE
+  v_uid uuid;
+  v_now timestamptz := now();
+BEGIN
+  SELECT id INTO v_uid FROM auth.users WHERE email = lower(trim(p_email)) LIMIT 1;
+  IF v_uid IS NOT NULL THEN
+    UPDATE auth.users SET
+      encrypted_password = crypt(p_password, gen_salt('bf', 10)),
+      email_confirmed_at = COALESCE(email_confirmed_at, v_now),
+      updated_at = v_now,
+      raw_user_meta_data = jsonb_build_object('nombre', p_nombre)
+    WHERE id = v_uid;
+    RETURN v_uid;
+  END IF;
+
+  v_uid := gen_random_uuid();
+
+  INSERT INTO auth.users (
+    id, instance_id, email, encrypted_password, email_confirmed_at,
+    aud, role, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at, confirmation_token, recovery_token,
+    email_change_token_new, email_change
+  ) VALUES (
+    v_uid,
+    '00000000-0000-0000-0000-000000000000',
+    lower(trim(p_email)),
+    crypt(p_password, gen_salt('bf', 10)),
+    v_now,
+    'authenticated', 'authenticated',
+    '{"provider":"email","providers":["email"]}',
+    jsonb_build_object('nombre', p_nombre),
+    v_now, v_now, '', '', '', ''
+  );
+
+  INSERT INTO auth.identities (
+    id, provider_id, user_id, provider, identity_data,
+    last_sign_in_at, created_at, updated_at
+  ) VALUES (
+    gen_random_uuid(),
+    v_uid::text,
+    v_uid,
+    'email',
+    jsonb_build_object('sub', v_uid::text, 'email', lower(trim(p_email)), 'email_verified', true),
+    v_now, v_now, v_now
+  );
+
+  RETURN v_uid;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.create_auth_user(text, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.create_auth_user(text, text, text) TO service_role;
+`;
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const dbUrl = Deno.env.get("SUPABASE_DB_URL");
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "No autorizado" }), {
@@ -20,16 +84,17 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
     const callerClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
+      supabaseUrl,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } }, auth: { autoRefreshToken: false, persistSession: false } }
+      {
+        global: { headers: { Authorization: authHeader } },
+        auth: { autoRefreshToken: false, persistSession: false },
+      }
     );
 
     const { data: { user: callerUser } } = await callerClient.auth.getUser();
@@ -51,7 +116,8 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { action, userId, password, email, role, pin, nombre, societies } = await req.json();
+    const body = await req.json();
+    const { action, userId, password, email, role, pin, nombre, societies } = body;
 
     if (!action) {
       return new Response(JSON.stringify({ error: "Faltan parametros" }), {
@@ -59,7 +125,28 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Create a new auth user + user_profile from an existing empleado
+    // One-time bootstrap: creates create_auth_user SQL function via direct DB connection
+    if (action === "bootstrap_rpc") {
+      if (!dbUrl) {
+        return new Response(JSON.stringify({ error: "SUPABASE_DB_URL not available" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { Client } = await import("npm:pg@8.11.3");
+      const client = new Client({ connectionString: dbUrl });
+      await client.connect();
+      try {
+        await client.query(CREATE_AUTH_USER_SQL);
+      } finally {
+        await client.end();
+      }
+      return new Response(
+        JSON.stringify({ ok: true, message: "create_auth_user function created successfully" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Create a new auth user + user_profile
     if (action === "create_user") {
       if (!email || !nombre) {
         return new Response(JSON.stringify({ error: "Email y nombre son obligatorios" }), {
@@ -70,40 +157,48 @@ Deno.serve(async (req: Request) => {
       const normalizedEmail = email.trim().toLowerCase();
       const tempPassword = crypto.randomUUID().replace(/-/g, "") + "Aa1!";
 
-      // Check if auth user already exists with this email
-      const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-      const existingAuthUser = existingUsers?.users?.find(
-        (u) => u.email?.toLowerCase() === normalizedEmail
-      );
-
       let uid: string;
 
-      if (existingAuthUser) {
-        // Auth user exists — reuse it
-        uid = existingAuthUser.id;
-        // Update password so the employee can log in
-        await supabaseAdmin.auth.admin.updateUserById(uid, {
-          password: tempPassword,
-          email_confirm: true,
-        });
+      // Try SECURITY DEFINER RPC first (bypasses broken auth API on Supabase Pro)
+      const { data: rpcUid, error: rpcErr } = await supabaseAdmin.rpc("create_auth_user", {
+        p_email: normalizedEmail,
+        p_password: tempPassword,
+        p_nombre: nombre.trim(),
+      });
+
+      if (!rpcErr && rpcUid) {
+        uid = rpcUid as string;
       } else {
-        // Create new auth user
-        const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-          email: normalizedEmail,
-          password: tempPassword,
-          email_confirm: true,
-          user_metadata: { nombre: nombre.trim() },
-        });
-        if (createErr) {
-          return new Response(
-            JSON.stringify({ error: `Error al crear usuario en Auth: ${createErr.message}` }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
+        // RPC not yet bootstrapped — fall back to auth.admin.createUser
+        const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+        const existingAuthUser = existingUsers?.users?.find(
+          (u) => u.email?.toLowerCase() === normalizedEmail
+        );
+
+        if (existingAuthUser) {
+          uid = existingAuthUser.id;
+          await supabaseAdmin.auth.admin.updateUserById(uid, {
+            password: tempPassword,
+            email_confirm: true,
+          });
+        } else {
+          const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+            email: normalizedEmail,
+            password: tempPassword,
+            email_confirm: true,
+            user_metadata: { nombre: nombre.trim() },
+          });
+          if (createErr) {
+            return new Response(
+              JSON.stringify({ error: `Error al crear usuario en Auth: ${createErr.message}` }),
+              { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          uid = newUser.user.id;
         }
-        uid = newUser.user.id;
       }
 
-      // Upsert user_profiles (in case it already exists)
+      // Upsert user_profiles
       const { error: profileErr } = await supabaseAdmin.from("user_profiles").upsert({
         id: uid,
         nombre: nombre.trim(),

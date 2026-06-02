@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users } from 'lucide-react';
 import { societies, SocietyTheme } from './themes';
 import { mockDocuments, mockDevices, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
@@ -356,7 +356,7 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard';
+type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor';
 
 interface SessionState {
   email: string;
@@ -465,6 +465,8 @@ export default function LoginPage() {
         initialView = 'rrhh';
       } else if (resolvedRole === 'prevencion') {
         initialView = 'prevencion';
+      } else if (resolvedRole === 'supervisor') {
+        initialView = 'supervisor';
       } else {
         initialView = 'dashboard';
         if (resolvedSocietyId) setSelectedId(resolvedSocietyId);
@@ -491,7 +493,7 @@ export default function LoginPage() {
     setLoginError('');
   };
 
-  const handleNavigate = (view: 'admin' | 'rrhh' | 'society', societyId?: string) => {
+  const handleNavigate = (view: 'admin' | 'rrhh' | 'society' | 'dashboard', societyId?: string) => {
     if (!session) return;
     if (view === 'society' && societyId) {
       setSelectedId(societyId);
@@ -499,7 +501,12 @@ export default function LoginPage() {
     } else if (view === 'admin') {
       setSession({ ...session, view: 'admin' });
     } else if (view === 'rrhh') {
-      setSession({ ...session, view: 'rrhh' });
+      setSession({ ...session, view: session.role === 'supervisor' ? 'supervisor' : 'rrhh' });
+    } else if (view === 'dashboard') {
+      // Go to employee self-service panel
+      const firstSociety = societies[0];
+      if (firstSociety) setSelectedId(firstSociety.id);
+      setSession({ ...session, view: 'dashboard', activeSocietyId: session.activeSocietyId ?? societies[0]?.id ?? null });
     }
   };
 
@@ -541,6 +548,22 @@ export default function LoginPage() {
               onLogout={handleLogout}
               onNavigateAdmin={session.role === 'admin' ? () => handleNavigate('admin') : undefined}
               isAdmin={session.role === 'admin'}
+              onNavigateEmployee={() => handleNavigate('dashboard')}
+            />
+          </SocietyProvider>
+        </AuthProvider>
+      );
+    }
+
+    if (session.view === 'supervisor') {
+      return (
+        <AuthProvider>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+            <RRHHPanel
+              email={session.email}
+              onLogout={handleLogout}
+              isSupervisor={true}
+              onNavigateEmployee={() => handleNavigate('dashboard')}
             />
           </SocietyProvider>
         </AuthProvider>
@@ -557,6 +580,8 @@ export default function LoginPage() {
             email={session.email}
             isAdmin={session.role === 'admin'}
             onNavigateAdmin={session.role === 'admin' ? () => handleNavigate('admin') : undefined}
+            onNavigateRrhh={session.role === 'rrhh' ? () => handleNavigate('rrhh') : undefined}
+            onNavigateSupervisor={session.role === 'supervisor' ? () => handleNavigate('rrhh') : undefined}
           />
         );
       }
@@ -1248,12 +1273,16 @@ function Dashboard({
   email,
   isAdmin,
   onNavigateAdmin,
+  onNavigateRrhh,
+  onNavigateSupervisor,
 }: {
   theme: SocietyTheme;
   onLogout: () => void;
   email: string;
   isAdmin?: boolean;
   onNavigateAdmin?: () => void;
+  onNavigateRrhh?: () => void;
+  onNavigateSupervisor?: () => void;
 }) {
   const Icon = iconMap[theme.logoIcon];
   const [activeTab, setActiveTab] = useState('resumen');
@@ -1303,6 +1332,26 @@ function Dashboard({
               >
                 <Shield size={12} />
                 Admin
+              </button>
+            )}
+            {onNavigateRrhh && (
+              <button
+                onClick={onNavigateRrhh}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200"
+                style={{ backgroundColor: 'rgba(3,105,161,0.2)', color: '#7DD3FC', border: '1px solid rgba(3,105,161,0.3)' }}
+              >
+                <Users size={12} />
+                Panel RRHH
+              </button>
+            )}
+            {onNavigateSupervisor && (
+              <button
+                onClick={onNavigateSupervisor}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200"
+                style={{ backgroundColor: 'rgba(3,105,161,0.2)', color: '#7DD3FC', border: '1px solid rgba(3,105,161,0.3)' }}
+              >
+                <Users size={12} />
+                Panel Supervisor
               </button>
             )}
             <button className="relative p-2 rounded-lg cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>

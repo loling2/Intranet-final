@@ -19,11 +19,13 @@ interface Props {
   onLogout: () => void;
   onNavigateAdmin?: () => void;
   isAdmin?: boolean;
+  isSupervisor?: boolean;
+  onNavigateEmployee?: () => void;
 }
 
 type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion';
 
-export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }: Props) {
+export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, onNavigateEmployee }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSociety, setFilterSociety] = useState<string>('');
@@ -66,7 +68,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
     return diff <= 90 && diff > 0;
   });
 
-  const tabs: { id: RRHHTab; label: string; icon: React.FC<{ size?: number }>; badge?: number }[] = [
+  const allTabs: { id: RRHHTab; label: string; icon: React.FC<{ size?: number }>; badge?: number }[] = [
     { id: 'overview', label: 'Resumen RRHH', icon: Clock },
     { id: 'employees', label: 'Empleados', icon: Users },
     { id: 'users', label: 'Gestion de Usuarios', icon: Users },
@@ -81,6 +83,12 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
     { id: 'exams', label: 'Examenes', icon: ClipboardCheck },
     { id: 'audit', label: 'Auditoria', icon: ScrollText },
   ];
+
+  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'vacations', 'certificates', 'exams'];
+
+  const tabs = isSupervisor
+    ? allTabs.filter(t => supervisorTabIds.includes(t.id))
+    : allTabs;
 
   const getSociety = (id: string) => societies.find((s) => s.id === id);
 
@@ -141,9 +149,19 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin }:
                 <span>Volver a Admin</span>
               </button>
             )}
+            {onNavigateEmployee && (
+              <button
+                onClick={onNavigateEmployee}
+                className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+                style={{ backgroundColor: 'rgba(16,185,129,0.15)', color: '#6EE7B7', border: '1px solid rgba(16,185,129,0.2)' }}
+              >
+                <Users size={14} />
+                <span>Mi perfil empleado</span>
+              </button>
+            )}
             <div className="text-right hidden sm:block">
               <p className="text-white text-sm font-medium">{email}</p>
-              <p className="text-white/50 text-xs">{isAdmin ? 'Admin / RRHH' : 'RRHH'}</p>
+              <p className="text-white/50 text-xs">{isAdmin ? 'Admin / RRHH' : isSupervisor ? 'Supervisor' : 'RRHH'}</p>
             </div>
             <button
               onClick={onLogout}

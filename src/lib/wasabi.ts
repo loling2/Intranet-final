@@ -158,7 +158,7 @@ export async function listRrhhEmployeeFiles(folderKey: string): Promise<RrhhFile
   const command = new ListObjectsV2Command({ Bucket: bucket, Prefix: folderKey });
   const resp = await wasabiClient.send(command);
   return (resp.Contents ?? [])
-    .filter(obj => obj.Key && obj.Key !== folderKey && !obj.Key!.endsWith('/'))
+    .filter(obj => obj.Key && obj.Key !== folderKey && !obj.Key!.endsWith('/') && !obj.Key!.endsWith('.keep'))
     .map(obj => ({
       key: obj.Key!,
       name: obj.Key!.replace(folderKey, ''),

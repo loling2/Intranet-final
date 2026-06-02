@@ -92,34 +92,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     (!selectedSociety || v.societyId === selectedSociety)
   );
 
-  useEffect(() => {
-    const fetchFacturas = async () => {
-      // 1. Verificación de seguridad
-      if (!activeSocietyId) {
-        console.log("Esperando activeSocietyId...");
-        return;
-      }
   
-      setLoadingFacturas(true);
-      
-      // 2. Consulta a la base de datos
-      const { data, error } = await supabase
-        .from('facturas')
-        .select('*'); 
-  
-      // 3. Manejo de resultados
-      if (error) {
-        console.error("Error crítico:", error);
-      } else {
-        console.log("Datos obtenidos:", data);
-        setFacturas(data || []);
-      }
-      
-      setLoadingFacturas(false);
-    };
-  
-    fetchFacturas();
-  }, [activeSocietyId]);
   const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
 
   return (

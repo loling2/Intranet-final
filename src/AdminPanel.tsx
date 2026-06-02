@@ -17,7 +17,7 @@ import VacationsModule from './components/VacationsModule';
 import EmployeesModule from './components/EmployeesModule';
 import TagsManager from './components/TagsManager';
 import RolesManager from './components/RolesManager';
-import { FacturasModule } from './components/FacturasModule';
+import FacturasModule from './components/FacturasModule';
 interface Props {
   email: string;
   onLogout: () => void;
@@ -92,7 +92,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     (!selectedSociety || v.societyId === selectedSociety)
   );
 
-  
+
   const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
 
   return (

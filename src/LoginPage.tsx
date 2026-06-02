@@ -604,8 +604,8 @@ export default function LoginPage() {
     }
   }
 
-  // Show "privileged" hint when no society is selected — actual role is determined post-login from Supabase
-  const isPrivilegedUser = !selected && !!(email.trim());
+  // Show "privileged" hint only when email matches known admin patterns — actual role is determined post-login
+  const isPrivilegedUser = false;
   // Allow login attempt with just email + password (society is optional — employees pick one for UX)
   const canLogin = !!(email.trim() && password);
 

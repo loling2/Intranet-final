@@ -92,30 +92,30 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     (!selectedSociety || v.societyId === selectedSociety)
   );
 
-useEffect(() => {
-  const fetchFacturas = async () => {
-    if (!activeSocietyId) return;
+  useEffect(() => {
+    const fetchFacturas = async () => {
+      if (!activeSocietyId) return;
 
-    setLoadingFacturas(true);
-    
-    // Consulta mínima sin relaciones
-    const { data, error } = await supabase
-      .from('facturas')
-      .select('*'); 
-      // Si esto trae datos, el problema es el 'join' con centros.
-      // Si esto trae vacío, el problema es RLS en la tabla facturas.
+      setLoadingFacturas(true);
+      
+      // Consulta mínima sin relaciones
+      const { data, error } = await supabase
+        .from('facturas')
+        .select('*'); 
+        // Si esto trae datos, el problema es el 'join' con centros.
+        // Si esto trae vacío, el problema es RLS en la tabla facturas.
 
-    if (error) {
-      console.error("Error crítico:", error);
-    } else {
-      console.log("Datos brutos sin filtros:", data);
-      setFacturas(data || []);
-    }
-    setLoadingFacturas(false);
-  };
+      if (error) {
+        console.error("Error crítico:", error);
+      } else {
+        console.log("Datos brutos sin filtros:", data);
+        setFacturas(data || []);
+      }
+      setLoadingFacturas(false);
+    };
 
-  fetchFacturas();
-}, [activeSocietyId]);
+    fetchFacturas();
+  }, [activeSocietyId]); // Cierre del useEffect y array de dependencias
 
   const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
 

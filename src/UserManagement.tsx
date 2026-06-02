@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Users, UserPlus, Search, Mail, CheckCircle2,
   CreditCard as Edit2, Key, X, Eye, EyeOff, AlertCircle,
-  RefreshCw, Hash,
+  RefreshCw, Hash, UserCheck,
 } from 'lucide-react';
-import { supabase, UserProfile, AppRole } from './supabaseClient';
+import { supabase, UserProfile, AppRole, Empleado } from './supabaseClient';
 import { useAuth } from './context/AuthContext';
 import { useSociety } from './context/SocietyContext';
 import { writeAuditLog } from './lib/auditLog';
@@ -603,6 +603,7 @@ interface Props { currentUserRole: AppRole; }
 export default function UserManagement({ currentUserRole }: Props) {
   const { societies } = useSociety();
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState<string>('');
@@ -612,15 +613,20 @@ export default function UserManagement({ currentUserRole }: Props) {
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-    setUsers((data ?? []) as UserProfile[]);
+    const [profilesRes, empRes] = await Promise.all([
+      supabase.from('user_profiles').select('*').order('created_at', { ascending: false }),
+      supabase.from('empleados').select('id, nombre, email, user_id, id_sociedad, puesto, activo').order('nombre'),
+    ]);
+    setUsers((profilesRes.data ?? []) as UserProfile[]);
+    setEmpleados((empRes.data ?? []) as Empleado[]);
     setLoading(false);
   }, []);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  const userIds = new Set(users.map((u) => u.id));
+  // Empleados that don't have a linked user_profiles entry
+  const empleadosSinCuenta = empleados.filter((e) => !e.user_id || !userIds.has(e.user_id));
 
   const filtered = users.filter((u) => {
     const matchSearch = !search || u.nombre.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
@@ -628,6 +634,17 @@ export default function UserManagement({ currentUserRole }: Props) {
     const matchStatus = filterStatus === '' ? true : filterStatus === 'activo' ? u.activo : !u.activo;
     return matchSearch && matchRole && matchStatus;
   });
+
+  const filteredEmpleados = empleadosSinCuenta.filter((e) => {
+    if (filterRole && filterRole !== 'employee') return false;
+    if (filterStatus === 'inactivo' && e.activo) return false;
+    if (filterStatus === 'activo' && !e.activo) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return e.nombre.toLowerCase().includes(q) || e.email.toLowerCase().includes(q);
+  });
+
+  const totalVisible = filtered.length + filteredEmpleados.length;
 
   return (
     <div>
@@ -637,7 +654,7 @@ export default function UserManagement({ currentUserRole }: Props) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Gestion de Usuarios</h2>
-          <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{users.length} usuarios registrados</p>
+          <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{users.length} usuarios registrados · {empleadosSinCuenta.length} empleados sin acceso</p>
         </div>
         <button onClick={() => setShowInvite(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all duration-200 hover:opacity-90"
@@ -675,7 +692,7 @@ export default function UserManagement({ currentUserRole }: Props) {
           <div className="flex items-center justify-center py-16">
             <RefreshCw size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : totalVisible === 0 ? (
           <div className="flex flex-col items-center py-16">
             <Users size={32} style={{ color: '#E2E8F0' }} />
             <p className="text-sm mt-3" style={{ color: '#94A3B8' }}>No se encontraron usuarios</p>
@@ -690,6 +707,8 @@ export default function UserManagement({ currentUserRole }: Props) {
               <div className="col-span-2 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Estado</div>
               <div className="col-span-1 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Acc.</div>
             </div>
+
+            {/* Users with accounts */}
             {filtered.map((u) => {
               const rc = ROLE_COLORS[u.role];
               const userSocieties = (u.societies ?? []).map((sid) => societies.find((s) => s.id === sid)).filter(Boolean);
@@ -736,6 +755,52 @@ export default function UserManagement({ currentUserRole }: Props) {
                 </div>
               );
             })}
+
+            {/* Employees without accounts */}
+            {filteredEmpleados.length > 0 && (
+              <>
+                <div className="px-6 py-2 flex items-center gap-2" style={{ backgroundColor: '#FFFBEB', borderTop: '1px solid #FDE68A' }}>
+                  <UserCheck size={13} style={{ color: '#D97706' }} />
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#D97706' }}>
+                    Empleados sin cuenta de acceso ({filteredEmpleados.length})
+                  </span>
+                </div>
+                {filteredEmpleados.map((e) => (
+                  <div key={e.id} className="px-6 py-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-center hover:bg-amber-50 transition-colors duration-150" style={{ opacity: 0.85 }}>
+                    <div className="sm:col-span-4 flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ backgroundColor: '#FFFBEB', color: '#D97706', border: '1px dashed #FDE68A' }}>
+                        {e.nombre.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>{e.nombre}</p>
+                        <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{e.email || '—'}</p>
+                        {e.puesto && <p className="text-xs" style={{ color: '#CBD5E1' }}>{e.puesto}</p>}
+                      </div>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-md" style={{ backgroundColor: '#FFFBEB', color: '#D97706', border: '1px dashed #FDE68A' }}>
+                        Sin acceso
+                      </span>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <span className="text-xs" style={{ color: '#94A3B8' }}>—</span>
+                    </div>
+                    <div className="sm:col-span-1">
+                      <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: e.activo ? '#22C55E' : '#EF4444' }} />
+                        <span className="text-xs" style={{ color: e.activo ? '#16A34A' : '#DC2626' }}>{e.activo ? 'Activo' : 'Inactivo'}</span>
+                      </div>
+                    </div>
+                    <div className="sm:col-span-1">
+                      <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         )}
       </div>

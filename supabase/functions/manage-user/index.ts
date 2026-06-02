@@ -13,7 +13,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // Verify caller is admin or rrhh via their JWT
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "No autorizado" }), {
@@ -27,7 +26,6 @@ Deno.serve(async (req: Request) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Verify caller role
     const callerClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -68,23 +66,60 @@ Deno.serve(async (req: Request) => {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+
+      const normalizedEmail = email.trim().toLowerCase();
       const tempPassword = crypto.randomUUID().replace(/-/g, "") + "Aa1!";
-      const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-        email: email.trim().toLowerCase(),
-        password: tempPassword,
-        email_confirm: true,
-      });
-      if (createErr) throw createErr;
-      const uid = newUser.user.id;
-      const { error: profileErr } = await supabaseAdmin.from("user_profiles").insert({
+
+      // Check if auth user already exists with this email
+      const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+      const existingAuthUser = existingUsers?.users?.find(
+        (u) => u.email?.toLowerCase() === normalizedEmail
+      );
+
+      let uid: string;
+
+      if (existingAuthUser) {
+        // Auth user exists — reuse it
+        uid = existingAuthUser.id;
+        // Update password so the employee can log in
+        await supabaseAdmin.auth.admin.updateUserById(uid, {
+          password: tempPassword,
+          email_confirm: true,
+        });
+      } else {
+        // Create new auth user
+        const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+          email: normalizedEmail,
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: { nombre: nombre.trim() },
+        });
+        if (createErr) {
+          return new Response(
+            JSON.stringify({ error: `Error al crear usuario en Auth: ${createErr.message}` }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        uid = newUser.user.id;
+      }
+
+      // Upsert user_profiles (in case it already exists)
+      const { error: profileErr } = await supabaseAdmin.from("user_profiles").upsert({
         id: uid,
         nombre: nombre.trim(),
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         role: role ?? "employee",
         activo: true,
         societies: societies ?? [],
-      });
-      if (profileErr) throw profileErr;
+      }, { onConflict: "id" });
+
+      if (profileErr) {
+        return new Response(
+          JSON.stringify({ error: `Error al crear perfil: ${profileErr.message}` }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       return new Response(JSON.stringify({ ok: true, userId: uid, tempPassword }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -133,7 +168,6 @@ Deno.serve(async (req: Request) => {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      // Only admin can assign admin role
       if (role === "admin" && callerProfile.role !== "admin") {
         return new Response(JSON.stringify({ error: "Solo el administrador puede asignar el rol admin" }), {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -166,7 +200,8 @@ Deno.serve(async (req: Request) => {
     });
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
+    const message = err instanceof Error ? err.message : String(err);
+    return new Response(JSON.stringify({ error: message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

@@ -92,7 +92,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     (!selectedSociety || v.societyId === selectedSociety)
   );
 
-/useEffect(() => {
+useEffect(() => {
   const fetchFacturas = async () => {
     if (!activeSocietyId) return;
 

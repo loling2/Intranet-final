@@ -17,14 +17,14 @@ import VacationsModule from './components/VacationsModule';
 import EmployeesModule from './components/EmployeesModule';
 import TagsManager from './components/TagsManager';
 import RolesManager from './components/RolesManager';
-import FacturasModule from './components/FacturasModule';
+
 interface Props {
   email: string;
   onLogout: () => void;
   onNavigate: (view: 'admin' | 'rrhh' | 'society', societyId?: string) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'facturas' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'audit';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'audit';
 
 export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -77,7 +77,6 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     { id: 'tags',       label: 'Tags PRL',            icon: Activity },
     { id: 'roles',      label: 'Roles',               icon: ShieldCheck },
     { id: 'audit',      label: 'Auditoria',           icon: ScrollText },
-    { id: 'facturas',   label: 'Facturas',            icon: FileText },
   ];
 
   const filteredDocuments = allDocuments.filter((d) =>
@@ -91,7 +90,6 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const filteredVacations = allVacations.filter((v) =>
     (!selectedSociety || v.societyId === selectedSociety)
   );
-
 
   const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
 
@@ -526,10 +524,6 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
         {activeTab === 'audit' && (
           <AuditLogPanel />
         )}
-        {/* Facturas Tab */}
-        {activeTab === 'facturas' && (
-  <FacturasModule currentUserRole="admin" />
-)}
       </div>
     </div>
   );

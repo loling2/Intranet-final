@@ -94,29 +94,32 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
 
   useEffect(() => {
     const fetchFacturas = async () => {
-      if (!activeSocietyId) return;
-
+      // 1. Verificación de seguridad
+      if (!activeSocietyId) {
+        console.log("Esperando activeSocietyId...");
+        return;
+      }
+  
       setLoadingFacturas(true);
       
-      // Consulta mínima sin relaciones
+      // 2. Consulta a la base de datos
       const { data, error } = await supabase
         .from('facturas')
         .select('*'); 
-        // Si esto trae datos, el problema es el 'join' con centros.
-        // Si esto trae vacío, el problema es RLS en la tabla facturas.
-
+  
+      // 3. Manejo de resultados
       if (error) {
         console.error("Error crítico:", error);
       } else {
-        console.log("Datos brutos sin filtros:", data);
+        console.log("Datos obtenidos:", data);
         setFacturas(data || []);
       }
+      
       setLoadingFacturas(false);
     };
-
+  
     fetchFacturas();
-  }, [activeSocietyId]); // Cierre del useEffect y array de dependencias
-
+  }, [activeSocietyId]);
   const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
 
   return (

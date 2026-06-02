@@ -64,8 +64,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Create a new auth user + user_profile using SECURITY DEFINER RPC
-    // (bypasses the broken auth.admin.createUser on Supabase Pro)
+    // ── create_user ───────────────────────────────────────────────────────────
     if (action === "create_user") {
       if (!email || !nombre) {
         return new Response(JSON.stringify({ error: "Email y nombre son obligatorios" }), {
@@ -75,8 +74,6 @@ Deno.serve(async (req: Request) => {
 
       const normalizedEmail = email.trim().toLowerCase();
       const tempPassword = crypto.randomUUID().replace(/-/g, "") + "Aa1!";
-
-      let uid: string;
 
       const { data: rpcUid, error: rpcErr } = await supabaseAdmin.rpc("create_auth_user", {
         p_email: normalizedEmail,
@@ -91,7 +88,7 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      uid = rpcUid as string;
+      const uid = rpcUid as string;
 
       const { error: profileErr } = await supabaseAdmin.from("user_profiles").upsert({
         id: uid,
@@ -114,25 +111,106 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── bulk_import ───────────────────────────────────────────────────────────
+    if (action === "bulk_import") {
+      const { rows } = body as {
+        rows: Array<{
+          email: string;
+          nombre: string;
+          dni?: string;
+          password: string;
+          role?: string;
+          societies?: string[];
+        }>;
+      };
+
+      if (!rows?.length) {
+        return new Response(JSON.stringify({ error: "No hay filas para importar" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const results: Array<{ email: string; ok: boolean; error?: string; userId?: string }> = [];
+
+      for (const row of rows) {
+        try {
+          const normalizedEmail = row.email.trim().toLowerCase();
+          const pwd = row.password?.trim();
+
+          if (!normalizedEmail || !row.nombre?.trim() || !pwd) {
+            results.push({ email: normalizedEmail, ok: false, error: "Faltan campos obligatorios (email, nombre, contrasena)" });
+            continue;
+          }
+
+          // Create auth user (or get existing)
+          const { data: uid, error: rpcErr } = await supabaseAdmin.rpc("bulk_create_auth_user_simple", {
+            p_email: normalizedEmail,
+            p_password: pwd,
+            p_nombre: row.nombre.trim(),
+          });
+
+          if (rpcErr || !uid) {
+            results.push({ email: normalizedEmail, ok: false, error: rpcErr?.message ?? "Error creando usuario" });
+            continue;
+          }
+
+          // Upsert user_profile
+          const { error: profileErr } = await supabaseAdmin.from("user_profiles").upsert({
+            id: uid,
+            nombre: row.nombre.trim(),
+            email: normalizedEmail,
+            role: row.role ?? "employee",
+            activo: true,
+            societies: row.societies ?? [],
+            ...(row.dni ? { dni: row.dni.trim().toUpperCase() } : {}),
+          }, { onConflict: "id" });
+
+          if (profileErr) {
+            results.push({ email: normalizedEmail, ok: false, error: profileErr.message });
+            continue;
+          }
+
+          results.push({ email: normalizedEmail, ok: true, userId: uid });
+        } catch (err) {
+          results.push({ email: row.email ?? "?", ok: false, error: String(err) });
+        }
+      }
+
+      const ok = results.filter(r => r.ok).length;
+      const failed = results.filter(r => !r.ok).length;
+      return new Response(JSON.stringify({ ok: true, imported: ok, failed, results }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (!userId) {
       return new Response(JSON.stringify({ error: "Falta userId" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // ── set_password ──────────────────────────────────────────────────────────
     if (action === "set_password") {
       if (!password || password.length < 8) {
         return new Response(JSON.stringify({ error: "La contrasena debe tener al menos 8 caracteres" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
-      if (error) throw error;
+      // Update Supabase Auth session password
+      const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
+      if (authErr) throw authErr;
+      // Also sync the bcrypt hash used by check_user_password()
+      const { error: rpcErr } = await supabaseAdmin.rpc("update_user_password", {
+        p_user_id: userId,
+        p_new_password: password,
+      });
+      if (rpcErr) throw rpcErr;
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // ── set_email ─────────────────────────────────────────────────────────────
     if (action === "set_email") {
       if (!email) {
         return new Response(JSON.stringify({ error: "Email requerido" }), {
@@ -151,6 +229,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── set_role ──────────────────────────────────────────────────────────────
     if (action === "set_role") {
       if (!role) {
         return new Response(JSON.stringify({ error: "Rol requerido" }), {
@@ -172,6 +251,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── set_pin ───────────────────────────────────────────────────────────────
     if (action === "set_pin") {
       const pinValue = pin ?? Math.floor(1000 + Math.random() * 9000).toString();
       const { error } = await supabaseAdmin
@@ -191,7 +271,8 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(JSON.stringify({ error: message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

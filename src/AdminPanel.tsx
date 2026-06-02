@@ -92,10 +92,27 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     (!selectedSociety || v.societyId === selectedSociety)
   );
 
-  const { data, error } = await supabase
-  .from('facturas')
-  .select('*, empleados(nombre), centros(nombre)')
-  .eq('centros.id_sociedad', activeSocietyId);
+// 1. Añade estos estados al inicio de tu componente
+const [facturas, setFacturas] = useState<any[]>([]);
+const [loadingFacturas, setLoadingFacturas] = useState(false);
+
+// 2. Crea un efecto para cargar los datos
+useEffect(() => {
+  const fetchFacturas = async () => {
+    setLoadingFacturas(true);
+    const { data, error } = await supabase
+      .from('facturas')
+      .select('*, empleados(nombre), centros(nombre)')
+      .eq('centros.id_sociedad', activeSocietyId); // Asegúrate de que esto sea correcto
+    
+    if (data) setFacturas(data);
+    setLoadingFacturas(false);
+  };
+
+  if (activeSocietyId) {
+    fetchFacturas();
+  }
+}, [activeSocietyId]); // Se re-ejecuta si cambia la sociedad
 
   const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
 

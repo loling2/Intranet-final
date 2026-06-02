@@ -10,10 +10,11 @@ import { useSociety } from './context/SocietyContext';
 import { writeAuditLog } from './lib/auditLog';
 
 const ROLE_COLORS: Record<AppRole, { bg: string; text: string; border: string; label: string }> = {
-  admin:     { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA', label: 'Admin' },
-  rrhh:      { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE', label: 'RRHH' },
-  employee:  { bg: '#F0FDF4', text: '#16A34A', border: '#BBF7D0', label: 'Empleado' },
-  prevencion:{ bg: '#FFFBEB', text: '#D97706', border: '#FDE68A', label: 'Prevencion' },
+  admin:      { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA', label: 'Admin' },
+  rrhh:       { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE', label: 'RRHH' },
+  employee:   { bg: '#F0FDF4', text: '#16A34A', border: '#BBF7D0', label: 'Empleado' },
+  prevencion: { bg: '#FFFBEB', text: '#D97706', border: '#FDE68A', label: 'Prevencion' },
+  supervisor: { bg: '#F5F3FF', text: '#7C3AED', border: '#DDD6FE', label: 'Supervisor' },
 };
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -58,8 +59,8 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
   const [success, setSuccess] = useState(false);
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'employee']
-    : ['rrhh', 'prevencion', 'employee'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'employee']
+    : ['rrhh', 'prevencion', 'supervisor', 'employee'];
 
   const toggleSociety = (id: string) =>
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
@@ -308,8 +309,8 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'employee']
-    : ['rrhh', 'prevencion', 'employee'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'employee']
+    : ['rrhh', 'prevencion', 'supervisor', 'employee'];
 
   const rc = ROLE_COLORS[user.role];
 
@@ -677,6 +678,7 @@ export default function UserManagement({ currentUserRole }: Props) {
           <option value="admin">Admin</option>
           <option value="rrhh">RRHH</option>
           <option value="prevencion">Prevencion</option>
+          <option value="supervisor">Supervisor</option>
           <option value="employee">Empleado</option>
         </select>
         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}

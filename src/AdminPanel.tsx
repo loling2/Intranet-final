@@ -224,7 +224,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
                 <div className="p-4 space-y-2">
                   {societies.map((s) => {
                     const empDocs = mockDocuments[s.id]?.length ?? 0;
-                    const empDevs = mockDevices[s.id]?.length ?? 0;
+                    const empDevs = 0;
                     return (
                       <button
                         key={s.id}
@@ -344,7 +344,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {societies.map((s) => {
               const docs = mockDocuments[s.id] ?? [];
-              const devs = mockDevices[s.id] ?? [];
+              const devs: unknown[] = [];
               const vacs = mockVacations[s.id] ?? { balance: { total: 0, used: 0, pending: 0 }, requests: [] };
               const certs = mockCertificates[s.id] ?? [];
               const exams = mockExams[s.id] ?? [];

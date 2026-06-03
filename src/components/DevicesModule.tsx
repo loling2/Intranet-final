@@ -1,0 +1,638 @@
+import { useState, useEffect, useCallback } from 'react';
+import {
+  Laptop, Smartphone, Monitor, Headphones, Tablet, Phone,
+  Plus, Search, Pencil, Trash2, X, RefreshCw, AlertCircle,
+  CheckCircle2, ChevronDown, Settings,
+} from 'lucide-react';
+import { supabase } from '../supabaseClient';
+import type { Dispositivo, Empleado } from '../supabaseClient';
+import { societies } from '../themes';
+
+const TIPOS = ['Portatil', 'Sobremesa', 'Monitor', 'Movil', 'Tablet', 'Periferico', 'VoIP', 'Otro'];
+
+function typeIcon(tipo: string) {
+  switch (tipo) {
+    case 'Portatil': return Laptop;
+    case 'Sobremesa': return Settings;
+    case 'Monitor': return Monitor;
+    case 'Movil': return Smartphone;
+    case 'Tablet': return Tablet;
+    case 'VoIP': return Phone;
+    default: return Headphones;
+  }
+}
+
+function formatDate(d: string | null) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// ── Form Modal ────────────────────────────────────────────────────────────────
+
+interface FormState {
+  tipo: string;
+  marca_modelo: string;
+  caracteristicas: string;
+  centro_trabajo: string;
+  numero_serie: string;
+  activo: boolean;
+  society_id: string;
+  empleado_id: string;
+  usuario_asignado_nombre: string;
+  fecha_asignacion: string;
+  notas: string;
+}
+
+const EMPTY_FORM: FormState = {
+  tipo: 'Portatil',
+  marca_modelo: '',
+  caracteristicas: '',
+  centro_trabajo: '',
+  numero_serie: '',
+  activo: true,
+  society_id: '',
+  empleado_id: '',
+  usuario_asignado_nombre: '',
+  fecha_asignacion: '',
+  notas: '',
+};
+
+function DeviceModal({
+  existing,
+  empleados,
+  onClose,
+  onSaved,
+}: {
+  existing?: Dispositivo;
+  empleados: Empleado[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState<FormState>(
+    existing
+      ? {
+          tipo: existing.tipo,
+          marca_modelo: existing.marca_modelo,
+          caracteristicas: existing.caracteristicas,
+          centro_trabajo: existing.centro_trabajo,
+          numero_serie: existing.numero_serie,
+          activo: existing.activo,
+          society_id: existing.society_id,
+          empleado_id: existing.empleado_id ?? '',
+          usuario_asignado_nombre: existing.usuario_asignado_nombre,
+          fecha_asignacion: existing.fecha_asignacion ?? '',
+          notas: existing.notas,
+        }
+      : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const set = (key: keyof FormState, value: string | boolean) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
+
+  const filteredEmpleados = empleados.filter(
+    (e) => !form.society_id || e.id_sociedad === form.society_id
+  );
+
+  const handleEmpleadoChange = (empId: string) => {
+    const emp = empleados.find((e) => e.id === empId);
+    set('empleado_id', empId);
+    set('usuario_asignado_nombre', emp?.nombre ?? '');
+  };
+
+  const handleSave = async () => {
+    if (!form.marca_modelo.trim()) { setError('La marca/modelo es obligatoria.'); return; }
+    if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
+    setSaving(true); setError('');
+
+    const payload = {
+      tipo: form.tipo,
+      marca_modelo: form.marca_modelo.trim(),
+      caracteristicas: form.caracteristicas.trim(),
+      centro_trabajo: form.centro_trabajo.trim(),
+      numero_serie: form.numero_serie.trim(),
+      activo: form.activo,
+      society_id: form.society_id,
+      empleado_id: form.empleado_id || null,
+      usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
+      fecha_asignacion: form.fecha_asignacion || null,
+      notas: form.notas.trim(),
+    };
+
+    try {
+      if (existing) {
+        const { error: err } = await supabase.from('dispositivos').update(payload).eq('id', existing.id);
+        if (err) throw err;
+      } else {
+        const { error: err } = await supabase.from('dispositivos').insert(payload);
+        if (err) throw err;
+      }
+      onSaved();
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }}>
+              <Laptop size={15} className="text-white" />
+            </div>
+            <h2 className="text-white font-semibold text-sm">{existing ? 'Editar dispositivo' : 'Nuevo dispositivo'}</h2>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+          {/* Row: Tipo + Activo */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Tipo *</label>
+              <div className="relative">
+                <select
+                  value={form.tipo}
+                  onChange={(e) => set('tipo', e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none appearance-none cursor-pointer"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                >
+                  {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
+              <div className="flex gap-2 pt-1">
+                {[true, false].map((v) => (
+                  <button
+                    key={String(v)}
+                    type="button"
+                    onClick={() => set('activo', v)}
+                    className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+                    style={{
+                      backgroundColor: form.activo === v ? (v ? '#ECFDF5' : '#FEF2F2') : '#F8FAFC',
+                      color: form.activo === v ? (v ? '#065F46' : '#DC2626') : '#94A3B8',
+                      border: `1.5px solid ${form.activo === v ? (v ? '#6EE7B7' : '#FECACA') : '#E2E8F0'}`,
+                    }}
+                  >
+                    {v ? 'Activo' : 'Inactivo'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Marca/Modelo */}
+          <div>
+            <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Marca / Modelo *</label>
+            <input
+              autoFocus
+              type="text"
+              value={form.marca_modelo}
+              onChange={(e) => { set('marca_modelo', e.target.value); setError(''); }}
+              placeholder="Ej: Lenovo ThinkPad E15 Gen 4"
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+              style={{ border: `1.5px solid ${error && !form.marca_modelo ? '#FECACA' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }}
+            />
+          </div>
+
+          {/* Caracteristicas */}
+          <div>
+            <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Caracteristicas tecnicas</label>
+            <textarea
+              value={form.caracteristicas}
+              onChange={(e) => set('caracteristicas', e.target.value)}
+              placeholder="Ej: Intel i5-12ª gen · 16 GB RAM · 512 GB SSD NVMe"
+              rows={2}
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
+              style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+            />
+          </div>
+
+          {/* Row: Numero serie + Centro */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Numero de serie</label>
+              <input
+                type="text"
+                value={form.numero_serie}
+                onChange={(e) => set('numero_serie', e.target.value)}
+                placeholder="Ej: LNV-2024-A1B2C3"
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Centro de trabajo</label>
+              <input
+                type="text"
+                value={form.centro_trabajo}
+                onChange={(e) => set('centro_trabajo', e.target.value)}
+                placeholder="Ej: Oficina Central Madrid"
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+              />
+            </div>
+          </div>
+
+          {/* Sociedad */}
+          <div>
+            <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Sociedad *</label>
+            <div className="relative">
+              <select
+                value={form.society_id}
+                onChange={(e) => { set('society_id', e.target.value); set('empleado_id', ''); set('usuario_asignado_nombre', ''); setError(''); }}
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none appearance-none cursor-pointer"
+                style={{ border: `1.5px solid ${error && !form.society_id ? '#FECACA' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }}
+              >
+                <option value="">Selecciona sociedad...</option>
+                {societies.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
+            </div>
+          </div>
+
+          {/* Usuario asignado */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Usuario asignado</label>
+              <div className="relative">
+                <select
+                  value={form.empleado_id}
+                  onChange={(e) => handleEmpleadoChange(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none appearance-none cursor-pointer"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                >
+                  <option value="">Sin asignar</option>
+                  {filteredEmpleados.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                </select>
+                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Fecha asignacion</label>
+              <input
+                type="date"
+                value={form.fecha_asignacion}
+                onChange={(e) => set('fecha_asignacion', e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+              />
+            </div>
+          </div>
+
+          {/* Notas */}
+          <div>
+            <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Notas / Observaciones</label>
+            <textarea
+              value={form.notas}
+              onChange={(e) => set('notas', e.target.value)}
+              placeholder="Incidencias, garantia, observaciones..."
+              rows={2}
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
+              style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+              <AlertCircle size={13} style={{ color: '#DC2626' }} />
+              <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
+              Cancelar
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ backgroundColor: '#0F172A' }}
+            >
+              {saving ? <RefreshCw size={14} className="animate-spin" /> : <Laptop size={14} />}
+              {existing ? 'Guardar cambios' : 'Crear dispositivo'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Confirm Delete Modal ──────────────────────────────────────────────────────
+
+function ConfirmDelete({ name, onConfirm, onClose, loading }: {
+  name: string; onConfirm: () => void; onClose: () => void; loading: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#FEF2F2' }}>
+            <Trash2 size={18} style={{ color: '#DC2626' }} />
+          </div>
+          <div>
+            <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Eliminar dispositivo</h3>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>"{name}" sera eliminado permanentemente.</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+          <button onClick={onConfirm} disabled={loading}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+            style={{ backgroundColor: '#DC2626' }}>
+            {loading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main DevicesModule ────────────────────────────────────────────────────────
+
+export default function DevicesModule() {
+  const [devices, setDevices] = useState<Dispositivo[]>([]);
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [filterSociety, setFilterSociety] = useState('');
+  const [filterTipo, setFilterTipo] = useState('');
+  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo'>('all');
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState<Dispositivo | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Dispositivo | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const flash = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(''), 3000); };
+
+  const loadDevices = useCallback(async () => {
+    setLoading(true);
+    const { data, error: err } = await supabase
+      .from('dispositivos')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (err) setError(err.message);
+    else setDevices((data ?? []) as Dispositivo[]);
+    setLoading(false);
+  }, []);
+
+  const loadEmpleados = useCallback(async () => {
+    const { data } = await supabase
+      .from('empleados')
+      .select('id, nombre, id_sociedad')
+      .eq('activo', true)
+      .order('nombre');
+    setEmpleados((data ?? []) as Empleado[]);
+  }, []);
+
+  useEffect(() => { loadDevices(); loadEmpleados(); }, [loadDevices, loadEmpleados]);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const { error: err } = await supabase.from('dispositivos').delete().eq('id', deleteTarget.id);
+    if (err) setError(err.message);
+    else {
+      flash(`Dispositivo "${deleteTarget.marca_modelo}" eliminado`);
+      await loadDevices();
+    }
+    setDeleting(false);
+    setDeleteTarget(null);
+  };
+
+  const filtered = devices.filter((d) => {
+    if (filterSociety && d.society_id !== filterSociety) return false;
+    if (filterTipo && d.tipo !== filterTipo) return false;
+    if (filterActivo === 'activo' && !d.activo) return false;
+    if (filterActivo === 'inactivo' && d.activo) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return (
+        d.marca_modelo.toLowerCase().includes(q) ||
+        d.tipo.toLowerCase().includes(q) ||
+        d.numero_serie.toLowerCase().includes(q) ||
+        d.usuario_asignado_nombre.toLowerCase().includes(q) ||
+        d.centro_trabajo.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  const totalActivos = devices.filter((d) => d.activo).length;
+
+  return (
+    <div className="space-y-4">
+      {showCreate && (
+        <DeviceModal empleados={empleados} onClose={() => setShowCreate(false)} onSaved={() => { loadDevices(); flash('Dispositivo creado correctamente'); }} />
+      )}
+      {editing && (
+        <DeviceModal existing={editing} empleados={empleados} onClose={() => setEditing(null)} onSaved={() => { loadDevices(); flash('Dispositivo actualizado'); }} />
+      )}
+      {deleteTarget && (
+        <ConfirmDelete name={deleteTarget.marca_modelo} onConfirm={handleDelete} onClose={() => setDeleteTarget(null)} loading={deleting} />
+      )}
+
+      {/* Header */}
+      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-4" style={{ borderBottom: '1px solid #E2E8F0' }}>
+          <div>
+            <h3 className="font-semibold" style={{ color: '#0F172A' }}>Gestion de Dispositivos</h3>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>
+              {devices.length} dispositivo{devices.length !== 1 ? 's' : ''} &middot; {totalActivos} activo{totalActivos !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all hover:opacity-90"
+            style={{ backgroundColor: '#0F172A', boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}
+          >
+            <Plus size={15} /> Nuevo dispositivo
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="px-6 py-3 flex flex-wrap items-center gap-2" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+          <div className="relative flex-1 min-w-[180px]">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por modelo, serie, usuario..."
+              className="w-full pl-8 pr-3 py-2 rounded-lg text-xs outline-none"
+              style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}
+            />
+            {search && <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer" style={{ color: '#94A3B8' }}><X size={11} /></button>}
+          </div>
+          <select value={filterSociety} onChange={(e) => setFilterSociety(e.target.value)}
+            className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
+            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
+            <option value="">Todas las sociedades</option>
+            {societies.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)}
+            className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
+            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
+            <option value="">Todos los tipos</option>
+            {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select value={filterActivo} onChange={(e) => setFilterActivo(e.target.value as 'all' | 'activo' | 'inactivo')}
+            className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
+            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
+            <option value="all">Todos los estados</option>
+            <option value="activo">Activos</option>
+            <option value="inactivo">Inactivos</option>
+          </select>
+        </div>
+
+        {/* Alerts */}
+        {error && (
+          <div className="mx-6 mt-3 flex items-center gap-3 px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
+            <AlertCircle size={15} /><span className="flex-1">{error}</span>
+            <button onClick={() => setError('')} className="cursor-pointer"><X size={13} /></button>
+          </div>
+        )}
+        {success && (
+          <div className="mx-6 mt-3 flex items-center gap-3 px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: '#ECFDF5', border: '1px solid #6EE7B7', color: '#065F46' }}>
+            <CheckCircle2 size={15} /><span>{success}</span>
+          </div>
+        )}
+
+        {/* Table */}
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <RefreshCw size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center py-16">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: '#F1F5F9' }}>
+              <Laptop size={28} style={{ color: '#CBD5E1' }} />
+            </div>
+            <p className="text-sm font-medium" style={{ color: '#64748B' }}>
+              {search || filterSociety || filterTipo || filterActivo !== 'all' ? 'Sin resultados' : 'Sin dispositivos registrados'}
+            </p>
+            <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
+              {!search && !filterSociety && !filterTipo && filterActivo === 'all' && 'Pulsa "Nuevo dispositivo" para empezar'}
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
+            {/* Column headers */}
+            <div className="px-6 py-2.5 grid grid-cols-12 gap-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8', backgroundColor: '#F8FAFC' }}>
+              <div className="col-span-1">Tipo</div>
+              <div className="col-span-3">Modelo</div>
+              <div className="col-span-2">Serie</div>
+              <div className="col-span-2">Asignado a</div>
+              <div className="col-span-2">Centro / Sociedad</div>
+              <div className="col-span-1">Estado</div>
+              <div className="col-span-1 text-right">Acciones</div>
+            </div>
+
+            {filtered.map((dev) => {
+              const Icon = typeIcon(dev.tipo);
+              const society = societies.find((s) => s.id === dev.society_id);
+              return (
+                <div key={dev.id} className="px-6 py-3.5 grid grid-cols-12 gap-3 items-center hover:bg-slate-50 transition-colors duration-100">
+                  {/* Tipo icon */}
+                  <div className="col-span-1">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: dev.activo ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${dev.activo ? '#BBF7D0' : '#FECACA'}` }}>
+                      <Icon size={14} style={{ color: dev.activo ? '#16A34A' : '#DC2626' }} />
+                    </div>
+                  </div>
+
+                  {/* Modelo + caracteristicas */}
+                  <div className="col-span-3 min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>{dev.marca_modelo}</p>
+                    {dev.caracteristicas && (
+                      <p className="text-xs truncate mt-0.5" style={{ color: '#94A3B8' }}>{dev.caracteristicas}</p>
+                    )}
+                    <span className="inline-block text-xs px-1.5 py-0.5 rounded mt-0.5" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>{dev.tipo}</span>
+                  </div>
+
+                  {/* Serie */}
+                  <div className="col-span-2 min-w-0">
+                    <p className="text-xs font-mono truncate" style={{ color: dev.numero_serie ? '#1E293B' : '#CBD5E1' }}>
+                      {dev.numero_serie || '—'}
+                    </p>
+                  </div>
+
+                  {/* Usuario + fecha */}
+                  <div className="col-span-2 min-w-0">
+                    <p className="text-xs font-medium truncate" style={{ color: dev.usuario_asignado_nombre ? '#1E293B' : '#CBD5E1' }}>
+                      {dev.usuario_asignado_nombre || 'Sin asignar'}
+                    </p>
+                    {dev.fecha_asignacion && (
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{formatDate(dev.fecha_asignacion)}</p>
+                    )}
+                  </div>
+
+                  {/* Centro + sociedad */}
+                  <div className="col-span-2 min-w-0">
+                    {dev.centro_trabajo && (
+                      <p className="text-xs truncate" style={{ color: '#1E293B' }}>{dev.centro_trabajo}</p>
+                    )}
+                    {society && (
+                      <span className="inline-block text-xs px-1.5 py-0.5 rounded mt-0.5" style={{ backgroundColor: society.primaryLight, color: society.primary, border: `1px solid ${society.border}` }}>
+                        {society.name}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Estado */}
+                  <div className="col-span-1">
+                    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg"
+                      style={{ backgroundColor: dev.activo ? '#ECFDF5' : '#FEF2F2', border: `1px solid ${dev.activo ? '#6EE7B7' : '#FECACA'}` }}>
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dev.activo ? '#22C55E' : '#EF4444' }} />
+                      <span className="text-xs font-semibold" style={{ color: dev.activo ? '#065F46' : '#DC2626' }}>
+                        {dev.activo ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="col-span-1 flex items-center justify-end gap-1">
+                    <button
+                      onClick={() => setEditing(dev)}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors"
+                      title="Editar"
+                      style={{ color: '#CBD5E1' }}
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(dev)}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors"
+                      title="Eliminar"
+                      style={{ color: '#CBD5E1' }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

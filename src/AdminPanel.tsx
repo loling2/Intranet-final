@@ -5,19 +5,19 @@ import {
   Search, Eye, CheckCircle2, XCircle, Clock,
   Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound
 } from 'lucide-react';
-import { validUsers, mockDocuments, mockDevices, mockVacations, mockCertificates, mockExams } from './mockData';
+import { validUsers, mockDocuments, mockVacations, mockCertificates, mockExams } from './mockData';
 import UserManagement from './UserManagement';
 import VehiclesModule from './VehiclesModule';
 import DocumentsModule from './DocumentsModule';
 import AuditLogPanel from './AuditLogPanel';
 import SocietySwitcher from './SocietySwitcher';
-import TestUploader from './components/TestUploader';
-import { useSociety } from './context/SocietyContext';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import VacationsModule from './components/VacationsModule';
 import EmployeesModule from './components/EmployeesModule';
 import TagsManager from './components/TagsManager';
 import RolesManager from './components/RolesManager';
+import DevicesModule from './components/DevicesModule';
+import { useSociety } from './context/SocietyContext';
 
 interface Props {
   email: string;
@@ -42,9 +42,6 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const allDocuments = Object.entries(mockDocuments).flatMap(([sId, docs]) =>
     docs.map((d) => ({ ...d, societyId: sId }))
   );
-  const allDevices = Object.entries(mockDevices).flatMap(([sId, devs]) =>
-    devs.map((d) => ({ ...d, societyId: sId }))
-  );
   const allVacations = Object.entries(mockVacations).flatMap(([sId, v]) =>
     v.requests.map((r) => ({ ...r, societyId: sId }))
   );
@@ -61,7 +58,6 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     { label: 'Sociedades', value: societies.length, icon: Building2, color: '#0EA5E9', bg: '#F0F9FF' },
     { label: 'Empleados', value: employees.length, icon: Users, color: '#10B981', bg: '#F0FDF4' },
     { label: 'Documentos', value: allDocuments.length, icon: FileText, color: '#F59E0B', bg: '#FFFBEB' },
-    { label: 'Dispositivos activos', value: allDevices.filter((d) => d.active).length, icon: Laptop, color: '#6366F1', bg: '#EEF2FF' },
     { label: 'Certificados', value: allCertificates.length, icon: Award, color: '#EC4899', bg: '#FDF2F8' },
     { label: 'Vacaciones pendientes', value: allVacations.filter((v) => v.status === 'pendiente').length, icon: Palmtree, color: '#8B5CF6', bg: '#F5F3FF' },
   ];
@@ -82,10 +78,6 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   ];
 
   const filteredDocuments = allDocuments.filter((d) =>
-    (!selectedSociety || d.societyId === selectedSociety) &&
-    (!searchQuery || d.name.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-  const filteredDevices = allDevices.filter((d) =>
     (!selectedSociety || d.societyId === selectedSociety) &&
     (!searchQuery || d.name.toLowerCase().includes(searchQuery.toLowerCase()))
   );
@@ -411,65 +403,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
 
         {/* Devices Tab */}
         {activeTab === 'devices' && (
-          <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-            <div className="px-6 py-4 flex items-center justify-between gap-4" style={{ borderBottom: '1px solid #E2E8F0' }}>
-              <div>
-                <h3 className="font-semibold" style={{ color: '#0F172A' }}>Gestion de Dispositivos</h3>
-                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{filteredDevices.length} dispositivos</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
-                  <input
-                    type="text"
-                    placeholder="Buscar..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 pr-3 py-2 rounded-lg text-xs outline-none"
-                    style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B', width: '200px' }}
-                  />
-                </div>
-                <select
-                  value={selectedSociety ?? ''}
-                  onChange={(e) => setSelectedSociety(e.target.value || null)}
-                  className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
-                  style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
-                >
-                  <option value="">Todas las sociedades</option>
-                  {societies.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-              {filteredDevices.map((device, i) => {
-                const s = getSocietyTheme(device.societyId);
-                return (
-                  <div key={i} className="px-6 py-4 flex items-center gap-4">
-                    <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: device.active ? '#F0FDF4' : '#FEF2F2' }}>
-                      <Laptop size={15} style={{ color: device.active ? '#16A34A' : '#DC2626' }} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{device.name}</p>
-                      <p className="text-xs" style={{ color: '#94A3B8' }}>{device.type} &middot; {device.serial}</p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {s && (
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-md" style={{ backgroundColor: s.primaryLight, color: s.primary, border: `1px solid ${s.border}` }}>
-                          {s.name}
-                        </span>
-                      )}
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ backgroundColor: device.active ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${device.active ? '#BBF7D0' : '#FECACA'}` }}>
-                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: device.active ? '#22C55E' : '#EF4444' }} />
-                        <span className="text-xs font-medium" style={{ color: device.active ? '#16A34A' : '#DC2626' }}>
-                          {device.active ? 'Activo' : 'Inactivo'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <DevicesModule />
         )}
 
         {/* Vehicles Tab - NEW */}

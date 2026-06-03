@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound } from 'lucide-react';
 import { societies, SocietyTheme } from './themes';
-import { mockDocuments, mockDevices, mockCertificates, mockExams } from './mockData';
+import { mockDocuments, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
 type UserRole = AppRole;
 import DocumentsCard from './DocumentsCard';
@@ -1375,7 +1375,6 @@ function Dashboard({
     });
   }, []);
 
-  const devices = mockDevices[theme.id] ?? [];
   const certificates = mockCertificates[theme.id] ?? [];
   const exams = mockExams[theme.id] ?? [];
 
@@ -1556,7 +1555,7 @@ function Dashboard({
             {/* Main Cards */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
-              <DevicesCard devices={devices} theme={theme} />
+              <DevicesCard theme={theme} />
               <PrevencionDocsCard theme={theme} userEmail={email} />
             </div>
           </>

@@ -165,3 +165,20 @@ export interface DocumentoCentro {
   tag_id: string | null;
   fecha_creacion: string;
 }
+
+export interface Dispositivo {
+  id: string;
+  tipo: string;
+  marca_modelo: string;
+  caracteristicas: string;
+  centro_trabajo: string;
+  numero_serie: string;
+  activo: boolean;
+  society_id: string;
+  empleado_id: string | null;
+  usuario_asignado_nombre: string;
+  fecha_asignacion: string | null;
+  notas: string;
+  created_at: string;
+  updated_at: string;
+}

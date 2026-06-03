@@ -5,7 +5,7 @@ import {
   Search, Eye, CheckCircle2, XCircle, Clock,
   Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound
 } from 'lucide-react';
-import { validUsers, mockDocuments, mockVacations, mockCertificates, mockExams } from './mockData';
+import { validUsers } from './mockData';
 import UserManagement from './UserManagement';
 import VehiclesModule from './VehiclesModule';
 import DocumentsModule from './DocumentsModule';
@@ -39,18 +39,10 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     setSelectedSociety(activeSocietyId);
   }, [activeSocietyId]);
 
-  const allDocuments = Object.entries(mockDocuments).flatMap(([sId, docs]) =>
-    docs.map((d) => ({ ...d, societyId: sId }))
-  );
-  const allVacations = Object.entries(mockVacations).flatMap(([sId, v]) =>
-    v.requests.map((r) => ({ ...r, societyId: sId }))
-  );
-  const allCertificates = Object.entries(mockCertificates).flatMap(([sId, certs]) =>
-    certs.map((c) => ({ ...c, societyId: sId }))
-  );
-  const allExams = Object.entries(mockExams).flatMap(([sId, exams]) =>
-    exams.map((e) => ({ ...e, societyId: sId }))
-  );
+  const allDocuments: unknown[] = [];
+  const allVacations: unknown[] = [];
+  const allCertificates: unknown[] = [];
+  const allExams: unknown[] = [];
 
   const employees = validUsers.filter((u) => u.role === 'employee');
 
@@ -223,7 +215,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
                 </div>
                 <div className="p-4 space-y-2">
                   {societies.map((s) => {
-                    const empDocs = mockDocuments[s.id]?.length ?? 0;
+                    const empDocs = 0;
                     const empDevs = 0;
                     return (
                       <button
@@ -277,11 +269,6 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
                   })}
                 </div>
               </div>
-            </div>
-
-            {/* Wasabi test uploader — remove once connection is verified */}
-            <div className="mb-6">
-              <TestUploader />
             </div>
 
             {/* Exam/vacation summary */}
@@ -343,11 +330,11 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
         {activeTab === 'societies' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {societies.map((s) => {
-              const docs = mockDocuments[s.id] ?? [];
+              const docs: unknown[] = [];
               const devs: unknown[] = [];
-              const vacs = mockVacations[s.id] ?? { balance: { total: 0, used: 0, pending: 0 }, requests: [] };
-              const certs = mockCertificates[s.id] ?? [];
-              const exams = mockExams[s.id] ?? [];
+              const vacs = { balance: { total: 0, used: 0, pending: 0 }, requests: [] };
+              const certs: unknown[] = [];
+              const exams: unknown[] = [];
               return (
                 <div
                   key={s.id}

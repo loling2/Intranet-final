@@ -421,9 +421,10 @@ export default function LoginPage() {
     setLoginError('');
     setLoginLoading(true);
     try {
-      // Verify credentials via edge function (direct password check against DB)
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
       const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+      // Step 1: Verify credentials via edge function
       let resp: Response;
       try {
         resp = await fetch(`${supabaseUrl}/functions/v1/admin-login`, {
@@ -436,30 +437,68 @@ export default function LoginPage() {
           body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
         });
       } catch (fetchErr) {
-        setLoginError(`Error de red: ${String(fetchErr)}`);
+        const errMsg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+        console.error('Login fetch error:', errMsg);
+        setLoginError('Error de conexión. Verifica tu conexión de red.');
         return;
       }
 
-      const body = await resp.json().catch(() => ({}));
+      let body: Record<string, unknown> = {};
+      try {
+        body = await resp.json();
+      } catch (jsonErr) {
+        console.error('Invalid JSON response from login:', jsonErr);
+        setLoginError('Error del servidor. Intenta de nuevo.');
+        return;
+      }
 
       if (!resp.ok) {
-        setLoginError(body.error ?? 'Credenciales incorrectas');
+        const errorMsg = typeof body.error === 'string' ? body.error : 'Credenciales incorrectas';
+        console.error('Login error:', errorMsg);
+        setLoginError(errorMsg);
         return;
       }
 
-      // Establish a real Supabase session so RLS policies work
-      if (body.access_token && body.refresh_token) {
-        await supabase.auth.setSession({
-          access_token: body.access_token,
-          refresh_token: body.refresh_token,
-        });
+      // Step 2: Validate response contains required tokens
+      if (!body.access_token || !body.refresh_token) {
+        console.error('Missing tokens in login response:', body);
+        setLoginError('Error al crear sesión. Intenta de nuevo.');
+        return;
       }
 
-      const resolvedEmail: string = body.email ?? email.trim().toLowerCase();
-      const resolvedRole: UserRole = (body.profile?.role as UserRole) ?? 'employee';
-      const resolvedSocietyId: string | null = body.profile?.societies?.[0] ?? null;
+      // Step 3: Establish Supabase session
+      try {
+        await supabase.auth.setSession({
+          access_token: body.access_token as string,
+          refresh_token: body.refresh_token as string,
+        });
+      } catch (sessionErr) {
+        const errMsg = sessionErr instanceof Error ? sessionErr.message : String(sessionErr);
+        console.error('Session setup error:', errMsg);
+        setLoginError('Error al iniciar sesión. Intenta de nuevo.');
+        return;
+      }
 
-      let initialView: AppView;
+      // Step 4: Load profile with error handling
+      let resolvedEmail: string = email.trim().toLowerCase();
+      let resolvedRole: UserRole = 'employee';
+      let resolvedSocietyId: string | null = null;
+
+      try {
+        const profile = body.profile as Record<string, unknown> | undefined;
+        if (profile) {
+          resolvedEmail = (profile.email as string) ?? resolvedEmail;
+          resolvedRole = (profile.role as UserRole) ?? 'employee';
+          const societies = profile.societies as unknown[];
+          resolvedSocietyId = (societies && societies.length > 0) ? String(societies[0]) : null;
+        }
+      } catch (profileErr) {
+        console.error('Profile parsing error:', profileErr);
+        console.warn('Proceeding with default employee role');
+      }
+
+      // Step 5: Determine view
+      let initialView: AppView = 'dashboard';
       if (resolvedRole === 'admin') {
         initialView = 'admin';
       } else if (resolvedRole === 'rrhh') {
@@ -471,7 +510,6 @@ export default function LoginPage() {
       } else if (resolvedRole === 'administracion') {
         initialView = 'administracion';
       } else {
-        initialView = 'dashboard';
         if (resolvedSocietyId) setSelectedId(resolvedSocietyId);
       }
 
@@ -482,6 +520,10 @@ export default function LoginPage() {
         view: initialView,
         activeSocietyId: resolvedSocietyId,
       });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error('Unexpected login error:', errMsg, err);
+      setLoginError('Error inesperado. Intenta de nuevo.');
     } finally {
       setLoginLoading(false);
     }

@@ -634,6 +634,14 @@ export default function LoginPage() {
     if (session.view === 'dashboard') {
       const theme = societies.find((s) => s.id === session.activeSocietyId) ?? null;
       if (theme) {
+        // Determine back-navigation based on the user's role
+        const backNav: { label: string; view: AppView; color: string; border: string } | null =
+          session.role === 'admin'       ? { label: 'Volver a Admin',      view: 'admin',          color: '#FCA5A5', border: 'rgba(239,68,68,0.3)'  } :
+          session.role === 'rrhh'        ? { label: 'Volver a RRHH',       view: 'rrhh',           color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
+          session.role === 'supervisor'  ? { label: 'Volver a Supervisor', view: 'supervisor',     color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
+          session.role === 'prevencion'  ? { label: 'Volver a Prevencion', view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
+          null;
+
         return (
           <Dashboard
             theme={theme}
@@ -642,7 +650,11 @@ export default function LoginPage() {
             isAdmin={session.role === 'admin'}
             onNavigateAdmin={session.role === 'admin' ? () => handleNavigate('admin') : undefined}
             onNavigateRrhh={session.role === 'rrhh' ? () => handleNavigate('rrhh') : undefined}
-            onNavigateSupervisor={session.role === 'supervisor' ? () => handleNavigate('rrhh') : undefined}
+            onNavigateSupervisor={session.role === 'supervisor' ? () => handleNavigate('supervisor') : undefined}
+            onNavigateBack={backNav ? () => handleNavigate(backNav.view) : undefined}
+            backLabel={backNav?.label}
+            backColor={backNav?.color}
+            backBorder={backNav?.border}
           />
         );
       }
@@ -1336,6 +1348,10 @@ function Dashboard({
   onNavigateAdmin,
   onNavigateRrhh,
   onNavigateSupervisor,
+  onNavigateBack,
+  backLabel,
+  backColor,
+  backBorder,
 }: {
   theme: SocietyTheme;
   onLogout: () => void;
@@ -1344,6 +1360,10 @@ function Dashboard({
   onNavigateAdmin?: () => void;
   onNavigateRrhh?: () => void;
   onNavigateSupervisor?: () => void;
+  onNavigateBack?: () => void;
+  backLabel?: string;
+  backColor?: string;
+  backBorder?: string;
 }) {
   const Icon = iconMap[theme.logoIcon];
   const [activeTab, setActiveTab] = useState('resumen');
@@ -1378,6 +1398,16 @@ function Dashboard({
       >
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
+            {onNavigateBack && (
+              <button
+                onClick={onNavigateBack}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200"
+                style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: backColor ?? '#FFFFFF', border: `1px solid ${backBorder ?? 'rgba(255,255,255,0.2)'}` }}
+              >
+                <ArrowRight size={12} style={{ transform: 'rotate(180deg)' }} />
+                {backLabel ?? 'Volver'}
+              </button>
+            )}
             <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/15 backdrop-blur-sm border border-white/20">
               {Icon ? <Icon size={20} className="text-white" /> : null}
             </div>

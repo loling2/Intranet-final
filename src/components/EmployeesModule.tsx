@@ -66,32 +66,94 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
 
 // ─── CSV Import Modal ────────────────────────────────────────────────────────
 
-const CSV_TEMPLATE_HEADERS = ['email', 'nombre', 'dni', 'contrasena', 'rol', 'sociedad_id'];
-const CSV_TEMPLATE_EXAMPLE = [
+// Template A: Auth users (email + password → creates login access)
+const CSV_AUTH_HEADERS = ['email', 'nombre', 'dni', 'contrasena', 'rol', 'sociedad_id'];
+const CSV_AUTH_EXAMPLE = [
   ['empleado@empresa.com', 'Juan Garcia Lopez', '12345678A', 'Contrasena123!', 'employee', ''],
   ['supervisor@empresa.com', 'Maria Perez Ruiz', '87654321B', 'Contrasena456!', 'supervisor', ''],
 ];
 
-function downloadTemplateCsv() {
-  const rows = [CSV_TEMPLATE_HEADERS, ...CSV_TEMPLATE_EXAMPLE];
+// Template B: HR data (apellidos + nombre → creates empleado record, no login)
+const CSV_HR_HEADERS = ['apellidos', 'nombre', 'dni', 'telefono', 'fecha_alta', 'fecha_nacimiento', 'tipo_contrato', 'turno', 'puesto', 'centro_trabajo', 'emails'];
+const CSV_HR_EXAMPLE = [
+  ['Garcia Lopez', 'Juan', '12345678A', '600000001', '2024-01-15', '1990-05-20', 'Indefinido', 'Manana', 'Tecnico', 'Sede Central', 'juan@empresa.com'],
+  ['Perez Ruiz', 'Maria', '87654321B', '600000002', '2024-03-01', '1985-11-08', 'Temporal', 'Tarde', 'Administrativo', 'Oficina Norte', 'maria@empresa.com'],
+];
+
+function downloadTemplateCsv(type: 'auth' | 'hr') {
+  const headers = type === 'auth' ? CSV_AUTH_HEADERS : CSV_HR_HEADERS;
+  const examples = type === 'auth' ? CSV_AUTH_EXAMPLE : CSV_HR_EXAMPLE;
+  const rows = [headers, ...examples];
   const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = 'plantilla_importar_usuarios.csv'; a.click();
+  a.href = url;
+  a.download = type === 'auth' ? 'plantilla_usuarios_acceso.csv' : 'plantilla_empleados_rrhh.csv';
+  a.click();
   URL.revokeObjectURL(url);
 }
 
-function parseCsv(text: string): Record<string, string>[] {
+// Normalize accented/special chars for header matching
+function normHeader(s: string) {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+}
+
+function parseCsv(text: string): { rows: Record<string, string>[]; mode: 'auth' | 'hr' } {
+  // Support semicolon or comma delimiter
   const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
-  return lines.slice(1).map(line => {
-    const values = line.match(/(".*?"|[^,]+)/g)?.map(v => v.replace(/^"|"$/g, '').trim()) ?? [];
+  if (lines.length < 2) return { rows: [], mode: 'auth' };
+
+  const delimiter = lines[0].includes(';') ? ';' : ',';
+  const rawHeaders = lines[0].split(delimiter).map(h => h.replace(/^"|"$/g, '').trim());
+  const headers = rawHeaders.map(normHeader);
+
+  const rows = lines.slice(1).map(line => {
+    const values = line.split(delimiter).map(v => v.replace(/^"|"$/g, '').trim());
     const obj: Record<string, string> = {};
     headers.forEach((h, i) => { obj[h] = values[i] ?? ''; });
+    // Also store with original header keys for flexibility
+    rawHeaders.forEach((h, i) => { obj[normHeader(h)] = values[i] ?? ''; });
     return obj;
-  }).filter(r => r.email);
+  }).filter(r => Object.values(r).some(v => v.trim()));
+
+  // Detect mode: HR format has 'apellidos' column
+  const mode: 'auth' | 'hr' = headers.includes('apellidos') || headers.includes('apellido') ? 'hr' : 'auth';
+  return { rows, mode };
+}
+
+// Map HR CSV row to empleado payload
+function hrRowToEmpleado(r: Record<string, string>, societyId: string): Partial<Empleado> {
+  const apellidos = r['apellidos'] ?? r['apellido'] ?? '';
+  const nombre = r['nombre'] ?? '';
+  const fullName = apellidos && nombre ? `${nombre} ${apellidos}` : nombre || apellidos;
+
+  // Normalize date: accept DD/MM/YYYY or YYYY-MM-DD
+  const parseDate = (s: string) => {
+    if (!s?.trim()) return null;
+    const dmyMatch = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+    if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2].padStart(2,'0')}-${dmyMatch[1].padStart(2,'0')}`;
+    const ymatch = s.match(/^\d{4}-\d{2}-\d{2}$/);
+    if (ymatch) return s;
+    return null;
+  };
+
+  return {
+    nombre: fullName,
+    email: r['emails'] ?? r['email'] ?? r['correo'] ?? '',
+    dni: r['dni'] ?? r['dni_nie'] ?? null,
+    telefono: r['telefono'] ?? r['tel'] ?? null,
+    fecha_alta: parseDate(r['fecha_alta'] ?? r['fechaalta'] ?? ''),
+    fecha_nacimiento: parseDate(r['fecha_nacimiento'] ?? r['fechanacimiento'] ?? r['fecha_de_nacimiento'] ?? ''),
+    tipo_contrato: r['tipo_contrato'] ?? r['tipocontrato'] ?? null,
+    turno: r['turno'] ?? null,
+    puesto: r['puesto'] ?? null,
+    centro_trabajo: r['centro_trabajo'] ?? r['centrotrabajo'] ?? r['centro_de_trabajo'] ?? null,
+    id_sociedad: societyId,
+    activo: true,
+    estado_contrato: 'pendiente' as const,
+    user_id: null,
+  };
 }
 
 function ImportUsersModal({ sociedades, onClose, onImported }: {
@@ -101,9 +163,11 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
 }) {
   const [step, setStep] = useState<'upload' | 'preview' | 'result'>('upload');
   const [rows, setRows] = useState<Record<string, string>[]>([]);
+  const [mode, setMode] = useState<'auth' | 'hr'>('auth');
+  const [selectedSociety, setSelectedSociety] = useState(sociedades[0]?.id ?? '');
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
-  const [results, setResults] = useState<Array<{ email: string; ok: boolean; error?: string }>>([]);
+  const [results, setResults] = useState<Array<{ label: string; ok: boolean; error?: string }>>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -114,8 +178,9 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
     reader.onload = ev => {
       const text = ev.target?.result as string;
       const parsed = parseCsv(text);
-      if (!parsed.length) { setError('El archivo no contiene datos válidos o el formato es incorrecto.'); return; }
-      setRows(parsed);
+      if (!parsed.rows.length) { setError('El archivo no contiene datos válidos o el formato es incorrecto.'); return; }
+      setRows(parsed.rows);
+      setMode(parsed.mode);
       setStep('preview');
     };
     reader.readAsText(file, 'UTF-8');
@@ -125,31 +190,47 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
     setImporting(true);
     setError('');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      if (mode === 'hr') {
+        // Direct insert into empleados table
+        if (!selectedSociety) throw new Error('Selecciona una sociedad antes de importar');
+        const res: Array<{ label: string; ok: boolean; error?: string }> = [];
+        for (const r of rows) {
+          const payload = hrRowToEmpleado(r, selectedSociety);
+          if (!payload.nombre?.trim()) { res.push({ label: r['emails'] || r['nombre'] || '?', ok: false, error: 'Nombre vacío' }); continue; }
+          const { error: err } = await supabase.from('empleados').insert(payload);
+          const label = payload.email || payload.nombre || '?';
+          if (err) { res.push({ label, ok: false, error: err.message }); }
+          else { res.push({ label, ok: true }); }
+        }
+        setResults(res);
+      } else {
+        // Auth import via edge function
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 
-      const payload = rows.map(r => ({
-        email: r.email ?? r['correo'] ?? r['correo electronico'] ?? '',
-        nombre: r.nombre ?? r['nombre completo'] ?? '',
-        dni: r.dni ?? r['dni/nie'] ?? '',
-        password: r.contrasena ?? r['contraseña'] ?? r['password'] ?? r['clave'] ?? '',
-        role: (r.rol ?? r['role'] ?? 'employee').toLowerCase().trim(),
-        societies: r.sociedad_id?.trim() ? [r.sociedad_id.trim()] : [],
-      }));
+        const payload = rows.map(r => ({
+          email: r['email'] ?? r['correo'] ?? r['correo_electronico'] ?? '',
+          nombre: r['nombre'] ?? r['nombre_completo'] ?? '',
+          dni: r['dni'] ?? r['dni_nie'] ?? '',
+          password: r['contrasena'] ?? r['contrasena'] ?? r['password'] ?? r['clave'] ?? '',
+          role: (r['rol'] ?? r['role'] ?? 'employee').toLowerCase().trim(),
+          societies: r['sociedad_id']?.trim() ? [r['sociedad_id'].trim()] : (selectedSociety ? [selectedSociety] : []),
+        }));
 
-      const resp = await fetch(`${supabaseUrl}/functions/v1/manage-user`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY as string,
-        },
-        body: JSON.stringify({ action: 'bulk_import', rows: payload }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error ?? 'Error en la importación');
-      setResults(data.results ?? []);
+        const resp = await fetch(`${supabaseUrl}/functions/v1/manage-user`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+          },
+          body: JSON.stringify({ action: 'bulk_import', rows: payload }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error ?? 'Error en la importación');
+        setResults((data.results ?? []).map((r: { email: string; ok: boolean; error?: string }) => ({ label: r.email, ok: r.ok, error: r.error })));
+      }
       setStep('result');
       onImported();
     } catch (err) {
@@ -163,7 +244,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
 
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-white rounded-2xl w-full max-w-2xl mx-4 shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
+      <div className="bg-white rounded-2xl w-full max-w-3xl mx-4 shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
         {/* Header */}
         <div className="px-6 py-4 flex items-center justify-between border-b flex-shrink-0" style={{ borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' }}>
           <div className="flex items-center gap-3">
@@ -171,9 +252,13 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
               <FileSpreadsheet size={18} style={{ color: '#0369A1' }} />
             </div>
             <div>
-              <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Importar usuarios</h3>
+              <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Importar empleados</h3>
               <p className="text-xs" style={{ color: '#64748B' }}>
-                {step === 'upload' ? 'Sube un CSV con los datos' : step === 'preview' ? `${rows.length} usuario(s) listos para importar` : 'Resultado de la importación'}
+                {step === 'upload'
+                  ? 'Sube un CSV con los datos'
+                  : step === 'preview'
+                  ? `${rows.length} registro(s) detectados · formato ${mode === 'hr' ? 'RRHH' : 'acceso'}`
+                  : 'Resultado de la importación'}
               </p>
             </div>
           </div>
@@ -188,48 +273,65 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
           {/* Step: upload */}
           {step === 'upload' && (
             <>
-              {/* Download template */}
-              <div className="flex items-start gap-4 p-4 rounded-xl" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold" style={{ color: '#0C4A6E' }}>Paso 1: Descarga la plantilla</p>
-                  <p className="text-xs mt-0.5" style={{ color: '#0369A1' }}>
-                    Columnas: <code className="bg-blue-100 px-1 rounded">email</code>, <code className="bg-blue-100 px-1 rounded">nombre</code>, <code className="bg-blue-100 px-1 rounded">dni</code>, <code className="bg-blue-100 px-1 rounded">contrasena</code>, <code className="bg-blue-100 px-1 rounded">rol</code>, <code className="bg-blue-100 px-1 rounded">sociedad_id</code>
+              {/* Two template options */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* HR template */}
+                <div className="p-4 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                  <p className="text-sm font-semibold mb-1" style={{ color: '#14532D' }}>Plantilla RRHH</p>
+                  <p className="text-xs mb-2" style={{ color: '#166534' }}>
+                    Importa ficha de empleado: apellidos, nombre, DNI, telefono, fechas, contrato, turno, puesto, centro...
                   </p>
-                  <p className="text-xs mt-1" style={{ color: '#64748B' }}>Roles válidos: <em>employee, rrhh, prevencion, supervisor, admin</em></p>
+                  <p className="text-xs mb-3" style={{ color: '#64748B' }}>
+                    No crea acceso de login. Util para cargar datos de RRHH directamente.
+                  </p>
+                  <button
+                    onClick={() => downloadTemplateCsv('hr')}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+                    style={{ backgroundColor: '#16A34A', color: '#FFFFFF' }}
+                  >
+                    <Download size={12} /> Descargar plantilla RRHH
+                  </button>
                 </div>
-                <button
-                  onClick={downloadTemplateCsv}
-                  className="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer"
-                  style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
-                >
-                  <Download size={13} /> Plantilla CSV
-                </button>
+                {/* Auth template */}
+                <div className="p-4 rounded-xl" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                  <p className="text-sm font-semibold mb-1" style={{ color: '#0C4A6E' }}>Plantilla Acceso Web</p>
+                  <p className="text-xs mb-2" style={{ color: '#0369A1' }}>
+                    Crea usuarios con login: email, nombre, DNI, contrasena, rol, sociedad...
+                  </p>
+                  <p className="text-xs mb-3" style={{ color: '#64748B' }}>
+                    Roles validos: <em>employee, rrhh, prevencion, supervisor, admin</em>
+                  </p>
+                  <button
+                    onClick={() => downloadTemplateCsv('auth')}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+                    style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
+                  >
+                    <Download size={12} /> Descargar plantilla acceso
+                  </button>
+                </div>
               </div>
 
-              {/* Societies reference */}
+              {/* Society selector (required for HR mode) */}
               {sociedades.length > 0 && (
                 <div className="p-3 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                  <p className="text-xs font-semibold mb-2" style={{ color: '#374151' }}>IDs de sociedades disponibles:</p>
-                  <div className="space-y-1">
-                    {sociedades.map(s => (
-                      <div key={s.id} className="flex items-center gap-2 text-xs">
-                        <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono" style={{ color: '#0369A1' }}>{s.id}</code>
-                        <span style={{ color: '#475569' }}>{s.nombre}</span>
-                        <button
-                          onClick={() => { navigator.clipboard.writeText(s.id); }}
-                          className="text-xs cursor-pointer hover:underline"
-                          style={{ color: '#94A3B8' }}
-                          title="Copiar ID"
-                        >copiar</button>
-                      </div>
-                    ))}
-                  </div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: '#374151' }}>
+                    Sociedad por defecto (se aplica a todos los registros del CSV)
+                  </label>
+                  <select
+                    value={selectedSociety}
+                    onChange={(e) => setSelectedSociety(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
+                    style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}
+                  >
+                    <option value="">Seleccionar sociedad...</option>
+                    {sociedades.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                  </select>
                 </div>
               )}
 
               {/* File upload */}
               <div>
-                <p className="text-sm font-semibold mb-2" style={{ color: '#374151' }}>Paso 2: Sube el CSV relleno</p>
+                <p className="text-sm font-semibold mb-2" style={{ color: '#374151' }}>Sube el CSV relleno</p>
                 <label
                   className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl cursor-pointer transition-colors"
                   style={{ border: '2px dashed #CBD5E1', backgroundColor: '#F8FAFC' }}
@@ -237,7 +339,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                   <Upload size={28} style={{ color: '#94A3B8' }} />
                   <div className="text-center">
                     <p className="text-sm font-medium" style={{ color: '#475569' }}>Haz clic para seleccionar el archivo</p>
-                    <p className="text-xs" style={{ color: '#94A3B8' }}>Solo archivos .csv</p>
+                    <p className="text-xs" style={{ color: '#94A3B8' }}>Archivos .csv · separador coma o punto y coma · UTF-8</p>
                   </div>
                   <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleFileChange} className="hidden" />
                 </label>
@@ -254,30 +356,63 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
           {/* Step: preview */}
           {step === 'preview' && (
             <>
+              {/* Mode badge */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium"
+                style={{ backgroundColor: mode === 'hr' ? '#F0FDF4' : '#EFF6FF', color: mode === 'hr' ? '#166534' : '#0369A1', border: `1px solid ${mode === 'hr' ? '#BBF7D0' : '#BFDBFE'}` }}>
+                <FileSpreadsheet size={13} />
+                Formato detectado: <strong>{mode === 'hr' ? 'RRHH (ficha de empleado, sin login)' : 'Acceso Web (crea usuario con login)'}</strong>
+                {mode === 'hr' && selectedSociety && (
+                  <span className="ml-2" style={{ color: '#94A3B8' }}>· Sociedad: {sociedades.find(s => s.id === selectedSociety)?.nombre}</span>
+                )}
+              </div>
+
               <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid #E2E8F0' }}>
                 <table className="w-full text-xs">
                   <thead style={{ backgroundColor: '#F8FAFC' }}>
                     <tr>
-                      {['Email', 'Nombre', 'DNI', 'Contraseña', 'Rol', 'Sociedad'].map(h => (
-                        <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: '#374151', borderBottom: '1px solid #E2E8F0' }}>{h}</th>
-                      ))}
+                      {mode === 'hr'
+                        ? ['Nombre', 'Apellidos', 'DNI', 'Telefono', 'Fecha Alta', 'F. Nacimiento', 'Contrato', 'Turno', 'Puesto', 'Centro', 'Email'].map(h => (
+                            <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: '#374151', borderBottom: '1px solid #E2E8F0' }}>{h}</th>
+                          ))
+                        : ['Email', 'Nombre', 'DNI', 'Contraseña', 'Rol', 'Sociedad'].map(h => (
+                            <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: '#374151', borderBottom: '1px solid #E2E8F0' }}>{h}</th>
+                          ))
+                      }
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((r, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                        <td className="px-3 py-2 font-mono" style={{ color: '#0369A1' }}>{r.email || r['correo'] || '—'}</td>
-                        <td className="px-3 py-2" style={{ color: '#1E293B' }}>{r.nombre || r['nombre completo'] || '—'}</td>
-                        <td className="px-3 py-2 font-mono" style={{ color: '#475569' }}>{r.dni || '—'}</td>
-                        <td className="px-3 py-2" style={{ color: '#94A3B8' }}>{'•'.repeat(Math.min(8, (r.contrasena || r['contraseña'] || r.password || '').length)) || '—'}</td>
-                        <td className="px-3 py-2">
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>
-                            {ROLES_LABEL[(r.rol || r.role || 'employee').toLowerCase()] ?? r.rol ?? 'Empleado'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 font-mono text-xs" style={{ color: '#94A3B8' }}>
-                          {r.sociedad_id ? (sociedades.find(s => s.id === r.sociedad_id)?.nombre ?? r.sociedad_id) : '—'}
-                        </td>
+                        {mode === 'hr' ? (
+                          <>
+                            <td className="px-3 py-2 font-medium whitespace-nowrap" style={{ color: '#1E293B' }}>{r['nombre'] || '—'}</td>
+                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{r['apellidos'] || r['apellido'] || '—'}</td>
+                            <td className="px-3 py-2 font-mono" style={{ color: '#475569' }}>{r['dni'] || '—'}</td>
+                            <td className="px-3 py-2" style={{ color: '#475569' }}>{r['telefono'] || r['tel'] || '—'}</td>
+                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{r['fecha_alta'] || r['fechaalta'] || '—'}</td>
+                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{r['fecha_nacimiento'] || r['fechanacimiento'] || r['fecha_de_nacimiento'] || '—'}</td>
+                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{r['tipo_contrato'] || r['tipocontrato'] || '—'}</td>
+                            <td className="px-3 py-2" style={{ color: '#475569' }}>{r['turno'] || '—'}</td>
+                            <td className="px-3 py-2" style={{ color: '#475569' }}>{r['puesto'] || '—'}</td>
+                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{r['centro_trabajo'] || r['centrotrabajo'] || r['centro_de_trabajo'] || '—'}</td>
+                            <td className="px-3 py-2 font-mono" style={{ color: '#0369A1' }}>{r['emails'] || r['email'] || r['correo'] || '—'}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-3 py-2 font-mono" style={{ color: '#0369A1' }}>{r['email'] || r['correo'] || '—'}</td>
+                            <td className="px-3 py-2" style={{ color: '#1E293B' }}>{r['nombre'] || '—'}</td>
+                            <td className="px-3 py-2 font-mono" style={{ color: '#475569' }}>{r['dni'] || '—'}</td>
+                            <td className="px-3 py-2" style={{ color: '#94A3B8' }}>{'•'.repeat(Math.min(8, (r['contrasena'] || r['password'] || '').length)) || '—'}</td>
+                            <td className="px-3 py-2">
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>
+                                {ROLES_LABEL[(r['rol'] || r['role'] || 'employee').toLowerCase()] ?? 'Empleado'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-xs" style={{ color: '#94A3B8' }}>
+                              {r['sociedad_id'] ? (sociedades.find(s => s.id === r['sociedad_id'])?.nombre ?? r['sociedad_id']) : (sociedades.find(s => s.id === selectedSociety)?.nombre ?? '—')}
+                            </td>
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -311,7 +446,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                 <div key={i} className="flex items-start gap-2 p-3 rounded-xl text-xs" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
                   <AlertCircle size={13} className="flex-shrink-0 mt-0.5" style={{ color: '#DC2626' }} />
                   <div>
-                    <p className="font-medium" style={{ color: '#DC2626' }}>{r.email}</p>
+                    <p className="font-medium" style={{ color: '#DC2626' }}>{r.label}</p>
                     <p style={{ color: '#9CA3AF' }}>{r.error}</p>
                   </div>
                 </div>
@@ -331,15 +466,15 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
             <>
               <button onClick={() => { setStep('upload'); setRows([]); if (fileRef.current) fileRef.current.value = ''; }}
                 className="px-4 py-2 rounded-lg text-sm cursor-pointer" style={{ color: '#475569', backgroundColor: '#F1F5F9' }}>
-                Atrás
+                Atras
               </button>
               <button
                 onClick={handleImport}
-                disabled={importing}
+                disabled={importing || (mode === 'hr' && !selectedSociety)}
                 className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-60"
-                style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
+                style={{ backgroundColor: mode === 'hr' ? '#16A34A' : '#0369A1', color: '#FFFFFF' }}
               >
-                {importing ? <><Loader2 size={14} className="animate-spin" /> Importando...</> : <><Upload size={14} /> Importar {rows.length} usuarios</>}
+                {importing ? <><Loader2 size={14} className="animate-spin" /> Importando...</> : <><Upload size={14} /> Importar {rows.length} {mode === 'hr' ? 'empleados' : 'usuarios'}</>}
               </button>
             </>
           )}

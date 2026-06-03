@@ -1,7 +1,9 @@
-import { LogOut, Receipt, Building2, CircleUser as UserCircle } from 'lucide-react';
+import { useState } from 'react';
+import { LogOut, Receipt, Building2, CircleUser as UserCircle, KeyRound } from 'lucide-react';
 import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
 import FacturasModule from './components/FacturasModule';
+import ChangePasswordModal from './components/ChangePasswordModal';
 
 interface Props {
   email: string;
@@ -10,8 +12,11 @@ interface Props {
 }
 
 export default function AdministracionPanel({ email, onLogout, onNavigateEmployee }: Props) {
+  const [showChangePassword, setShowChangePassword] = useState(false);
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
       {/* Header */}
       <header
         className="sticky top-0 z-50"
@@ -38,6 +43,14 @@ export default function AdministracionPanel({ email, onLogout, onNavigateEmploye
                 <span>Mi perfil empleado</span>
               </button>
             )}
+            <button
+              onClick={() => setShowChangePassword(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs cursor-pointer transition-colors"
+              style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#FFFFFF' }}
+            >
+              <KeyRound size={14} />
+              <span className="hidden sm:inline">Cambiar Contrasena</span>
+            </button>
             <button
               onClick={onLogout}
               className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs cursor-pointer transition-colors"

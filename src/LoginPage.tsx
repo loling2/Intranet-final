@@ -539,20 +539,18 @@ export default function LoginPage() {
     setLoginError('');
   };
 
-  const handleNavigate = (view: 'admin' | 'rrhh' | 'society' | 'dashboard', societyId?: string) => {
+  const handleNavigate = (view: AppView, societyId?: string) => {
     if (!session) return;
-    if (view === 'society' && societyId) {
+    if (view === 'society' as string && societyId) {
       setSelectedId(societyId);
       setSession({ ...session, view: 'dashboard', activeSocietyId: societyId });
-    } else if (view === 'admin') {
-      setSession({ ...session, view: 'admin' });
-    } else if (view === 'rrhh') {
-      setSession({ ...session, view: session.role === 'supervisor' ? 'supervisor' : 'rrhh' });
     } else if (view === 'dashboard') {
       // Go to employee self-service panel
       const firstSociety = societies[0];
       if (firstSociety) setSelectedId(firstSociety.id);
       setSession({ ...session, view: 'dashboard', activeSocietyId: session.activeSocietyId ?? societies[0]?.id ?? null });
+    } else {
+      setSession({ ...session, view });
     }
   };
 
@@ -636,10 +634,11 @@ export default function LoginPage() {
       if (theme) {
         // Determine back-navigation based on the user's role
         const backNav: { label: string; view: AppView; color: string; border: string } | null =
-          session.role === 'admin'       ? { label: 'Volver a Admin',      view: 'admin',          color: '#FCA5A5', border: 'rgba(239,68,68,0.3)'  } :
-          session.role === 'rrhh'        ? { label: 'Volver a RRHH',       view: 'rrhh',           color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
-          session.role === 'supervisor'  ? { label: 'Volver a Supervisor', view: 'supervisor',     color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
-          session.role === 'prevencion'  ? { label: 'Volver a Prevencion', view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
+          session.role === 'admin'          ? { label: 'Volver a Admin',          view: 'admin',          color: '#FCA5A5', border: 'rgba(239,68,68,0.3)'   } :
+          session.role === 'rrhh'           ? { label: 'Volver a RRHH',           view: 'rrhh',           color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
+          session.role === 'supervisor'     ? { label: 'Volver a Supervisor',     view: 'supervisor',     color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
+          session.role === 'prevencion'     ? { label: 'Volver a Prevencion',     view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
+          session.role === 'administracion' ? { label: 'Volver a Administracion', view: 'administracion', color: '#93C5FD', border: 'rgba(37,99,235,0.3)'   } :
           null;
 
         return (

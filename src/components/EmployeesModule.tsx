@@ -978,7 +978,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         <ImportUsersModal
           sociedades={sociedades}
           onClose={() => setShowImport(false)}
-          onImported={fetchEmpleados}
+          onImported={loadData}
         />
       )}
 

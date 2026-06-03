@@ -1,13 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  ShieldCheck, Users, FileText, LogOut, Search, Plus, X,
-  ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle,
-  CheckCircle2, Upload, RefreshCw, UserCircle,
-} from 'lucide-react';
+import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
 import SocietySwitcher from './SocietySwitcher';
 import PrlDocsModule from './components/PrlDocsModule';
 import TrazabilidadModule from './components/TrazabilidadModule';
+import ChangePasswordModal from './components/ChangePasswordModal';
 
 interface Props {
   email: string;
@@ -37,6 +34,7 @@ function tagColor(nombre: string) {
 
 export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }: Props) {
   const [activeTab, setActiveTab] = useState<PrevTab>('empleados');
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const tabs: { id: PrevTab; label: string; icon: React.FC<{ size?: number }> }[] = [
     { id: 'empleados',     label: 'Empleados y Tags',   icon: Users },
@@ -46,6 +44,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
       {/* Header */}
       <header
         className="sticky top-0 z-50"
@@ -92,6 +91,14 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
             >
               <LogOut size={14} />
               <span className="hidden sm:inline">Cerrar Sesion</span>
+            </button>
+            <button
+              onClick={() => setShowChangePassword(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+              style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#A7F3D0', border: '1px solid rgba(255,255,255,0.12)' }}
+            >
+              <KeyRound size={14} />
+              <span className="hidden sm:inline">Cambiar Contrasena</span>
             </button>
           </div>
         </div>

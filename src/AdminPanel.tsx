@@ -3,7 +3,7 @@ import {
   Shield, Users, Building2, Laptop, FileText, Palmtree, Award,
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
   Search, Eye, CheckCircle2, XCircle, Clock,
-  Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck
+  Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound
 } from 'lucide-react';
 import { validUsers, mockDocuments, mockDevices, mockVacations, mockCertificates, mockExams } from './mockData';
 import UserManagement from './UserManagement';
@@ -13,6 +13,7 @@ import AuditLogPanel from './AuditLogPanel';
 import SocietySwitcher from './SocietySwitcher';
 import TestUploader from './components/TestUploader';
 import { useSociety } from './context/SocietyContext';
+import ChangePasswordModal from './components/ChangePasswordModal';
 import VacationsModule from './components/VacationsModule';
 import EmployeesModule from './components/EmployeesModule';
 import TagsManager from './components/TagsManager';
@@ -30,6 +31,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSociety, setSelectedSociety] = useState<string | null>(null);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const { activeSocietyId, societies } = useSociety();
 
   // Reload data when active society changes
@@ -95,7 +97,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F1F5F9' }}>
-      {/* Header */}
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
       <header className="sticky top-0 z-50" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -146,6 +148,14 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
             >
               <LogOut size={14} />
               <span className="hidden sm:inline">Cerrar Sesion</span>
+            </button>
+            <button
+              onClick={() => setShowChangePassword(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+              style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#CBD5E1', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              <KeyRound size={14} />
+              <span className="hidden sm:inline">Cambiar Contrasena</span>
             </button>
           </div>
         </div>

@@ -9,6 +9,8 @@ import { uploadToWasabiKey, downloadFromWasabi } from '../lib/wasabi';
 import { useAuth } from '../context/AuthContext';
 import { useSociety } from '../context/SocietyContext';
 
+const MAX_TAGS = 5;
+
 interface PrlFolder {
   id: string;
   nombre: string;
@@ -18,7 +20,7 @@ interface PrlFolder {
   access_tag_id: string | null;
   created_at: string;
   _docCount?: number;
-  _tagNombre?: string;
+  _tags?: TagRow[];
 }
 
 interface PrlDocument {
@@ -53,21 +55,26 @@ function fileIcon(tipo: string) {
   return { color: '#475569', bg: '#F8FAFC', border: '#E2E8F0' };
 }
 
-// ─── Create Folder Modal ─────────────────────────────────────────────────────
+// ─── Create / Edit Folder Modal ───────────────────────────────────────────────
 
-function CreateFolderModal({ onClose, onCreated, societyId }: {
+function FolderModal({ onClose, onSaved, societyId, existing }: {
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
   societyId: string;
+  existing?: PrlFolder;
 }) {
   const { profile } = useAuth();
-  const [nombre, setNombre] = useState('');
-  const [descripcion, setDescripcion] = useState('');
-  const [accessTagId, setAccessTagId] = useState<string>('');
+  const [nombre, setNombre] = useState(existing?.nombre ?? '');
+  const [descripcion, setDescripcion] = useState(existing?.descripcion ?? '');
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(
+    existing?._tags?.map((t) => t.id) ?? (existing?.access_tag_id ? [existing.access_tag_id] : [])
+  );
   const [tags, setTags] = useState<TagRow[]>([]);
   const [tagsLoading, setTagsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const isEdit = !!existing;
 
   useEffect(() => {
     (async () => {
@@ -77,22 +84,65 @@ function CreateFolderModal({ onClose, onCreated, societyId }: {
     })();
   }, []);
 
-  const handleCreate = async () => {
-    if (!nombre.trim()) { setError('El nombre es obligatorio.'); return; }
-    setSaving(true); setError('');
-    const { error: err } = await supabase.from('prl_folders').insert({
-      nombre: nombre.trim(),
-      descripcion: descripcion.trim(),
-      society_id: societyId,
-      created_by: profile?.id ?? null,
-      access_tag_id: accessTagId || null,
+  const toggleTag = (id: string) => {
+    setSelectedTagIds((prev) => {
+      if (prev.includes(id)) return prev.filter((t) => t !== id);
+      if (prev.length >= MAX_TAGS) return prev; // silently cap at 5
+      return [...prev, id];
     });
-    if (err) { setError(err.message); setSaving(false); return; }
-    onCreated();
-    onClose();
   };
 
-  const selectedTag = tags.find((t) => t.id === accessTagId);
+  const handleSave = async () => {
+    if (!nombre.trim()) { setError('El nombre es obligatorio.'); return; }
+    setSaving(true); setError('');
+
+    try {
+      let folderId = existing?.id;
+
+      if (isEdit) {
+        const { error: upErr } = await supabase
+          .from('prl_folders')
+          .update({ nombre: nombre.trim(), descripcion: descripcion.trim(), access_tag_id: selectedTagIds[0] ?? null })
+          .eq('id', folderId!);
+        if (upErr) throw upErr;
+      } else {
+        const { data, error: insErr } = await supabase
+          .from('prl_folders')
+          .insert({
+            nombre: nombre.trim(),
+            descripcion: descripcion.trim(),
+            society_id: societyId,
+            created_by: profile?.id ?? null,
+            access_tag_id: selectedTagIds[0] ?? null,
+          })
+          .select('id')
+          .single();
+        if (insErr) throw insErr;
+        folderId = data.id;
+      }
+
+      // Sync prl_folder_tags
+      // Delete all existing tags for this folder, then re-insert
+      const { error: delErr } = await supabase
+        .from('prl_folder_tags')
+        .delete()
+        .eq('folder_id', folderId!);
+      if (delErr) throw delErr;
+
+      if (selectedTagIds.length > 0) {
+        const rows = selectedTagIds.slice(0, MAX_TAGS).map((tag_id) => ({ folder_id: folderId!, tag_id }));
+        const { error: insTagErr } = await supabase.from('prl_folder_tags').insert(rows);
+        if (insTagErr) throw insTagErr;
+      }
+
+      onSaved();
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
@@ -102,7 +152,7 @@ function CreateFolderModal({ onClose, onCreated, societyId }: {
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
               <FolderPlus size={16} className="text-white" />
             </div>
-            <h2 className="text-white font-semibold text-sm">Nueva carpeta PRL</h2>
+            <h2 className="text-white font-semibold text-sm">{isEdit ? 'Editar carpeta PRL' : 'Nueva carpeta PRL'}</h2>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
             <X size={14} />
@@ -118,7 +168,7 @@ function CreateFolderModal({ onClose, onCreated, societyId }: {
               type="text"
               value={nombre}
               onChange={(e) => { setNombre(e.target.value); setError(''); }}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              onKeyDown={(e) => e.key === 'Enter' && handleSave()}
               placeholder="Ej: Evaluaciones de Riesgo 2024"
               className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
               style={{ border: `1.5px solid ${error ? '#FECACA' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }}
@@ -138,13 +188,23 @@ function CreateFolderModal({ onClose, onCreated, societyId }: {
             />
           </div>
 
-          {/* Tag de acceso */}
+          {/* Tags de acceso */}
           <div>
-            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
-              Tag de acceso
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>
+                Tags de acceso
+              </label>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                style={{
+                  backgroundColor: selectedTagIds.length >= MAX_TAGS ? '#FEF2F2' : '#ECFDF5',
+                  color: selectedTagIds.length >= MAX_TAGS ? '#DC2626' : '#065F46',
+                  border: `1px solid ${selectedTagIds.length >= MAX_TAGS ? '#FECACA' : '#6EE7B7'}`,
+                }}>
+                {selectedTagIds.length}/{MAX_TAGS}
+              </span>
+            </div>
             <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>
-              Solo los trabajadores con este tag podran ver esta carpeta. Sin tag = acceso libre.
+              Solo trabajadores con alguno de estos tags podran ver esta carpeta. Sin tag = acceso libre.
             </p>
 
             {tagsLoading ? (
@@ -157,61 +217,87 @@ function CreateFolderModal({ onClose, onCreated, societyId }: {
                 {/* Sin restriccion */}
                 <button
                   type="button"
-                  onClick={() => setAccessTagId('')}
+                  onClick={() => setSelectedTagIds([])}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all cursor-pointer"
                   style={{
-                    border: `1.5px solid ${accessTagId === '' ? '#065F46' : '#E2E8F0'}`,
-                    backgroundColor: accessTagId === '' ? '#ECFDF5' : '#F8FAFC',
+                    border: `1.5px solid ${selectedTagIds.length === 0 ? '#065F46' : '#E2E8F0'}`,
+                    backgroundColor: selectedTagIds.length === 0 ? '#ECFDF5' : '#F8FAFC',
                   }}
                 >
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: accessTagId === '' ? '#065F46' : '#E2E8F0' }}>
-                    <Globe size={13} style={{ color: accessTagId === '' ? '#FFFFFF' : '#94A3B8' }} />
+                    style={{ backgroundColor: selectedTagIds.length === 0 ? '#065F46' : '#E2E8F0' }}>
+                    <Globe size={13} style={{ color: selectedTagIds.length === 0 ? '#FFFFFF' : '#94A3B8' }} />
                   </div>
                   <div className="text-left">
                     <span className="font-semibold" style={{ color: '#1E293B' }}>Sin restriccion</span>
                     <span className="block text-xs" style={{ color: '#94A3B8' }}>Todos los trabajadores pueden acceder</span>
                   </div>
-                  {accessTagId === '' && <CheckCircle2 size={14} className="ml-auto" style={{ color: '#065F46' }} />}
+                  {selectedTagIds.length === 0 && <CheckCircle2 size={14} className="ml-auto" style={{ color: '#065F46' }} />}
                 </button>
 
-                {/* Tags */}
-                <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
+                {/* Tags list */}
+                <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
                   {tags.length === 0 ? (
                     <p className="text-xs px-3 py-2" style={{ color: '#94A3B8' }}>No hay tags creados. Crea tags en Admin → Tags PRL.</p>
-                  ) : tags.map((tag) => (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      onClick={() => setAccessTagId(tag.id)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all cursor-pointer"
-                      style={{
-                        border: `1.5px solid ${accessTagId === tag.id ? '#0369A1' : '#E2E8F0'}`,
-                        backgroundColor: accessTagId === tag.id ? '#EFF6FF' : '#F8FAFC',
-                      }}
-                    >
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: accessTagId === tag.id ? '#0369A1' : '#E2E8F0' }}>
-                        <Tag size={12} style={{ color: accessTagId === tag.id ? '#FFFFFF' : '#94A3B8' }} />
-                      </div>
-                      <span className="font-medium flex-1 text-left" style={{ color: '#1E293B' }}>{tag.nombre}</span>
-                      {accessTagId === tag.id && <CheckCircle2 size={14} className="flex-shrink-0" style={{ color: '#0369A1' }} />}
-                    </button>
-                  ))}
+                  ) : tags.map((tag) => {
+                    const selected = selectedTagIds.includes(tag.id);
+                    const disabled = !selected && selectedTagIds.length >= MAX_TAGS;
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => toggleTag(tag.id)}
+                        disabled={disabled}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{
+                          border: `1.5px solid ${selected ? '#0369A1' : '#E2E8F0'}`,
+                          backgroundColor: selected ? '#EFF6FF' : '#F8FAFC',
+                        }}
+                      >
+                        <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: selected ? '#0369A1' : '#E2E8F0' }}>
+                          <Tag size={12} style={{ color: selected ? '#FFFFFF' : '#94A3B8' }} />
+                        </div>
+                        <span className="font-medium flex-1 text-left" style={{ color: '#1E293B' }}>{tag.nombre}</span>
+                        {selected && <CheckCircle2 size={14} className="flex-shrink-0" style={{ color: '#0369A1' }} />}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
-          </div>
 
-          {/* Preview */}
-          {selectedTag && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-              <Lock size={12} style={{ color: '#1D4ED8' }} />
-              <p className="text-xs" style={{ color: '#1D4ED8' }}>
-                Solo accesible para trabajadores con tag <strong>"{selectedTag.nombre}"</strong>
-              </p>
-            </div>
-          )}
+            {/* Selected tags preview */}
+            {selectedTagIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {selectedTagIds.map((id) => {
+                  const tag = tags.find((t) => t.id === id);
+                  if (!tag) return null;
+                  return (
+                    <span key={id} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+                      style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
+                      <Lock size={9} />
+                      {tag.nombre}
+                      <button
+                        type="button"
+                        onClick={() => toggleTag(id)}
+                        className="ml-0.5 cursor-pointer hover:opacity-70"
+                        style={{ color: '#1D4ED8' }}>
+                        <X size={10} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedTagIds.length >= MAX_TAGS && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg mt-2" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                <AlertCircle size={12} style={{ color: '#DC2626' }} />
+                <p className="text-xs" style={{ color: '#DC2626' }}>Maximo {MAX_TAGS} tags por carpeta</p>
+              </div>
+            )}
+          </div>
 
           {error && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
@@ -222,11 +308,11 @@ function CreateFolderModal({ onClose, onCreated, societyId }: {
 
           <div className="flex gap-3 pt-1">
             <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
-            <button onClick={handleCreate} disabled={saving || !nombre.trim()}
+            <button onClick={handleSave} disabled={saving || !nombre.trim()}
               className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
               style={{ backgroundColor: '#065F46' }}>
               {saving ? <RefreshCw size={14} className="animate-spin" /> : <FolderPlus size={14} />}
-              Crear carpeta
+              {isEdit ? 'Guardar cambios' : 'Crear carpeta'}
             </button>
           </div>
         </div>
@@ -280,6 +366,7 @@ export default function PrlDocsModule() {
 
   const [search, setSearch] = useState('');
   const [showCreateFolder, setShowCreateFolder] = useState(false);
+  const [editingFolder, setEditingFolder] = useState<PrlFolder | null>(null);
 
   const [uploadingFolder, setUploadingFolder] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
@@ -295,15 +382,16 @@ export default function PrlDocsModule() {
 
   const loadFolders = useCallback(async () => {
     setLoadingFolders(true);
-    // Join with tags to get tag name
     const { data, error: err } = await supabase
       .from('prl_folders')
-      .select('*, tags:access_tag_id(id, nombre)')
+      .select('*, prl_folder_tags(tag_id, tags(id, nombre))')
       .eq('society_id', activeSocietyId)
       .order('nombre');
     if (err) { setError(err.message); setLoadingFolders(false); return; }
 
-    const folderList = (data ?? []) as (PrlFolder & { tags: { id: string; nombre: string } | null })[];
+    const folderList = (data ?? []) as (PrlFolder & {
+      prl_folder_tags: { tag_id: string; tags: { id: string; nombre: string } | null }[];
+    })[];
 
     const counts = await Promise.all(
       folderList.map((f) =>
@@ -320,7 +408,9 @@ export default function PrlDocsModule() {
       access_tag_id: f.access_tag_id,
       created_at: f.created_at,
       _docCount: counts[i].count ?? 0,
-      _tagNombre: (f as unknown as { tags: { nombre: string } | null }).tags?.nombre ?? undefined,
+      _tags: (f.prl_folder_tags ?? [])
+        .map((ft) => ft.tags)
+        .filter((t): t is { id: string; nombre: string } => t !== null),
     }));
 
     setFolders(enriched);
@@ -352,7 +442,6 @@ export default function PrlDocsModule() {
     setError('');
     let uploaded = 0;
 
-    // Use the folder's own society_id — avoids stale context value issues
     const folderObj = folders.find((f) => f.id === folderId);
     const resolvedSocietyId = folderObj?.society_id ?? activeSocietyId;
 
@@ -443,10 +532,18 @@ export default function PrlDocsModule() {
       />
 
       {showCreateFolder && (
-        <CreateFolderModal
+        <FolderModal
           onClose={() => setShowCreateFolder(false)}
-          onCreated={loadFolders}
+          onSaved={loadFolders}
           societyId={activeSocietyId}
+        />
+      )}
+      {editingFolder && (
+        <FolderModal
+          onClose={() => setEditingFolder(null)}
+          onSaved={loadFolders}
+          societyId={activeSocietyId}
+          existing={editingFolder}
         />
       )}
       {deleteTarget && (
@@ -541,7 +638,8 @@ export default function PrlDocsModule() {
             const docs = documents[folder.id] ?? [];
             const isLoadingDocs = loadingDocs[folder.id];
             const progress = uploadProgress[folder.id];
-            const hasTag = !!folder.access_tag_id;
+            const folderTags = folder._tags ?? [];
+            const hasTag = folderTags.length > 0;
 
             return (
               <div key={folder.id} className="rounded-2xl overflow-hidden transition-all duration-200"
@@ -561,16 +659,16 @@ export default function PrlDocsModule() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{folder.nombre}</p>
-                      {/* Access tag badge */}
-                      {hasTag ? (
-                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+                      {/* Tag badges */}
+                      {hasTag ? folderTags.map((tag) => (
+                        <span key={tag.id} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
                           style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
                           <Lock size={9} />
-                          {folder._tagNombre}
+                          {tag.nombre}
                         </span>
-                      ) : (
+                      )) : (
                         <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
                           style={{ backgroundColor: '#F1F5F9', color: '#94A3B8', border: '1px solid #E2E8F0' }}>
                           <Globe size={9} />
@@ -600,6 +698,15 @@ export default function PrlDocsModule() {
                       title="Subir archivos"
                     >
                       <Upload size={12} /> Subir
+                    </button>
+
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditingFolder(folder); }}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:bg-blue-50"
+                      title="Editar carpeta"
+                      style={{ color: '#CBD5E1' }}
+                    >
+                      <Tag size={13} />
                     </button>
 
                     <button

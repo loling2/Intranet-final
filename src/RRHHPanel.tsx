@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt } from 'lucide-react';
+import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound } from 'lucide-react';
 import { mockVacations, mockCertificates, mockExams, mockDocuments } from './mockData';
 import UserManagement from './UserManagement';
 import VehiclesModule from './VehiclesModule';
@@ -9,6 +9,7 @@ import AuditLogPanel from './AuditLogPanel';
 import SocietySwitcher from './SocietySwitcher';
 import { useSociety } from './context/SocietyContext';
 import VacationsModule from './components/VacationsModule';
+import ChangePasswordModal from './components/ChangePasswordModal';
 import EmployeesModule from './components/EmployeesModule';
 import ContratosModule from './components/ContratosModule';
 import PersonalDocumentsPanel from './components/PersonalDocumentsPanel';
@@ -29,6 +30,7 @@ type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certi
 export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, onNavigateEmployee }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [filterSociety, setFilterSociety] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const { activeSocietyId, societies } = useSociety();
@@ -113,7 +115,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
-      {/* Header */}
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
       <header
         className="sticky top-0 z-50"
         style={{ background: 'linear-gradient(135deg, #0C4A6E, #0369A1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}
@@ -172,6 +174,14 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
             >
               <LogOut size={14} />
               <span className="hidden sm:inline">Cerrar Sesion</span>
+            </button>
+            <button
+              onClick={() => setShowChangePassword(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+              style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#E0F2FE', border: '1px solid rgba(255,255,255,0.12)' }}
+            >
+              <KeyRound size={14} />
+              <span className="hidden sm:inline">Cambiar Contrasena</span>
             </button>
           </div>
         </div>

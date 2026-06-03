@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound } from 'lucide-react';
 import { societies, SocietyTheme } from './themes';
 import { mockDocuments, mockDevices, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
@@ -17,6 +17,7 @@ import { supabase } from './supabaseClient';
 import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
 import { downloadFromWasabi } from './lib/wasabi';
+import ChangePasswordModal from './components/ChangePasswordModal';
 
 const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> = {
   'building-2': Building2,
@@ -1347,6 +1348,7 @@ function Dashboard({
   const Icon = iconMap[theme.logoIcon];
   const [activeTab, setActiveTab] = useState('resumen');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -1368,6 +1370,7 @@ function Dashboard({
 
   return (
     <div className="min-h-screen transition-all duration-700" style={{ backgroundColor: theme.bg }}>
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
       {/* Header */}
       <header
         className="sticky top-0 z-50 transition-all duration-700"
@@ -1424,6 +1427,14 @@ function Dashboard({
               <p className="text-white text-sm font-medium">{email || 'empleado@empresa.com'}</p>
               <p className="text-white/60 text-xs">{isAdmin ? 'Administrador' : 'Empleado'}</p>
             </div>
+            <button
+              onClick={() => setShowChangePassword(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-300"
+              style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}
+            >
+              <KeyRound size={14} />
+              <span className="hidden sm:inline">Cambiar Contrasena</span>
+            </button>
             <button
               onClick={onLogout}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-300"

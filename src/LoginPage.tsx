@@ -1368,11 +1368,20 @@ function Dashboard({
   const [activeTab, setActiveTab] = useState('resumen');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [activeDeviceCount, setActiveDeviceCount] = useState<number | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setCurrentUserId(session?.user?.id ?? null);
     });
+  }, []);
+
+  useEffect(() => {
+    supabase
+      .from('dispositivos')
+      .select('id', { count: 'exact', head: false })
+      .eq('activo', true)
+      .then(({ count }) => setActiveDeviceCount(count ?? 0));
   }, []);
 
   const certificates = mockCertificates[theme.id] ?? [];
@@ -1534,7 +1543,7 @@ function Dashboard({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
               {[
                 { label: 'Documentos', value: '—', color: theme.primary },
-                { label: 'Dispositivos', value: devices.filter((d) => d.active).length, color: '#22C55E' },
+                { label: 'Dispositivos', value: activeDeviceCount ?? '—', color: '#22C55E' },
                 { label: 'Docs. Prevencion', value: '—', color: '#065F46' },
                 { label: 'Certificados', value: certificates.length, color: theme.primary },
               ].map((stat, i) => (

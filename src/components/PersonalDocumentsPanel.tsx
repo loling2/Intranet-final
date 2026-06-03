@@ -234,7 +234,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>{emp.nombre}</p>
-                  <p className="text-xs" style={{ color: '#94A3B8' }}>{emp.dni ?? 'Sin DNI'}</p>
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>{emp.dni ?? 'Sin DNI/NIE'}</p>
                 </div>
                 {selected?.id === emp.id && <ChevronRight size={14} className="ml-auto flex-shrink-0" style={{ color: '#0369A1' }} />}
               </button>
@@ -263,7 +263,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                 </div>
                 <div>
                   <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{selected.nombre || 'Empleado'}</p>
-                  <p className="text-xs" style={{ color: '#64748B' }}>DNI: {selected.dni ?? '—'}</p>
+                  <p className="text-xs" style={{ color: '#64748B' }}>DNI/NIE: {selected.dni ?? '—'}</p>
                 </div>
               </div>
               {isRrhh && (

@@ -589,10 +589,6 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
         {activeTab === 'facturas' && (
           <FacturasModule isAdmin={false} />
         )}
-        {/* documentos personales */}
-        {activeTab === 'personal-docs' && (
-          <PersonalDocumentsPanel isRrhh={true} />
-        )}
 
         {/* Prevencion/Calidad Tab */}
         {activeTab === 'prevencion' && (

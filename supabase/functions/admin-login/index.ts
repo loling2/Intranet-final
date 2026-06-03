@@ -26,26 +26,7 @@ Deno.serve(async (req: Request) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
-    // Step 1: verify password via SQL function
-    const { data: userId, error: pwError } = await supabaseAdmin.rpc("check_user_password", {
-      p_email: email.trim().toLowerCase(),
-      p_password: password,
-    });
-
-    const resolvedId = Array.isArray(userId) ? userId[0] : userId;
-
-    if (pwError || !resolvedId) {
-      return new Response(JSON.stringify({ error: "Credenciales incorrectas" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Step 2: sign in via REST API directly (avoids schema introspection issues)
+    // Step 1: authenticate directly via Supabase Auth REST API
     const signInResp = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
       method: "POST",
       headers: {
@@ -59,22 +40,36 @@ Deno.serve(async (req: Request) => {
     const signInBody = await signInResp.json();
 
     if (!signInResp.ok || !signInBody.access_token) {
+      const errMsg = signInBody.error_description ?? signInBody.msg ?? signInBody.error ?? "Credenciales incorrectas";
       return new Response(
-        JSON.stringify({ error: "Error creando sesion: " + (signInBody.error_description ?? signInBody.msg ?? "unknown") }),
+        JSON.stringify({ error: errMsg }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const userId = signInBody.user?.id;
+
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: "Error al obtener usuario" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Step 3: get profile
+    // Step 2: get profile using service role (bypasses RLS)
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
     const { data: profile } = await supabaseAdmin
       .from("user_profiles")
       .select("*")
-      .eq("id", resolvedId)
+      .eq("id", userId)
       .maybeSingle();
 
     return new Response(
       JSON.stringify({
-        userId: resolvedId,
+        userId,
         email: email.trim().toLowerCase(),
         profile,
         access_token: signInBody.access_token,

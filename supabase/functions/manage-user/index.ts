@@ -196,15 +196,9 @@ Deno.serve(async (req: Request) => {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      // Update Supabase Auth session password
+      // Update password via Supabase Auth Admin API (single source of truth)
       const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
       if (authErr) throw authErr;
-      // Also sync the bcrypt hash used by check_user_password()
-      const { error: rpcErr } = await supabaseAdmin.rpc("update_user_password", {
-        p_user_id: userId,
-        p_new_password: password,
-      });
-      if (rpcErr) throw rpcErr;
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

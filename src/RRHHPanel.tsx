@@ -120,34 +120,34 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
         className="sticky top-0 z-50"
         style={{ background: 'linear-gradient(135deg, #0C4A6E, #0369A1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}
       >
-        <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Universal back button */}
             <button
               onClick={isAdmin && onNavigateAdmin ? onNavigateAdmin : onLogout}
               title={isAdmin && onNavigateAdmin ? 'Volver a Admin' : 'Volver al inicio'}
-              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 hover:opacity-80"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 hover:opacity-80"
               style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#E0F2FE' }}
             >
-              <ChevronLeft size={18} />
+              <ChevronLeft size={16} />
             </button>
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ backgroundColor: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)' }}
             >
-              <Users size={20} className="text-white" />
+              <Users size={18} className="text-white" />
             </div>
-            <div>
-              <h1 className="text-white font-bold text-lg tracking-tight">Panel de Recursos Humanos</h1>
-              <p className="text-white/50 text-xs">Gestion de empleados y formacion</p>
+            <div className="min-w-0">
+              <h1 className="text-white font-bold text-sm sm:text-lg tracking-tight">Panel de Recursos Humanos</h1>
+              <p className="text-white/50 text-xs hidden sm:block">Gestion de empleados y formacion</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
             <SocietySwitcher textColor="#E0F2FE" bgColor="rgba(255,255,255,0.08)" borderColor="rgba(255,255,255,0.1)" />
             {isAdmin && onNavigateAdmin && (
               <button
                 onClick={onNavigateAdmin}
-                className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+                className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200"
                 style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#FCA5A5', border: '1px solid rgba(239,68,68,0.2)' }}
               >
                 <span>Volver a Admin</span>
@@ -156,38 +156,38 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
             {onNavigateEmployee && (
               <button
                 onClick={onNavigateEmployee}
-                className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+                className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200"
                 style={{ backgroundColor: 'rgba(16,185,129,0.15)', color: '#6EE7B7', border: '1px solid rgba(16,185,129,0.2)' }}
               >
-                <Users size={14} />
+                <Users size={12} />
                 <span>Mi perfil empleado</span>
               </button>
             )}
-            <div className="text-right hidden sm:block">
-              <p className="text-white text-sm font-medium">{email}</p>
+            <div className="text-right hidden lg:block">
+              <p className="text-white text-xs font-medium truncate max-w-[140px]">{email}</p>
               <p className="text-white/50 text-xs">{isAdmin ? 'Admin / RRHH' : isSupervisor ? 'Supervisor' : 'RRHH'}</p>
             </div>
             <button
               onClick={onLogout}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+              className="flex items-center gap-1.5 px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-200"
               style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.15)' }}
             >
-              <LogOut size={14} />
+              <LogOut size={13} />
               <span className="hidden sm:inline">Cerrar Sesion</span>
             </button>
             <button
               onClick={() => setShowChangePassword(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+              className="flex items-center gap-1.5 px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-200"
               style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#E0F2FE', border: '1px solid rgba(255,255,255,0.12)' }}
             >
-              <KeyRound size={14} />
-              <span className="hidden sm:inline">Cambiar Contrasena</span>
+              <KeyRound size={13} />
+              <span className="hidden lg:inline">Cambiar Contrasena</span>
             </button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-screen-2xl mx-auto px-6 py-8">
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Tab Navigation */}
         <div
           className="flex gap-1 p-1 rounded-xl mb-8 overflow-x-auto"

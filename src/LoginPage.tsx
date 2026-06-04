@@ -683,7 +683,7 @@ export default function LoginPage() {
       style={{
         backgroundImage: `url('${bgImage}')`,
         backgroundSize: 'cover',
-        backgroundPosition: 'center center',
+        backgroundPosition: 'center 15%',
         backgroundRepeat: 'no-repeat',
       }}
     >
@@ -1348,81 +1348,81 @@ function Dashboard({
         className="sticky top-0 z-50 transition-all duration-700"
         style={{ background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})` }}
       >
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {onNavigateBack && (
               <button
                 onClick={onNavigateBack}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200"
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 flex-shrink-0"
                 style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: backColor ?? '#FFFFFF', border: `1px solid ${backBorder ?? 'rgba(255,255,255,0.2)'}` }}
               >
                 <ArrowRight size={12} style={{ transform: 'rotate(180deg)' }} />
-                {backLabel ?? 'Volver'}
+                <span className="hidden sm:inline">{backLabel ?? 'Volver'}</span>
               </button>
             )}
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/15 backdrop-blur-sm border border-white/20">
-              {Icon ? <Icon size={20} className="text-white" /> : null}
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center bg-white/15 backdrop-blur-sm border border-white/20 flex-shrink-0">
+              {Icon ? <Icon size={18} className="text-white" /> : null}
             </div>
-            <div>
-              <h1 className="text-white font-bold text-lg tracking-tight">{theme.name}</h1>
-              <p className="text-white/60 text-xs">Portal del Empleado</p>
+            <div className="min-w-0">
+              <h1 className="text-white font-bold text-base sm:text-lg tracking-tight truncate">{theme.name}</h1>
+              <p className="text-white/60 text-xs hidden sm:block">Portal del Empleado</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
             {isAdmin && onNavigateAdmin && (
               <button
                 onClick={onNavigateAdmin}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200"
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200"
                 style={{ backgroundColor: 'rgba(239,68,68,0.2)', color: '#FCA5A5', border: '1px solid rgba(239,68,68,0.3)' }}
               >
                 <Shield size={12} />
-                Admin
+                <span className="hidden sm:inline">Admin</span>
               </button>
             )}
             {onNavigateRrhh && (
               <button
                 onClick={onNavigateRrhh}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200"
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200"
                 style={{ backgroundColor: 'rgba(3,105,161,0.2)', color: '#7DD3FC', border: '1px solid rgba(3,105,161,0.3)' }}
               >
                 <Users size={12} />
-                Panel RRHH
+                <span className="hidden sm:inline">Panel RRHH</span>
               </button>
             )}
             {onNavigateSupervisor && (
               <button
                 onClick={onNavigateSupervisor}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200"
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200"
                 style={{ backgroundColor: 'rgba(3,105,161,0.2)', color: '#7DD3FC', border: '1px solid rgba(3,105,161,0.3)' }}
               >
                 <Users size={12} />
-                Panel Supervisor
+                <span className="hidden sm:inline">Panel Supervisor</span>
               </button>
             )}
-            <button className="relative p-2 rounded-lg cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
-              <Bell size={18} className="text-white/80" />
-              <div className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ backgroundColor: theme.accent }}>
+            <button className="relative p-2 rounded-lg cursor-pointer flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
+              <Bell size={16} className="text-white/80" />
+              <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: theme.accent }}>
                 3
               </div>
             </button>
-            <div className="text-right hidden sm:block">
-              <p className="text-white text-sm font-medium">{email || 'empleado@empresa.com'}</p>
+            <div className="text-right hidden md:block">
+              <p className="text-white text-xs font-medium truncate max-w-[140px]">{email || 'empleado@empresa.com'}</p>
               <p className="text-white/60 text-xs">{isAdmin ? 'Administrador' : 'Empleado'}</p>
             </div>
             <button
               onClick={() => setShowChangePassword(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-300"
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-300 flex-shrink-0"
               style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}
             >
-              <KeyRound size={14} />
-              <span className="hidden sm:inline">Cambiar Contrasena</span>
+              <KeyRound size={13} />
+              <span className="hidden lg:inline">Cambiar Contrasena</span>
             </button>
             <button
               onClick={onLogout}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-300"
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-300 flex-shrink-0"
               style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}
             >
-              <LogOut size={14} />
+              <LogOut size={13} />
               <span className="hidden sm:inline">Cerrar Sesion</span>
             </button>
           </div>
@@ -1430,11 +1430,11 @@ function Dashboard({
       </header>
 
       {/* Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Welcome */}
-        <div className="mb-6 flex items-start justify-between">
+        <div className="mb-5 sm:mb-6 flex items-start justify-between">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight" style={{ color: theme.textPrimary }}>
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight" style={{ color: theme.textPrimary }}>
               Bienvenido, {email.split('@')[0]}
             </h2>
             <p className="mt-1 text-sm" style={{ color: theme.textSecondary }}>
@@ -1454,7 +1454,7 @@ function Dashboard({
 
         {/* Tab Navigation */}
         <div
-          className="flex gap-1 p-1 rounded-xl mb-8"
+          className="flex gap-1 p-1 rounded-xl mb-6 sm:mb-8 overflow-x-auto"
           style={{
             backgroundColor: theme.bgCard,
             border: `1px solid ${theme.border}`,
@@ -1467,15 +1467,15 @@ function Dashboard({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 cursor-pointer"
+                className="flex-shrink-0 sm:flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 cursor-pointer whitespace-nowrap"
                 style={{
                   backgroundColor: isActive ? theme.primary : 'transparent',
                   color: isActive ? '#FFFFFF' : theme.textSecondary,
                   boxShadow: isActive ? `0 2px 8px ${theme.primary}30` : 'none',
                 }}
               >
-                <TabIcon size={16} />
-                <span className="hidden sm:inline">{tab.label}</span>
+                <TabIcon size={15} />
+                <span>{tab.label}</span>
               </button>
             );
           })}

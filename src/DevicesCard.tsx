@@ -23,33 +23,32 @@ export default function DevicesCard({ theme }: Props) {
   const [loading, setLoading] = useState(true);
 
 useEffect(() => {
-    (async () => {
-      setLoading(true);
-      
-      // 1. Obtenemos el usuario autenticado en esta sesión
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        // 2. Filtramos directamente en la base de datos por su ID o por su Email
-        // Supabase buscará en tu tabla solo lo que pertenezca a este usuario activo
-        const { data, error } = await supabase
-          .from('dispositivos')
-          .select('*')
-          .or(`empleado_id.eq.${user.id},user_id.eq.${user.id},empleado_email.eq.${user.email},email.eq.${user.email}`)
-          .order('fecha_asignacion', { ascending: true });
+  (async () => {
+    setLoading(true);
+    
+    // 1. Obtener el usuario de la sesión actual
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user) {
+      // 2. Filtrar directamente en Supabase por ID o por Email exacto
+      const { data, error } = await supabase
+        .from('dispositivos')
+        .select('*')
+        .or(`empleado_id.eq.${user.id},user_id.eq.${user.id},empleado_email.eq.${user.email},email.eq.${user.email}`)
+        .order('fecha_asignacion', { ascending: true });
 
-        if (!error && data) {
-          setDevices(data as Dispositivo[]);
-        } else {
-          setDevices([]);
-        }
+      if (!error && data) {
+        setDevices(data as Dispositivo[]);
       } else {
         setDevices([]);
       }
-      
-      setLoading(false);
-    })();
-  }, []);
+    } else {
+      setDevices([]);
+    }
+    
+    setLoading(false);
+  })();
+}, []);
 
   const activeCount = devices.filter((d) => d.activo).length;
 

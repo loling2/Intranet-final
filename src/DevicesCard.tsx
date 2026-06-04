@@ -26,23 +26,38 @@ useEffect(() => {
     (async () => {
       setLoading(true);
       
-      // 1. Obtener el usuario que tiene la sesión activa actualmente
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
-        // 2. Filtrar los dispositivos cuyo 'empleado_id' o 'email' coincida con el usuario logueado
-        // NOTA: Revisa si tu columna en la base de datos se llama 'empleado_id', 'user_id' o 'email'
-        const { data, error } = await supabase
+        // 1. Traemos los dispositivos
+        const { data: allData } = await supabase
           .from('dispositivos')
           .select('*')
-          .eq('empleado_id', user.id) // <- Cambia 'empleado_id' por el nombre exacto de tu columna
           .order('fecha_asignacion', { ascending: true });
+          
+        if (allData) {
+          // Extraemos la primera parte del email (ej: de "julio@empresa.com" sacamos "julio")
+          const emailName = user.email ? user.email.split('@')[0].toLowerCase() : '';
+          const userEmail = user.email ? user.email.toLowerCase() : '';
 
-        if (!error) {
-          setDevices((data ?? []) as Dispositivo[]);
+          // 2. Filtro ultra-flexible: Busca por ID, por Email completo o si el campo contiene su nombre
+          const filtered = allData.filter(d => {
+            const empId = String(d.empleado_id || d.user_id || '').toLowerCase();
+            const empEmail = String(d.empleado_email || d.email || d.usuario || d.empleado || '').toLowerCase();
+            
+            return (
+              empId === user.id || 
+              empEmail === userEmail || 
+              (emailName && empEmail.includes(emailName)) ||
+              (emailName && empId.includes(emailName))
+            );
+          });
+
+          setDevices(filtered);
+        } else {
+          setDevices([]);
         }
       } else {
-        // Si no hay usuario (caso raro si ya está dentro), vaciamos la lista
         setDevices([]);
       }
       

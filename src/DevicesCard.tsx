@@ -26,15 +26,26 @@ useEffect(() => {
   (async () => {
     setLoading(true);
     
-    // 1. Obtener el usuario de la sesión actual
+    // 1. Obtener el usuario autenticado (Auth)
     const { data: { user } } = await supabase.auth.getUser();
     
     if (user) {
-      // 2. Filtrar directamente en Supabase por la columna correcta
+      // 2. CONSULTA INTERMEDIA: Buscamos el ID del empleado usando el ID de Auth o su Email
+      // Nota: Ajusta 'empleados' por el nombre exacto de tu tabla de perfiles si se llama distinto (ej: 'profiles')
+      const { data: empleadoData, error: empleadoError } = await supabase
+        .from('empleados') 
+        .select('id')
+        .or(`id.eq.${user.id},email.eq.${user.email}`)
+        .single();
+
+      // Guardamos el ID correcto (ya sea el encontrado en la tabla o el de auth como plan de respaldo)
+      const realEmpleadoId = empleadoData?.id || user.id;
+
+      // 3. CONSULTA FINAL: Traemos los dispositivos usando el ID real del empleado obtenido
       const { data, error } = await supabase
         .from('dispositivos')
         .select('*')
-        .eq('empleado_id', user.id)
+        .eq('empleado_id', realEmpleadoId)
         .order('fecha_asignacion', { ascending: true });
 
       if (!error && data) {

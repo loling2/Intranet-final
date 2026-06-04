@@ -18,6 +18,7 @@ import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
 import { downloadFromWasabi } from './lib/wasabi';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import IncidenciasModule from './components/IncidenciasModule';
 
 const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> = {
   'building-2': Building2,
@@ -1328,14 +1329,20 @@ function Dashboard({
   const Icon = iconMap[theme.logoIcon];
   const [activeTab, setActiveTab] = useState('resumen');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [activeDeviceCount, setActiveDeviceCount] = useState<number | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setCurrentUserId(session?.user?.id ?? null);
+      const uid = session?.user?.id ?? null;
+      setCurrentUserId(uid);
+      if (uid) {
+        supabase.from('user_profiles').select('nombre').eq('id', uid).maybeSingle()
+          .then(({ data }) => setCurrentUserNombre(data?.nombre ?? email));
+      }
     });
-  }, []);
+  }, [email]);
 
   useEffect(() => {
     supabase
@@ -1354,6 +1361,7 @@ function Dashboard({
     { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
     { id: 'certificados', label: 'Mis Certificados', icon: Award },
     { id: 'examenes', label: 'Mis Examenes', icon: ClipboardCheck },
+    { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },
   ];
 
   return (
@@ -1545,6 +1553,14 @@ function Dashboard({
 
         {activeTab === 'examenes' && (
           <ExamsCard exams={exams} theme={theme} />
+        )}
+
+        {activeTab === 'incidencias' && currentUserId && (
+          <IncidenciasModule
+            currentUserId={currentUserId}
+            currentUserNombre={currentUserNombre || email}
+            currentUserRole="employee"
+          />
         )}
       </main>
     </div>

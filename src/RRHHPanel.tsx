@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound } from 'lucide-react';
+import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound, AlertCircle } from 'lucide-react';
 import { mockVacations, mockCertificates, mockExams, mockDocuments } from './mockData';
 import UserManagement from './UserManagement';
 import VehiclesModule from './VehiclesModule';
@@ -14,6 +14,7 @@ import EmployeesModule from './components/EmployeesModule';
 import ContratosModule from './components/ContratosModule';
 import PersonalDocumentsPanel from './components/PersonalDocumentsPanel';
 import FacturasModule from './components/FacturasModule';
+import IncidenciasModule from './components/IncidenciasModule';
 import { supabase } from './supabaseClient';
 
 interface Props {
@@ -25,7 +26,7 @@ interface Props {
   onNavigateEmployee?: () => void;
 }
 
-type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'facturas';
+type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'facturas' | 'incidencias';
 
 export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, onNavigateEmployee }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
@@ -35,6 +36,19 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
   const [filterStatus, setFilterStatus] = useState<string>('');
   const { activeSocietyId, societies } = useSociety();
   const [contratosPendientes, setContratosPendientes] = useState(0);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserNombre, setCurrentUserNombre] = useState('');
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const uid = session?.user?.id ?? null;
+      setCurrentUserId(uid);
+      if (uid) {
+        supabase.from('user_profiles').select('nombre').eq('id', uid).maybeSingle()
+          .then(({ data }) => setCurrentUserNombre(data?.nombre ?? email));
+      }
+    });
+  }, [email]);
 
   // Sync filter with active society when it changes
   useEffect(() => {
@@ -86,6 +100,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     { id: 'exams', label: 'Examenes', icon: ClipboardCheck },
     { id: 'facturas', label: 'Facturas', icon: Receipt },
     { id: 'audit', label: 'Auditoria', icon: ScrollText },
+    { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },
   ];
 
   const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'vacations', 'certificates', 'exams', 'facturas'];
@@ -588,6 +603,15 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
         {/* Facturas Tab */}
         {activeTab === 'facturas' && (
           <FacturasModule isAdmin={false} />
+        )}
+
+        {/* Incidencias Tab */}
+        {activeTab === 'incidencias' && currentUserId && (
+          <IncidenciasModule
+            currentUserId={currentUserId}
+            currentUserNombre={currentUserNombre || email}
+            currentUserRole="rrhh"
+          />
         )}
 
         {/* Prevencion/Calidad Tab */}

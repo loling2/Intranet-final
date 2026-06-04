@@ -3,7 +3,7 @@ import {
   Shield, Users, Building2, Laptop, FileText, Palmtree, Award,
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
   Eye, Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette,
-  MapPin, Plus, X, RefreshCw, Trash2,
+  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle,
 } from 'lucide-react';
 import { validUsers } from './mockData';
 import UserManagement from './UserManagement';
@@ -18,6 +18,7 @@ import TagsManager from './components/TagsManager';
 import RolesManager from './components/RolesManager';
 import DevicesModule from './components/DevicesModule';
 import CssPanel from './components/CssPanel';
+import IncidenciasModule from './components/IncidenciasModule';
 import { useSociety } from './context/SocietyContext';
 import { supabase } from './supabaseClient';
 import type { Centro } from './supabaseClient';
@@ -28,12 +29,25 @@ interface Props {
   onNavigate: (view: 'admin' | 'rrhh' | 'society', societyId?: string) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'audit' | 'css';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'audit' | 'css' | 'incidencias';
 
 export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [showChangePassword, setShowChangePassword] = useState(false);
   const { activeSocietyId, societies } = useSociety();
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserNombre, setCurrentUserNombre] = useState('');
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const uid = session?.user?.id ?? null;
+      setCurrentUserId(uid);
+      if (uid) {
+        supabase.from('user_profiles').select('nombre').eq('id', uid).maybeSingle()
+          .then(({ data }) => setCurrentUserNombre(data?.nombre ?? email));
+      }
+    });
+  }, [email]);
 
   // Centros de trabajo
   const [centros, setCentros] = useState<Centro[]>([]);
@@ -107,6 +121,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     { id: 'roles',      label: 'Roles',               icon: ShieldCheck },
     { id: 'audit',      label: 'Auditoria',           icon: ScrollText },
     { id: 'css',        label: 'CSS',                 icon: Palette },
+    { id: 'incidencias', label: 'Incidencias',        icon: AlertCircle },
   ];
 
   const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
@@ -611,6 +626,14 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
 
         {activeTab === 'css' && (
           <CssPanel />
+        )}
+
+        {activeTab === 'incidencias' && currentUserId && (
+          <IncidenciasModule
+            currentUserId={currentUserId}
+            currentUserNombre={currentUserNombre || email}
+            currentUserRole="admin"
+          />
         )}
       </div>
     </div>

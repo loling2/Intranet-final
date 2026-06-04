@@ -10,11 +10,24 @@ interface SocietyContextValue {
 
 const STORAGE_KEY = 'portal-active-society';
 
-// Merge DB society names into static theme definitions by matching ID
-function mergeSocieties(dbRows: { id: string; nombre: string }[]): SocietyTheme[] {
+// Merge DB society names + color overrides into static theme definitions
+function mergeSocieties(
+  dbRows: { id: string; nombre: string }[],
+  colorOverrides: Record<string, { primary: string; gradientFrom: string; gradientTo: string }>
+): SocietyTheme[] {
   return staticSocieties.map((s) => {
     const dbRow = dbRows.find((r) => r.id === s.id);
-    return dbRow ? { ...s, name: dbRow.nombre } : s;
+    const colors = colorOverrides[s.id];
+    return {
+      ...s,
+      ...(dbRow ? { name: dbRow.nombre } : {}),
+      ...(colors ? {
+        primary: colors.primary,
+        primaryDark: colors.gradientTo,
+        gradientFrom: colors.gradientFrom,
+        gradientTo: colors.gradientTo,
+      } : {}),
+    };
   });
 }
 
@@ -32,11 +45,23 @@ export function SocietyProvider({ children, defaultSocietyId }: { children: Reac
     return defaultSocietyId ?? staticSocieties[0].id;
   });
 
-  // Load real names from Supabase on mount
+  // Load real names and color overrides from Supabase on mount
   useEffect(() => {
-    supabase.from('sociedades').select('id, nombre').then(({ data }) => {
-      if (data && data.length > 0) {
-        setSocieties(mergeSocieties(data));
+    Promise.all([
+      supabase.from('sociedades').select('id, nombre'),
+      supabase.from('ui_settings').select('key, value'),
+    ]).then(([{ data: socData }, { data: uiData }]) => {
+      const colorOverrides: Record<string, { primary: string; gradientFrom: string; gradientTo: string }> = {};
+      for (const row of (uiData ?? [])) {
+        const m = row.key.match(/^society_color_(.+)$/);
+        if (m) {
+          try { colorOverrides[m[1]] = JSON.parse(row.value); } catch { /* skip */ }
+        }
+      }
+      if (socData && socData.length > 0) {
+        setSocieties(mergeSocieties(socData, colorOverrides));
+      } else if (Object.keys(colorOverrides).length > 0) {
+        setSocieties(mergeSocieties([], colorOverrides));
       }
     });
   }, []);

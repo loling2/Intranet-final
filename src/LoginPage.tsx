@@ -378,6 +378,18 @@ export default function LoginPage() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [session, setSession] = useState<SessionState | null>(null);
   const [showVehicleModal, setShowVehicleModal] = useState(false);
+  const [bgImage, setBgImage] = useState<string>('/foto1_(2).png');
+
+  useEffect(() => {
+    supabase
+      .from('ui_settings')
+      .select('value')
+      .eq('key', 'login_background')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.value) setBgImage(data.value);
+      });
+  }, []);
 
   const selected = societies.find((s) => s.id === selectedId) ?? null;
 
@@ -669,7 +681,7 @@ export default function LoginPage() {
     <div
       className="min-h-screen flex relative overflow-hidden"
       style={{
-        backgroundImage: "url('/image copy copy copy copy.png')",
+        backgroundImage: `url('${bgImage}')`,
         backgroundSize: 'cover',
         backgroundPosition: 'center center',
         backgroundRepeat: 'no-repeat',

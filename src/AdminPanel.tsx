@@ -3,7 +3,7 @@ import {
   Shield, Users, Building2, Laptop, FileText, Palmtree, Award,
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
   Search, Eye, CheckCircle2, XCircle, Clock,
-  Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound
+  Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette
 } from 'lucide-react';
 import { validUsers } from './mockData';
 import UserManagement from './UserManagement';
@@ -17,6 +17,7 @@ import EmployeesModule from './components/EmployeesModule';
 import TagsManager from './components/TagsManager';
 import RolesManager from './components/RolesManager';
 import DevicesModule from './components/DevicesModule';
+import CssPanel from './components/CssPanel';
 import { useSociety } from './context/SocietyContext';
 
 interface Props {
@@ -25,7 +26,7 @@ interface Props {
   onNavigate: (view: 'admin' | 'rrhh' | 'society', societyId?: string) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'audit';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'audit' | 'css';
 
 export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -67,6 +68,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     { id: 'tags',       label: 'Tags PRL',            icon: Activity },
     { id: 'roles',      label: 'Roles',               icon: ShieldCheck },
     { id: 'audit',      label: 'Auditoria',           icon: ScrollText },
+    { id: 'css',        label: 'CSS',                 icon: Palette },
   ];
 
   const filteredDocuments = allDocuments.filter((d) =>
@@ -462,6 +464,10 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
         {/* Audit Tab */}
         {activeTab === 'audit' && (
           <AuditLogPanel />
+        )}
+
+        {activeTab === 'css' && (
+          <CssPanel />
         )}
       </div>
     </div>

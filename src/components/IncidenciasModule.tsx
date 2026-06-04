@@ -574,15 +574,58 @@ export default function IncidenciasModule({ currentUserId, currentUserNombre, cu
     setUserDeptIds((data ?? []).map((r: { departamento_id: string }) => r.departamento_id));
   };
 
+const [loading, setLoading] = useState(true);
+
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('incidencias')
-      .select('*')
-      .order('numero', { ascending: false });
-    setIncidencias((data ?? []) as Incidencia[]);
+    
+    // 1. Obtener el usuario autenticado actual de la sesión (Auth)
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user) {
+      // 2. CONSULTA INTERMEDIA: Averiguar el ID de empleado y su departamento_id real
+      // (Asegúrate de que la tabla de perfiles se llame 'empleados' y tenga la columna 'departamento_id')
+      const { data: empleadoData } = await supabase
+        .from('empleados')
+        .select('id, departamento_id')
+        .or(`id.eq.${user.id},email.eq.${user.email}`)
+        .single();
+
+      const realEmpleadoId = empleadoData?.id || user.id;
+      const miDepartamentoId = empleadoData?.departamento_id || null;
+
+      // 3. CONSULTA FILTRADA: Aplicamos las reglas de privacidad en el servidor
+      let query = supabase.from('incidencias').select('*');
+
+      if (miDepartamentoId) {
+        // Si el empleado tiene departamento (ej: Julio en Informática):
+        // Ve las incidencias creadas por él O las que van dirigidas a su departamento_id
+        query = query.or(`creado_por_id.eq.${realEmpleadoId},departamento_id.eq.${miDepartamentoId}`);
+      } else {
+        // Si no tiene departamento (ej: Sofía):
+        // SOLO ve las incidencias que ella misma ha reportado
+        query = query.eq('creado_por_id', realEmpleadoId);
+      }
+
+      // Aplicamos el orden por número de forma descendente tal como lo tenías
+      const { data, error } = await query.order('numero', { ascending: false });
+
+      if (!error && data) {
+        setIncidencias(data as Incidencia[]);
+      } else {
+        setIncidencias([]);
+      }
+    } else {
+      setIncidencias([]);
+    }
+    
     setLoading(false);
   };
+
+  useEffect(() => {
+    loadUserDepts();
+    load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadUserDepts();

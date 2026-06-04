@@ -370,7 +370,6 @@ interface SessionState {
 
 export default function LoginPage() {
   const [selectedId, setSelectedId] = useState<string>('');
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -406,17 +405,6 @@ export default function LoginPage() {
       events.forEach((e) => window.removeEventListener(e, reset));
     };
   }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.society-dropdown')) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
 
   const handleLogin = async () => {
     setLoginError('');
@@ -498,7 +486,21 @@ export default function LoginPage() {
         console.warn('Proceeding with default employee role');
       }
 
-      // Step 5: Determine view
+      // Step 5: For employees, look up their assigned society from the empleados table
+      if (resolvedRole === 'employee') {
+        try {
+          const { data: emp } = await supabase
+            .from('empleados')
+            .select('id_sociedad')
+            .eq('email', resolvedEmail)
+            .maybeSingle();
+          if (emp?.id_sociedad) {
+            resolvedSocietyId = emp.id_sociedad;
+          }
+        } catch { /* fallback to profile society */ }
+      }
+
+      // Step 6: Determine view
       let initialView: AppView = 'dashboard';
       if (resolvedRole === 'admin') {
         initialView = 'admin';
@@ -660,9 +662,7 @@ export default function LoginPage() {
     }
   }
 
-  // Show "privileged" hint only when email matches known admin patterns — actual role is determined post-login
-  const isPrivilegedUser = false;
-  // Allow login attempt with just email + password (society is optional — employees pick one for UX)
+  // Allow login attempt with just email + password
   const canLogin = !!(email.trim() && password);
 
   return (
@@ -703,7 +703,7 @@ export default function LoginPage() {
               {selected ? selected.name : 'Portal del Empleado'}
             </h1>
             <p className="text-white/70 text-center text-lg max-w-sm mx-auto leading-relaxed">
-              {selected ? 'Accede a tu espacio de trabajo y gestiona tus recursos empresariales' : 'Selecciona tu sociedad para comenzar'}
+              {selected ? 'Accede a tu espacio de trabajo y gestiona tus recursos empresariales' : 'Introduce tus credenciales para acceder'}
             </p>
           </div>
 
@@ -750,76 +750,6 @@ export default function LoginPage() {
               Introduce tus credenciales para acceder
             </p>
           </div>
-
-          {/* Society Selector — hidden for admin/rrhh users */}
-          {!isPrivilegedUser && (
-            <div className="mb-6 relative society-dropdown">
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wider transition-colors duration-500" style={{ color: selected?.textSecondary ?? '#64748B' }}>
-                Sociedad
-              </label>
-              <button
-                onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-left transition-all duration-300 cursor-pointer"
-                style={{
-                  backgroundColor: selected ? selected.primaryLight : '#F8FAFC',
-                  border: `1.5px solid ${selected ? selected.border : '#E2E8F0'}`,
-                  color: selected ? selected.textPrimary : '#334155',
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  {selected ? (
-                    <>
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${selected.primary}18` }}>
-                        {(() => { const Icon = iconMap[selected.logoIcon]; return Icon ? <Icon size={16} style={{ color: selected.primary }} /> : null; })()}
-                      </div>
-                      <span className="font-medium">{selected.name}</span>
-                    </>
-                  ) : (
-                    <span className="text-gray-400">Selecciona una sociedad...</span>
-                  )}
-                </div>
-                <ChevronDown size={18} className={`transition-transform duration-300 ${dropdownOpen ? 'rotate-180' : ''}`} style={{ color: selected?.textSecondary ?? '#94A3B8' }} />
-              </button>
-
-              {dropdownOpen && (
-                <div className="absolute z-50 w-full mt-2 rounded-xl overflow-hidden shadow-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                  {societies.map((society) => {
-                    const Icon = iconMap[society.logoIcon];
-                    return (
-                      <button
-                        key={society.id}
-                        onClick={() => { setSelectedId(society.id); setDropdownOpen(false); }}
-                        className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all duration-200 hover:bg-gray-50 cursor-pointer"
-                        style={{ backgroundColor: selectedId === society.id ? society.primaryLight : 'transparent' }}
-                      >
-                        <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${society.primary}15` }}>
-                          {Icon ? <Icon size={18} style={{ color: society.primary }} /> : null}
-                        </div>
-                        <div>
-                          <div className="font-medium text-sm" style={{ color: society.textPrimary }}>{society.name}</div>
-                          <div className="text-xs" style={{ color: society.textSecondary }}></div>
-                        </div>
-                        {selectedId === society.id && <div className="ml-auto w-2 h-2 rounded-full" style={{ backgroundColor: society.primary }} />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Admin access hint */}
-          {isPrivilegedUser && (
-            <div
-              className="flex items-center gap-2 px-4 py-3 rounded-xl mb-6"
-              style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}
-            >
-              <Shield size={14} style={{ color: '#DC2626' }} />
-              <span className="text-xs font-medium" style={{ color: '#DC2626' }}>
-                Acceso privilegiado detectado &mdash; no se requiere sociedad
-              </span>
-            </div>
-          )}
 
           {/* Email */}
           <div className="mb-4">
@@ -892,9 +822,9 @@ export default function LoginPage() {
             disabled={!canLogin || loginLoading}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-white font-semibold text-sm transition-all duration-300 cursor-pointer disabled:cursor-not-allowed"
             style={{
-              backgroundColor: selected ? selected.primary : isPrivilegedUser && email && password ? '#0F172A' : '#CBD5E1',
+              backgroundColor: selected ? selected.primary : (email && password ? '#0F172A' : '#CBD5E1'),
               opacity: canLogin && !loginLoading ? 1 : 0.6,
-              boxShadow: selected ? `0 4px 14px ${selected.primary}40` : isPrivilegedUser ? '0 4px 14px rgba(0,0,0,0.3)' : 'none',
+              boxShadow: selected ? `0 4px 14px ${selected.primary}40` : (email && password ? '0 4px 14px rgba(0,0,0,0.3)' : 'none'),
             }}
           >
             {loginLoading ? <RefreshCw size={16} className="animate-spin" /> : <><span>Entrar</span><ArrowRight size={16} /></>}

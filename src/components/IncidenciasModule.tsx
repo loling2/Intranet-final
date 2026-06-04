@@ -577,31 +577,30 @@ export default function IncidenciasModule({ currentUserId, currentUserNombre, cu
 const load = async () => {
     setLoading(true);
     
-    // 1. Obtener el usuario autenticado actual de la sesión (Auth)
+    // 1. Obtener el usuario autenticado actual (Auth)
     const { data: { user } } = await supabase.auth.getUser();
     
     if (user) {
-      // 2. CONSULTA INTERMEDIA: Averiguar el ID de empleado y su departamento_id real
-      const { data: empleadoData } = await supabase
-        .from('empleados')
-        .select('id, departamento_id')
-        .or(`id.eq.${user.id},email.eq.${user.email}`)
-        .single();
+      // 2. CONSULTA INTERMEDIA: Buscamos a qué departamentos pertenece este user_id
+      const { data: misMiembros } = await supabase
+        .from('departamento_miembros')
+        .select('departamento_id')
+        .eq('user_id', user.id);
 
-      const realEmpleadoId = empleadoData?.id || user.id;
-      const miDepartamentoId = empleadoData?.departamento_id || null;
+      // Extraemos los IDs de los departamentos en un array (ej: ['a15a306f-...'])
+      const misDepartamentosIds = misMiembros?.map(m => m.departamento_id) || [];
 
-      // 3. CONSULTA FILTRADA: Aplicamos las reglas de privacidad en el servidor
+      // 3. CONSULTA FILTRADA DE PRIVACIDAD
       let query = supabase.from('incidencias').select('*');
 
-      if (miDepartamentoId) {
-        // Si el empleado tiene departamento (ej: Julio en Informática):
-        // Ve las incidencias creadas por él O las que van dirigidas a su departamento_id
-        query = query.or(`creado_por_id.eq.${realEmpleadoId},departamento_id.eq.${miDepartamentoId}`);
+      if (misDepartamentosIds.length > 0) {
+        // Si pertenece a algún departamento (Caso Julio):
+        // Ve las incidencias que él creó O las que van a cualquiera de sus departamentos asignados
+        query = query.or(`creado_por_id.eq.${user.id},departamento_id.in.(${misDepartamentosIds.join(',')})`);
       } else {
-        // Si no tiene departamento (ej: Sofía):
+        // Si no pertenece a ningún departamento (Caso Sofía):
         // SOLO ve las incidencias que ella misma ha reportado
-        query = query.eq('creado_por_id', realEmpleadoId);
+        query = query.eq('creado_por_id', user.id);
       }
 
       // Aplicamos el orden por número de forma descendente tal como lo tenías

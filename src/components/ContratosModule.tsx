@@ -297,7 +297,7 @@ export default function ContratosModule({ currentUserRole }: Props) {
         ) : (
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
             {filtered.map((emp) => {
-              const estado = ESTADOS.find((e) => e.value === (emp.estado_contrato ?? 'pendiente'))!;
+              const estado = ESTADOS.find((e) => e.value === (emp.estado_contrato ?? 'pendiente')) ?? ESTADOS[0];
               const isExpanded = expandedId === emp.id;
               const historial = historialMap[emp.id] ?? [];
               return (

@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import {
   Shield, Users, Building2, Laptop, FileText, Palmtree, Award,
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
-  Search, Eye, CheckCircle2, XCircle, Clock,
-  Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette
+  Eye, Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette,
+  MapPin, Plus, X, RefreshCw, Trash2,
 } from 'lucide-react';
 import { validUsers } from './mockData';
 import UserManagement from './UserManagement';
@@ -19,6 +19,8 @@ import RolesManager from './components/RolesManager';
 import DevicesModule from './components/DevicesModule';
 import CssPanel from './components/CssPanel';
 import { useSociety } from './context/SocietyContext';
+import { supabase } from './supabaseClient';
+import type { Centro } from './supabaseClient';
 
 interface Props {
   email: string;
@@ -30,15 +32,51 @@ type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' |
 
 export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSociety, setSelectedSociety] = useState<string | null>(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const { activeSocietyId, societies } = useSociety();
 
-  // Reload data when active society changes
+  // Centros de trabajo
+  const [centros, setCentros] = useState<Centro[]>([]);
+  const [centrosLoading, setCentrosLoading] = useState(false);
+  const [newCentroName, setNewCentroName] = useState('');
+  const [creatingCentro, setCreatingCentro] = useState(false);
+  const [centroError, setCentroError] = useState('');
+  const [deletingCentroId, setDeletingCentroId] = useState<string | null>(null);
+
+  const loadCentros = async () => {
+    setCentrosLoading(true);
+    const { data } = await supabase.from('centros').select('*').order('nombre');
+    setCentros((data ?? []) as Centro[]);
+    setCentrosLoading(false);
+  };
+
   useEffect(() => {
-    setSelectedSociety(activeSocietyId);
-  }, [activeSocietyId]);
+    if (activeTab === 'societies') loadCentros();
+  }, [activeTab]);
+
+  const handleCreateCentro = async () => {
+    if (!newCentroName.trim()) { setCentroError('Introduce un nombre'); return; }
+    setCreatingCentro(true); setCentroError('');
+    const { error } = await supabase.from('centros').insert({ nombre: newCentroName.trim(), id_sociedad: null });
+    if (error) setCentroError(error.message);
+    else { setNewCentroName(''); await loadCentros(); }
+    setCreatingCentro(false);
+  };
+
+  const handleAssignCentro = async (centroId: string, societyId: string | null) => {
+    await supabase.from('centros').update({ id_sociedad: societyId }).eq('id', centroId);
+    await loadCentros();
+  };
+
+  const handleDeleteCentro = async (centroId: string) => {
+    setDeletingCentroId(centroId);
+    await supabase.from('centros').delete().eq('id', centroId);
+    await loadCentros();
+    setDeletingCentroId(null);
+  };
+
+  // Reload data when active society changes
+  useEffect(() => {}, [activeSocietyId]);
 
   const allDocuments: unknown[] = [];
   const allVacations: unknown[] = [];
@@ -70,14 +108,6 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     { id: 'audit',      label: 'Auditoria',           icon: ScrollText },
     { id: 'css',        label: 'CSS',                 icon: Palette },
   ];
-
-  const filteredDocuments = allDocuments.filter((d) =>
-    (!selectedSociety || d.societyId === selectedSociety) &&
-    (!searchQuery || d.name.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-  const filteredVacations = allVacations.filter((v) =>
-    (!selectedSociety || v.societyId === selectedSociety)
-  );
 
   const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
 
@@ -330,58 +360,171 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
 
         {/* Societies Tab */}
         {activeTab === 'societies' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {societies.map((s) => {
-              const docs: unknown[] = [];
-              const devs: unknown[] = [];
-              const vacs = { balance: { total: 0, used: 0, pending: 0 }, requests: [] };
-              const certs: unknown[] = [];
-              const exams: unknown[] = [];
-              return (
-                <div
-                  key={s.id}
-                  className="rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-lg"
-                  style={{ backgroundColor: '#FFFFFF', border: `1px solid ${s.border}` }}
-                >
+          <div className="space-y-6">
+            {/* Society cards grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {societies.map((s) => {
+                const societyCentros = centros.filter((c) => c.id_sociedad === s.id);
+                return (
                   <div
-                    className="px-6 py-4 flex items-center justify-between"
-                    style={{ background: `linear-gradient(135deg, ${s.gradientFrom}, ${s.gradientTo})` }}
+                    key={s.id}
+                    className="rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-lg"
+                    style={{ backgroundColor: '#FFFFFF', border: `1px solid ${s.border}` }}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
-                        <span className="text-white font-bold text-lg">{s.logoLetter}</span>
-                      </div>
-                      <div>
-                        <h3 className="text-white font-bold">{s.name}</h3>
-                        <p className="text-white/60 text-xs">ID: {s.id}</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => onNavigate('society', s.id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-                      style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}
+                    <div
+                      className="px-6 py-4 flex items-center justify-between"
+                      style={{ background: `linear-gradient(135deg, ${s.gradientFrom}, ${s.gradientTo})` }}
                     >
-                      <Eye size={12} />
-                      Ver portal
-                    </button>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
+                          <span className="text-white font-bold text-lg">{s.logoLetter}</span>
+                        </div>
+                        <div>
+                          <h3 className="text-white font-bold">{s.name}</h3>
+                          <p className="text-white/60 text-xs">ID: {s.id}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => onNavigate('society', s.id)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}
+                      >
+                        <Eye size={12} />
+                        Ver portal
+                      </button>
+                    </div>
+                    <div className="p-5 grid grid-cols-5 gap-3">
+                      {[
+                        { label: 'Docs', value: 0, color: '#0EA5E9' },
+                        { label: 'Devs', value: 0, color: '#10B981' },
+                        { label: 'Vacaciones', value: 0, color: '#F59E0B' },
+                        { label: 'Certificados', value: 0, color: '#EC4899' },
+                        { label: 'Examenes', value: 0, color: '#8B5CF6' },
+                      ].map((item, i) => (
+                        <div key={i} className="text-center rounded-xl p-3" style={{ backgroundColor: s.primaryLight }}>
+                          <p className="text-lg font-bold" style={{ color: item.color }}>{item.value}</p>
+                          <p className="text-xs mt-0.5" style={{ color: s.textSecondary }}>{item.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Centros assigned to this society */}
+                    {societyCentros.length > 0 && (
+                      <div className="px-5 pb-4" style={{ borderTop: `1px solid ${s.border}` }}>
+                        <p className="text-xs font-semibold uppercase tracking-wider mt-3 mb-2" style={{ color: s.textSecondary }}>
+                          Centros de trabajo
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {societyCentros.map((c) => (
+                            <div
+                              key={c.id}
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: s.primaryLight, color: s.textPrimary, border: `1px solid ${s.border}` }}
+                            >
+                              <MapPin size={10} style={{ color: s.primary }} />
+                              <span>{c.nombre}</span>
+                              <button
+                                onClick={() => handleAssignCentro(c.id, null)}
+                                title="Desasignar"
+                                className="ml-1 cursor-pointer opacity-50 hover:opacity-100 transition-opacity"
+                                style={{ color: s.primary }}
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="p-5 grid grid-cols-5 gap-3">
-                    {[
-                      { label: 'Docs', value: docs.length, color: '#0EA5E9' },
-                      { label: 'Devs', value: devs.length, color: '#10B981' },
-                      { label: 'Vacaciones', value: vacs.requests.length, color: '#F59E0B' },
-                      { label: 'Certificados', value: certs.length, color: '#EC4899' },
-                      { label: 'Examenes', value: exams.length, color: '#8B5CF6' },
-                    ].map((item, i) => (
-                      <div key={i} className="text-center rounded-xl p-3" style={{ backgroundColor: s.primaryLight }}>
-                        <p className="text-lg font-bold" style={{ color: item.color }}>{item.value}</p>
-                        <p className="text-xs mt-0.5" style={{ color: s.textSecondary }}>{item.label}</p>
+                );
+              })}
+            </div>
+
+            {/* Centros de trabajo section */}
+            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+              <div className="px-6 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid #E2E8F0' }}>
+                <MapPin size={16} style={{ color: '#0F172A' }} />
+                <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Centros de trabajo</h3>
+                <span className="ml-auto text-xs px-2 py-0.5 rounded-md font-medium" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
+                  {centros.filter((c) => !c.id_sociedad).length} sin asignar
+                </span>
+              </div>
+
+              {/* Create new centro */}
+              <div className="px-6 py-4" style={{ borderBottom: '1px solid #F1F5F9' }}>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#94A3B8' }}>Nuevo centro</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newCentroName}
+                    onChange={(e) => { setNewCentroName(e.target.value); setCentroError(''); }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleCreateCentro()}
+                    placeholder="Nombre del centro de trabajo..."
+                    className="flex-1 px-3 py-2 rounded-xl text-sm outline-none"
+                    style={{ border: `1.5px solid ${centroError ? '#FECACA' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                  />
+                  <button
+                    onClick={handleCreateCentro}
+                    disabled={creatingCentro || !newCentroName.trim()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 transition-opacity"
+                    style={{ backgroundColor: '#0F172A' }}
+                  >
+                    {creatingCentro ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
+                    Crear
+                  </button>
+                </div>
+                {centroError && (
+                  <p className="text-xs mt-1" style={{ color: '#DC2626' }}>{centroError}</p>
+                )}
+              </div>
+
+              {/* Unassigned centros */}
+              <div className="px-6 py-4">
+                {centrosLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <RefreshCw size={16} className="animate-spin" style={{ color: '#94A3B8' }} />
+                  </div>
+                ) : centros.filter((c) => !c.id_sociedad).length === 0 ? (
+                  <p className="text-sm text-center py-6" style={{ color: '#CBD5E1' }}>No hay centros sin asignar</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#94A3B8' }}>Sin asignar — arrastra a una sociedad o usa el menu</p>
+                    {centros.filter((c) => !c.id_sociedad).map((c) => (
+                      <div
+                        key={c.id}
+                        className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                        style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}
+                      >
+                        <MapPin size={14} style={{ color: '#94A3B8' }} />
+                        <span className="flex-1 text-sm font-medium" style={{ color: '#1E293B' }}>{c.nombre}</span>
+                        <div className="flex items-center gap-2">
+                          <select
+                            onChange={(e) => e.target.value && handleAssignCentro(c.id, e.target.value)}
+                            defaultValue=""
+                            className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer"
+                            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#64748B' }}
+                          >
+                            <option value="">Asignar a sociedad...</option>
+                            {societies.map((s) => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => handleDeleteCentro(c.id)}
+                            disabled={deletingCentroId === c.id}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg cursor-pointer hover:bg-red-50 transition-colors disabled:opacity-50"
+                            title="Eliminar"
+                            style={{ color: '#CBD5E1' }}
+                          >
+                            {deletingCentroId === c.id ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              );
-            })}
+                )}
+              </div>
+            </div>
           </div>
         )}
 

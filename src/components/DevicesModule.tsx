@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Laptop, Smartphone, Monitor, Headphones, Tablet, Phone,
   Plus, Search, Pencil, Trash2, X, RefreshCw, AlertCircle,
-  CheckCircle2, ChevronDown, Settings,
+  CheckCircle2, ChevronDown, Settings, MapPin,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import type { Dispositivo, Empleado } from '../supabaseClient';
+import type { Dispositivo, Empleado, Centro } from '../supabaseClient';
 import { societies } from '../themes';
 
 const TIPOS = ['Portatil', 'Sobremesa', 'Monitor', 'Movil', 'Tablet', 'Periferico', 'VoIP', 'Otro'];
@@ -57,14 +57,113 @@ const EMPTY_FORM: FormState = {
   notas: '',
 };
 
+// ── Searchable Employee Picker ────────────────────────────────────────────────
+
+function EmployeePicker({
+  empleados,
+  value,
+  onChange,
+}: {
+  empleados: Empleado[];
+  value: string;
+  onChange: (empId: string, nombre: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  const selected = empleados.find((e) => e.id === value);
+
+  const filtered = empleados
+    .filter((e) => !search || e.nombre.toLowerCase().includes(search.toLowerCase()))
+    .slice(0, 10);
+
+  useEffect(() => {
+    const handler = (ev: MouseEvent) => {
+      if (ref.current && !ref.current.contains(ev.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm cursor-pointer"
+        style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+      >
+        <span style={{ color: selected ? '#1E293B' : '#94A3B8' }}>
+          {selected ? selected.nombre : 'Sin asignar'}
+        </span>
+        <ChevronDown size={13} style={{ color: '#94A3B8' }} />
+      </button>
+      {open && (
+        <div
+          className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden shadow-xl"
+          style={{ backgroundColor: '#FFFFFF', border: '1.5px solid #E2E8F0' }}
+        >
+          <div className="p-2" style={{ borderBottom: '1px solid #F1F5F9' }}>
+            <div className="relative">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+              <input
+                autoFocus
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por nombre..."
+                className="w-full pl-7 pr-3 py-1.5 rounded-lg text-xs outline-none"
+                style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
+              />
+            </div>
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => { onChange('', ''); setOpen(false); setSearch(''); }}
+              className="w-full text-left px-3 py-2 text-xs cursor-pointer hover:bg-slate-50 transition-colors"
+              style={{ color: '#94A3B8' }}
+            >
+              Sin asignar
+            </button>
+            {filtered.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => { onChange(e.id, e.nombre); setOpen(false); setSearch(''); }}
+                className="w-full text-left px-3 py-2 text-xs cursor-pointer hover:bg-slate-50 transition-colors"
+                style={{
+                  backgroundColor: value === e.id ? '#F0F9FF' : undefined,
+                  color: value === e.id ? '#0369A1' : '#1E293B',
+                  fontWeight: value === e.id ? 600 : 400,
+                }}
+              >
+                {e.nombre}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="px-3 py-3 text-xs" style={{ color: '#94A3B8' }}>Sin resultados</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Device Modal ──────────────────────────────────────────────────────────────
+
 function DeviceModal({
   existing,
   empleados,
+  centros,
   onClose,
   onSaved,
 }: {
   existing?: Dispositivo;
   empleados: Empleado[];
+  centros: Centro[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -95,10 +194,13 @@ function DeviceModal({
     (e) => !form.society_id || e.id_sociedad === form.society_id
   );
 
-  const handleEmpleadoChange = (empId: string) => {
-    const emp = empleados.find((e) => e.id === empId);
+  const filteredCentros = centros.filter(
+    (c) => !c.id_sociedad || c.id_sociedad === form.society_id
+  );
+
+  const handleEmpleadoChange = (empId: string, nombre: string) => {
     set('empleado_id', empId);
-    set('usuario_asignado_nombre', emp?.nombre ?? '');
+    set('usuario_asignado_nombre', nombre);
   };
 
   const handleSave = async () => {
@@ -234,14 +336,20 @@ function DeviceModal({
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Centro de trabajo</label>
-              <input
-                type="text"
-                value={form.centro_trabajo}
-                onChange={(e) => set('centro_trabajo', e.target.value)}
-                placeholder="Ej: Oficina Central Madrid"
-                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
-              />
+              <div className="relative">
+                <select
+                  value={form.centro_trabajo}
+                  onChange={(e) => set('centro_trabajo', e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none appearance-none cursor-pointer"
+                  style={{ border: '1.5px solid #E2E8F0', color: form.centro_trabajo ? '#1E293B' : '#94A3B8', backgroundColor: '#F8FAFC' }}
+                >
+                  <option value="">Sin centro</option>
+                  {filteredCentros.map((c) => (
+                    <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                  ))}
+                </select>
+                <MapPin size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
+              </div>
             </div>
           </div>
 
@@ -266,18 +374,11 @@ function DeviceModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Usuario asignado</label>
-              <div className="relative">
-                <select
-                  value={form.empleado_id}
-                  onChange={(e) => handleEmpleadoChange(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none appearance-none cursor-pointer"
-                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
-                >
-                  <option value="">Sin asignar</option>
-                  {filteredEmpleados.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-                </select>
-                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
-              </div>
+              <EmployeePicker
+                empleados={filteredEmpleados}
+                value={form.empleado_id}
+                onChange={handleEmpleadoChange}
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Fecha asignacion</label>
@@ -367,6 +468,7 @@ function ConfirmDelete({ name, onConfirm, onClose, loading }: {
 export default function DevicesModule() {
   const [devices, setDevices] = useState<Dispositivo[]>([]);
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
+  const [centros, setCentros] = useState<Centro[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterSociety, setFilterSociety] = useState('');
@@ -403,7 +505,12 @@ export default function DevicesModule() {
     setEmpleados((data ?? []) as Empleado[]);
   }, []);
 
-  useEffect(() => { loadDevices(); loadEmpleados(); }, [loadDevices, loadEmpleados]);
+  const loadCentros = useCallback(async () => {
+    const { data } = await supabase.from('centros').select('*').order('nombre');
+    setCentros((data ?? []) as Centro[]);
+  }, []);
+
+  useEffect(() => { loadDevices(); loadEmpleados(); loadCentros(); }, [loadDevices, loadEmpleados, loadCentros]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -441,10 +548,10 @@ export default function DevicesModule() {
   return (
     <div className="space-y-4">
       {showCreate && (
-        <DeviceModal empleados={empleados} onClose={() => setShowCreate(false)} onSaved={() => { loadDevices(); flash('Dispositivo creado correctamente'); }} />
+        <DeviceModal empleados={empleados} centros={centros} onClose={() => setShowCreate(false)} onSaved={() => { loadDevices(); flash('Dispositivo creado correctamente'); }} />
       )}
       {editing && (
-        <DeviceModal existing={editing} empleados={empleados} onClose={() => setEditing(null)} onSaved={() => { loadDevices(); flash('Dispositivo actualizado'); }} />
+        <DeviceModal existing={editing} empleados={empleados} centros={centros} onClose={() => setEditing(null)} onSaved={() => { loadDevices(); flash('Dispositivo actualizado'); }} />
       )}
       {deleteTarget && (
         <ConfirmDelete name={deleteTarget.marca_modelo} onConfirm={handleDelete} onClose={() => setDeleteTarget(null)} loading={deleting} />

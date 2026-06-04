@@ -727,7 +727,7 @@ export default function LoginPage() {
           </div>
 
           <h1 className="text-4xl font-bold text-white text-center mb-3 tracking-tight drop-shadow-lg">
-            {selected ? selected.name : 'Portal del Empleado'}
+            {selected ? selected.name : 'Portal de Empleado'}
           </h1>
           <p className="text-white/75 text-center text-base max-w-xs mx-auto leading-relaxed">
             {selected ? 'Accede a tu espacio de trabajo y gestiona tus recursos empresariales' : 'Introduce tus credenciales para acceder'}

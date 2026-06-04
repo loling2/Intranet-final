@@ -1345,46 +1345,40 @@ function Dashboard({
   }, [email]);
 
 useEffect(() => {
-  (async () => {
-    // 1. Obtener el usuario autenticado actual
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (user) {
-      // 2. Intentar contar los dispositivos activos que pertenecen a este usuario en el servidor
-      const { data, error, count } = await supabase
-        .from('dispositivos')
-        .select('*', { count: 'exact' })
-        .eq('activo', true)
-        .or(`empleado_id.eq.${user.id},empleado_email.eq.${user.email},email.eq.${user.email},user_id.eq.${user.id}`);
-
-      // 3. Plan de contingencia: si la consulta .or falla o no coincide por nombres de columna, filtramos en JS
-      if (error || !data || data.length === 0) {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
         const { data: allActive } = await supabase
           .from('dispositivos')
           .select('*')
           .eq('activo', true);
           
         if (allActive) {
-          const userActiveDevices = allActive.filter(d => 
-            d.empleado_id === user.id || 
-            d.user_id === user.id || 
-            d.empleado_email === user.email ||
-            d.email === user.email ||
-            d.usuario === user.email
-          );
+          const emailName = user.email ? user.email.split('@')[0].toLowerCase() : '';
+          const userEmail = user.email ? user.email.toLowerCase() : '';
+
+          const userActiveDevices = allActive.filter(d => {
+            const empId = String(d.empleado_id || d.user_id || '').toLowerCase();
+            const empEmail = String(d.empleado_email || d.email || d.usuario || d.empleado || '').toLowerCase();
+            
+            return (
+              empId === user.id || 
+              empEmail === userEmail || 
+              (emailName && empEmail.includes(emailName)) ||
+              (emailName && empId.includes(emailName))
+            );
+          });
+          
           setActiveDeviceCount(userActiveDevices.length);
         } else {
           setActiveDeviceCount(0);
         }
       } else {
-        // Si la consulta por servidor funcionó bien, usamos el conteo exacto devuelto
-        setActiveDeviceCount(count ?? data.length);
+        setActiveDeviceCount(0);
       }
-    } else {
-      setActiveDeviceCount(0);
-    }
-  })();
-}, []);
+    })();
+  }, []);
 
   const certificates = mockCertificates[theme.id] ?? [];
   const exams = mockExams[theme.id] ?? [];

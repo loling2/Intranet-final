@@ -30,11 +30,11 @@ useEffect(() => {
     const { data: { user } } = await supabase.auth.getUser();
     
     if (user) {
-      // 2. Filtrar directamente en Supabase por ID o por Email exacto
+      // 2. Filtrar directamente en Supabase por la columna correcta
       const { data, error } = await supabase
         .from('dispositivos')
         .select('*')
-        .or(`empleado_id.eq.${user.id},user_id.eq.${user.id},empleado_email.eq.${user.email},email.eq.${user.email}`)
+        .eq('empleado_id', user.id)
         .order('fecha_asignacion', { ascending: true });
 
       if (!error && data) {

@@ -1345,40 +1345,27 @@ function Dashboard({
   }, [email]);
 
 useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        const { data: allActive } = await supabase
-          .from('dispositivos')
-          .select('*')
-          .eq('activo', true);
-          
-        if (allActive) {
-          const emailName = user.email ? user.email.split('@')[0].toLowerCase() : '';
-          const userEmail = user.email ? user.email.toLowerCase() : '';
+  (async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user) {
+      // Pedimos a Supabase el conteo exacto de dispositivos activos de este usuario
+      const { count, error } = await supabase
+        .from('dispositivos')
+        .select('*', { count: 'exact', head: true })
+        .eq('activo', true)
+        .or(`empleado_id.eq.${user.id},user_id.eq.${user.id},empleado_email.eq.${user.email},email.eq.${user.email}`);
 
-          const userActiveDevices = allActive.filter(d => {
-            const empId = String(d.empleado_id || d.user_id || '').toLowerCase();
-            const empEmail = String(d.empleado_email || d.email || d.usuario || d.empleado || '').toLowerCase();
-            
-            return (
-              empId === user.id || 
-              empEmail === userEmail || 
-              (emailName && empEmail.includes(emailName)) ||
-              (emailName && empId.includes(emailName))
-            );
-          });
-          
-          setActiveDeviceCount(userActiveDevices.length);
-        } else {
-          setActiveDeviceCount(0);
-        }
+      if (!error && count !== null) {
+        setActiveDeviceCount(count);
       } else {
         setActiveDeviceCount(0);
       }
-    })();
-  }, []);
+    } else {
+      setActiveDeviceCount(0);
+    }
+  })();
+}, []);
 
   const certificates = mockCertificates[theme.id] ?? [];
   const exams = mockExams[theme.id] ?? [];

@@ -22,27 +22,41 @@ export default function DevicesCard({ theme }: Props) {
   const [devices, setDevices] = useState<Dispositivo[]>([]);
   const [loading, setLoading] = useState(true);
 
-useEffect(() => {
+  useEffect(() => {
     (async () => {
       setLoading(true);
       
-      // 1. Obtener el usuario que tiene la sesión activa actualmente
+      // 1. Obtener los datos del usuario logueado en la sesión activa
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
-        // 2. Filtrar los dispositivos cuyo 'empleado_id' o 'email' coincida con el usuario logueado
-        // NOTA: Revisa si tu columna en la base de datos se llama 'empleado_id', 'user_id' o 'email'
-        const { data, error } = await supabase
+        // 2. Traer los dispositivos aplicando filtros comunes
+        let { data, error } = await supabase
           .from('dispositivos')
           .select('*')
-          .eq('empleado_id', user.id) // <- Cambia 'empleado_id' por el nombre exacto de tu columna
+          .or(`empleado_id.eq.${user.id},empleado_email.eq.${user.email},email.eq.${user.email},user_id.eq.${user.id}`)
           .order('fecha_asignacion', { ascending: true });
 
-        if (!error) {
-          setDevices((data ?? []) as Dispositivo[]);
+        // 3. Sistema de contingencia si las columnas personalizadas de Supabase varían
+        if (error || !data || data.length === 0) {
+          const { data: allData } = await supabase
+            .from('dispositivos')
+            .select('*')
+            .order('fecha_asignacion', { ascending: true });
+            
+          if (allData) {
+            data = allData.filter(d => 
+              d.empleado_id === user.id || 
+              d.user_id === user.id || 
+              d.empleado_email === user.email ||
+              d.email === user.email ||
+              d.usuario === user.email
+            );
+          }
         }
+
+        setDevices((data ?? []) as Dispositivo[]);
       } else {
-        // Si no hay usuario (caso raro si ya está dentro), vaciamos la lista
         setDevices([]);
       }
       
@@ -142,7 +156,7 @@ useEffect(() => {
       </div>
 
       {/* Footer */}
-      {devices.length > 0 && (
+      {!loading && devices.length > 0 && (
         <div className="px-6 py-3 text-center" style={{ borderTop: `1px solid ${theme.border}` }}>
           <p className="text-xs" style={{ color: theme.textSecondary }}>
             {devices[0]?.fecha_asignacion

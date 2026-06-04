@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound } from 'lucide-react';
-import { societies, SocietyTheme } from './themes';
+import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
 type UserRole = AppRole;
@@ -379,15 +379,31 @@ export default function LoginPage() {
   const [session, setSession] = useState<SessionState | null>(null);
   const [showVehicleModal, setShowVehicleModal] = useState(false);
   const [bgImage, setBgImage] = useState<string>('/foto1_(2).png');
+  const [societies, setSocieties] = useState<SocietyTheme[]>(staticSocieties);
 
   useEffect(() => {
     supabase
       .from('ui_settings')
-      .select('value')
-      .eq('key', 'login_background')
-      .maybeSingle()
+      .select('key, value')
       .then(({ data }) => {
-        if (data?.value) setBgImage(data.value);
+        if (!data) return;
+        const bg = data.find((r) => r.key === 'login_background');
+        if (bg?.value) setBgImage(bg.value);
+
+        const colorOverrides: Record<string, { primary: string; gradientFrom: string; gradientTo: string }> = {};
+        for (const row of data) {
+          const m = row.key.match(/^society_color_(.+)$/);
+          if (m) {
+            try { colorOverrides[m[1]] = JSON.parse(row.value); } catch { /* skip */ }
+          }
+        }
+        if (Object.keys(colorOverrides).length > 0) {
+          setSocieties(staticSocieties.map((s) => {
+            const c = colorOverrides[s.id];
+            if (!c) return s;
+            return { ...s, primary: c.primary, primaryDark: c.gradientTo, gradientFrom: c.gradientFrom, gradientTo: c.gradientTo };
+          }));
+        }
       });
   }, []);
 

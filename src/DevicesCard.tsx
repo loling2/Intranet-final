@@ -26,34 +26,20 @@ useEffect(() => {
     (async () => {
       setLoading(true);
       
+      // 1. Obtenemos el usuario autenticado en esta sesión
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
-        // 1. Traemos los dispositivos
-        const { data: allData } = await supabase
+        // 2. Filtramos directamente en la base de datos por su ID o por su Email
+        // Supabase buscará en tu tabla solo lo que pertenezca a este usuario activo
+        const { data, error } = await supabase
           .from('dispositivos')
           .select('*')
+          .or(`empleado_id.eq.${user.id},user_id.eq.${user.id},empleado_email.eq.${user.email},email.eq.${user.email}`)
           .order('fecha_asignacion', { ascending: true });
-          
-        if (allData) {
-          // Extraemos la primera parte del email (ej: de "julio@empresa.com" sacamos "julio")
-          const emailName = user.email ? user.email.split('@')[0].toLowerCase() : '';
-          const userEmail = user.email ? user.email.toLowerCase() : '';
 
-          // 2. Filtro ultra-flexible: Busca por ID, por Email completo o si el campo contiene su nombre
-          const filtered = allData.filter(d => {
-            const empId = String(d.empleado_id || d.user_id || '').toLowerCase();
-            const empEmail = String(d.empleado_email || d.email || d.usuario || d.empleado || '').toLowerCase();
-            
-            return (
-              empId === user.id || 
-              empEmail === userEmail || 
-              (emailName && empEmail.includes(emailName)) ||
-              (emailName && empId.includes(emailName))
-            );
-          });
-
-          setDevices(filtered);
+        if (!error && data) {
+          setDevices(data as Dispositivo[]);
         } else {
           setDevices([]);
         }

@@ -22,15 +22,30 @@ export default function DevicesCard({ theme }: Props) {
   const [devices, setDevices] = useState<Dispositivo[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+useEffect(() => {
     (async () => {
       setLoading(true);
-      // Fetches only devices assigned to the current authenticated employee (RLS enforces this)
-      const { data } = await supabase
-        .from('dispositivos')
-        .select('*')
-        .order('fecha_asignacion', { ascending: true });
-      setDevices((data ?? []) as Dispositivo[]);
+      
+      // 1. Obtener el usuario que tiene la sesión activa actualmente
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // 2. Filtrar los dispositivos cuyo 'empleado_id' o 'email' coincida con el usuario logueado
+        // NOTA: Revisa si tu columna en la base de datos se llama 'empleado_id', 'user_id' o 'email'
+        const { data, error } = await supabase
+          .from('dispositivos')
+          .select('*')
+          .eq('empleado_id', user.id) // <- Cambia 'empleado_id' por el nombre exacto de tu columna
+          .order('fecha_asignacion', { ascending: true });
+
+        if (!error) {
+          setDevices((data ?? []) as Dispositivo[]);
+        }
+      } else {
+        // Si no hay usuario (caso raro si ya está dentro), vaciamos la lista
+        setDevices([]);
+      }
+      
       setLoading(false);
     })();
   }, []);

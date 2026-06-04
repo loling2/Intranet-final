@@ -1346,15 +1346,27 @@ function Dashboard({
 
 useEffect(() => {
   (async () => {
+    // 1. Obtener el usuario autenticado (Auth)
     const { data: { user } } = await supabase.auth.getUser();
     
     if (user) {
-      // Pedimos a Supabase el conteo exacto de dispositivos activos de este usuario
+      // 2. CONSULTA INTERMEDIA: Buscamos el ID real de empleado usando el ID de Auth o su Email
+      // (Asegúrate de que la tabla se llame 'empleados'. Si se llama 'profiles' o 'usuarios', cámbialo aquí)
+      const { data: empleadoData } = await supabase
+        .from('empleados')
+        .select('id')
+        .or(`id.eq.${user.id},email.eq.${user.email}`)
+        .single();
+
+      // Usamos el ID de la tabla si existe, o el de auth como plan de respaldo
+      const realEmpleadoId = empleadoData?.id || user.id;
+
+      // 3. CONSULTA FINAL: Pedimos a Supabase el conteo exacto usando el empleado_id real
       const { count, error } = await supabase
         .from('dispositivos')
         .select('*', { count: 'exact', head: true })
         .eq('activo', true)
-        .or(`empleado_id.eq.${user.id},user_id.eq.${user.id},empleado_email.eq.${user.email},email.eq.${user.email}`);
+        .eq('empleado_id', realEmpleadoId);
 
       if (!error && count !== null) {
         setActiveDeviceCount(count);

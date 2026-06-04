@@ -574,9 +574,7 @@ export default function IncidenciasModule({ currentUserId, currentUserNombre, cu
     setUserDeptIds((data ?? []).map((r: { departamento_id: string }) => r.departamento_id));
   };
 
-const [loading, setLoading] = useState(true);
-
-  const load = async () => {
+const load = async () => {
     setLoading(true);
     
     // 1. Obtener el usuario autenticado actual de la sesión (Auth)
@@ -584,7 +582,6 @@ const [loading, setLoading] = useState(true);
     
     if (user) {
       // 2. CONSULTA INTERMEDIA: Averiguar el ID de empleado y su departamento_id real
-      // (Asegúrate de que la tabla de perfiles se llame 'empleados' y tenga la columna 'departamento_id')
       const { data: empleadoData } = await supabase
         .from('empleados')
         .select('id, departamento_id')
@@ -622,11 +619,7 @@ const [loading, setLoading] = useState(true);
     setLoading(false);
   };
 
-  useEffect(() => {
-    loadUserDepts();
-    load();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
+  // Solo un useEffect encargado de montar la carga inicial de datos
   useEffect(() => {
     loadUserDepts();
     load();

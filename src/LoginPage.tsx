@@ -667,107 +667,108 @@ export default function LoginPage() {
 
   return (
     <div
-      className="min-h-screen flex transition-all duration-700 ease-out"
-      style={{ backgroundColor: selected?.bg ?? '#F8FAFC' }}
+      className="min-h-screen flex relative overflow-hidden"
+      style={{
+        backgroundImage: "url('/image copy copy copy copy.png')",
+        backgroundSize: 'cover',
+        backgroundPosition: 'center center',
+        backgroundRepeat: 'no-repeat',
+      }}
     >
-      {/* Left Panel */}
-      <div
-        className="hidden lg:flex lg:w-[45%] relative overflow-hidden transition-all duration-700 ease-out"
-        style={{
-          background: selected
-            ? `linear-gradient(135deg, ${selected.gradientFrom}, ${selected.gradientTo})`
-            : 'linear-gradient(135deg, #334155, #1E293B)',
-        }}
-      >
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-20 w-72 h-72 rounded-full border-2 border-white/20" />
-          <div className="absolute bottom-32 right-16 w-96 h-96 rounded-full border border-white/10" />
-          <div className="absolute top-1/2 left-1/3 w-48 h-48 rounded-full border border-white/15" />
-        </div>
+      {/* Full-page overlay */}
+      <div className="absolute inset-0" style={{ backgroundColor: 'rgba(10, 30, 50, 0.55)' }} />
 
-        <div className="relative z-10 flex flex-col justify-center items-center w-full px-16">
-          <div className={`transition-all duration-500 ${isTransitioning ? 'scale-90 opacity-0' : 'scale-100 opacity-100'}`}>
-            <div className="flex items-center justify-center mb-10">
-              <div
-                className="w-28 h-28 rounded-3xl flex items-center justify-center shadow-2xl"
-                style={{ backgroundColor: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.2)' }}
-              >
-                {selected ? (
-                  <span className="text-5xl font-bold text-white tracking-tight">{selected.logoLetter}</span>
-                ) : (
-                  <Building2 size={56} className="text-white/60" />
-                )}
-              </div>
-            </div>
-            <h1 className="text-4xl font-bold text-white text-center mb-3 tracking-tight">
-              {selected ? selected.name : 'Portal del Empleado'}
-            </h1>
-            <p className="text-white/70 text-center text-lg max-w-sm mx-auto leading-relaxed">
-              {selected ? 'Accede a tu espacio de trabajo y gestiona tus recursos empresariales' : 'Introduce tus credenciales para acceder'}
-            </p>
-          </div>
-
-          <div className="mt-14 space-y-4 w-full max-w-sm">
-            {['Gestion de nominas y documentos', 'Solicitudes y aprobaciones', 'Directorio y comunicados'].map((text, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 px-5 py-3 rounded-xl transition-all duration-300"
-                style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)' }}
-              >
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: selected?.accent ?? '#F59E0B' }} />
-                <span className="text-white/80 text-sm">{text}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Right Panel - Form */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-md">
-          {/* Mobile logo */}
-          <div className="lg:hidden flex items-center justify-center mb-8">
+      {/* Left branding panel — visible only on large screens */}
+      <div className="hidden lg:flex lg:w-[48%] relative z-10 flex-col justify-center items-center px-16">
+        <div className={`transition-all duration-500 ${isTransitioning ? 'scale-90 opacity-0' : 'scale-100 opacity-100'}`}>
+          {/* Decorative circle */}
+          <div className="flex items-center justify-center mb-10 relative">
+            <div className="absolute w-52 h-52 rounded-full" style={{ border: '1.5px solid rgba(255,255,255,0.18)' }} />
+            <div className="absolute w-36 h-36 rounded-full" style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
             <div
-              className="w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-500"
-              style={{
-                backgroundColor: selected ? `${selected.primary}15` : '#F1F5F9',
-                border: selected ? `2px solid ${selected.primary}30` : '2px solid #E2E8F0',
-              }}
+              className="w-24 h-24 rounded-3xl flex items-center justify-center shadow-2xl z-10"
+              style={{ backgroundColor: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.22)' }}
             >
               {selected ? (
-                <span className="text-2xl font-bold transition-colors duration-500" style={{ color: selected.primary }}>{selected.logoLetter}</span>
+                <span className="text-4xl font-bold text-white tracking-tight">{selected.logoLetter}</span>
               ) : (
-                <Building2 size={28} className="text-gray-400" />
+                <Building2 size={44} className="text-white/70" />
               )}
             </div>
           </div>
 
-          <div className="text-center lg:text-left mb-8">
-            <h2 className="text-2xl font-bold tracking-tight transition-colors duration-500" style={{ color: selected?.textPrimary ?? '#1E293B' }}>
+          <h1 className="text-4xl font-bold text-white text-center mb-3 tracking-tight drop-shadow-lg">
+            {selected ? selected.name : 'Portal del Empleado'}
+          </h1>
+          <p className="text-white/75 text-center text-base max-w-xs mx-auto leading-relaxed">
+            {selected ? 'Accede a tu espacio de trabajo y gestiona tus recursos empresariales' : 'Introduce tus credenciales para acceder'}
+          </p>
+        </div>
+
+        <div className="mt-12 space-y-3 w-full max-w-xs">
+          {['Gestion de nominas y documentos', 'Solicitudes y aprobaciones', 'Directorio y comunicados'].map((text, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 px-5 py-3 rounded-xl"
+              style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)' }}
+            >
+              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: selected?.accent ?? '#F59E0B' }} />
+              <span className="text-white/85 text-sm">{text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Right Panel - Glass card form */}
+      <div className="flex-1 relative z-10 flex items-center justify-center px-4 sm:px-8 py-10">
+        <div
+          className="w-full max-w-md rounded-3xl shadow-2xl px-8 py-9"
+          style={{
+            backgroundColor: 'rgba(255,255,255,0.92)',
+            backdropFilter: 'blur(24px)',
+            border: '1px solid rgba(255,255,255,0.6)',
+          }}
+        >
+          {/* Mobile branding */}
+          <div className="lg:hidden flex items-center justify-center mb-6">
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center"
+              style={{ backgroundColor: selected ? `${selected.primary}18` : '#EFF6FF', border: `2px solid ${selected ? selected.border : '#BFDBFE'}` }}
+            >
+              {selected ? (
+                <span className="text-xl font-bold" style={{ color: selected.primary }}>{selected.logoLetter}</span>
+              ) : (
+                <Building2 size={24} style={{ color: '#0369A1' }} />
+              )}
+            </div>
+          </div>
+
+          <div className="mb-7">
+            <h2 className="text-2xl font-bold tracking-tight" style={{ color: '#0F172A' }}>
               Iniciar Sesion
             </h2>
-            <p className="mt-2 text-sm transition-colors duration-500" style={{ color: selected?.textSecondary ?? '#64748B' }}>
+            <p className="mt-1.5 text-sm" style={{ color: '#64748B' }}>
               Introduce tus credenciales para acceder
             </p>
           </div>
 
           {/* Email */}
           <div className="mb-4">
-            <label className="block text-xs font-semibold mb-2 uppercase tracking-wider transition-colors duration-500" style={{ color: selected?.textSecondary ?? '#64748B' }}>
+            <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: '#475569' }}>
               Correo electronico
             </label>
             <div className="relative">
-              <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 transition-colors duration-500" style={{ color: selected?.textSecondary ?? '#94A3B8' }} />
+              <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
               <input
                 type="email"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setLoginError(''); }}
                 placeholder="tu@empresa.com"
-                className="w-full pl-11 pr-4 py-3.5 rounded-xl text-sm outline-none transition-all duration-300"
+                className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none transition-all duration-200"
                 style={{
-                  backgroundColor: selected ? selected.primaryLight : '#F8FAFC',
-                  border: `1.5px solid ${loginError ? '#EF4444' : selected ? selected.border : '#E2E8F0'}`,
-                  color: selected?.textPrimary ?? '#1E293B',
+                  backgroundColor: '#F8FAFC',
+                  border: `1.5px solid ${loginError ? '#EF4444' : '#E2E8F0'}`,
+                  color: '#1E293B',
                 }}
               />
             </div>
@@ -775,43 +776,43 @@ export default function LoginPage() {
 
           {/* Password */}
           <div className="mb-2">
-            <label className="block text-xs font-semibold mb-2 uppercase tracking-wider transition-colors duration-500" style={{ color: selected?.textSecondary ?? '#64748B' }}>
+            <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: '#475569' }}>
               Contrasena
             </label>
             <div className="relative">
-              <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 transition-colors duration-500" style={{ color: selected?.textSecondary ?? '#94A3B8' }} />
+              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setLoginError(''); }}
                 placeholder="Introduce tu contrasena"
-                className="w-full pl-11 pr-12 py-3.5 rounded-xl text-sm outline-none transition-all duration-300"
+                className="w-full pl-10 pr-11 py-3 rounded-xl text-sm outline-none transition-all duration-200"
                 style={{
-                  backgroundColor: selected ? selected.primaryLight : '#F8FAFC',
-                  border: `1.5px solid ${loginError ? '#EF4444' : selected ? selected.border : '#E2E8F0'}`,
-                  color: selected?.textPrimary ?? '#1E293B',
+                  backgroundColor: '#F8FAFC',
+                  border: `1.5px solid ${loginError ? '#EF4444' : '#E2E8F0'}`,
+                  color: '#1E293B',
                 }}
               />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer" style={{ color: selected?.textSecondary ?? '#94A3B8' }}>
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 cursor-pointer" style={{ color: '#94A3B8' }}>
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
           </div>
 
           {/* Error */}
           {loginError && (
-            <p className="text-xs text-red-500 mb-4 mt-2 pl-1">{loginError}</p>
+            <p className="text-xs text-red-500 mb-3 mt-2 pl-1">{loginError}</p>
           )}
 
           {/* Remember + Forgot */}
-          <div className="flex items-center justify-between mb-8 mt-4">
+          <div className="flex items-center justify-between mb-6 mt-4">
             <label className="flex items-center gap-2 cursor-pointer">
-              <div className="w-4 h-4 rounded border transition-all duration-300 flex items-center justify-center" style={{ borderColor: selected?.border ?? '#CBD5E1', backgroundColor: selected?.primaryLight ?? '#F8FAFC' }}>
+              <div className="w-4 h-4 rounded border flex items-center justify-center" style={{ borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' }}>
                 <input type="checkbox" className="sr-only" />
               </div>
-              <span className="text-xs transition-colors duration-500" style={{ color: selected?.textSecondary ?? '#64748B' }}>Recordarme</span>
+              <span className="text-xs" style={{ color: '#64748B' }}>Recordarme</span>
             </label>
-            <button className="text-xs font-medium transition-colors duration-500 cursor-pointer" style={{ color: selected?.primary ?? '#475569' }}>
+            <button className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>
               Olvidaste tu contrasena?
             </button>
           </div>
@@ -820,28 +821,30 @@ export default function LoginPage() {
           <button
             onClick={handleLogin}
             disabled={!canLogin || loginLoading}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-white font-semibold text-sm transition-all duration-300 cursor-pointer disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-white font-semibold text-sm transition-all duration-200 cursor-pointer disabled:cursor-not-allowed"
             style={{
-              backgroundColor: selected ? selected.primary : (email && password ? '#0F172A' : '#CBD5E1'),
-              opacity: canLogin && !loginLoading ? 1 : 0.6,
-              boxShadow: selected ? `0 4px 14px ${selected.primary}40` : (email && password ? '0 4px 14px rgba(0,0,0,0.3)' : 'none'),
+              background: canLogin
+                ? (selected ? `linear-gradient(135deg, ${selected.gradientFrom}, ${selected.gradientTo})` : 'linear-gradient(135deg, #0C4A6E, #0369A1)')
+                : '#CBD5E1',
+              opacity: canLogin && !loginLoading ? 1 : 0.65,
+              boxShadow: canLogin ? '0 4px 16px rgba(3,105,161,0.35)' : 'none',
             }}
           >
             {loginLoading ? <RefreshCw size={16} className="animate-spin" /> : <><span>Entrar</span><ArrowRight size={16} /></>}
           </button>
 
-          <p className="text-center mt-6 text-xs transition-colors duration-500" style={{ color: selected?.textSecondary ?? '#94A3B8' }}>
+          <p className="text-center mt-5 text-xs" style={{ color: '#94A3B8' }}>
             Problemas para acceder? Contacta al departamento de TI
           </p>
 
-          {/* Quick vehicle registration — no login required */}
-          <div className="mt-6 pt-5" style={{ borderTop: `1px solid ${selected?.border ?? '#E2E8F0'}` }}>
+          {/* Quick vehicle registration */}
+          <div className="mt-5 pt-5" style={{ borderTop: '1px solid #E2E8F0' }}>
             <button
               onClick={() => setShowVehicleModal(true)}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer hover:opacity-90"
-              style={{ backgroundColor: selected ? `${selected.primary}15` : '#F1F5F9', color: selected?.primary ?? '#334155', border: `1.5px solid ${selected?.border ?? '#E2E8F0'}` }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer hover:opacity-80"
+              style={{ backgroundColor: '#F1F5F9', color: '#334155', border: '1.5px solid #E2E8F0' }}
             >
-              <Car size={16} />
+              <Car size={15} />
               REGISTRAR VEHÍCULO
             </button>
           </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   AlertCircle, Plus, X, Send, Clock, CheckCircle2, Loader2,
-  Upload, Image, MessageSquare, ChevronDown, ChevronUp, User,
+  Upload, Image, User, Building2,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -18,11 +18,10 @@ interface Incidencia {
   foto_url: string | null;
   creado_por_id: string;
   creado_por_nombre: string;
-  destinatario_id: string;
-  destinatario_nombre: string;
+  departamento_id: string | null;
+  departamento_nombre: string;
   fecha_creacion: string;
   fecha_finalizacion: string | null;
-  society_id: string | null;
 }
 
 interface Mensaje {
@@ -35,18 +34,17 @@ interface Mensaje {
   created_at: string;
 }
 
-interface UserOption {
+interface Departamento {
   id: string;
   nombre: string;
-  role: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const ESTADOS: Record<Estado, { label: string; color: string; bg: string; icon: React.FC<{ size?: number; className?: string }> }> = {
-  pendiente:   { label: 'Pendiente',  color: '#D97706', bg: '#FEF3C7', icon: Clock },
-  en_proceso:  { label: 'En Proceso', color: '#2563EB', bg: '#EFF6FF', icon: Loader2 },
-  finalizada:  { label: 'Finalizada', color: '#059669', bg: '#ECFDF5', icon: CheckCircle2 },
+  pendiente:  { label: 'Pendiente',  color: '#D97706', bg: '#FEF3C7', icon: Clock },
+  en_proceso: { label: 'En Proceso', color: '#2563EB', bg: '#EFF6FF', icon: Loader2 },
+  finalizada: { label: 'Finalizada', color: '#059669', bg: '#ECFDF5', icon: CheckCircle2 },
 };
 
 function EstadoBadge({ estado }: { estado: Estado }) {
@@ -70,7 +68,7 @@ function formatDate(iso: string) {
   });
 }
 
-// ─── Create Incident Modal ─────────────────────────────────────────────────
+// ─── Create Incident Modal ────────────────────────────────────────────────────
 
 interface CreateModalProps {
   currentUserId: string;
@@ -82,23 +80,18 @@ interface CreateModalProps {
 function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: CreateModalProps) {
   const [titulo, setTitulo] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [destinatarioId, setDestinatarioId] = useState('');
+  const [departamentoId, setDepartamentoId] = useState('');
   const [foto, setFoto] = useState<File | null>(null);
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
-  const [users, setUsers] = useState<UserOption[]>([]);
+  const [departamentos, setDepartamentos] = useState<Departamento[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    supabase
-      .from('user_profiles')
-      .select('id, nombre, role')
-      .eq('activo', true)
-      .neq('id', currentUserId)
-      .order('nombre')
-      .then(({ data }) => setUsers((data ?? []) as UserOption[]));
-  }, [currentUserId]);
+    supabase.from('departamentos').select('id, nombre').order('nombre')
+      .then(({ data }) => setDepartamentos((data ?? []) as Departamento[]));
+  }, []);
 
   const handleFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -111,34 +104,34 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
 
   const handleSubmit = async () => {
     if (!titulo.trim()) { setError('El nombre de la incidencia es obligatorio'); return; }
-    if (!destinatarioId) { setError('Selecciona el destinatario'); return; }
+    if (!departamentoId) { setError('Selecciona el departamento destinatario'); return; }
     setSaving(true); setError('');
 
     let foto_url: string | null = null;
 
-    // Upload photo to Supabase Storage if provided
     if (foto) {
       const ext = foto.name.split('.').pop();
       const path = `incidencias/${currentUserId}/${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from('incidencias-fotos').upload(path, foto, { upsert: true });
-      if (upErr) {
-        // Store as base64 in the url field as fallback
-        foto_url = fotoPreview;
-      } else {
+      const { error: upErr } = await supabase.storage
+        .from('incidencias-fotos')
+        .upload(path, foto, { upsert: true });
+      if (!upErr) {
         const { data: pub } = supabase.storage.from('incidencias-fotos').getPublicUrl(path);
         foto_url = pub.publicUrl;
+      } else {
+        foto_url = fotoPreview;
       }
     }
 
-    const destinatario = users.find((u) => u.id === destinatarioId);
+    const dept = departamentos.find((d) => d.id === departamentoId);
 
     const { error: insErr } = await supabase.from('incidencias').insert({
       titulo: titulo.trim(),
       descripcion: descripcion.trim(),
       creado_por_id: currentUserId,
       creado_por_nombre: currentUserNombre,
-      destinatario_id: destinatarioId,
-      destinatario_nombre: destinatario?.nombre ?? '',
+      departamento_id: departamentoId,
+      departamento_nombre: dept?.nombre ?? '',
       foto_url,
     });
 
@@ -199,19 +192,36 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>
               Enviar a *
             </label>
-            <select
-              value={destinatarioId}
-              onChange={(e) => setDestinatarioId(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-              style={{ border: '1.5px solid #E2E8F0', color: destinatarioId ? '#1E293B' : '#94A3B8', backgroundColor: '#F8FAFC' }}
-            >
-              <option value="">Selecciona el destinatario...</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.nombre} ({u.role})
-                </option>
-              ))}
-            </select>
+            {departamentos.length === 0 ? (
+              <div className="px-3 py-2.5 rounded-xl text-sm" style={{ border: '1.5px solid #FDE68A', backgroundColor: '#FFFBEB', color: '#92400E' }}>
+                No hay departamentos creados. Pide al administrador que cree los departamentos primero.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {departamentos.map((dept) => (
+                  <button
+                    key={dept.id}
+                    onClick={() => setDepartamentoId(dept.id)}
+                    className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm font-medium transition-all border-2"
+                    style={{
+                      borderColor: departamentoId === dept.id ? '#0EA5E9' : '#E2E8F0',
+                      backgroundColor: departamentoId === dept.id ? '#EFF6FF' : '#F8FAFC',
+                      color: departamentoId === dept.id ? '#0369A1' : '#475569',
+                    }}
+                  >
+                    <div
+                      className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{
+                        backgroundColor: departamentoId === dept.id ? '#BFDBFE' : '#E2E8F0',
+                      }}
+                    >
+                      <Building2 size={13} style={{ color: departamentoId === dept.id ? '#1D4ED8' : '#94A3B8' }} />
+                    </div>
+                    <span className="truncate">{dept.nombre}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
@@ -266,18 +276,18 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
   );
 }
 
-// ─── Incident Detail Drawer ────────────────────────────────────────────────
+// ─── Incident Detail Drawer ───────────────────────────────────────────────────
 
 interface DetailProps {
   incidencia: Incidencia;
   currentUserId: string;
   currentUserNombre: string;
-  isRecipientOrAdmin: boolean;
+  canManage: boolean;
   onClose: () => void;
   onUpdated: () => void;
 }
 
-function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, isRecipientOrAdmin, onClose, onUpdated }: DetailProps) {
+function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, canManage, onClose, onUpdated }: DetailProps) {
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [texto, setTexto] = useState('');
   const [nuevoEstado, setNuevoEstado] = useState<Estado | ''>('');
@@ -304,19 +314,19 @@ function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, isReci
     if (!texto.trim() && !nuevoEstado) { setError('Escribe un mensaje o selecciona un nuevo estado'); return; }
     setSending(true); setError('');
 
-    // Insert message
+    const msgTexto = texto.trim() || `Estado cambiado a ${nuevoEstado ? ESTADOS[nuevoEstado as Estado].label : ''}`;
+
     const { error: msgErr } = await supabase.from('incidencias_mensajes').insert({
       incidencia_id: incidencia.id,
       autor_id: currentUserId,
       autor_nombre: currentUserNombre,
-      texto: texto.trim() || `Estado cambiado a ${nuevoEstado ? ESTADOS[nuevoEstado as Estado].label : ''}`,
+      texto: msgTexto,
       estado_nuevo: nuevoEstado || null,
     });
 
     if (msgErr) { setError(msgErr.message); setSending(false); return; }
 
-    // Update incident state if changed
-    if (nuevoEstado && isRecipientOrAdmin) {
+    if (nuevoEstado && canManage) {
       const update: Record<string, unknown> = { estado: nuevoEstado, updated_at: new Date().toISOString() };
       if (nuevoEstado === 'finalizada') update.fecha_finalizacion = new Date().toISOString();
       await supabase.from('incidencias').update(update).eq('id', incidencia.id);
@@ -345,11 +355,14 @@ function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, isReci
             <div className="flex items-center gap-3 mt-1.5 flex-wrap">
               <EstadoBadge estado={incidencia.estado} />
               <span className="text-xs" style={{ color: '#94A3B8' }}>
-                Creado por <strong style={{ color: '#475569' }}>{incidencia.creado_por_nombre}</strong>
+                De <strong style={{ color: '#475569' }}>{incidencia.creado_por_nombre}</strong>
               </span>
-              <span className="text-xs" style={{ color: '#94A3B8' }}>
-                Dirigido a <strong style={{ color: '#475569' }}>{incidencia.destinatario_nombre}</strong>
-              </span>
+              {incidencia.departamento_nombre && (
+                <span className="flex items-center gap-1 text-xs" style={{ color: '#94A3B8' }}>
+                  <Building2 size={10} />
+                  <strong style={{ color: '#475569' }}>{incidencia.departamento_nombre}</strong>
+                </span>
+              )}
             </div>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-100 flex-shrink-0 ml-3">
@@ -358,25 +371,27 @@ function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, isReci
         </div>
 
         {/* Description + photo */}
-        <div className="px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid #F1F5F9' }}>
-          {incidencia.descripcion && (
-            <p className="text-sm mb-3" style={{ color: '#475569' }}>{incidencia.descripcion}</p>
-          )}
-          {incidencia.foto_url && (
-            <img
-              src={incidencia.foto_url}
-              alt="foto incidencia"
-              className="rounded-xl max-h-40 object-contain"
-              style={{ border: '1px solid #E2E8F0' }}
-            />
-          )}
-          <div className="flex items-center gap-4 mt-2 text-xs" style={{ color: '#94A3B8' }}>
-            <span>Creado: {formatDate(incidencia.fecha_creacion)}</span>
-            {incidencia.fecha_finalizacion && (
-              <span style={{ color: '#059669' }}>Finalizado: {formatDate(incidencia.fecha_finalizacion)}</span>
+        {(incidencia.descripcion || incidencia.foto_url) && (
+          <div className="px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid #F1F5F9' }}>
+            {incidencia.descripcion && (
+              <p className="text-sm mb-3" style={{ color: '#475569' }}>{incidencia.descripcion}</p>
             )}
+            {incidencia.foto_url && (
+              <img
+                src={incidencia.foto_url}
+                alt="foto incidencia"
+                className="rounded-xl max-h-40 object-contain"
+                style={{ border: '1px solid #E2E8F0' }}
+              />
+            )}
+            <div className="flex items-center gap-4 mt-2 text-xs" style={{ color: '#94A3B8' }}>
+              <span>Creado: {formatDate(incidencia.fecha_creacion)}</span>
+              {incidencia.fecha_finalizacion && (
+                <span style={{ color: '#059669' }}>Finalizado: {formatDate(incidencia.fecha_finalizacion)}</span>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3" style={{ minHeight: 120 }}>
@@ -388,10 +403,10 @@ function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, isReci
             return (
               <div key={m.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
                 {m.estado_nuevo && (
-                  <div className="mb-1 flex items-center gap-1.5">
-                    <div className="h-px flex-1" style={{ backgroundColor: '#E2E8F0', minWidth: 24 }} />
+                  <div className="w-full flex items-center gap-2 my-1">
+                    <div className="h-px flex-1" style={{ backgroundColor: '#E2E8F0' }} />
                     <EstadoBadge estado={m.estado_nuevo} />
-                    <div className="h-px flex-1" style={{ backgroundColor: '#E2E8F0', minWidth: 24 }} />
+                    <div className="h-px flex-1" style={{ backgroundColor: '#E2E8F0' }} />
                   </div>
                 )}
                 <div
@@ -417,11 +432,9 @@ function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, isReci
         {/* Reply area */}
         {incidencia.estado !== 'finalizada' && (
           <div className="px-6 py-4 flex-shrink-0" style={{ borderTop: '1px solid #E2E8F0' }}>
-            {error && (
-              <p className="text-xs mb-2" style={{ color: '#EF4444' }}>{error}</p>
-            )}
+            {error && <p className="text-xs mb-2" style={{ color: '#EF4444' }}>{error}</p>}
 
-            {isRecipientOrAdmin && nextStates.length > 0 && (
+            {canManage && nextStates.length > 0 && (
               <div className="flex gap-2 mb-3 flex-wrap">
                 {nextStates.map((s) => {
                   const cfg = ESTADOS[s];
@@ -471,7 +484,7 @@ function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, isReci
   );
 }
 
-// ─── Kanban Column ─────────────────────────────────────────────────────────
+// ─── Kanban Column ────────────────────────────────────────────────────────────
 
 interface KanbanColumnProps {
   estado: Estado;
@@ -484,7 +497,7 @@ function KanbanColumn({ estado, incidencias, onSelect }: KanbanColumnProps) {
   const Icon = cfg.icon;
   return (
     <div className="flex flex-col rounded-2xl overflow-hidden" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', minHeight: 200 }}>
-      <div className="flex items-center gap-2 px-4 py-3" style={{ backgroundColor: cfg.bg, borderBottom: `2px solid ${cfg.color}20` }}>
+      <div className="flex items-center gap-2 px-4 py-3" style={{ backgroundColor: cfg.bg, borderBottom: `2px solid ${cfg.color}30` }}>
         <Icon size={15} style={{ color: cfg.color }} />
         <span className="font-semibold text-sm" style={{ color: cfg.color }}>{cfg.label}</span>
         <span
@@ -511,17 +524,23 @@ function KanbanColumn({ estado, incidencias, onSelect }: KanbanColumnProps) {
               </span>
               {inc.foto_url && <Image size={12} style={{ color: '#94A3B8', flexShrink: 0 }} />}
             </div>
-            <p className="text-sm font-semibold mb-1.5" style={{ color: '#1E293B' }}>{inc.titulo}</p>
+            <p className="text-sm font-semibold mb-2" style={{ color: '#1E293B' }}>{inc.titulo}</p>
             {inc.descripcion && (
               <p className="text-xs line-clamp-2 mb-2" style={{ color: '#64748B' }}>{inc.descripcion}</p>
             )}
-            <div className="flex items-center gap-1.5 text-xs" style={{ color: '#94A3B8' }}>
-              <User size={10} />
-              <span>{inc.creado_por_nombre}</span>
-              <span className="mx-1">→</span>
-              <span>{inc.destinatario_nombre}</span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
+                <User size={9} />
+                {inc.creado_por_nombre}
+              </span>
+              {inc.departamento_nombre && (
+                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#EFF6FF', color: '#2563EB' }}>
+                  <Building2 size={9} />
+                  {inc.departamento_nombre}
+                </span>
+              )}
             </div>
-            <p className="text-xs mt-1.5" style={{ color: '#CBD5E1' }}>{formatDate(inc.fecha_creacion)}</p>
+            <p className="text-xs mt-2" style={{ color: '#CBD5E1' }}>{formatDate(inc.fecha_creacion)}</p>
           </button>
         ))}
       </div>
@@ -529,13 +548,12 @@ function KanbanColumn({ estado, incidencias, onSelect }: KanbanColumnProps) {
   );
 }
 
-// ─── Main Component ────────────────────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 interface Props {
   currentUserId: string;
   currentUserNombre: string;
   currentUserRole: string;
-  theme?: { primary?: string; bg?: string };
 }
 
 export default function IncidenciasModule({ currentUserId, currentUserNombre, currentUserRole }: Props) {
@@ -543,8 +561,18 @@ export default function IncidenciasModule({ currentUserId, currentUserNombre, cu
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<Incidencia | null>(null);
+  const [userDeptIds, setUserDeptIds] = useState<string[]>([]);
 
-  const isRecipientOrAdmin = ['admin', 'rrhh', 'supervisor'].includes(currentUserRole);
+  const isAdminRole = ['admin', 'rrhh', 'supervisor'].includes(currentUserRole);
+  const isEmployee = currentUserRole === 'employee';
+
+  const loadUserDepts = async () => {
+    const { data } = await supabase
+      .from('departamento_miembros')
+      .select('departamento_id')
+      .eq('user_id', currentUserId);
+    setUserDeptIds((data ?? []).map((r: { departamento_id: string }) => r.departamento_id));
+  };
 
   const load = async () => {
     setLoading(true);
@@ -556,13 +584,18 @@ export default function IncidenciasModule({ currentUserId, currentUserNombre, cu
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    loadUserDepts();
+    load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const canManageIncidencia = (inc: Incidencia) =>
+    isAdminRole || (inc.departamento_id != null && userDeptIds.includes(inc.departamento_id));
 
   const byEstado = (e: Estado) => incidencias.filter((i) => i.estado === e);
 
   const handleUpdated = async () => {
     await load();
-    // Re-fetch selected incidencia
     if (selected) {
       const { data } = await supabase
         .from('incidencias')
@@ -580,12 +613,22 @@ export default function IncidenciasModule({ currentUserId, currentUserNombre, cu
         <div>
           <h2 className="text-xl font-bold" style={{ color: '#0F172A' }}>Incidencias</h2>
           <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>
-            {isRecipientOrAdmin
-              ? 'Gestiona todas las incidencias recibidas'
+            {isAdminRole
+              ? 'Gestiona todas las incidencias del sistema'
               : 'Crea y consulta el estado de tus incidencias'}
           </p>
         </div>
-        {!isRecipientOrAdmin && (
+        {isEmployee && (
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
+            style={{ backgroundColor: '#0EA5E9', color: '#FFFFFF' }}
+          >
+            <Plus size={16} />
+            Nueva Incidencia
+          </button>
+        )}
+        {!isEmployee && (
           <button
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
@@ -623,9 +666,7 @@ export default function IncidenciasModule({ currentUserId, currentUserNombre, cu
           incidencia={selected}
           currentUserId={currentUserId}
           currentUserNombre={currentUserNombre}
-          isRecipientOrAdmin={
-            isRecipientOrAdmin || selected.destinatario_id === currentUserId
-          }
+          canManage={canManageIncidencia(selected)}
           onClose={() => setSelected(null)}
           onUpdated={handleUpdated}
         />

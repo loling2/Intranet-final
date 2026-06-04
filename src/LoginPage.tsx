@@ -1344,13 +1344,47 @@ function Dashboard({
     });
   }, [email]);
 
-  useEffect(() => {
-    supabase
-      .from('dispositivos')
-      .select('id', { count: 'exact', head: false })
-      .eq('activo', true)
-      .then(({ count }) => setActiveDeviceCount(count ?? 0));
-  }, []);
+useEffect(() => {
+  (async () => {
+    // 1. Obtener el usuario autenticado actual
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user) {
+      // 2. Intentar contar los dispositivos activos que pertenecen a este usuario en el servidor
+      const { data, error, count } = await supabase
+        .from('dispositivos')
+        .select('*', { count: 'exact' })
+        .eq('activo', true)
+        .or(`empleado_id.eq.${user.id},empleado_email.eq.${user.email},email.eq.${user.email},user_id.eq.${user.id}`);
+
+      // 3. Plan de contingencia: si la consulta .or falla o no coincide por nombres de columna, filtramos en JS
+      if (error || !data || data.length === 0) {
+        const { data: allActive } = await supabase
+          .from('dispositivos')
+          .select('*')
+          .eq('activo', true);
+          
+        if (allActive) {
+          const userActiveDevices = allActive.filter(d => 
+            d.empleado_id === user.id || 
+            d.user_id === user.id || 
+            d.empleado_email === user.email ||
+            d.email === user.email ||
+            d.usuario === user.email
+          );
+          setActiveDeviceCount(userActiveDevices.length);
+        } else {
+          setActiveDeviceCount(0);
+        }
+      } else {
+        // Si la consulta por servidor funcionó bien, usamos el conteo exacto devuelto
+        setActiveDeviceCount(count ?? data.length);
+      }
+    } else {
+      setActiveDeviceCount(0);
+    }
+  })();
+}, []);
 
   const certificates = mockCertificates[theme.id] ?? [];
   const exams = mockExams[theme.id] ?? [];

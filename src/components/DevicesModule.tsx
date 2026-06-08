@@ -183,6 +183,7 @@ function DeviceModal({
           usuario_asignado_nombre: existing.usuario_asignado_nombre,
           fecha_asignacion: existing.fecha_asignacion ?? '',
           notas: existing.notas,
+          etiquetado: existing.etiquetado ?? '',
         }
       : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
   );

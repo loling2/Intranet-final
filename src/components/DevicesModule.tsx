@@ -56,7 +56,7 @@ const EMPTY_FORM: FormState = {
   usuario_asignado_nombre: '',
   fecha_asignacion: '',
   notas: '',
-  etiquetado:'';
+  etiquetado:''
 };
 
 // ── Searchable Employee Picker ────────────────────────────────────────────────

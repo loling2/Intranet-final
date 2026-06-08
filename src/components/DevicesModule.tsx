@@ -205,7 +205,7 @@ function DeviceModal({
     set('usuario_asignado_nombre', nombre);
   };
 
-});
+
 
   const handleSave = async () => {
     if (!form.marca_modelo.trim()) { setError('La marca/modelo es obligatoria.'); return; }

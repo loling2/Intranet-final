@@ -662,14 +662,14 @@ export default function DevicesModule() {
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
             {/* Column headers */}
             <div className="px-6 py-2.5 grid grid-cols-12 gap-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8', backgroundColor: '#F8FAFC' }}>
-<div className="col-span-1">Tipo</div>
-  <div className="col-span-2">Modelo</div> {/* Reducimos de 3 a 2 */}
-  <div className="col-span-1">Etiquetado</div> {/* NUEVA COLUMNA */}
-  <div className="col-span-2">Serie</div>
-  <div className="col-span-2">Asignado a</div>
-  <div className="col-span-2">Centro / Sociedad</div>
-  <div className="col-span-1">Estado</div>
-  <div className="col-span-1 text-right">Acciones</div>
+<div className="col-span-1">Tipo</div>        {/* 1 */}
+  <div className="col-span-2">Modelo</div>      {/* 2 */}
+  <div className="col-span-2">Etiquetado</div>  {/* 2 */}
+  <div className="col-span-2">Serie</div>       {/* 2 */}
+  <div className="col-span-2">Asignado a</div>  {/* 2 */}
+  <div className="col-span-1">Centro</div>      {/* 1 */}
+  <div className="col-span-1">Estado</div>      {/* 1 */}
+  <div className="col-span-1 text-right">Acciones</div> {/* 1 */}
             </div>
 
             {filtered.map((dev) => {

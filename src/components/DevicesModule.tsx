@@ -701,6 +701,13 @@ export default function DevicesModule() {
                     </p>
                   </div>
 
+{/* Etiquetado */}
+<div className="col-span-1 min-w-0">
+  <p className="text-xs font-medium truncate" style={{ color: dev.etiquetado ? '#1E293B' : '#CBD5E1' }}>
+    {dev.etiquetado || '—'}
+  </p>
+</div>
+                  
                   {/* Usuario + fecha */}
                   <div className="col-span-2 min-w-0">
                     <p className="text-xs font-medium truncate" style={{ color: dev.usuario_asignado_nombre ? '#1E293B' : '#CBD5E1' }}>

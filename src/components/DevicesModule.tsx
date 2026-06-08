@@ -202,6 +202,10 @@ function DeviceModal({
     set('empleado_id', empId);
     set('usuario_asignado_nombre', nombre);
   };
+  const [form, setForm] = useState({
+    // ... otros campos
+    etiquetado: '', 
+});
 
   const handleSave = async () => {
     if (!form.marca_modelo.trim()) { setError('La marca/modelo es obligatoria.'); return; }
@@ -220,6 +224,7 @@ function DeviceModal({
       usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
       fecha_asignacion: form.fecha_asignacion || null,
       notas: form.notas.trim(),
+      etiquetado: form.etiquetado ? form.etiquetado.trim() : null,
     };
 
     try {

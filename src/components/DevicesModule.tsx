@@ -686,7 +686,7 @@ export default function DevicesModule() {
                   </div>
 
                   {/* Modelo + caracteristicas */}
-                  <div className="col-span-3 min-w-0">
+                  <div className="col-span-2 min-w-0">
                     <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>{dev.marca_modelo}</p>
                     {dev.caracteristicas && (
                       <p className="text-xs truncate mt-0.5" style={{ color: '#94A3B8' }}>{dev.caracteristicas}</p>
@@ -702,7 +702,7 @@ export default function DevicesModule() {
                   </div>
 
 {/* Etiquetado */}
-<div className="col-span-1 min-w-0">
+<div className="col-span-2 min-w-0">
   <p className="text-xs font-medium truncate" style={{ color: dev.etiquetado ? '#1E293B' : '#CBD5E1' }}>
     {dev.etiquetado || '—'}
   </p>
@@ -719,7 +719,7 @@ export default function DevicesModule() {
                   </div>
 
                   {/* Centro + sociedad */}
-                  <div className="col-span-2 min-w-0">
+                  <div className="col-span-1 min-w-0">
                     {dev.centro_trabajo && (
                       <p className="text-xs truncate" style={{ color: '#1E293B' }}>{dev.centro_trabajo}</p>
                     )}

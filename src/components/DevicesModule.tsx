@@ -315,14 +315,14 @@ function DeviceModal({
 
 {/* Campo de Etiquetado */}
 <div className="mb-4">
-  <label className="block text-sm font-medium text-gray-700">Etiquetado</label>
-  <input
-    type="text"
-    value={form.etiquetado || ''} // Si form.etiquetado es null, muestra vacío
-    onChange={(e) => set('etiquetado', e.target.value)}
-    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-    placeholder="Ej: Porta-25"
-  />
+<label className="block text-sm font-medium text-slate-500 mb-1">Etiquetado</label>
+<input
+  type="text"
+  value={form.etiquetado || ''}
+  onChange={(e) => set('etiquetado', e.target.value)}
+  className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+  placeholder="Ej: Porta-25"
+/>
 </div>
           
           {/* Caracteristicas */}

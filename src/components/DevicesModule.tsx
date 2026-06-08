@@ -41,6 +41,7 @@ interface FormState {
   usuario_asignado_nombre: string;
   fecha_asignacion: string;
   notas: string;
+  etiquetado: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -55,6 +56,7 @@ const EMPTY_FORM: FormState = {
   usuario_asignado_nombre: '',
   fecha_asignacion: '',
   notas: '',
+  etiquetado: string;
 };
 
 // ── Searchable Employee Picker ────────────────────────────────────────────────
@@ -202,9 +204,7 @@ function DeviceModal({
     set('empleado_id', empId);
     set('usuario_asignado_nombre', nombre);
   };
-  const [form, setForm] = useState({
-    // ... otros campos
-    etiquetado: '', 
+
 });
 
   const handleSave = async () => {

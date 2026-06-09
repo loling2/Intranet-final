@@ -234,42 +234,30 @@ const payload = {
     notas: form.notas.trim(),
   };
 
-    try {
-      if (existing) {
-        const { error: err } = await supabase.from('dispositivos').update(payload).eq('id', existing.id);
-        if (err) throw err;
-      } else {
-        const { error: err } = await supabase.from('dispositivos').insert(payload);
-// Añadimos .select() para ver qué está pasando realmente
-  const { data, error: err } = await query.select();
-        
-        if (err) throw err;
-      }
-
-
-const { data, error: err } = await query;
-
-      if (err) {
-        // AQUÍ ES DONDE VEREMOS EL ERROR EN LA CONSOLA (F12)
-        console.error("ERROR DETALLADO:", err); 
-        throw err;
-        console.log("Éxito:", data);
-  onSaved();
-  onClose();
-} catch (err) {
-  console.error("ERROR DETALLADO:", err);
-  alert("Error: " + (err instanceof Error ? err.message : 'Error desconocido'));
-
-      
-
-      
-      onSaved();
-      onClose();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al guardar');
-    } finally {
-      setSaving(false);
+   try {
+    let query = supabase.from('dispositivos');
+    
+    if (existing) {
+      query = query.update(payload).eq('id', existing.id);
+    } else {
+      query = query.insert(payload);
     }
+
+    // Usamos el resultado de la consulta. 
+    // Nota: 'data' y 'error' son nombres genéricos que no colisionan.
+    const { data, error } = await query.select(); 
+    
+    if (error) throw error;
+    
+    console.log("Guardado con éxito:", data);
+    onSaved();
+    onClose();
+  } catch (err: any) { // 'err' solo se declara aquí, como parámetro del catch
+    console.error("ERROR DETALLADO:", err);
+    alert("Error al guardar: " + err.message);
+  } finally {
+    setSaving(false);
+  }
   };
 
   return (

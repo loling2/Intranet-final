@@ -171,18 +171,16 @@ function DeviceModal({
     existing
       ? {
           tipo: existing.tipo,
-        marca_modelo: existing.marca_modelo,
-        etiquetado: existing.etiquetado ?? '',
-        caracteristicas: existing.caracteristicas,
-        centro_trabajo: existing.centro_trabajo,
-        numero_serie: existing.numero_serie,
-        // Traducimos el ID numérico a texto para que tus botones funcionen:
-        estado: idToEstado[existing.estado_id as keyof typeof idToEstado] || 'inactivo',
-        society_id: existing.society_id,
-        empleado_id: existing.empleado_id ?? '',
-        usuario_asignado_nombre: existing.usuario_asignado_nombre,
-        fecha_asignacion: existing.fecha_asignacion ?? '',
-        notas: existing.notas,
+          marca_modelo: existing.marca_modelo,
+          caracteristicas: existing.caracteristicas,
+          centro_trabajo: existing.centro_trabajo,
+          numero_serie: existing.numero_serie,
+          activo: existing.activo,
+          society_id: existing.society_id,
+          empleado_id: existing.empleado_id ?? '',
+          usuario_asignado_nombre: existing.usuario_asignado_nombre,
+          fecha_asignacion: existing.fecha_asignacion ?? '',
+          notas: existing.notas,
         }
       : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
   );

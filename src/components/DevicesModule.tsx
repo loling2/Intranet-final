@@ -35,12 +35,13 @@ interface FormState {
   caracteristicas: string;
   centro_trabajo: string;
   numero_serie: string;
-  activo: boolean;
+  estado: 'activo' | 'inactivo' | 'stock'; // Nuevo
   society_id: string;
   empleado_id: string;
   usuario_asignado_nombre: string;
   fecha_asignacion: string;
   notas: string;
+  etiquetado?: string;
 }
 
 const EMPTY_FORM: FormState = {

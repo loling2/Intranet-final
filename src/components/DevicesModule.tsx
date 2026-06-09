@@ -187,7 +187,7 @@ function DeviceModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const set = (key: keyof FormState, value: string | boolean) =>
+const set = (key: keyof FormState, value: any) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
   const filteredEmpleados = empleados.filter(

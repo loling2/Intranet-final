@@ -210,12 +210,20 @@ const set = (key: keyof FormState, value: any) =>
   };
 
 const handleSave = async () => {
-    if (!form.marca_modelo.trim()) { setError('La marca/modelo es obligatoria.'); return; }
-    if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
+    // 1. Validaciones iniciales
+    if (!form.marca_modelo.trim()) { 
+      setError('La marca/modelo es obligatoria.'); 
+      return; 
+    }
+    if (!form.society_id) { 
+      setError('Selecciona una sociedad.'); 
+      return; 
+    }
     
     setSaving(true); 
     setError('');
 
+    // 2. Mapeo de datos
     const estadoMap: Record<string, number> = { 'activo': 1, 'inactivo': 2, 'stock': 3 };
     const estadoId = estadoMap[form.estado] || 2;
 
@@ -234,6 +242,7 @@ const handleSave = async () => {
       notas: form.notas.trim() || null,
     };
 
+    // 3. Petición a Supabase (Un solo bloque try/catch)
     try {
       let query = supabase.from('dispositivos');
       
@@ -243,37 +252,10 @@ const handleSave = async () => {
         query = query.insert(payload);
       }
 
-      // El await ahora vive dentro de una función 'async'
-      const { error: supError } = await query.select(); 
+      const { error: supError } = await query.select();
 
       if (supError) throw supError;
       
-      alert("¡Guardado correctamente!");
-      onSaved();
-      onClose();
-    } catch (err: any) {
-      console.error("Error al guardar:", err);
-      setError("Error: " + (err.message || "Error desconocido"));
-    } finally {
-      setSaving(false);
-    }
-    // AQUÍ DEBE CERRARSE LA LLAVE DE handleSave
-};
-
-// 3. Petición a Supabase
-    try {
-      let query = supabase.from('dispositivos');
-      
-      if (existing) {
-        query = query.update(payload).eq('id', existing.id);
-      } else {
-        query = query.insert(payload);
-      }
-
-      const { data, error: supError } = await query.select();
-
-      if (supError) throw supError;
-
       alert("¡Guardado correctamente!");
       onSaved();
       onClose();

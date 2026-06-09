@@ -178,6 +178,7 @@ function DeviceModal({
       ? {
           tipo: existing.tipo,
           marca_modelo: existing.marca_modelo,
+          etiquetado: existing.etiquetado ??
           caracteristicas: existing.caracteristicas,
           centro_trabajo: existing.centro_trabajo,
           numero_serie: existing.numero_serie,

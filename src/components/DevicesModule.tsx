@@ -211,7 +211,7 @@ const set = (key: keyof FormState, value: any) =>
     // Mapeo simple: obtenemos el ID según el estado seleccionado
   const estadoMap = { 'activo': 1, 'inactivo': 2, 'stock': 3 };
   const estadoId = estadoMap[form.estado] || 2; // Por defecto inactivo si algo falla
-
+console.log("Datos a enviar:", { estado_id: estadoId, ...payload });
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),

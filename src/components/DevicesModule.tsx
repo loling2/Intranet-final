@@ -168,22 +168,27 @@ function DeviceModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [form, setForm] = useState<FormState>(
-    existing
-      ? {
-          tipo: existing.tipo,
-          marca_modelo: existing.marca_modelo,
-          caracteristicas: existing.caracteristicas,
-          centro_trabajo: existing.centro_trabajo,
-          numero_serie: existing.numero_serie,
-          activo: existing.activo,
-          society_id: existing.society_id,
-          empleado_id: existing.empleado_id ?? '',
-          usuario_asignado_nombre: existing.usuario_asignado_nombre,
-          fecha_asignacion: existing.fecha_asignacion ?? '',
-          notas: existing.notas,
-        }
-      : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
+ const idToEstado = { 1: 'activo', 2: 'inactivo', 3: 'stock' };
+
+const [form, setForm] = useState<FormState>(() => {
+  if (existing) {
+    return {
+      tipo: existing.tipo,
+      marca_modelo: existing.marca_modelo,
+      etiquetado: existing.etiquetado ?? '',
+      caracteristicas: existing.caracteristicas,
+      centro_trabajo: existing.centro_trabajo,
+      numero_serie: existing.numero_serie,
+      // Traducción del número de BD al texto para los botones
+      estado: idToEstado[existing.estado_id as keyof typeof idToEstado] || 'inactivo',
+      society_id: existing.society_id,
+      empleado_id: existing.empleado_id ?? '',
+      usuario_asignado_nombre: existing.usuario_asignado_nombre,
+      fecha_asignacion: existing.fecha_asignacion ?? '',
+      notas: existing.notas,
+    };
+  }
+  return { ...EMPTY_FORM, estado: 'inactivo', society_id: societies[0]?.id ?? '' };
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');

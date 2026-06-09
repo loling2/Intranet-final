@@ -260,7 +260,7 @@ const { data, error: err } = await query;
   console.error("ERROR DETALLADO:", err);
   alert("Error: " + (err instanceof Error ? err.message : 'Error desconocido'));
 }
-      }
+      
 
       
       onSaved();

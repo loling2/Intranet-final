@@ -535,6 +535,7 @@ export default function DevicesModule() {
     if (filterTipo && d.tipo !== filterTipo) return false;
     if (filterActivo === 'activo' && !d.activo) return false;
     if (filterActivo === 'inactivo' && d.activo) return false;
+    if (filterActivo === 'Stock' && d.activo) return false;
 
     if (search) {
       const q = search.toLowerCase();

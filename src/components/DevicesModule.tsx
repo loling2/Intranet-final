@@ -703,8 +703,8 @@ export default function DevicesModule() {
                   {/* Tipo icon */}
                   <div className="col-span-1">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: dev.activo ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${dev.activo ? '#BBF7D0' : '#FECACA'}` }}>
-                      <Icon size={14} style={{ color: dev.activo ? '#16A34A' : '#DC2626' }} />
+                      style={{ backgroundColor: dev.estado_id === 1 ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${dev.estado_id === 1 ? '#BBF7D0' : '#FECACA'}` }}>
+                      <Icon size={14} style={{ color: dev.estado_id === 1 ? '#16A34A' : '#DC2626' }} />
                     </div>
                   </div>
 

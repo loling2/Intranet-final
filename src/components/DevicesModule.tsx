@@ -211,6 +211,7 @@ function DeviceModal({
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),
+      etiquetado: form.etiquetado?.trim() || null, 
       caracteristicas: form.caracteristicas.trim(),
       centro_trabajo: form.centro_trabajo.trim(),
       numero_serie: form.numero_serie.trim(),
@@ -274,23 +275,43 @@ function DeviceModal({
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
-              <div className="flex gap-2 pt-1">
-                {[true, false].map((v) => (
-                  <button
-                    key={String(v)}
-                    type="button"
-                    onClick={() => set('activo', v)}
-                    className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
-                    style={{
-                      backgroundColor: form.activo === v ? (v ? '#ECFDF5' : '#FEF2F2') : '#F8FAFC',
-                      color: form.activo === v ? (v ? '#065F46' : '#DC2626') : '#94A3B8',
-                      border: `1.5px solid ${form.activo === v ? (v ? '#6EE7B7' : '#FECACA') : '#E2E8F0'}`,
-                    }}
-                  >
-                    {v ? 'Activo' : 'Inactivo'}
-                  </button>
-                ))}
-              </div>
+<div className="flex gap-2 pt-1">
+  {/* Botón Activo */}
+  <button
+    type="button"
+    onClick={() => set('estado', 'activo')} // Asegúrate de que 'estado' sea el campo
+    className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+    style={{
+      backgroundColor: form.estado === 'activo' ? '#ECFDF5' : '#F8FAFC',
+      color: form.estado === 'activo' ? '#065F46' : '#94A3B8',
+      border: `1.5px solid ${form.estado === 'activo' ? '#6EE7B7' : '#E2E8F0'}`,
+    }}
+  >Activo</button>
+
+  {/* Botón Inactivo */}
+  <button
+    type="button"
+    onClick={() => set('estado', 'inactivo')}
+    className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+    style={{
+      backgroundColor: form.estado === 'inactivo' ? '#FEF2F2' : '#F8FAFC',
+      color: form.estado === 'inactivo' ? '#DC2626' : '#94A3B8',
+      border: `1.5px solid ${form.estado === 'inactivo' ? '#FECACA' : '#E2E8F0'}`,
+    }}
+  >Inactivo</button>
+
+  {/* Botón Stock */}
+  <button
+    type="button"
+    onClick={() => set('estado', 'stock')}
+    className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+    style={{
+      backgroundColor: form.estado === 'stock' ? '#EFF6FF' : '#F8FAFC',
+      color: form.estado === 'stock' ? '#1E40AF' : '#94A3B8',
+      border: `1.5px solid ${form.estado === 'stock' ? '#BFDBFE' : '#E2E8F0'}`,
+    }}
+  >Stock</button>
+</div>
             </div>
           </div>
 

@@ -454,6 +454,7 @@ const { data, error: err } = await query;
               Cancelar
             </button>
             <button
+              type="button"
               onClick={handleSave}
               disabled={saving}
               className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"

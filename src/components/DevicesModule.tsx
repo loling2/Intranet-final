@@ -32,16 +32,16 @@ function formatDate(d: string | null) {
 interface FormState {
   tipo: string;
   marca_modelo: string;
+  etiquetado: string;
   caracteristicas: string;
   centro_trabajo: string;
   numero_serie: string;
-  estado: 'activo' | 'inactivo' | 'stock'; // Nuevo
+  estado: 'activo' | 'inactivo' | 'stock'; // Usamos texto para el formulario
   society_id: string;
   empleado_id: string;
   usuario_asignado_nombre: string;
   fecha_asignacion: string;
   notas: string;
-  etiquetado?: string;
 }
 
 const EMPTY_FORM: FormState = {

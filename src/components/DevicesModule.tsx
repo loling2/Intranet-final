@@ -41,7 +41,6 @@ interface FormState {
   usuario_asignado_nombre: string;
   fecha_asignacion: string;
   notas: string;
-  etiquetado: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -56,7 +55,6 @@ const EMPTY_FORM: FormState = {
   usuario_asignado_nombre: '',
   fecha_asignacion: '',
   notas: '',
-  etiquetado:''
 };
 
 // ── Searchable Employee Picker ────────────────────────────────────────────────
@@ -183,7 +181,6 @@ function DeviceModal({
           usuario_asignado_nombre: existing.usuario_asignado_nombre,
           fecha_asignacion: existing.fecha_asignacion ?? '',
           notas: existing.notas,
-          etiquetado: existing.etiquetado ?? '',
         }
       : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
   );
@@ -206,8 +203,6 @@ function DeviceModal({
     set('usuario_asignado_nombre', nombre);
   };
 
-
-
   const handleSave = async () => {
     if (!form.marca_modelo.trim()) { setError('La marca/modelo es obligatoria.'); return; }
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
@@ -225,7 +220,6 @@ function DeviceModal({
       usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
       fecha_asignacion: form.fecha_asignacion || null,
       notas: form.notas.trim(),
-      etiquetado: form.etiquetado ? form.etiquetado.trim() : null,
     };
 
     try {
@@ -314,18 +308,6 @@ function DeviceModal({
             />
           </div>
 
-{/* Campo de Etiquetado */}
-<div className="mb-4">
-<label className="block text-sm font-medium text-slate-500 mb-1">Etiquetado</label>
-<input
-  type="text"
-  value={form.etiquetado || ''}
-  onChange={(e) => set('etiquetado', e.target.value)}
-  className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-  placeholder="Ej: Porta-25"
-/>
-</div>
-          
           {/* Caracteristicas */}
           <div>
             <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Caracteristicas tecnicas</label>
@@ -661,16 +643,15 @@ export default function DevicesModule() {
         ) : (
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
             {/* Column headers */}
-<div className="px-6 py-2.5 grid grid-cols-12 gap-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8', backgroundColor: '#F8FAFC' }}>
-  <div className="col-span-1">Tipo</div>
-  <div className="col-span-2">Modelo</div>
-  <div className="col-span-2">Etiquetado</div>
-  <div className="col-span-2">Serie</div>
-  <div className="col-span-2">Asignado a</div>
-  <div className="col-span-1">Centro</div>
-  <div className="col-span-1">Estado</div>
-  <div className="col-span-1 text-right">Acciones</div>
-</div>
+            <div className="px-6 py-2.5 grid grid-cols-12 gap-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8', backgroundColor: '#F8FAFC' }}>
+              <div className="col-span-1">Tipo</div>
+              <div className="col-span-3">Modelo</div>
+              <div className="col-span-2">Serie</div>
+              <div className="col-span-2">Asignado a</div>
+              <div className="col-span-2">Centro / Sociedad</div>
+              <div className="col-span-1">Estado</div>
+              <div className="col-span-1 text-right">Acciones</div>
+            </div>
 
             {filtered.map((dev) => {
               const Icon = typeIcon(dev.tipo);
@@ -686,7 +667,7 @@ export default function DevicesModule() {
                   </div>
 
                   {/* Modelo + caracteristicas */}
-                  <div className="col-span-2 min-w-0">
+                  <div className="col-span-3 min-w-0">
                     <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>{dev.marca_modelo}</p>
                     {dev.caracteristicas && (
                       <p className="text-xs truncate mt-0.5" style={{ color: '#94A3B8' }}>{dev.caracteristicas}</p>
@@ -701,13 +682,6 @@ export default function DevicesModule() {
                     </p>
                   </div>
 
-{/* Etiquetado */}
-<div className="col-span-2 min-w-0">
-  <p className="text-xs font-medium truncate" style={{ color: dev.etiquetado ? '#1E293B' : '#CBD5E1' }}>
-    {dev.etiquetado || '—'}
-  </p>
-</div>
-                  
                   {/* Usuario + fecha */}
                   <div className="col-span-2 min-w-0">
                     <p className="text-xs font-medium truncate" style={{ color: dev.usuario_asignado_nombre ? '#1E293B' : '#CBD5E1' }}>
@@ -719,7 +693,7 @@ export default function DevicesModule() {
                   </div>
 
                   {/* Centro + sociedad */}
-                  <div className="col-span-1 min-w-0">
+                  <div className="col-span-2 min-w-0">
                     {dev.centro_trabajo && (
                       <p className="text-xs truncate" style={{ color: '#1E293B' }}>{dev.centro_trabajo}</p>
                     )}

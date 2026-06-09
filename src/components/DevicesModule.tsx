@@ -299,6 +299,18 @@ const set = (key: keyof FormState, value: any) =>
             </div>
           </div>
 
+
+<div>
+    <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
+    <div className="flex gap-2">
+      <button type="button" onClick={() => set('estado', 'activo')} className={`flex-1 py-2.5 rounded-xl text-[11px] font-bold transition-all ${form.estado === 'activo' ? 'bg-green-100 text-green-700 border-2 border-green-400' : 'bg-slate-50 text-slate-400 border border-slate-200'}`}>Activo</button>
+      <button type="button" onClick={() => set('estado', 'inactivo')} className={`flex-1 py-2.5 rounded-xl text-[11px] font-bold transition-all ${form.estado === 'inactivo' ? 'bg-red-100 text-red-700 border-2 border-red-400' : 'bg-slate-50 text-slate-400 border border-slate-200'}`}>Inactivo</button>
+      <button type="button" onClick={() => set('estado', 'stock')} className={`flex-1 py-2.5 rounded-xl text-[11px] font-bold transition-all ${form.estado === 'stock' ? 'bg-blue-100 text-blue-700 border-2 border-blue-400' : 'bg-slate-50 text-slate-400 border border-slate-200'}`}>Stock</button>
+    </div>
+  </div>
+</div>
+
+          
           {/* Marca/Modelo */}
           <div>
             <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Marca / Modelo *</label>
@@ -313,6 +325,19 @@ const set = (key: keyof FormState, value: any) =>
             />
           </div>
 
+{/* --- Campo Etiquetado (Nuevo) --- */}
+<div>
+  <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Etiquetado</label>
+  <input
+    type="text"
+    value={form.etiquetado || ''}
+    onChange={(e) => set('etiquetado', e.target.value)}
+    placeholder="Ej: PORTA-81"
+    className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+    style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+  />
+</div>
+          
           {/* Caracteristicas */}
           <div>
             <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Caracteristicas tecnicas</label>

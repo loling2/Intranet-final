@@ -43,6 +43,11 @@ interface FormState {
   fecha_asignacion: string;
   notas: string;
 }
+const ESTADOS = {
+  1: { label: 'Activo', color: '#16A34A', bg: '#ECFDF5', border: '#6EE7B7' },
+  2: { label: 'Inactivo', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+  3: { label: 'Stock', color: '#CA8A04', bg: '#FEFCE8', border: '#FDE047' }
+};
 
 const EMPTY_FORM: FormState = {
   tipo: 'Portatil',

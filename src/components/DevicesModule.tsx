@@ -208,15 +208,17 @@ const set = (key: keyof FormState, value: any) =>
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
     setSaving(true); setError('');
 
+    // Mapeo simple: obtenemos el ID según el estado seleccionado
+  const estadoMap = { 'activo': 1, 'inactivo': 2, 'stock': 3 };
+  const estadoId = estadoMap[form.estado] || 2; // Por defecto inactivo si algo falla
+
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),
       etiquetado: form.etiquetado?.trim() || null, 
       caracteristicas: form.caracteristicas.trim(),
       centro_trabajo: form.centro_trabajo.trim(),
-      numero_serie: form.numero_serie.trim(),
-      activo: form.estado === 'activo',
-      estado_texto: form.estado,
+      estado_id: estadoId,
       society_id: form.society_id,
       empleado_id: form.empleado_id || null,
       usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),

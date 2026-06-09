@@ -234,27 +234,28 @@ const payload = {
     notas: form.notas.trim(),
   };
 
-   try {
+  try {
     let query = supabase.from('dispositivos');
     
+    // Decidimos si es INSERT o UPDATE
     if (existing) {
       query = query.update(payload).eq('id', existing.id);
     } else {
       query = query.insert(payload);
     }
 
-    // Usamos el resultado de la consulta. 
-    // Nota: 'data' y 'error' son nombres genéricos que no colisionan.
-    const { data, error } = await query.select(); 
+    // Ejecutamos la consulta y pedimos que nos devuelva el objeto guardado
+    const { data, error: supError } = await query.select(); 
     
-    if (error) throw error;
+    if (supError) throw supError;
     
-    console.log("Guardado con éxito:", data);
+    console.log("¡Éxito! Dispositivo guardado:", data);
+    alert("¡Guardado correctamente!");
     onSaved();
     onClose();
-  } catch (err: any) { // 'err' solo se declara aquí, como parámetro del catch
-    console.error("ERROR DETALLADO:", err);
-    alert("Error al guardar: " + err.message);
+  } catch (err: any) {
+    console.error("ERROR DETALLADO DE SUPABASE:", err);
+    alert("Error al guardar: " + (err.message || err));
   } finally {
     setSaving(false);
   }

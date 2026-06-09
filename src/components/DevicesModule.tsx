@@ -216,6 +216,7 @@ const set = (key: keyof FormState, value: any) =>
       centro_trabajo: form.centro_trabajo.trim(),
       numero_serie: form.numero_serie.trim(),
       activo: form.estado === 'activo',
+      estado_texto: form.estado,
       society_id: form.society_id,
       empleado_id: form.empleado_id || null,
       usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),

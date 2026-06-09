@@ -243,7 +243,8 @@ const handleSave = async () => {
         query = query.insert(payload);
       }
 
-      const { error: supError } = await query.select();
+      // El await ahora vive dentro de una función 'async'
+      const { error: supError } = await query.select(); 
 
       if (supError) throw supError;
       
@@ -256,7 +257,8 @@ const handleSave = async () => {
     } finally {
       setSaving(false);
     }
-  };
+    // AQUÍ DEBE CERRARSE LA LLAVE DE handleSave
+};
 
 // 3. Petición a Supabase
     try {

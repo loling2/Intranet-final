@@ -236,6 +236,17 @@ console.log("Datos a enviar:", { estado_id: estadoId, ...payload });
         const { error: err } = await supabase.from('dispositivos').insert(payload);
         if (err) throw err;
       }
+
+
+const { data, error: err } = await query;
+
+      if (err) {
+        // AQUÍ ES DONDE VEREMOS EL ERROR EN LA CONSOLA (F12)
+        console.error("ERROR DETALLADO:", err); 
+        throw err;
+      }
+
+      
       onSaved();
       onClose();
     } catch (e: unknown) {

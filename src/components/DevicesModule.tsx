@@ -237,7 +237,7 @@ const handleSave = async () => {
       estado_id: estadoId,
       society_id: form.society_id,
       empleado_id: form.empleado_id || null,
-      usuario_asignado_nombre: form.usuario_asignado_nombre.trim() || null,
+      usuario_asignado_nombre: form.usuario_asignado_nombre.trim() || "",
       fecha_asignacion: form.fecha_asignacion || null,
       notas: form.notas.trim() || null,
     };

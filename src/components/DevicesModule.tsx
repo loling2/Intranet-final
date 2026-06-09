@@ -749,10 +749,10 @@ export default function DevicesModule() {
                   {/* Estado */}
                   <div className="col-span-1">
                     <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg"
-                      style={{ backgroundColor: dev.activo ? '#ECFDF5' : '#FEF2F2', border: `1px solid ${dev.activo ? '#6EE7B7' : '#FECACA'}` }}>
-                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dev.activo ? '#22C55E' : '#EF4444' }} />
-                      <span className="text-xs font-semibold" style={{ color: dev.activo ? '#065F46' : '#DC2626' }}>
-                        {dev.activo ? 'Activo' : 'Inactivo'}
+                      style={{ backgroundColor: dev.estado_id === 1 ? '#ECFDF5' : '#FEF2F2', border: `1px solid ${dev.estado_id === 1 ? '#6EE7B7' : '#FECACA'}` }}>
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dev.estado_id === 1 ? '#22C55E' : '#EF4444' }} />
+                      <span className="text-xs font-semibold" style={{ color: dev.estado_id === 1 ? '#065F46' : '#DC2626' }}>
+                        {dev.estado_id === 1 ? 'Activo' : 'Inactivo'}
                       </span>
                     </div>
                   </div>

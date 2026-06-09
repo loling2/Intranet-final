@@ -175,7 +175,7 @@ function DeviceModal({
           caracteristicas: existing.caracteristicas,
           centro_trabajo: existing.centro_trabajo,
           numero_serie: existing.numero_serie,
-          activo: existing.activo,
+          estado: idToEstado[existing.estado_id as keyof typeof idToEstado] || 'inactivo',
           society_id: existing.society_id,
           empleado_id: existing.empleado_id ?? '',
           usuario_asignado_nombre: existing.usuario_asignado_nombre,

@@ -154,7 +154,7 @@ function EmployeePicker({
 }
 
 // ── Device Modal ──────────────────────────────────────────────────────────────
-
+const idToEstado = { 1: 'activo', 2: 'inactivo', 3: 'stock' };
 function DeviceModal({
   existing,
   empleados,

@@ -240,6 +240,9 @@ const payload = {
         if (err) throw err;
       } else {
         const { error: err } = await supabase.from('dispositivos').insert(payload);
+// Añadimos .select() para ver qué está pasando realmente
+  const { data, error: err } = await query.select();
+        
         if (err) throw err;
       }
 
@@ -250,6 +253,13 @@ const { data, error: err } = await query;
         // AQUÍ ES DONDE VEREMOS EL ERROR EN LA CONSOLA (F12)
         console.error("ERROR DETALLADO:", err); 
         throw err;
+        console.log("Éxito:", data);
+  onSaved();
+  onClose();
+} catch (err) {
+  console.error("ERROR DETALLADO:", err);
+  alert("Error: " + (err instanceof Error ? err.message : 'Error desconocido'));
+}
       }
 
       

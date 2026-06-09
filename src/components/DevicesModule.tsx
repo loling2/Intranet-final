@@ -214,18 +214,18 @@ const set = (key: keyof FormState, value: any) =>
   const estadoId = estadoMap[form.estado] || 2; // Por defecto inactivo si algo falla
 console.log("Datos a enviar:", { estado_id: estadoId, ...payload });
     const payload = {
-    tipo: form.tipo,
-    marca_modelo: form.marca_modelo.trim(),
-    etiquetado: form.etiquetado?.trim() || null,
-    caracteristicas: form.caracteristicas.trim(),
-    centro_trabajo: form.centro_trabajo.trim(),
-    numero_serie: form.numero_serie.trim(),
-    estado_id: estadoId, // <--- ÚNICA COLUMNA DE ESTADO
-    society_id: form.society_id,
-    empleado_id: form.empleado_id || null,
-    usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
-    fecha_asignacion: form.fecha_asignacion || null,
-    notas: form.notas.trim(),
+   tipo: form.tipo,
+      marca_modelo: form.marca_modelo.trim(),
+      etiquetado: form.etiquetado?.trim() || null,
+      caracteristicas: form.caracteristicas.trim(),
+      centro_trabajo: form.centro_trabajo.trim(),
+      numero_serie: form.numero_serie.trim(),
+      estado_id: estadoId,
+      society_id: form.society_id,
+      empleado_id: form.empleado_id || null,
+      usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
+      fecha_asignacion: form.fecha_asignacion || null,
+      notas: form.notas.trim()
   };
 
     try {

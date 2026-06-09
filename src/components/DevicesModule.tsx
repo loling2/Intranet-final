@@ -256,7 +256,7 @@ const handleSave = async () => {
 
       if (supError) throw supError;
       
-      alert("¡Guardado correctamente!");
+   
       onSaved();
       onClose();
     } catch (err: any) {

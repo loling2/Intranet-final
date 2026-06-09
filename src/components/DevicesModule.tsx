@@ -239,7 +239,7 @@ const handleSave = async () => {
       empleado_id: form.empleado_id || null,
       usuario_asignado_nombre: form.usuario_asignado_nombre.trim() || "",
       fecha_asignacion: form.fecha_asignacion || null,
-      notas: form.notas.trim() || null,
+      notas: form.notas.trim() || "",
     };
 
     // 3. Petición a Supabase (Un solo bloque try/catch)

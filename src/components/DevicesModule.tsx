@@ -216,11 +216,11 @@ console.log("Datos a enviar:", { estado_id: estadoId, ...payload });
     const payload = {
     tipo: form.tipo,
     marca_modelo: form.marca_modelo.trim(),
-    etiquetado: form.etiquetado?.trim() || null, 
+    etiquetado: form.etiquetado?.trim() || null,
     caracteristicas: form.caracteristicas.trim(),
     centro_trabajo: form.centro_trabajo.trim(),
     numero_serie: form.numero_serie.trim(),
-    estado_id: estadoId, // Única columna de estado
+    estado_id: estadoId, // <--- ÚNICA COLUMNA DE ESTADO
     society_id: form.society_id,
     empleado_id: form.empleado_id || null,
     usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),

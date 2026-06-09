@@ -535,7 +535,7 @@ export default function DevicesModule() {
     if (filterTipo && d.tipo !== filterTipo) return false;
     if (filterActivo === 'activo' && !d.activo) return false;
     if (filterActivo === 'inactivo' && d.activo) return false;
-     if (filterActivo === 'Stock' && d.activo) return false;
+
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -607,7 +607,7 @@ export default function DevicesModule() {
             <option value="">Todos los tipos</option>
             {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select value={filterActivo} onChange={(e) => setFilterActivo(e.target.value as 'all' | 'activo' | 'inactivo')}
+          <select value={filterActivo} onChange={(e) => setFilterActivo(e.target.value as 'all' | 'activo' | 'inactivo' | 'Stock')}
             className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
             style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
             <option value="all">Todos los estados</option>

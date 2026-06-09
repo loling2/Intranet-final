@@ -216,22 +216,22 @@ const set = (key: keyof FormState, value: any) =>
 
     // Mapeo simple: obtenemos el ID según el estado seleccionado
 const estadoMap = { 'activo': 1, 'inactivo': 2, 'stock': 3 };
-  const estadoId = estadoMap[form.estado as keyof typeof estadoMap] || 2;
-console.log("Datos a enviar:", { estado_id: estadoId, ...payload });
+const estadoId = estadoMap[form.estado as keyof typeof estadoMap] || 2;
     // Asegúrate de que el payload sea exactamente este:
 const payload = {
-    tipo: form.tipo,
-    marca_modelo: form.marca_modelo.trim(),
-    etiquetado: form.etiquetado?.trim() || null,
-    caracteristicas: form.caracteristicas.trim(),
-    centro_trabajo: form.centro_trabajo.trim(),
-    numero_serie: form.numero_serie.trim(),
-    estado_id: estadoId,
-    society_id: form.society_id,
-    empleado_id: form.empleado_id || null,
-    usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
-    fecha_asignacion: form.fecha_asignacion || null,
-    notas: form.notas.trim(),
+      tipo: form.tipo,
+      marca_modelo: form.marca_modelo.trim(),
+      etiquetado: form.etiquetado?.trim() || null,
+      caracteristicas: form.caracteristicas.trim() || null,
+      centro_trabajo: form.centro_trabajo.trim() || null,
+      numero_serie: form.numero_serie.trim() || null,
+      estado_id: estadoId,
+      society_id: form.society_id,
+      empleado_id: form.empleado_id || null,
+      usuario_asignado_nombre: form.usuario_asignado_nombre.trim() || null,
+      fecha_asignacion: form.fecha_asignacion || null,
+      notas: form.notas.trim() || null,
+    };
   };
 
   try {

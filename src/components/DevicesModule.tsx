@@ -545,16 +545,7 @@ export default function DevicesModule() {
     setLoading(false);
   }, []);
 
-const loadDevices = async () => {
-  // BUSCA ESTA LÍNEA
-  const { data, error } = await supabase
-    .from('dispositivos')
-    .select('*'); // <--- Si usas '*', debería traerlo.
-    
-  // PERO, si tienes algo así:
-  // .select('id, tipo, marca_modelo, estado_id, society_id...') 
-  // ¡Falta 'etiquetado'!
-};
+
 
   
   const loadEmpleados = useCallback(async () => {

@@ -215,8 +215,8 @@ const set = (key: keyof FormState, value: any) =>
     setSaving(true); setError('');
 
     // Mapeo simple: obtenemos el ID según el estado seleccionado
-const estadoMap = { 'activo': 1, 'inactivo': 2, 'stock': 3 };
-const estadoId = estadoMap[form.estado as keyof typeof estadoMap] || 2;
+const estadoMap: Record<string, number> = { 'activo': 1, 'inactivo': 2, 'stock': 3 };
+    const estadoId = estadoMap[form.estado] || 2;
     // Asegúrate de que el payload sea exactamente este:
 const payload = {
       tipo: form.tipo,
@@ -234,28 +234,30 @@ const payload = {
     };
   };
 
-try {
-      let result;
+// 3. Petición a Supabase
+    try {
+      let query = supabase.from('dispositivos');
       
       if (existing) {
-        result = await supabase.from('dispositivos').update(payload).eq('id', existing.id).select();
+        query = query.update(payload).eq('id', existing.id);
       } else {
-        result = await supabase.from('dispositivos').insert(payload).select();
+        query = query.insert(payload);
       }
 
-      if (result.error) throw result.error;
+      const { data, error: supError } = await query.select();
 
-      alert("Guardado exitoso");
+      if (supError) throw supError;
+
+      alert("¡Guardado correctamente!");
       onSaved();
       onClose();
     } catch (err: any) {
-      console.error("Error en el guardado:", err);
-      setError("Error al guardar: " + err.message);
+      console.error("Error al guardar:", err);
+      setError("Error: " + (err.message || "Error desconocido"));
     } finally {
       setSaving(false);
     }
   };
-
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">

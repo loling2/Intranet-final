@@ -234,26 +234,23 @@ const payload = {
     };
   };
 
- try {
-      console.log("Enviando payload a Supabase:", payload);
+try {
+      let result;
       
-      const { data, error } = existing
-        ? await supabase.from('dispositivos').update(payload).eq('id', existing.id).select()
-        : await supabase.from('dispositivos').insert(payload).select();
-
-      if (error) {
-        console.error("Error devuelto por Supabase:", error);
-        alert("Error de Supabase: " + error.message + "\nDetalle: " + (error.details || ''));
-        return;
+      if (existing) {
+        result = await supabase.from('dispositivos').update(payload).eq('id', existing.id).select();
+      } else {
+        result = await supabase.from('dispositivos').insert(payload).select();
       }
 
-      console.log("Respuesta de Supabase:", data);
-      alert("¡Guardado correctamente!");
+      if (result.error) throw result.error;
+
+      alert("Guardado exitoso");
       onSaved();
       onClose();
-    } catch (err) {
-      console.error("Error inesperado en el catch:", err);
-      alert("Error inesperado: " + err);
+    } catch (err: any) {
+      console.error("Error en el guardado:", err);
+      setError("Error al guardar: " + err.message);
     } finally {
       setSaving(false);
     }

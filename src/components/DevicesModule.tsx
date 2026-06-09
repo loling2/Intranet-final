@@ -234,31 +234,29 @@ const payload = {
     };
   };
 
-  try {
-    let query = supabase.from('dispositivos');
-    
-    // Decidimos si es INSERT o UPDATE
-    if (existing) {
-      query = query.update(payload).eq('id', existing.id);
-    } else {
-      query = query.insert(payload);
-    }
+ try {
+      console.log("Enviando payload a Supabase:", payload);
+      
+      const { data, error } = existing
+        ? await supabase.from('dispositivos').update(payload).eq('id', existing.id).select()
+        : await supabase.from('dispositivos').insert(payload).select();
 
-    // Ejecutamos la consulta y pedimos que nos devuelva el objeto guardado
-    const { data, error: supError } = await query.select(); 
-    
-    if (supError) throw supError;
-    
-    console.log("¡Éxito! Dispositivo guardado:", data);
-    alert("¡Guardado correctamente!");
-    onSaved();
-    onClose();
-  } catch (err: any) {
-    console.error("ERROR DETALLADO DE SUPABASE:", err);
-    alert("Error al guardar: " + (err.message || err));
-  } finally {
-    setSaving(false);
-  }
+      if (error) {
+        console.error("Error devuelto por Supabase:", error);
+        alert("Error de Supabase: " + error.message + "\nDetalle: " + (error.details || ''));
+        return;
+      }
+
+      console.log("Respuesta de Supabase:", data);
+      alert("¡Guardado correctamente!");
+      onSaved();
+      onClose();
+    } catch (err) {
+      console.error("Error inesperado en el catch:", err);
+      alert("Error inesperado: " + err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

@@ -613,6 +613,7 @@ export default function DevicesModule() {
             <option value="all">Todos los estados</option>
             <option value="activo">Activos</option>
             <option value="inactivo">Inactivos</option>
+             <option value="inactivo">Stock</option>
           </select>
         </div>
 

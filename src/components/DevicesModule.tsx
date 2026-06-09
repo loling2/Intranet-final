@@ -276,41 +276,24 @@ const set = (key: keyof FormState, value: any) =>
             <div>
               <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
 <div className="flex gap-2 pt-1">
- {/* Botón Activo (Booleano true) */}
-<button
-  type="button"
-  onClick={() => set('activo', true)}
-  className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
-  style={{
-    backgroundColor: form.activo === true ? '#ECFDF5' : '#F8FAFC',
-    color: form.activo === true ? '#065F46' : '#94A3B8',
-    border: `1.5px solid ${form.activo === true ? '#6EE7B7' : '#E2E8F0'}`,
-  }}
->Activo</button>
 
-{/* Botón Inactivo (Booleano false) */}
-<button
-  type="button"
-  onClick={() => set('activo', false)}
-  className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
-  style={{
-    backgroundColor: form.activo === false ? '#FEF2F2' : '#F8FAFC',
-    color: form.activo === false ? '#DC2626' : '#94A3B8',
-    border: `1.5px solid ${form.activo === false ? '#FECACA' : '#E2E8F0'}`,
-  }}
->Inactivo</button>
-
-{/* Botón Stock (Aquí necesitas decidir: ¿Stock es activo o inactivo?) */}
-<button
-  type="button"
-  onClick={() => {/* Define aquí qué pasa con 'stock' */}}
-  className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
-  style={{
-    backgroundColor: '#EFF6FF', // Azul
-    color: '#1E40AF',
-    border: '1.5px solid #BFDBFE',
-  }}
->Stock</button>
+  <button 
+    type="button" 
+    onClick={() => set('estado', 'activo')}
+    className={`flex-1 py-2 rounded-xl text-xs font-semibold ${form.estado === 'activo' ? 'bg-green-100 text-green-700 border-2 border-green-400' : 'bg-slate-50 text-slate-400'}`}
+  >Activo</button>
+  
+  <button 
+    type="button" 
+    onClick={() => set('estado', 'inactivo')}
+    className={`flex-1 py-2 rounded-xl text-xs font-semibold ${form.estado === 'inactivo' ? 'bg-red-100 text-red-700 border-2 border-red-400' : 'bg-slate-50 text-slate-400'}`}
+  >Inactivo</button>
+  
+  <button 
+    type="button" 
+    onClick={() => set('estado', 'stock')}
+    className={`flex-1 py-2 rounded-xl text-xs font-semibold ${form.estado === 'stock' ? 'bg-blue-100 text-blue-700 border-2 border-blue-400' : 'bg-slate-50 text-slate-400'}`}
+  >Stock</button>
 </div>
             </div>
           </div>

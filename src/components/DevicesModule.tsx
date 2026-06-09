@@ -231,7 +231,7 @@ const handleSave = async () => {
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),
-      etiquetado: form.etiquetado?.trim() || null,
+      etiquetado: form.etiquetado?.trim() || "",
       caracteristicas: form.caracteristicas.trim() || null,
       centro_trabajo: form.centro_trabajo.trim() || null,
       numero_serie: form.numero_serie.trim() || null,

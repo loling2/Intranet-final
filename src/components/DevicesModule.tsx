@@ -478,7 +478,7 @@ export default function DevicesModule() {
   const [search, setSearch] = useState('');
   const [filterSociety, setFilterSociety] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
-  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo'>('all');
+  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo'| 'Stock'>('all');
 
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Dispositivo | null>(null);

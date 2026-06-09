@@ -209,16 +209,17 @@ const set = (key: keyof FormState, value: any) =>
     set('usuario_asignado_nombre', nombre);
   };
 
-  const handleSave = async () => {
+const handleSave = async () => {
     if (!form.marca_modelo.trim()) { setError('La marca/modelo es obligatoria.'); return; }
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
-    setSaving(true); setError('');
+    
+    setSaving(true); 
+    setError('');
 
-    // Mapeo simple: obtenemos el ID según el estado seleccionado
-const estadoMap: Record<string, number> = { 'activo': 1, 'inactivo': 2, 'stock': 3 };
+    const estadoMap: Record<string, number> = { 'activo': 1, 'inactivo': 2, 'stock': 3 };
     const estadoId = estadoMap[form.estado] || 2;
-    // Asegúrate de que el payload sea exactamente este:
-const payload = {
+
+    const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),
       etiquetado: form.etiquetado?.trim() || null,
@@ -232,6 +233,29 @@ const payload = {
       fecha_asignacion: form.fecha_asignacion || null,
       notas: form.notas.trim() || null,
     };
+
+    try {
+      let query = supabase.from('dispositivos');
+      
+      if (existing) {
+        query = query.update(payload).eq('id', existing.id);
+      } else {
+        query = query.insert(payload);
+      }
+
+      const { error: supError } = await query.select();
+
+      if (supError) throw supError;
+      
+      alert("¡Guardado correctamente!");
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      console.error("Error al guardar:", err);
+      setError("Error: " + (err.message || "Error desconocido"));
+    } finally {
+      setSaving(false);
+    }
   };
 
 // 3. Petición a Supabase

@@ -478,7 +478,7 @@ export default function DevicesModule() {
   const [search, setSearch] = useState('');
   const [filterSociety, setFilterSociety] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
-  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo'| 'Stock'>('all');
+  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo' >('all');
 
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Dispositivo | null>(null);
@@ -535,6 +535,7 @@ export default function DevicesModule() {
     if (filterTipo && d.tipo !== filterTipo) return false;
     if (filterActivo === 'activo' && !d.activo) return false;
     if (filterActivo === 'inactivo' && d.activo) return false;
+     if (filterActivo === 'Stock' && d.activo) return false;
     if (search) {
       const q = search.toLowerCase();
       return (

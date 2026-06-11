@@ -174,14 +174,13 @@ export interface Dispositivo {
   centro_trabajo: string;
   numero_serie: string;
 
-  estado_id: number;
+ estado_id: 1 | 2 | 3;
+  etiquetado: string | null;
 
   society_id: string;
   empleado_id: string | null;
   usuario_asignado_nombre: string;
   fecha_asignacion: string | null;
-
-  etiquetado: string | null;
 
   notas: string;
   created_at: string;

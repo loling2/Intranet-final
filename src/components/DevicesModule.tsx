@@ -776,25 +776,17 @@ const totalActivos =
                   </div>
 
 <div className="col-span-1 min-w-0">
-  {dev.etiquetado ? (
-    <span
-      className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium"
-      style={{
-        backgroundColor: '#EFF6FF',
-        color: '#1D4ED8',
-        border: '1px solid #BFDBFE'
-      }}
-    >
-      {dev.etiquetado}
-    </span>
-  ) : (
-    <span
-      className="text-xs"
-      style={{ color: '#CBD5E1' }}
-    >
-      —
-    </span>
-  )}
+  <span
+    className="inline-block px-2 py-0.5 rounded-md text-xs font-medium truncate max-w-full"
+    style={{
+      backgroundColor: '#F8FAFC',
+      color: '#475569',
+      border: '1px solid #CBD5E1'
+    }}
+    title={dev.etiquetado || 'Sin etiquetar'}
+  >
+    {dev.etiquetado || 'S/E'}
+  </span>
 </div>
                   
                   {/* Serie */}

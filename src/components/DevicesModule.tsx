@@ -5,25 +5,8 @@ import {
   CheckCircle2, ChevronDown, Settings, MapPin,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import type { Empleado, Centro } from '../supabaseClient';
+import type { Dispositivo, Empleado, Centro } from '../supabaseClient';
 import { societies } from '../themes';
-
-// Interfaz corregida sin espacios
-interface DispositivoLocal {
-  id: string;
-  created_at?: string;
-  tipo: string;
-  marca_modelo: string;
-  caracteristicas: string;
-  centro_trabajo: string;
-  numero_serie: string;
-  activo: string | boolean; 
-  society_id: string;
-  empleado_id: string | null;
-  usuario_asignado_nombre: string;
-  fecha_asignacion: string | null;
-  notas: string;
-}
 
 const TIPOS = ['Portatil', 'Sobremesa', 'Monitor', 'Movil', 'Tablet', 'Periferico', 'VoIP', 'Otro'];
 
@@ -52,7 +35,7 @@ interface FormState {
   caracteristicas: string;
   centro_trabajo: string;
   numero_serie: string;
-  activo: string; 
+  activo: 'activo' | 'inactivo' | 'stock'; // Estado visual local
   society_id: string;
   empleado_id: string;
   usuario_asignado_nombre: string;
@@ -66,7 +49,7 @@ const EMPTY_FORM: FormState = {
   caracteristicas: '',
   centro_trabajo: '',
   numero_serie: '',
-  activo: 'activo', 
+  activo: 'activo',
   society_id: '',
   empleado_id: '',
   usuario_asignado_nombre: '',
@@ -90,7 +73,6 @@ function EmployeePicker({
   const ref = useRef<HTMLDivElement>(null);
 
   const selected = empleados.find((e) => e.id === value);
-
   const filtered = empleados
     .filter((e) => !search || e.nombre.toLowerCase().includes(search.toLowerCase()))
     .slice(0, 10);
@@ -178,12 +160,21 @@ function DeviceModal({
   onClose,
   onSaved,
 }: {
-  existing?: DispositivoLocal | null;
+  existing?: Dispositivo | null;
   empleados: Empleado[];
   centros: Centro[];
   onClose: () => void;
   onSaved: () => void;
 }) {
+  // Mapeamos el booleano existente de la BD a nuestros 3 estados visuales posibles
+  const getInitialActiveState = (): 'activo' | 'inactivos' | 'stock' => {
+    if (!existing) return 'activo';
+    if (existing.activo === false) return 'inactivo';
+    // Si es activo (true) pero no tiene nadie asignado, asumimos que puede ser stock
+    if (existing.activo === true && !existing.empleado_id) return 'stock';
+    return 'activo';
+  };
+
   const [form, setForm] = useState<FormState>(
     existing
       ? {
@@ -192,10 +183,9 @@ function DeviceModal({
           caracteristicas: existing.caracteristicas || '',
           centro_trabajo: existing.centro_trabajo || '',
           numero_serie: existing.numero_serie || '',
-          activo: String(existing.activo), 
+          activo: getInitialActiveState() as any,
           society_id: existing.society_id,
           empleado_id: existing.empleado_id ?? '',
-          usuario_assigned_nombre: existing.usuario_asignado_nombre || '',
           usuario_asignado_nombre: existing.usuario_asignado_nombre || '',
           fecha_asignacion: existing.fecha_asignacion ?? '',
           notas: existing.notas || '',
@@ -205,7 +195,7 @@ function DeviceModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const set = (key: keyof FormState, value: string | boolean) =>
+  const set = (key: keyof FormState, value: any) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
   const filteredEmpleados = empleados.filter(
@@ -219,6 +209,10 @@ function DeviceModal({
   const handleEmpleadoChange = (empId: string, nombre: string) => {
     set('empleado_id', empId);
     set('usuario_asignado_nombre', nombre);
+    // Si asignamos a un empleado, quitamos automáticamente el estado de 'stock' a 'activo'
+    if (empId && form.activo === 'stock') {
+      set('activo', 'activo');
+    }
   };
 
   const handleSave = async () => {
@@ -226,17 +220,23 @@ function DeviceModal({
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
     setSaving(true); setError('');
 
+    // Traducimos el estado visual del botón al booleano real que espera Supabase
+    let dbActivo = true;
+    if (form.activo === 'inactivo') {
+      dbActivo = false;
+    }
+
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),
       caracteristicas: form.caracteristicas.trim(),
       centro_trabajo: form.centro_trabajo.trim(),
       numero_serie: form.numero_serie.trim(),
-      activo: form.activo, 
+      activo: dbActivo, // Enviamos el booleano esperado por tu Base de Datos
       society_id: form.society_id,
-      empleado_id: form.empleado_id || null,
-      usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
-      fecha_asignacion: form.fecha_asignacion || null,
+      empleado_id: form.activo === 'stock' ? null : (form.empleado_id || null),
+      usuario_asignado_nombre: form.activo === 'stock' ? '' : form.usuario_asignado_nombre.trim(),
+      fecha_asignacion: form.activo === 'stock' ? null : (form.fecha_asignacion || null),
       notas: form.notas.trim(),
     };
 
@@ -252,7 +252,7 @@ function DeviceModal({
       onClose();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al guardar');
-    } finally {
+    } file {
       setSaving(false);
     }
   };
@@ -320,7 +320,14 @@ function DeviceModal({
                     <button
                       key={v}
                       type="button"
-                      onClick={() => set('activo', v)}
+                      onClick={() => {
+                        set('activo', v);
+                        if (v === 'stock') {
+                          set('empleado_id', '');
+                          set('usuario_asignado_nombre', '');
+                          set('fecha_asignacion', '');
+                        }
+                      }}
                       className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all capitalize"
                       style={{
                         backgroundColor: bgColor,
@@ -508,7 +515,7 @@ function ConfirmDelete({ name, onConfirm, onClose, loading }: {
 // ── Main DevicesModule ────────────────────────────────────────────────────────
 
 export default function DevicesModule() {
-  const [devices, setDevices] = useState<DispositivoLocal[]>([]);
+  const [devices, setDevices] = useState<Dispositivo[]>([]);
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [centros, setCentros] = useState<Centro[]>([]);
   const [loading, setLoading] = useState(true);
@@ -518,10 +525,9 @@ export default function DevicesModule() {
   const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo' | 'stock'>('all');
 
   const [showCreate, setShowCreate] = useState(false);
-  const [editing, setEditing] = useState<DispositivoLocal | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<DispositivoLocal | null>(null);
+  const [editing, setEditing] = useState<Dispositivo | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Dispositivo | null>(null);
   const [deleting, setDeleting] = useState(false);
-
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -534,7 +540,7 @@ export default function DevicesModule() {
       .select('*')
       .order('created_at', { ascending: false });
     if (err) setError(err.message);
-    else setDevices((data ?? []) as DispositivoLocal[]);
+    else setDevices((data ?? []) as Dispositivo[]);
     setLoading(false);
   }, []);
 
@@ -571,10 +577,10 @@ export default function DevicesModule() {
     if (filterSociety && d.society_id !== filterSociety) return false;
     if (filterTipo && d.tipo !== filterTipo) return false;
     
-    const estadoNormalizado = String(d.activo); 
-    if (filterActivo === 'activo' && estadoNormalizado !== 'activo' && estadoNormalizado !== 'true') return false;
-    if (filterActivo === 'inactivo' && estadoNormalizado !== 'inactivo' && estadoNormalizado !== 'false') return false;
-    if (filterActivo === 'stock' && estadoNormalizado !== 'stock') return false;
+    // Lógica para el filtrado en la tabla principal
+    if (filterActivo === 'activo' && (!d.activo || !d.empleado_id)) return false;
+    if (filterActivo === 'inactivo' && d.activo) return false;
+    if (filterActivo === 'stock' && (!d.activo || d.empleado_id)) return false;
 
     if (search) {
       const q = search.toLowerCase();
@@ -589,7 +595,7 @@ export default function DevicesModule() {
     return true;
   });
 
-  const totalActivos = devices.filter((d) => String(d.activo) === 'activo' || String(d.activo) === 'true').length;
+  const totalActivos = devices.filter((d) => d.activo).length;
 
   return (
     <div className="space-y-4">
@@ -704,19 +710,37 @@ export default function DevicesModule() {
             {filtered.map((dev) => {
               const Icon = typeIcon(dev.tipo);
               const society = societies.find((s) => s.id === dev.society_id);
-              const est = String(dev.activo);
-              const isActivo = est === 'activo' || est === 'true';
+              
+              // Resolvemos el estado real en la lista
+              let labelEstado = 'Inactivo';
+              let colorBg = '#FEF2F2';
+              let colorTxt = '#DC2626';
+              let colorDot = '#EF4444';
+              let colorBorder = '#FECACA';
+
+              if (dev.activo) {
+                if (!dev.empleado_id) {
+                  labelEstado = 'Stock';
+                  colorBg = '#FEF9C3';
+                  colorTxt = '#854D0E';
+                  colorDot = '#EAB308';
+                  colorBorder = '#FDE047';
+                } else {
+                  labelEstado = 'Activo';
+                  colorBg = '#ECFDF5';
+                  colorTxt = '#065F46';
+                  colorDot = '#22C55E';
+                  colorBorder = '#6EE7B7';
+                }
+              }
 
               return (
                 <div key={dev.id} className="px-6 py-3.5 grid grid-cols-12 gap-3 items-center hover:bg-slate-50 transition-colors duration-100">
                   {/* Tipo icon */}
                   <div className="col-span-1">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ 
-                        backgroundColor: isActivo ? '#F0FDF4' : est === 'stock' ? '#FEF9C3' : '#FEF2F2', 
-                        border: `1px solid ${isActivo ? '#BBF7D0' : est === 'stock' ? '#FDE047' : '#FECACA'}` 
-                      }}>
-                      <Icon size={14} style={{ color: isActivo ? '#16A34A' : est === 'stock' ? '#854D0E' : '#DC2626' }} />
+                      style={{ backgroundColor: dev.activo ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${dev.activo ? '#BBF7D0' : '#FECACA'}` }}>
+                      <Icon size={14} style={{ color: dev.activo ? '#16A34A' : '#DC2626' }} />
                     </div>
                   </div>
 
@@ -738,7 +762,7 @@ export default function DevicesModule() {
 
                   {/* Asignado a */}
                   <div className="col-span-2 min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: dev.usuario_asignado_nombre ? '#1E293B' : '#94A3B8' }}>
+                    <p className="text-sm font-medium truncate" style={{ color: dev.usuario_asignado_nombre ? '#1E293B' : '#CBD5E1' }}>
                       {dev.usuario_asignado_nombre || 'Sin asignar'}
                     </p>
                     {dev.fecha_asignacion && (
@@ -749,26 +773,30 @@ export default function DevicesModule() {
                   {/* Centro / Sociedad */}
                   <div className="col-span-2 min-w-0">
                     <p className="text-sm truncate" style={{ color: '#1E293B' }}>{dev.centro_trabajo || '—'}</p>
-                    <p className="text-xs mt-0.5 truncate" style={{ color: '#64748B' }}>{society ? society.name : '—'}</p>
+                    {society && (
+                      <span className="inline-block text-xs px-1.5 py-0.5 rounded mt-0.5" style={{ backgroundColor: society.primaryLight, color: society.primary, border: `1px solid ${society.border}` }}>
+                        {society.name}
+                      </span>
+                    )}
                   </div>
 
                   {/* Estado */}
                   <div className="col-span-1">
-                    <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full capitalize"
-                      style={{
-                        backgroundColor: isActivo ? '#D1FAE5' : est === 'stock' ? '#FEF9C3' : '#FEE2E2',
-                        color: isActivo ? '#065F46' : est === 'stock' ? '#854D0E' : '#991B1B'
-                      }}>
-                      {est === 'activo' || est === 'true' ? 'Activo' : est === 'stock' ? 'Stock' : 'Inactivo'}
-                    </span>
+                    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg"
+                      style={{ backgroundColor: colorBg, border: `1px solid ${colorBorder}` }}>
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: colorDot }} />
+                      <span className="text-xs font-semibold" style={{ color: colorTxt }}>
+                        {labelEstado}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Acciones */}
                   <div className="col-span-1 flex items-center justify-end gap-1">
-                    <button type="button" onClick={() => setEditing(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#64748B' }}>
+                    <button type="button" onClick={() => setEditing(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#CBD5E1' }}>
                       <Pencil size={13} />
                     </button>
-                    <button type="button" onClick={() => setDeleteTarget(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors" style={{ color: '#EF4444' }}>
+                    <button type="button" onClick={() => setDeleteTarget(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors" style={{ color: '#CBD5E1' }}>
                       <Trash2 size={13} />
                     </button>
                   </div>

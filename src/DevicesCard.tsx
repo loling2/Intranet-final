@@ -61,7 +61,10 @@ useEffect(() => {
   })();
 }, []);
 
-  const activeCount = devices.filter((d) => d.activo).length;
+  const activeCount = devices.filter((d) => d.estado_id === 1).length;
+  const isActive = device.estado_id === 1;
+const isInactive = device.estado_id === 2;
+const isStock = device.estado_id === 3;
 
   return (
     <div
@@ -116,12 +119,23 @@ useEffect(() => {
                 key={device.id}
                 className="flex items-center gap-3 p-3 rounded-xl transition-all duration-200"
                 style={{
-                  backgroundColor: device.activo ? theme.primaryLight : '#FEF2F2',
-                  border: `1px solid ${device.activo ? theme.border : '#FECACA'}`,
+                  backgroundColor:
+  isActive ? theme.primaryLight :
+  isInactive ? '#FEF2F2' :
+  '#FEF9C3',
+
+border: `1px solid ${
+  isActive ? theme.border :
+  isInactive ? '#FECACA' :
+  '#FDE047'
+}`,
                 }}
               >
                 <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: device.activo ? `${theme.primary}15` : '#FEE2E2' }}>
+                  style={{ backgroundColor:
+  isActive ? `${theme.primary}15` :
+  isInactive ? '#FEE2E2' :
+  '#FEF3C7'}}>
                   <Icon size={16} style={{ color: device.activo ? theme.primary : '#DC2626' }} />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -139,12 +153,19 @@ useEffect(() => {
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <div className="w-2 h-2 rounded-full" style={{
-                    backgroundColor: device.activo ? '#22C55E' : '#EF4444',
+                    backgroundColor:
+  isActive ? '#22C55E' :
+  isInactive ? '#EF4444' :
+  '#EAB308',
                     boxShadow: device.activo ? '0 0 6px #22C55E80' : '0 0 6px #EF444480',
                   }} />
-                  <span className="text-xs font-medium" style={{ color: device.activo ? '#16A34A' : '#DC2626' }}>
-                    {device.activo ? 'Activo' : 'Inactivo'}
-                  </span>
+                  <span className="text-xs font-medium">
+  {isActive
+    ? 'Activo'
+    : isInactive
+    ? 'Inactivo'
+    : 'Stock'}
+</span>
                 </div>
               </div>
             );

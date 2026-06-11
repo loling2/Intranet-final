@@ -697,6 +697,7 @@ const totalActivos =
             <div className="px-6 py-2.5 grid grid-cols-12 gap-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8', backgroundColor: '#F8FAFC' }}>
               <div className="col-span-1">Tipo</div>
               <div className="col-span-3">Modelo</div>
+              <div className="col-span-1">ETIQUETA</div>
               <div className="col-span-2">Serie</div>
               <div className="col-span-2">Asignado a</div>
               <div className="col-span-2">Centro / Sociedad</div>
@@ -774,6 +775,28 @@ const totalActivos =
                     <span className="inline-block text-xs px-1.5 py-0.5 rounded mt-0.5" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>{dev.tipo}</span>
                   </div>
 
+<div className="col-span-1 min-w-0">
+  {dev.etiquetado ? (
+    <span
+      className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium"
+      style={{
+        backgroundColor: '#EFF6FF',
+        color: '#1D4ED8',
+        border: '1px solid #BFDBFE'
+      }}
+    >
+      {dev.etiquetado}
+    </span>
+  ) : (
+    <span
+      className="text-xs"
+      style={{ color: '#CBD5E1' }}
+    >
+      —
+    </span>
+  )}
+</div>
+                  
                   {/* Serie */}
                   <div className="col-span-2 min-w-0">
                     <p className="text-xs font-mono truncate" style={{ color: dev.numero_serie ? '#1E293B' : '#CBD5E1' }}>

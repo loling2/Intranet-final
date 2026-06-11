@@ -208,6 +208,7 @@ function DeviceModal({
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
     setSaving(true); setError('');
 
+    
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),

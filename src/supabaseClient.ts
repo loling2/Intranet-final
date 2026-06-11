@@ -170,11 +170,10 @@ export interface Dispositivo {
   id: string;
   tipo: string;
   marca_modelo: string;
-  etiquetado: string | null; // Asegúrate de añadirlo
   caracteristicas: string;
   centro_trabajo: string;
   numero_serie: string;
-  estado_id: number; // CAMBIO: de boolean (activo) a number (estado_id)
+  activo: boolean;
   society_id: string;
   empleado_id: string | null;
   usuario_asignado_nombre: string;

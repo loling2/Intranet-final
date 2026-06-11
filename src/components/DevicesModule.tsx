@@ -32,22 +32,16 @@ function formatDate(d: string | null) {
 interface FormState {
   tipo: string;
   marca_modelo: string;
-  etiquetado: string;
   caracteristicas: string;
   centro_trabajo: string;
   numero_serie: string;
-  estado: 'activo' | 'inactivo' | 'stock'; // Usamos texto para el formulario
+  activo: boolean;
   society_id: string;
   empleado_id: string;
   usuario_asignado_nombre: string;
   fecha_asignacion: string;
   notas: string;
 }
-const ESTADOS = {
-  1: { label: 'Activo', color: '#16A34A', bg: '#ECFDF5', border: '#6EE7B7' },
-  2: { label: 'Inactivo', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
-  3: { label: 'Stock', color: '#CA8A04', bg: '#FEFCE8', border: '#FDE047' }
-};
 
 const EMPTY_FORM: FormState = {
   tipo: 'Portatil',
@@ -159,7 +153,7 @@ function EmployeePicker({
 }
 
 // ── Device Modal ──────────────────────────────────────────────────────────────
-const idToEstado = { 1: 'activo', 2: 'inactivo', 3: 'stock' };
+
 function DeviceModal({
   existing,
   empleados,
@@ -178,11 +172,10 @@ function DeviceModal({
       ? {
           tipo: existing.tipo,
           marca_modelo: existing.marca_modelo,
-          etiquetado: existing.etiquetado ? String(existing.etiquetado) : '',
           caracteristicas: existing.caracteristicas,
           centro_trabajo: existing.centro_trabajo,
           numero_serie: existing.numero_serie,
-          estado: idToEstado[existing.estado_id as keyof typeof idToEstado] || 'inactivo',
+          activo: existing.activo,
           society_id: existing.society_id,
           empleado_id: existing.empleado_id ?? '',
           usuario_asignado_nombre: existing.usuario_asignado_nombre,
@@ -194,7 +187,7 @@ function DeviceModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-const set = (key: keyof FormState, value: any) =>
+  const set = (key: keyof FormState, value: string | boolean) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
   const filteredEmpleados = empleados.filter(
@@ -210,63 +203,42 @@ const set = (key: keyof FormState, value: any) =>
     set('usuario_asignado_nombre', nombre);
   };
 
-const handleSave = async () => {
-    // 1. Validaciones iniciales
-    if (!form.marca_modelo.trim()) { 
-      setError('La marca/modelo es obligatoria.'); 
-      return; 
-    }
-    if (!form.society_id) { 
-      setError('Selecciona una sociedad.'); 
-      return; 
-    }
-    
-    setSaving(true); 
-    setError('');
-
-    // 2. Mapeo de datos
-    const estadoMap: Record<string, number> = { 'activo': 1, 'inactivo': 2, 'stock': 3 };
-    const estadoId = estadoMap[form.estado] || 2;
+  const handleSave = async () => {
+    if (!form.marca_modelo.trim()) { setError('La marca/modelo es obligatoria.'); return; }
+    if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
+    setSaving(true); setError('');
 
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),
-      etiquetado: form.etiquetado?.trim() || "",
-      caracteristicas: form.caracteristicas.trim() || null,
-      centro_trabajo: form.centro_trabajo.trim() || null,
-      numero_serie: form.numero_serie.trim() || null,
-      estado_id: estadoId,
+      caracteristicas: form.caracteristicas.trim(),
+      centro_trabajo: form.centro_trabajo.trim(),
+      numero_serie: form.numero_serie.trim(),
+      activo: form.activo,
       society_id: form.society_id,
       empleado_id: form.empleado_id || null,
-      usuario_asignado_nombre: form.usuario_asignado_nombre.trim() || "",
+      usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
       fecha_asignacion: form.fecha_asignacion || null,
-      notas: form.notas.trim() || "",
+      notas: form.notas.trim(),
     };
 
-    // 3. Petición a Supabase (Un solo bloque try/catch)
     try {
-      let query = supabase.from('dispositivos');
-      
       if (existing) {
-        query = query.update(payload).eq('id', existing.id);
+        const { error: err } = await supabase.from('dispositivos').update(payload).eq('id', existing.id);
+        if (err) throw err;
       } else {
-        query = query.insert(payload);
+        const { error: err } = await supabase.from('dispositivos').insert(payload);
+        if (err) throw err;
       }
-
-      const { error: supError } = await query.select();
-
-      if (supError) throw supError;
-      
-   
       onSaved();
       onClose();
-    } catch (err: any) {
-      console.error("Error al guardar:", err);
-      setError("Error: " + (err.message || "Error desconocido"));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al guardar');
     } finally {
       setSaving(false);
     }
   };
+
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
@@ -302,33 +274,26 @@ const handleSave = async () => {
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
-<div className="flex gap-2 pt-1">
-
-  <button 
-    type="button" 
-    onClick={() => set('estado', 'activo')} 
-    className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border-2 transition-all ${form.estado === 'activo' ? 'bg-green-100 text-green-700 border-green-400' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
-  >Activo</button>
-  
-  <button 
-    type="button" 
-    onClick={() => set('estado', 'inactivo')} 
-    className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border-2 transition-all ${form.estado === 'inactivo' ? 'bg-red-100 text-red-700 border-red-400' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
-  >Inactivo</button>
-  
-  <button 
-    type="button" 
-    onClick={() => set('estado', 'stock')} 
-    className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border-2 transition-all ${form.estado === 'stock' ? 'bg-blue-100 text-blue-700 border-blue-400' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
-  >Stock</button>
-</div>
+              <div className="flex gap-2 pt-1">
+                {[true, false].map((v) => (
+                  <button
+                    key={String(v)}
+                    type="button"
+                    onClick={() => set('activo', v)}
+                    className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+                    style={{
+                      backgroundColor: form.activo === v ? (v ? '#ECFDF5' : '#FEF2F2') : '#F8FAFC',
+                      color: form.activo === v ? (v ? '#065F46' : '#DC2626') : '#94A3B8',
+                      border: `1.5px solid ${form.activo === v ? (v ? '#6EE7B7' : '#FECACA') : '#E2E8F0'}`,
+                    }}
+                  >
+                    {v ? 'Activo' : 'Inactivo'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-
-
-
-          
           {/* Marca/Modelo */}
           <div>
             <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Marca / Modelo *</label>
@@ -343,19 +308,6 @@ const handleSave = async () => {
             />
           </div>
 
-{/* --- Campo Etiquetado (Nuevo) --- */}
-<div>
-  <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Etiquetado</label>
-  <input
-    type="text"
-    value={form.etiquetado || ''}
-    onChange={(e) => set('etiquetado', e.target.value)}
-    placeholder="Ej: PORTA-81"
-    className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-    style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
-  />
-</div>
-          
           {/* Caracteristicas */}
           <div>
             <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Caracteristicas tecnicas</label>
@@ -465,7 +417,6 @@ const handleSave = async () => {
               Cancelar
             </button>
             <button
-              type="button"
               onClick={handleSave}
               disabled={saving}
               className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
@@ -522,7 +473,7 @@ export default function DevicesModule() {
   const [search, setSearch] = useState('');
   const [filterSociety, setFilterSociety] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
-  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo' >('all');
+  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo'>('all');
 
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Dispositivo | null>(null);
@@ -545,9 +496,6 @@ export default function DevicesModule() {
     setLoading(false);
   }, []);
 
-
-
-  
   const loadEmpleados = useCallback(async () => {
     const { data } = await supabase
       .from('empleados')
@@ -582,8 +530,6 @@ export default function DevicesModule() {
     if (filterTipo && d.tipo !== filterTipo) return false;
     if (filterActivo === 'activo' && !d.activo) return false;
     if (filterActivo === 'inactivo' && d.activo) return false;
-    if (filterActivo === 'stock' && d.activo) return false;
-
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -655,13 +601,12 @@ export default function DevicesModule() {
             <option value="">Todos los tipos</option>
             {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select value={filterActivo} onChange={(e) => setFilterActivo(e.target.value as 'all' | 'activo' | 'inactivo' | 'stock')}
+          <select value={filterActivo} onChange={(e) => setFilterActivo(e.target.value as 'all' | 'activo' | 'inactivo')}
             className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
             style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
             <option value="all">Todos los estados</option>
             <option value="activo">Activos</option>
             <option value="inactivo">Inactivos</option>
-             <option value="stock">Stock</option>
           </select>
         </div>
 
@@ -716,8 +661,8 @@ export default function DevicesModule() {
                   {/* Tipo icon */}
                   <div className="col-span-1">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: dev.estado_id === 1 ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${dev.estado_id === 1 ? '#BBF7D0' : '#FECACA'}` }}>
-                      <Icon size={14} style={{ color: dev.estado_id === 1 ? '#16A34A' : '#DC2626' }} />
+                      style={{ backgroundColor: dev.activo ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${dev.activo ? '#BBF7D0' : '#FECACA'}` }}>
+                      <Icon size={14} style={{ color: dev.activo ? '#16A34A' : '#DC2626' }} />
                     </div>
                   </div>
 
@@ -759,22 +704,16 @@ export default function DevicesModule() {
                     )}
                   </div>
 
-                {/* Estado */}
-<div className="col-span-1">
-  {(() => {
-    const estado = ESTADOS[dev.estado_id] || ESTADOS[2]; // Por defecto Inactivo si no encuentra ID
-    return (
-      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg"
-        style={{ backgroundColor: estado.bg, border: `1px solid ${estado.border}` }}
-      >
-        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: estado.color }} />
-        <span className="text-xs font-semibold" style={{ color: estado.color }}>
-          {estado.label}
-        </span>
-      </div>
-    );
-  })()}
-</div>
+                  {/* Estado */}
+                  <div className="col-span-1">
+                    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg"
+                      style={{ backgroundColor: dev.activo ? '#ECFDF5' : '#FEF2F2', border: `1px solid ${dev.activo ? '#6EE7B7' : '#FECACA'}` }}>
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dev.activo ? '#22C55E' : '#EF4444' }} />
+                      <span className="text-xs font-semibold" style={{ color: dev.activo ? '#065F46' : '#DC2626' }}>
+                        {dev.activo ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </div>
+                  </div>
 
                   {/* Actions */}
                   <div className="col-span-1 flex items-center justify-end gap-1">

@@ -167,6 +167,19 @@ function DeviceModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  // 1. Averiguamos cuál de los 3 botones ('activo', 'inactivo', 'stock') debe marcarse visualmente al abrir
+  const obtenerEstadoVisualInicial = (): 'activo' | 'inactivo' | 'stock' => {
+    if (!existing) return 'activo';
+    // Si en la base de datos está como 'true' pero no tiene usuario, es que está en Stock
+    if (existing.activo && (!existing.empleado_id || existing.usuario_asignado_nombre === 'Sin asignar')) {
+      return 'stock';
+    }
+    return existing.activo ? 'activo' : 'inactivo';
+  };
+
+  // Estado independiente exclusivo para controlar la interfaz de los botones
+  const [estadoVisual, setEstadoVisual] = useState<'activo' | 'inactivo' | 'stock'>(obtenerEstadoVisualInicial());
+
   const [form, setForm] = useState<FormState>(
     existing
       ? {
@@ -180,7 +193,7 @@ function DeviceModal({
           empleado_id: existing.empleado_id ?? '',
           usuario_asignado_nombre: existing.usuario_asignado_nombre,
           fecha_asignacion: existing.fecha_asignacion ?? '',
-          notas: existing.notas,
+          notes: existing.notas,
         }
       : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
   );
@@ -201,6 +214,8 @@ function DeviceModal({
   const handleEmpleadoChange = (empId: string, nombre: string) => {
     set('empleado_id', empId);
     set('usuario_asignado_nombre', nombre);
+    // Si asignamos un empleado, asumimos que pasa automáticamente a estar "Activo"
+    setEstadoVisual('activo'); 
   };
 
   const handleSave = async () => {
@@ -208,36 +223,26 @@ function DeviceModal({
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
     setSaving(true); setError('');
 
-// 1. Averiguamos qué booleano mandarle a la base de datos basándonos en el texto del formulario
-  let valorActivoBD = true;
-  if (form.activo === 'inactivo') {
-    valorActivoBD = false;
-  } else if (form.activo === 'stock') {
-    // Si tu sistema define el Stock como "activo: true pero sin usuario", lo dejamos en true.
-    // Si lo define como inactivo, cámbialo a false. Normalmente el stock en estos sistemas cuenta como activo: true.
-    valorActivoBD = true; 
-  }
-    
-    const payload = {
-    tipo: form.tipo,
-    marca_modelo: form.marca_modelo.trim(),
-    caracteristicas: form.caracteristicas.trim(),
-    centro_trabajo: form.centro_trabajo.trim(),
-    numero_serie: form.numero_serie.trim(),
-    
-    // ENVIAMOS EL BOOLEANO TRADUCIDO:
-    activo: valorActivoBD, 
-    
-    society_id: form.society_id,
-    
-    // Si seleccionamos 'stock', limpiamos el empleado y el nombre asignado para que el sistema sepa que está libre
-    empleado_id: form.activo === 'stock' ? null : (form.empleado_id || null),
-    usuario_asignado_nombre: form.activo === 'stock' ? 'Sin asignar' : form.usuario_asignado_nombre.trim(),
-    fecha_asignacion: form.activo === 'stock' ? null : (form.fecha_asignacion || null),
-    
-    notas: form.notas.trim(),
-  };
+    // 2. Traducimos el botón visual al booleano real que espera tu base de datos actual
+    // 'activo' -> true, 'inactivo' -> false, 'stock' -> true (sigue operativo, pero libre)
+    const valorActivoBD = estadoVisual === 'inactivo' ? false : true;
 
+    const payload = {
+      tipo: form.tipo,
+      marca_modelo: form.marca_modelo.trim(),
+      caracteristicas: form.caracteristicas.trim(),
+      centro_trabajo: form.centro_trabajo.trim(),
+      numero_serie: form.numero_serie.trim(),
+      activo: valorActivoBD, // Pasamos el booleano compatible
+      society_id: form.society_id,
+      
+      // Si el botón seleccionado es 'stock', limpiamos los campos para que la tabla principal pinte la fila amarilla
+      empleado_id: estadoVisual === 'stock' ? null : (form.empleado_id || null),
+      usuario_asignado_nombre: estadoVisual === 'stock' ? 'Sin asignar' : form.usuario_asignado_nombre.trim(),
+      fecha_asignacion: estadoVisual === 'stock' ? null : (form.fecha_asignacion || null),
+      
+      notas: form.notas.trim(),
+    };
     try {
       if (existing) {
         const { error: err } = await supabase.from('dispositivos').update(payload).eq('id', existing.id);

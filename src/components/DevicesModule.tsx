@@ -35,7 +35,7 @@ interface FormState {
   caracteristicas: string;
   centro_trabajo: string;
   numero_serie: string;
-  activo: boolean;
+  activo: 'activo' | 'inactivo' | 'stock'; // Mantenemos el estado como texto tal como espera tu BD
   society_id: string;
   empleado_id: string;
   usuario_asignado_nombre: string;
@@ -49,7 +49,7 @@ const EMPTY_FORM: FormState = {
   caracteristicas: '',
   centro_trabajo: '',
   numero_serie: '',
-  activo: true,
+  activo: 'activo',
   society_id: '',
   empleado_id: '',
   usuario_asignado_nombre: '',
@@ -73,7 +73,6 @@ function EmployeePicker({
   const ref = useRef<HTMLDivElement>(null);
 
   const selected = empleados.find((e) => e.id === value);
-
   const filtered = empleados
     .filter((e) => !search || e.nombre.toLowerCase().includes(search.toLowerCase()))
     .slice(0, 10);
@@ -161,7 +160,7 @@ function DeviceModal({
   onClose,
   onSaved,
 }: {
-  existing?: Dispositivo;
+  existing?: Dispositivo | null;
   empleados: Empleado[];
   centros: Centro[];
   onClose: () => void;
@@ -172,22 +171,22 @@ function DeviceModal({
       ? {
           tipo: existing.tipo,
           marca_modelo: existing.marca_modelo,
-          caracteristicas: existing.caracteristicas,
-          centro_trabajo: existing.centro_trabajo,
-          numero_serie: existing.numero_serie,
-          activo: existing.activo,
+          caracteristicas: existing.caracteristicas || '',
+          centro_trabajo: existing.centro_trabajo || '',
+          numero_serie: existing.numero_serie || '',
+          activo: (existing.activo as any) || 'activo', // Mandamos directamente el valor string que viene de la BD
           society_id: existing.society_id,
           empleado_id: existing.empleado_id ?? '',
-          usuario_asignado_nombre: existing.usuario_asignado_nombre,
+          usuario_assigned_nombre: (existing as any).usuario_asignado_nombre || '',
           fecha_asignacion: existing.fecha_asignacion ?? '',
-          notas: existing.notas,
+          notas: existing.notas || '',
         }
       : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const set = (key: keyof FormState, value: string | boolean) =>
+  const set = (key: keyof FormState, value: any) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
   const filteredEmpleados = empleados.filter(
@@ -201,6 +200,9 @@ function DeviceModal({
   const handleEmpleadoChange = (empId: string, nombre: string) => {
     set('empleado_id', empId);
     set('usuario_asignado_nombre', nombre);
+    if (empId && form.activo === 'stock') {
+      set('activo', 'activo');
+    }
   };
 
   const handleSave = async () => {
@@ -208,18 +210,17 @@ function DeviceModal({
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
     setSaving(true); setError('');
 
-    
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),
       caracteristicas: form.caracteristicas.trim(),
       centro_trabajo: form.centro_trabajo.trim(),
       numero_serie: form.numero_serie.trim(),
-      activo: form.activo,
+      activo: form.activo, // Enviamos directamente el string ('activo', 'inactivo', 'stock') tal como lo gestiona tu BD
       society_id: form.society_id,
-      empleado_id: form.empleado_id || null,
-      usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
-      fecha_asignacion: form.fecha_asignacion || null,
+      empleado_id: form.activo === 'stock' ? null : (form.empleado_id || null),
+      usuario_asignado_nombre: form.activo === 'stock' ? '' : form.usuario_asignado_nombre.trim(),
+      fecha_asignacion: form.activo === 'stock' ? null : (form.fecha_asignacion || null),
       notas: form.notas.trim(),
     };
 
@@ -251,7 +252,7 @@ function DeviceModal({
             </div>
             <h2 className="text-white font-semibold text-sm">{existing ? 'Editar dispositivo' : 'Nuevo dispositivo'}</h2>
           </div>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+          <button type="button" onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
             <X size={14} />
           </button>
         </div>
@@ -273,59 +274,62 @@ function DeviceModal({
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
               </div>
             </div>
-           <div>
-  <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
-  <div className="flex gap-2 pt-1">
-    {['activo', 'inactivo', 'stock'].map((v) => {
-      const isSelected = form.activo === v;
+            <div>
+              <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
+              <div className="flex gap-2 pt-1">
+                {['activo', 'inactivo', 'stock'].map((v) => {
+                  const isSelected = form.activo === v;
+                  let bgColor = '#F8FAFC';
+                  let textColor = '#94A3B8';
+                  let borderColor = '#E2E8F0';
 
-      // Colores por defecto (Cuando el botón NO está seleccionado)
-      let bgColor = '#F8FAFC';
-      let textColor = '#94A3B8';
-      let borderColor = '#E2E8F0';
+                  if (isSelected) {
+                    if (v === 'activo') {
+                      bgColor = '#ECFDF5';
+                      textColor = '#065F46';
+                      borderColor = '#6EE7B7';
+                    } else if (v === 'inactivo') {
+                      bgColor = '#FEF2F2';
+                      textColor = '#DC2626';
+                      borderColor = '#FECACA';
+                    } else if (v === 'stock') {
+                      bgColor = '#FEF9C3';
+                      textColor = '#854D0E';
+                      borderColor = '#FDE047';
+                    }
+                  }
 
-      // Colores cuando el botón SÍ está seleccionado
-      if (isSelected) {
-        if (v === 'activo') {
-          bgColor = '#ECFDF5';     // Verde claro
-          textColor = '#065F46';   // Verde oscuro
-          borderColor = '#6EE7B7'; 
-        } else if (v === 'inactivo') {
-          bgColor = '#FEF2F2';     // Rojo claro
-          textColor = '#DC2626';   // Rojo oscuro
-          borderColor = '#FECACA'; 
-        } else if (v === 'stock') {
-          bgColor = '#FEF9C3';     // Amarillo claro (¡Adiós al azul!)
-          textColor = '#854D0E';   // Amarillo/Marrón oscuro
-          borderColor = '#FDE047'; // Borde amarillo
-        }
-      }
-
-      return (
-        <button
-          key={v}
-          type="button"
-          onClick={() => set('activo', v)}
-          className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all capitalize"
-          style={{
-            backgroundColor: bgColor,
-            color: textColor,
-            border: `1.5px solid ${borderColor}`,
-          }}
-        >
-          {v === 'activo' ? 'Activo' : v === 'inactivo' ? 'Inactivo' : 'Stock'}
-        </button>
-      );
-    })}
-  </div>
-</div>
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => {
+                        set('activo', v);
+                        if (v === 'stock') {
+                          set('empleado_id', '');
+                          set('usuario_asignado_nombre', '');
+                          set('fecha_asignacion', '');
+                        }
+                      }}
+                      className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all capitalize"
+                      style={{
+                        backgroundColor: bgColor,
+                        color: textColor,
+                        border: `1.5px solid ${borderColor}`,
+                      }}
+                    >
+                      {v === 'activo' ? 'Activo' : v === 'inactivo' ? 'Inactivo' : 'Stock'}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           {/* Marca/Modelo */}
           <div>
             <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Marca / Modelo *</label>
             <input
-              autoFocus
               type="text"
               value={form.marca_modelo}
               onChange={(e) => { set('marca_modelo', e.target.value); setError(''); }}
@@ -440,10 +444,11 @@ function DeviceModal({
           )}
 
           <div className="flex gap-3 pt-1">
-            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
+            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
               Cancelar
             </button>
             <button
+              type="button"
               onClick={handleSave}
               disabled={saving}
               className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
@@ -477,8 +482,8 @@ function ConfirmDelete({ name, onConfirm, onClose, loading }: {
           </div>
         </div>
         <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
-          <button onClick={onConfirm} disabled={loading}
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+          <button type="button" onClick={onConfirm} disabled={loading}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
             style={{ backgroundColor: '#DC2626' }}>
             {loading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
@@ -500,13 +505,12 @@ export default function DevicesModule() {
   const [search, setSearch] = useState('');
   const [filterSociety, setFilterSociety] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
-  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo'>('all');
+  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo' | 'stock'>('all');
 
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Dispositivo | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Dispositivo | null>(null);
   const [deleting, setDeleting] = useState(false);
-
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -555,22 +559,24 @@ export default function DevicesModule() {
   const filtered = devices.filter((d) => {
     if (filterSociety && d.society_id !== filterSociety) return false;
     if (filterTipo && d.tipo !== filterTipo) return false;
-    if (filterActivo === 'activo' && !d.activo) return false;
-    if (filterActivo === 'inactivo' && d.activo) return false;
+    
+    // Filtro basado en la cadena de texto exacta de la BD
+    if (filterActivo !== 'all' && d.activo !== filterActivo) return false;
+
     if (search) {
       const q = search.toLowerCase();
       return (
         d.marca_modelo.toLowerCase().includes(q) ||
         d.tipo.toLowerCase().includes(q) ||
-        d.numero_serie.toLowerCase().includes(q) ||
-        d.usuario_asignado_nombre.toLowerCase().includes(q) ||
-        d.centro_trabajo.toLowerCase().includes(q)
+        (d.numero_serie && d.numero_serie.toLowerCase().includes(q)) ||
+        (d.usuario_asignado_nombre && d.usuario_asignado_nombre.toLowerCase().includes(q)) ||
+        (d.centro_trabajo && d.centro_trabajo.toLowerCase().includes(q))
       );
     }
     return true;
   });
 
-  const totalActivos = devices.filter((d) => d.activo).length;
+  const totalActivos = devices.filter((d) => d.activo === 'activo').length;
 
   return (
     <div className="space-y-4">
@@ -594,6 +600,7 @@ export default function DevicesModule() {
             </p>
           </div>
           <button
+            type="button"
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all hover:opacity-90"
             style={{ backgroundColor: '#0F172A', boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}
@@ -614,7 +621,7 @@ export default function DevicesModule() {
               className="w-full pl-8 pr-3 py-2 rounded-lg text-xs outline-none"
               style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}
             />
-            {search && <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer" style={{ color: '#94A3B8' }}><X size={11} /></button>}
+            {search && <button type="button" onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer" style={{ color: '#94A3B8' }}><X size={11} /></button>}
           </div>
           <select value={filterSociety} onChange={(e) => setFilterSociety(e.target.value)}
             className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
@@ -628,12 +635,13 @@ export default function DevicesModule() {
             <option value="">Todos los tipos</option>
             {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select value={filterActivo} onChange={(e) => setFilterActivo(e.target.value as 'all' | 'activo' | 'inactivo')}
+          <select value={filterActivo} onChange={(e) => setFilterActivo(e.target.value as any)}
             className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
             style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
             <option value="all">Todos los estados</option>
             <option value="activo">Activos</option>
             <option value="inactivo">Inactivos</option>
+            <option value="stock">En Stock</option>
           </select>
         </div>
 
@@ -641,7 +649,7 @@ export default function DevicesModule() {
         {error && (
           <div className="mx-6 mt-3 flex items-center gap-3 px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
             <AlertCircle size={15} /><span className="flex-1">{error}</span>
-            <button onClick={() => setError('')} className="cursor-pointer"><X size={13} /></button>
+            <button type="button" onClick={() => setError('')} className="cursor-pointer"><X size={13} /></button>
           </div>
         )}
         {success && (
@@ -683,17 +691,38 @@ export default function DevicesModule() {
             {filtered.map((dev) => {
               const Icon = typeIcon(dev.tipo);
               const society = societies.find((s) => s.id === dev.society_id);
+              
+              let labelEstado = 'Inactivo';
+              let colorBg = '#FEF2F2';
+              let colorTxt = '#DC2626';
+              let colorDot = '#EF4444';
+              let colorBorder = '#FECACA';
+
+              if (dev.activo === 'activo') {
+                labelEstado = 'Activo';
+                colorBg = '#ECFDF5';
+                colorTxt = '#065F46';
+                colorDot = '#22C55E';
+                colorBorder = '#6EE7B7';
+              } else if (dev.activo === 'stock') {
+                labelEstado = 'Stock';
+                colorBg = '#FEF9C3';
+                colorTxt = '#854D0E';
+                colorDot = '#EAB308';
+                colorBorder = '#FDE047';
+              }
+
               return (
                 <div key={dev.id} className="px-6 py-3.5 grid grid-cols-12 gap-3 items-center hover:bg-slate-50 transition-colors duration-100">
                   {/* Tipo icon */}
                   <div className="col-span-1">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: dev.activo ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${dev.activo ? '#BBF7D0' : '#FECACA'}` }}>
-                      <Icon size={14} style={{ color: dev.activo ? '#16A34A' : '#DC2626' }} />
+                      style={{ backgroundColor: dev.activo === 'inactivo' ? '#FEF2F2' : '#F0FDF4', border: `1px solid ${dev.activo === 'inactivo' ? '#FECACA' : '#BBF7D0'}` }}>
+                      <Icon size={14} style={{ color: dev.activo === 'inactivo' ? '#DC2626' : '#16A34A' }} />
                     </div>
                   </div>
 
-                  {/* Modelo + caracteristicas */}
+                  {/* Modelo */}
                   <div className="col-span-3 min-w-0">
                     <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>{dev.marca_modelo}</p>
                     {dev.caracteristicas && (
@@ -709,9 +738,9 @@ export default function DevicesModule() {
                     </p>
                   </div>
 
-                  {/* Usuario + fecha */}
+                  {/* Asignado */}
                   <div className="col-span-2 min-w-0">
-                    <p className="text-xs font-medium truncate" style={{ color: dev.usuario_asignado_nombre ? '#1E293B' : '#CBD5E1' }}>
+                    <p className="text-sm font-medium truncate" style={{ color: dev.usuario_asignado_nombre ? '#1E293B' : '#CBD5E1' }}>
                       {dev.usuario_asignado_nombre || 'Sin asignar'}
                     </p>
                     {dev.fecha_asignacion && (
@@ -719,11 +748,9 @@ export default function DevicesModule() {
                     )}
                   </div>
 
-                  {/* Centro + sociedad */}
+                  {/* Centro */}
                   <div className="col-span-2 min-w-0">
-                    {dev.centro_trabajo && (
-                      <p className="text-xs truncate" style={{ color: '#1E293B' }}>{dev.centro_trabajo}</p>
-                    )}
+                    <p className="text-sm truncate" style={{ color: '#1E293B' }}>{dev.centro_trabajo || '—'}</p>
                     {society && (
                       <span className="inline-block text-xs px-1.5 py-0.5 rounded mt-0.5" style={{ backgroundColor: society.primaryLight, color: society.primary, border: `1px solid ${society.border}` }}>
                         {society.name}
@@ -734,30 +761,20 @@ export default function DevicesModule() {
                   {/* Estado */}
                   <div className="col-span-1">
                     <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg"
-                      style={{ backgroundColor: dev.activo ? '#ECFDF5' : '#FEF2F2', border: `1px solid ${dev.activo ? '#6EE7B7' : '#FECACA'}` }}>
-                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dev.activo ? '#22C55E' : '#EF4444' }} />
-                      <span className="text-xs font-semibold" style={{ color: dev.activo ? '#065F46' : '#DC2626' }}>
-                        {dev.activo ? 'Activo' : 'Inactivo'}
+                      style={{ backgroundColor: colorBg, border: `1px solid ${colorBorder}` }}>
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: colorDot }} />
+                      <span className="text-xs font-semibold" style={{ color: colorTxt }}>
+                        {labelEstado}
                       </span>
                     </div>
                   </div>
 
-                  {/* Actions */}
+                  {/* Acciones */}
                   <div className="col-span-1 flex items-center justify-end gap-1">
-                    <button
-                      onClick={() => setEditing(dev)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors"
-                      title="Editar"
-                      style={{ color: '#CBD5E1' }}
-                    >
+                    <button type="button" onClick={() => setEditing(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#CBD5E1' }}>
                       <Pencil size={13} />
                     </button>
-                    <button
-                      onClick={() => setDeleteTarget(dev)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors"
-                      title="Eliminar"
-                      style={{ color: '#CBD5E1' }}
-                    >
+                    <button type="button" onClick={() => setDeleteTarget(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors" style={{ color: '#CBD5E1' }}>
                       <Trash2 size={13} />
                     </button>
                   </div>

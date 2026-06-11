@@ -272,26 +272,52 @@ function DeviceModal({
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
               </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
-              <div className="flex gap-2 pt-1">
-                {[true, false].map((v) => (
-                  <button
-                    key={String(v)}
-                    type="button"
-                    onClick={() => set('activo', v)}
-                    className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
-                    style={{
-                      backgroundColor: form.activo === v ? (v ? '#ECFDF5' : '#FEF2F2') : '#F8FAFC',
-                      color: form.activo === v ? (v ? '#065F46' : '#DC2626') : '#94A3B8',
-                      border: `1.5px solid ${form.activo === v ? (v ? '#6EE7B7' : '#FECACA') : '#E2E8F0'}`,
-                    }}
-                  >
-                    {v ? 'Activo' : 'Inactivo'}
-                  </button>
-                ))}
-              </div>
-            </div>
+           <div>
+  <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
+  <div className="flex gap-2 pt-1">
+    {['activo', 'inactivo', 'stock'].map((v) => {
+      const isSelected = form.activo === v;
+
+      // Colores por defecto (Cuando el botón NO está seleccionado)
+      let bgColor = '#F8FAFC';
+      let textColor = '#94A3B8';
+      let borderColor = '#E2E8F0';
+
+      // Colores cuando el botón SÍ está seleccionado
+      if (isSelected) {
+        if (v === 'activo') {
+          bgColor = '#ECFDF5';     // Verde claro
+          textColor = '#065F46';   // Verde oscuro
+          borderColor = '#6EE7B7'; 
+        } else if (v === 'inactivo') {
+          bgColor = '#FEF2F2';     // Rojo claro
+          textColor = '#DC2626';   // Rojo oscuro
+          borderColor = '#FECACA'; 
+        } else if (v === 'stock') {
+          bgColor = '#FEF9C3';     // Amarillo claro (¡Adiós al azul!)
+          textColor = '#854D0E';   // Amarillo/Marrón oscuro
+          borderColor = '#FDE047'; // Borde amarillo
+        }
+      }
+
+      return (
+        <button
+          key={v}
+          type="button"
+          onClick={() => set('activo', v)}
+          className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all capitalize"
+          style={{
+            backgroundColor: bgColor,
+            color: textColor,
+            border: `1.5px solid ${borderColor}`,
+          }}
+        >
+          {v === 'activo' ? 'Activo' : v === 'inactivo' ? 'Inactivo' : 'Stock'}
+        </button>
+      );
+    })}
+  </div>
+</div>
           </div>
 
           {/* Marca/Modelo */}

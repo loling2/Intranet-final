@@ -9,7 +9,7 @@ import type { Empleado, Centro } from '../supabaseClient';
 import { societies } from '../themes';
 
 // Forzamos que la interfaz local use string para el estado de los nuevos botones
-interface Dispositivo Local {
+interface DispositivoLocal {
   id: string;
   created_at?: string;
   tipo: string;

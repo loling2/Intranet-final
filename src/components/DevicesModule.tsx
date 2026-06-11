@@ -8,7 +8,7 @@ import { supabase } from '../supabaseClient';
 import type { Empleado, Centro } from '../supabaseClient';
 import { societies } from '../themes';
 
-// Forzamos que la interfaz local use string para el estado de los nuevos botones
+// Interfaz corregida sin espacios
 interface DispositivoLocal {
   id: string;
   created_at?: string;
@@ -17,7 +17,7 @@ interface DispositivoLocal {
   caracteristicas: string;
   centro_trabajo: string;
   numero_serie: string;
-  activo: string | boolean; // Soporta tanto boolean antiguo como string nuevo
+  activo: string | boolean; 
   society_id: string;
   empleado_id: string | null;
   usuario_asignado_nombre: string;
@@ -195,6 +195,7 @@ function DeviceModal({
           activo: String(existing.activo), 
           society_id: existing.society_id,
           empleado_id: existing.empleado_id ?? '',
+          usuario_assigned_nombre: existing.usuario_asignado_nombre || '',
           usuario_asignado_nombre: existing.usuario_asignado_nombre || '',
           fecha_asignacion: existing.fecha_asignacion ?? '',
           notas: existing.notas || '',
@@ -300,11 +301,11 @@ function DeviceModal({
                   let borderColor = '#E2E8F0';
 
                   if (isSelected) {
-                    if (v === 'activo' || v === 'true') {
+                    if (v === 'activo') {
                       bgColor = '#ECFDF5';
                       textColor = '#065F46';
                       borderColor = '#6EE7B7';
-                    } else if (v === 'inactivo' || v === 'false') {
+                    } else if (v === 'inactivo') {
                       bgColor = '#FEF2F2';
                       textColor = '#DC2626';
                       borderColor = '#FECACA';
@@ -339,7 +340,6 @@ function DeviceModal({
           <div>
             <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Marca / Modelo *</label>
             <input
-              autoFocus
               type="text"
               value={form.marca_modelo}
               onChange={(e) => { set('marca_modelo', e.target.value); setError(''); }}
@@ -418,7 +418,7 @@ function DeviceModal({
               <EmployeePicker
                 empleados={filteredEmpleados}
                 value={form.empleado_id}
-                onChange={handleEmpleadoChange} // <-- ¡Arreglado aquí!
+                onChange={handleEmpleadoChange}
               />
             </div>
             <div>
@@ -454,10 +454,11 @@ function DeviceModal({
           )}
 
           <div className="flex gap-3 pt-1">
-            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
+            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
               Cancelar
             </button>
             <button
+              type="button"
               onClick={handleSave}
               disabled={saving}
               className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
@@ -491,8 +492,8 @@ function ConfirmDelete({ name, onConfirm, onClose, loading }: {
           </div>
         </div>
         <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
-          <button onClick={onConfirm} disabled={loading}
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+          <button type="button" onClick={onConfirm} disabled={loading}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
             style={{ backgroundColor: '#DC2626' }}>
             {loading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
@@ -612,6 +613,7 @@ export default function DevicesModule() {
             </p>
           </div>
           <button
+            type="button"
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all hover:opacity-90"
             style={{ backgroundColor: '#0F172A', boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}
@@ -632,7 +634,7 @@ export default function DevicesModule() {
               className="w-full pl-8 pr-3 py-2 rounded-lg text-xs outline-none"
               style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}
             />
-            {search && <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer" style={{ color: '#94A3B8' }}><X size={11} /></button>}
+            {search && <button type="button" onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer" style={{ color: '#94A3B8' }}><X size={11} /></button>}
           </div>
           <select value={filterSociety} onChange={(e) => setFilterSociety(e.target.value)}
             className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
@@ -660,7 +662,7 @@ export default function DevicesModule() {
         {error && (
           <div className="mx-6 mt-3 flex items-center gap-3 px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
             <AlertCircle size={15} /><span className="flex-1">{error}</span>
-            <button onClick={() => setError('')} className="cursor-pointer"><X size={13} /></button>
+            <button type="button" onClick={() => setError('')} className="cursor-pointer"><X size={13} /></button>
           </div>
         )}
         {success && (
@@ -763,10 +765,10 @@ export default function DevicesModule() {
 
                   {/* Acciones */}
                   <div className="col-span-1 flex items-center justify-end gap-1">
-                    <button onClick={() => setEditing(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#64748B' }}>
+                    <button type="button" onClick={() => setEditing(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#64748B' }}>
                       <Pencil size={13} />
                     </button>
-                    <button onClick={() => setDeleteTarget(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors" style={{ color: '#EF4444' }}>
+                    <button type="button" onClick={() => setDeleteTarget(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors" style={{ color: '#EF4444' }}>
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -778,3 +780,4 @@ export default function DevicesModule() {
       </div>
     </div>
   );
+}

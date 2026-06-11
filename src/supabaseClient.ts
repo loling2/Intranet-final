@@ -173,11 +173,16 @@ export interface Dispositivo {
   caracteristicas: string;
   centro_trabajo: string;
   numero_serie: string;
-  activo: boolean;
+
+  estado_id: number;
+
   society_id: string;
   empleado_id: string | null;
   usuario_asignado_nombre: string;
   fecha_asignacion: string | null;
+
+  etiquetado: string | null;
+
   notas: string;
   created_at: string;
   updated_at: string;

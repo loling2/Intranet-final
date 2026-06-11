@@ -513,7 +513,7 @@ export default function DevicesModule() {
   const [filterSociety, setFilterSociety] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
   const [filterEstado, setFilterEstado] = useState<'all' | '1' | '2' | '3'>('all');
-
+const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Dispositivo | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Dispositivo | null>(null);
@@ -563,16 +563,16 @@ export default function DevicesModule() {
     setDeleteTarget(null);
   };
 
-  const filtered = devices.filter((d) => {
+ const filtered = devices
+  .filter((d) => {
     if (filterSociety && d.society_id !== filterSociety) return false;
     if (filterTipo && d.tipo !== filterTipo) return false;
-    
-    // Filtro basado en la cadena de texto exacta de la BD
-   if (
-  filterEstado !== 'all' &&
-  d.estado_id !== Number(filterEstado)
-)
-  return false;
+
+    if (
+      filterEstado !== 'all' &&
+      d.estado_id !== Number(filterEstado)
+    )
+      return false;
 
     if (search) {
       const q = search.toLowerCase();
@@ -584,7 +584,16 @@ export default function DevicesModule() {
         (d.centro_trabajo && d.centro_trabajo.toLowerCase().includes(q))
       );
     }
+
     return true;
+  })
+  .sort((a, b) => {
+    const etA = (a.etiquetado || '').toUpperCase();
+    const etB = (b.etiquetado || '').toUpperCase();
+
+    return sortEtiquetaAsc
+      ? etA.localeCompare(etB, undefined, { numeric: true })
+      : etB.localeCompare(etA, undefined, { numeric: true });
   });
 
 const totalActivos =
@@ -697,7 +706,12 @@ const totalActivos =
             <div className="px-6 py-2.5 grid grid-cols-12 gap-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8', backgroundColor: '#F8FAFC' }}>
               <div className="col-span-1">Tipo</div>
               <div className="col-span-3">Modelo</div>
-              <div className="col-span-1">ETIQUETA</div>
+             <div
+  className="col-span-1 cursor-pointer select-none"
+  onClick={() => setSortEtiquetaAsc(!sortEtiquetaAsc)}
+>
+  ETIQUETA {sortEtiquetaAsc ? '↑' : '↓'}
+</div>
               <div className="col-span-2">Serie</div>
               <div className="col-span-2">Asignado a</div>
               <div className="col-span-1">Centro / Sociedad</div>

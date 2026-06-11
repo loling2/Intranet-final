@@ -731,12 +731,39 @@ const totalActivos =
               return (
                 <div key={dev.id} className="px-6 py-3.5 grid grid-cols-12 gap-3 items-center hover:bg-slate-50 transition-colors duration-100">
                   {/* Tipo icon */}
-                  <div className="col-span-1">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: dev.estado_id === 2 ? '#FEF2F2' : '#F0FDF4', border: `1px solid ${dev.estado_id === 2 ? '#FECACA' : '#BBF7D0'}` }}>
-                      <Icon size={14} style={{ color: dev.estado_id === 2 ? '#DC2626' : '#16A34A' }} />
-                    </div>
-                  </div>
+<div className="col-span-1">
+  <div
+    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+    style={{
+      backgroundColor:
+        dev.estado_id === 1
+          ? '#F0FDF4'
+          : dev.estado_id === 2
+          ? '#FEF2F2'
+          : '#FEF9C3',
+
+      border: `1px solid ${
+        dev.estado_id === 1
+          ? '#BBF7D0'
+          : dev.estado_id === 2
+          ? '#FECACA'
+          : '#FDE047'
+      }`,
+    }}
+  >
+    <Icon
+      size={14}
+      style={{
+        color:
+          dev.estado_id === 1
+            ? '#16A34A'
+            : dev.estado_id === 2
+            ? '#DC2626'
+            : '#CA8A04',
+      }}
+    />
+  </div>
+</div>
 
                   {/* Modelo */}
                   <div className="col-span-3 min-w-0">

@@ -807,7 +807,7 @@ const totalActivos =
                   </div>
 
                   {/* Centro */}
-                  <div className="col-span-2 min-w-0">
+                  <div className="col-span-1 min-w-0">
                     <p className="text-sm truncate" style={{ color: '#1E293B' }}>{dev.centro_trabajo || '—'}</p>
                     {society && (
                       <span className="inline-block text-xs px-1.5 py-0.5 rounded mt-0.5" style={{ backgroundColor: society.primaryLight, color: society.primary, border: `1px solid ${society.border}` }}>

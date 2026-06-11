@@ -34,6 +34,9 @@ interface FormState {
   caracteristicas: string;
   centro_trabajo: string;
   numero_serie: string;
+
+  etiquetado: string;
+
   estado_id: 1 | 2 | 3;
   society_id: string;
   empleado_id: string;
@@ -48,6 +51,9 @@ const EMPTY_FORM: FormState = {
   caracteristicas: '',
   centro_trabajo: '',
   numero_serie: '',
+
+  etiquetado: '',
+
   estado_id: 1,
   society_id: '',
   empleado_id: '',
@@ -55,7 +61,6 @@ const EMPTY_FORM: FormState = {
   fecha_asignacion: '',
   notas: '',
 };
-
 // ── Searchable Employee Picker ────────────────────────────────────────────────
 
 function EmployeePicker({
@@ -170,6 +175,7 @@ function DeviceModal({
       ? {
           tipo: existing.tipo,
           marca_modelo: existing.marca_modelo,
+        etiquetado: existing.etiquetado || '',
           caracteristicas: existing.caracteristicas || '',
           centro_trabajo: existing.centro_trabajo || '',
           numero_serie: existing.numero_serie || '',
@@ -212,6 +218,7 @@ function DeviceModal({
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),
+      etiquetado: form.etiquetado.trim(),
       caracteristicas: form.caracteristicas.trim(),
       centro_trabajo: form.centro_trabajo.trim(),
       numero_serie: form.numero_serie.trim(),
@@ -345,6 +352,31 @@ function DeviceModal({
             />
           </div>
 
+
+{/* Etiquetado */}
+<div>
+  <label
+    className="block text-xs font-semibold mb-1 uppercase tracking-wider"
+    style={{ color: '#64748B' }}
+  >
+    Etiquetado
+  </label>
+
+  <input
+    type="text"
+    value={form.etiquetado}
+    onChange={(e) => set('etiquetado', e.target.value.toUpperCase())}
+    placeholder="Ej: PORTA-01"
+    className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+    style={{
+      border: '1.5px solid #E2E8F0',
+      color: '#1E293B',
+      backgroundColor: '#F8FAFC'
+    }}
+  />
+</div>
+
+          
           {/* Caracteristicas */}
           <div>
             <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Caracteristicas tecnicas</label>

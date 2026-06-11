@@ -219,24 +219,18 @@ function DeviceModal({
   }
     
     const payload = {
-    tipo: form.tipo,
-    marca_modelo: form.marca_modelo.trim(),
-    caracteristicas: form.caracteristicas.trim(),
-    centro_trabajo: form.centro_trabajo.trim(),
-    numero_serie: form.numero_serie.trim(),
-    
-    // ENVIAMOS EL BOOLEANO TRADUCIDO:
-    activo: valorActivoBD, 
-    
-    society_id: form.society_id,
-    
-    // Si seleccionamos 'stock', limpiamos el empleado y el nombre asignado para que el sistema sepa que está libre
-    empleado_id: form.activo === 'stock' ? null : (form.empleado_id || null),
-    usuario_asignado_nombre: form.activo === 'stock' ? 'Sin asignar' : form.usuario_asignado_nombre.trim(),
-    fecha_asignacion: form.activo === 'stock' ? null : (form.fecha_asignacion || null),
-    
-    notas: form.notas.trim(),
-  };
+      tipo: form.tipo,
+      marca_modelo: form.marca_modelo.trim(),
+      caracteristicas: form.caracteristicas.trim(),
+      centro_trabajo: form.centro_trabajo.trim(),
+      numero_serie: form.numero_serie.trim(),
+      activo: form.activo,
+      society_id: form.society_id,
+      empleado_id: form.empleado_id || null,
+      usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
+      fecha_asignacion: form.fecha_asignacion || null,
+      notas: form.notas.trim(),
+    };
 
     try {
       if (existing) {

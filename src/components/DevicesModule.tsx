@@ -647,7 +647,7 @@ const totalActivos =
             <option value="">Todos los tipos</option>
             {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select value={filterActivo} onChange={(e) => setFilterEstado(e.target.value as any)}
+          <select  value={filterEstado} onChange={(e) => setFilterEstado(e.target.value as any)}
             className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
             style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
             <option value="all">Todos los estados</option>
@@ -684,7 +684,11 @@ const totalActivos =
               {search || filterSociety || filterTipo || filterEstado !== 'all' ? 'Sin resultados' : 'Sin dispositivos registrados'}
             </p>
             <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
-              {!search && !filterSociety && !filterTipo && filterActivo === 'all' && 'Pulsa "Nuevo dispositivo" para empezar'}
+             {!search &&
+ !filterSociety &&
+ !filterTipo &&
+ filterEstado === 'all' &&
+ 'Pulsa "Nuevo dispositivo" para empezar'}
             </p>
           </div>
         ) : (

@@ -8,7 +8,7 @@ import { supabase } from '../supabaseClient';
 import type { Dispositivo, Empleado, Centro } from '../supabaseClient';
 import { societies } from '../themes';
 
-const TIPOS = ['Portatil', 'Sobremesa', 'Monitor', 'Movil', 'Tablet', 'Periferico', 'VoIP','Impresora','Nuc', 'Otro'];
+const TIPOS = ['Portatil', 'Sobremesa', 'Monitor', 'Movil', 'Tablet', 'Periferico', 'VoIP', 'Otro'];
 
 function typeIcon(tipo: string) {
   switch (tipo) {
@@ -17,9 +17,6 @@ function typeIcon(tipo: string) {
     case 'Monitor': return Monitor;
     case 'Movil': return Smartphone;
     case 'Tablet': return Tablet;
-    case 'VoIP': return Phone;
-    case 'Impresora': return Printer;
-    case 'Nuc': return Settings;
     default: return Headphones;
   }
 }

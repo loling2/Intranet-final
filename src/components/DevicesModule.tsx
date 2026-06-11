@@ -35,7 +35,7 @@ interface FormState {
   caracteristicas: string;
   centro_trabajo: string;
   numero_serie: string;
-  activo: 'activo' | 'inactivo' | 'stock'; // Estado visual local
+  activo: boolean;
   society_id: string;
   empleado_id: string;
   usuario_asignado_nombre: string;
@@ -49,7 +49,7 @@ const EMPTY_FORM: FormState = {
   caracteristicas: '',
   centro_trabajo: '',
   numero_serie: '',
-  activo: 'activo',
+  activo: true,
   society_id: '',
   empleado_id: '',
   usuario_asignado_nombre: '',
@@ -73,6 +73,7 @@ function EmployeePicker({
   const ref = useRef<HTMLDivElement>(null);
 
   const selected = empleados.find((e) => e.id === value);
+
   const filtered = empleados
     .filter((e) => !search || e.nombre.toLowerCase().includes(search.toLowerCase()))
     .slice(0, 10);
@@ -160,42 +161,33 @@ function DeviceModal({
   onClose,
   onSaved,
 }: {
-  existing?: Dispositivo | null;
+  existing?: Dispositivo;
   empleados: Empleado[];
   centros: Centro[];
   onClose: () => void;
   onSaved: () => void;
 }) {
-  // Mapeamos el booleano existente de la BD a nuestros 3 estados visuales posibles
-  const getInitialActiveState = (): 'activo' | 'inactivos' | 'stock' => {
-    if (!existing) return 'activo';
-    if (existing.activo === false) return 'inactivo';
-    // Si es activo (true) pero no tiene nadie asignado, asumimos que puede ser stock
-    if (existing.activo === true && !existing.empleado_id) return 'stock';
-    return 'activo';
-  };
-
   const [form, setForm] = useState<FormState>(
     existing
       ? {
           tipo: existing.tipo,
           marca_modelo: existing.marca_modelo,
-          caracteristicas: existing.caracteristicas || '',
-          centro_trabajo: existing.centro_trabajo || '',
-          numero_serie: existing.numero_serie || '',
-          activo: getInitialActiveState() as any,
+          caracteristicas: existing.caracteristicas,
+          centro_trabajo: existing.centro_trabajo,
+          numero_serie: existing.numero_serie,
+          activo: existing.activo,
           society_id: existing.society_id,
           empleado_id: existing.empleado_id ?? '',
-          usuario_asignado_nombre: existing.usuario_asignado_nombre || '',
+          usuario_asignado_nombre: existing.usuario_asignado_nombre,
           fecha_asignacion: existing.fecha_asignacion ?? '',
-          notas: existing.notas || '',
+          notas: existing.notas,
         }
       : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const set = (key: keyof FormState, value: any) =>
+  const set = (key: keyof FormState, value: string | boolean) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
   const filteredEmpleados = empleados.filter(
@@ -209,10 +201,6 @@ function DeviceModal({
   const handleEmpleadoChange = (empId: string, nombre: string) => {
     set('empleado_id', empId);
     set('usuario_asignado_nombre', nombre);
-    // Si asignamos a un empleado, quitamos automáticamente el estado de 'stock' a 'activo'
-    if (empId && form.activo === 'stock') {
-      set('activo', 'activo');
-    }
   };
 
   const handleSave = async () => {
@@ -220,23 +208,17 @@ function DeviceModal({
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
     setSaving(true); setError('');
 
-    // Traducimos el estado visual del botón al booleano real que espera Supabase
-    let dbActivo = true;
-    if (form.activo === 'inactivo') {
-      dbActivo = false;
-    }
-
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),
       caracteristicas: form.caracteristicas.trim(),
       centro_trabajo: form.centro_trabajo.trim(),
       numero_serie: form.numero_serie.trim(),
-      activo: dbActivo, // Enviamos el booleano esperado por tu Base de Datos
+      activo: form.activo,
       society_id: form.society_id,
-      empleado_id: form.activo === 'stock' ? null : (form.empleado_id || null),
-      usuario_asignado_nombre: form.activo === 'stock' ? '' : form.usuario_asignado_nombre.trim(),
-      fecha_asignacion: form.activo === 'stock' ? null : (form.fecha_asignacion || null),
+      empleado_id: form.empleado_id || null,
+      usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
+      fecha_asignacion: form.fecha_asignacion || null,
       notas: form.notas.trim(),
     };
 
@@ -252,9 +234,9 @@ function DeviceModal({
       onClose();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al guardar');
-   } finally {
-  setSaving(false);
-}
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -293,52 +275,21 @@ function DeviceModal({
             <div>
               <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
               <div className="flex gap-2 pt-1">
-                {['activo', 'inactivo', 'stock'].map((v) => {
-                  const isSelected = form.activo === v;
-
-                  let bgColor = '#F8FAFC';
-                  let textColor = '#94A3B8';
-                  let borderColor = '#E2E8F0';
-
-                  if (isSelected) {
-                    if (v === 'activo') {
-                      bgColor = '#ECFDF5';
-                      textColor = '#065F46';
-                      borderColor = '#6EE7B7';
-                    } else if (v === 'inactivo') {
-                      bgColor = '#FEF2F2';
-                      textColor = '#DC2626';
-                      borderColor = '#FECACA';
-                    } else if (v === 'stock') {
-                      bgColor = '#FEF9C3';
-                      textColor = '#854D0E';
-                      borderColor = '#FDE047';
-                    }
-                  }
-
-                  return (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => {
-                        set('activo', v);
-                        if (v === 'stock') {
-                          set('empleado_id', '');
-                          set('usuario_asignado_nombre', '');
-                          set('fecha_asignacion', '');
-                        }
-                      }}
-                      className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all capitalize"
-                      style={{
-                        backgroundColor: bgColor,
-                        color: textColor,
-                        border: `1.5px solid ${borderColor}`,
-                      }}
-                    >
-                      {v === 'activo' ? 'Activo' : v === 'inactivo' ? 'Inactivo' : 'Stock'}
-                    </button>
-                  );
-                })}
+                {[true, false].map((v) => (
+                  <button
+                    key={String(v)}
+                    type="button"
+                    onClick={() => set('activo', v)}
+                    className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+                    style={{
+                      backgroundColor: form.activo === v ? (v ? '#ECFDF5' : '#FEF2F2') : '#F8FAFC',
+                      color: form.activo === v ? (v ? '#065F46' : '#DC2626') : '#94A3B8',
+                      border: `1.5px solid ${form.activo === v ? (v ? '#6EE7B7' : '#FECACA') : '#E2E8F0'}`,
+                    }}
+                  >
+                    {v ? 'Activo' : 'Inactivo'}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
@@ -347,6 +298,7 @@ function DeviceModal({
           <div>
             <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Marca / Modelo *</label>
             <input
+              autoFocus
               type="text"
               value={form.marca_modelo}
               onChange={(e) => { set('marca_modelo', e.target.value); setError(''); }}
@@ -461,11 +413,10 @@ function DeviceModal({
           )}
 
           <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
+            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
               Cancelar
             </button>
             <button
-              type="button"
               onClick={handleSave}
               disabled={saving}
               className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
@@ -499,8 +450,8 @@ function ConfirmDelete({ name, onConfirm, onClose, loading }: {
           </div>
         </div>
         <div className="flex gap-3">
-          <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
-          <button type="button" onClick={onConfirm} disabled={loading}
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+          <button onClick={onConfirm} disabled={loading}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
             style={{ backgroundColor: '#DC2626' }}>
             {loading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
@@ -522,12 +473,13 @@ export default function DevicesModule() {
   const [search, setSearch] = useState('');
   const [filterSociety, setFilterSociety] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
-  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo' | 'stock'>('all');
+  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo'>('all');
 
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Dispositivo | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Dispositivo | null>(null);
   const [deleting, setDeleting] = useState(false);
+
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -576,20 +528,16 @@ export default function DevicesModule() {
   const filtered = devices.filter((d) => {
     if (filterSociety && d.society_id !== filterSociety) return false;
     if (filterTipo && d.tipo !== filterTipo) return false;
-    
-    // Lógica para el filtrado en la tabla principal
-    if (filterActivo === 'activo' && (!d.activo || !d.empleado_id)) return false;
+    if (filterActivo === 'activo' && !d.activo) return false;
     if (filterActivo === 'inactivo' && d.activo) return false;
-    if (filterActivo === 'stock' && (!d.activo || d.empleado_id)) return false;
-
     if (search) {
       const q = search.toLowerCase();
       return (
         d.marca_modelo.toLowerCase().includes(q) ||
         d.tipo.toLowerCase().includes(q) ||
-        (d.numero_serie && d.numero_serie.toLowerCase().includes(q)) ||
-        (d.usuario_asignado_nombre && d.usuario_asignado_nombre.toLowerCase().includes(q)) ||
-        (d.centro_trabajo && d.centro_trabajo.toLowerCase().includes(q))
+        d.numero_serie.toLowerCase().includes(q) ||
+        d.usuario_asignado_nombre.toLowerCase().includes(q) ||
+        d.centro_trabajo.toLowerCase().includes(q)
       );
     }
     return true;
@@ -619,7 +567,6 @@ export default function DevicesModule() {
             </p>
           </div>
           <button
-            type="button"
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all hover:opacity-90"
             style={{ backgroundColor: '#0F172A', boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}
@@ -640,7 +587,7 @@ export default function DevicesModule() {
               className="w-full pl-8 pr-3 py-2 rounded-lg text-xs outline-none"
               style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}
             />
-            {search && <button type="button" onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer" style={{ color: '#94A3B8' }}><X size={11} /></button>}
+            {search && <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer" style={{ color: '#94A3B8' }}><X size={11} /></button>}
           </div>
           <select value={filterSociety} onChange={(e) => setFilterSociety(e.target.value)}
             className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
@@ -654,13 +601,12 @@ export default function DevicesModule() {
             <option value="">Todos los tipos</option>
             {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select value={filterActivo} onChange={(e) => setFilterActivo(e.target.value as any)}
+          <select value={filterActivo} onChange={(e) => setFilterActivo(e.target.value as 'all' | 'activo' | 'inactivo')}
             className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
             style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
             <option value="all">Todos los estados</option>
             <option value="activo">Activos</option>
             <option value="inactivo">Inactivos</option>
-            <option value="stock">En Stock</option>
           </select>
         </div>
 
@@ -668,7 +614,7 @@ export default function DevicesModule() {
         {error && (
           <div className="mx-6 mt-3 flex items-center gap-3 px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
             <AlertCircle size={15} /><span className="flex-1">{error}</span>
-            <button type="button" onClick={() => setError('')} className="cursor-pointer"><X size={13} /></button>
+            <button onClick={() => setError('')} className="cursor-pointer"><X size={13} /></button>
           </div>
         )}
         {success && (
@@ -710,30 +656,6 @@ export default function DevicesModule() {
             {filtered.map((dev) => {
               const Icon = typeIcon(dev.tipo);
               const society = societies.find((s) => s.id === dev.society_id);
-              
-              // Resolvemos el estado real en la lista
-              let labelEstado = 'Inactivo';
-              let colorBg = '#FEF2F2';
-              let colorTxt = '#DC2626';
-              let colorDot = '#EF4444';
-              let colorBorder = '#FECACA';
-
-              if (dev.activo) {
-                if (!dev.empleado_id) {
-                  labelEstado = 'Stock';
-                  colorBg = '#FEF9C3';
-                  colorTxt = '#854D0E';
-                  colorDot = '#EAB308';
-                  colorBorder = '#FDE047';
-                } else {
-                  labelEstado = 'Activo';
-                  colorBg = '#ECFDF5';
-                  colorTxt = '#065F46';
-                  colorDot = '#22C55E';
-                  colorBorder = '#6EE7B7';
-                }
-              }
-
               return (
                 <div key={dev.id} className="px-6 py-3.5 grid grid-cols-12 gap-3 items-center hover:bg-slate-50 transition-colors duration-100">
                   {/* Tipo icon */}
@@ -760,9 +682,9 @@ export default function DevicesModule() {
                     </p>
                   </div>
 
-                  {/* Asignado a */}
+                  {/* Usuario + fecha */}
                   <div className="col-span-2 min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: dev.usuario_asignado_nombre ? '#1E293B' : '#CBD5E1' }}>
+                    <p className="text-xs font-medium truncate" style={{ color: dev.usuario_asignado_nombre ? '#1E293B' : '#CBD5E1' }}>
                       {dev.usuario_asignado_nombre || 'Sin asignar'}
                     </p>
                     {dev.fecha_asignacion && (
@@ -770,9 +692,11 @@ export default function DevicesModule() {
                     )}
                   </div>
 
-                  {/* Centro / Sociedad */}
+                  {/* Centro + sociedad */}
                   <div className="col-span-2 min-w-0">
-                    <p className="text-sm truncate" style={{ color: '#1E293B' }}>{dev.centro_trabajo || '—'}</p>
+                    {dev.centro_trabajo && (
+                      <p className="text-xs truncate" style={{ color: '#1E293B' }}>{dev.centro_trabajo}</p>
+                    )}
                     {society && (
                       <span className="inline-block text-xs px-1.5 py-0.5 rounded mt-0.5" style={{ backgroundColor: society.primaryLight, color: society.primary, border: `1px solid ${society.border}` }}>
                         {society.name}
@@ -783,20 +707,30 @@ export default function DevicesModule() {
                   {/* Estado */}
                   <div className="col-span-1">
                     <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg"
-                      style={{ backgroundColor: colorBg, border: `1px solid ${colorBorder}` }}>
-                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: colorDot }} />
-                      <span className="text-xs font-semibold" style={{ color: colorTxt }}>
-                        {labelEstado}
+                      style={{ backgroundColor: dev.activo ? '#ECFDF5' : '#FEF2F2', border: `1px solid ${dev.activo ? '#6EE7B7' : '#FECACA'}` }}>
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dev.activo ? '#22C55E' : '#EF4444' }} />
+                      <span className="text-xs font-semibold" style={{ color: dev.activo ? '#065F46' : '#DC2626' }}>
+                        {dev.activo ? 'Activo' : 'Inactivo'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Acciones */}
+                  {/* Actions */}
                   <div className="col-span-1 flex items-center justify-end gap-1">
-                    <button type="button" onClick={() => setEditing(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#CBD5E1' }}>
+                    <button
+                      onClick={() => setEditing(dev)}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors"
+                      title="Editar"
+                      style={{ color: '#CBD5E1' }}
+                    >
                       <Pencil size={13} />
                     </button>
-                    <button type="button" onClick={() => setDeleteTarget(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors" style={{ color: '#CBD5E1' }}>
+                    <button
+                      onClick={() => setDeleteTarget(dev)}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors"
+                      title="Eliminar"
+                      style={{ color: '#CBD5E1' }}
+                    >
                       <Trash2 size={13} />
                     </button>
                   </div>

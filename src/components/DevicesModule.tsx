@@ -154,33 +154,24 @@ function EmployeePicker({
 
 // ── Device Modal ──────────────────────────────────────────────────────────────
 
+// 1. Asegúrate de añadir "estados" en las propiedades del componente
 function DeviceModal({
   existing,
   empleados,
   centros,
+  estados, // <-- Añade esto aquí
   onClose,
   onSaved,
 }: {
-  existing?: Dispositivo;
+  existing?: any;
   empleados: Empleado[];
   centros: Centro[];
+  estados: { id: string; nombre: string }[]; // <-- Ajusta el tipo según tu proyecto
   onClose: () => void;
   onSaved: () => void;
 }) {
-  // 1. Averiguamos cuál de los 3 botones ('activo', 'inactivo', 'stock') debe marcarse visualmente al abrir
-  const obtenerEstadoVisualInicial = (): 'activo' | 'inactivo' | 'stock' => {
-    if (!existing) return 'activo';
-    // Si en la base de datos está como 'true' pero no tiene usuario, es que está en Stock
-    if (existing.activo && (!existing.empleado_id || existing.usuario_asignado_nombre === 'Sin asignar')) {
-      return 'stock';
-    }
-    return existing.activo ? 'activo' : 'inactivo';
-  };
 
-  // Estado independiente exclusivo para controlar la interfaz de los botones
-  const [estadoVisual, setEstadoVisual] = useState<'activo' | 'inactivo' | 'stock'>(obtenerEstadoVisualInicial());
-
-  const [form, setForm] = useState<FormState>(
+  const [form, setForm] = useState<any>(
     existing
       ? {
           tipo: existing.tipo,
@@ -188,44 +179,33 @@ function DeviceModal({
           caracteristicas: existing.caracteristicas,
           centro_trabajo: existing.centro_trabajo,
           numero_serie: existing.numero_serie,
-          activo: existing.activo,
+          
+          // LEEMOS EL ID DE ESTADO DE LA BASE DE DATOS
+          id_estado: existing.id_estado, 
+          
           society_id: existing.society_id,
           empleado_id: existing.empleado_id ?? '',
-          usuario_asignado_nombre: existing.usuario_asignado_nombre,
+          usuario_assigned_nombre: existing.usuario_asignado_nombre,
           fecha_asignacion: existing.fecha_asignacion ?? '',
-          notes: existing.notas,
+          notas: existing.notas,
         }
-      : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
-  );
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const set = (key: keyof FormState, value: string | boolean) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
-
-  const filteredEmpleados = empleados.filter(
-    (e) => !form.society_id || e.id_sociedad === form.society_id
+      : { 
+          ...EMPTY_FORM, 
+          society_id: societies[0]?.id ?? '',
+          id_estado: estados.find(e => e.nombre.toLowerCase().includes('activ'))?.id ?? '' // Activo por defecto
+        }
   );
 
-  const filteredCentros = centros.filter(
-    (c) => !c.id_sociedad || c.id_sociedad === form.society_id
-  );
-
-  const handleEmpleadoChange = (empId: string, nombre: string) => {
-    set('empleado_id', empId);
-    set('usuario_asignado_nombre', nombre);
-    // Si asignamos un empleado, asumimos que pasa automáticamente a estar "Activo"
-    setEstadoVisual('activo'); 
-  };
+  // ... (Tus funciones filteredEmpleados, filteredCentros, etc. se quedan igual)
 
   const handleSave = async () => {
     if (!form.marca_modelo.trim()) { setError('La marca/modelo es obligatoria.'); return; }
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
     setSaving(true); setError('');
 
-    // 2. Traducimos el botón visual al booleano real que espera tu base de datos actual
-    // 'activo' -> true, 'inactivo' -> false, 'stock' -> true (sigue operativo, pero libre)
-    const valorActivoBD = estadoVisual === 'inactivo' ? false : true;
+    // Averiguamos si el estado seleccionado es "Stock" para limpiar el usuario automáticamente
+    const estadoSeleccionado = estados.find(e => e.id === form.id_estado);
+    const esStock = estadoSeleccionado?.nombre.toLowerCase().includes('stock');
 
     const payload = {
       tipo: form.tipo,
@@ -233,13 +213,16 @@ function DeviceModal({
       caracteristicas: form.caracteristicas.trim(),
       centro_trabajo: form.centro_trabajo.trim(),
       numero_serie: form.numero_serie.trim(),
-      activo: valorActivoBD, // Pasamos el booleano compatible
+      
+      // PASAMOS LA NUEVA COLUMNA A SUPABASE (¡Ya no usamos "activo"!)
+      id_estado: form.id_estado, 
+      
       society_id: form.society_id,
       
-      // Si el botón seleccionado es 'stock', limpiamos los campos para que la tabla principal pinte la fila amarilla
-      empleado_id: estadoVisual === 'stock' ? null : (form.empleado_id || null),
-      usuario_asignado_nombre: estadoVisual === 'stock' ? 'Sin asignar' : form.usuario_asignado_nombre.trim(),
-      fecha_asignacion: estadoVisual === 'stock' ? null : (form.fecha_asignacion || null),
+      // Si es Stock, limpiamos las asignaciones automáticamente
+      empleado_id: esStock ? null : (form.empleado_id || null),
+      usuario_asignado_nombre: esStock ? 'Sin asignar' : form.usuario_asignado_nombre.trim(),
+      fecha_asignacion: esStock ? null : (form.fecha_asignacion || null),
       
       notas: form.notas.trim(),
     };
@@ -293,39 +276,41 @@ function DeviceModal({
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
               </div>
             </div>
-           <div>
+<div>
   <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
   <div className="flex gap-2 pt-1">
-    {['activo', 'inactivo', 'stock'].map((v) => {
-      const isSelected = form.activo === v;
+    {estados.map((est) => {
+      // Comparamos por el ID de la nueva tabla de estados
+      const isSelected = form.id_estado === est.id; 
 
-      // Colores por defecto (Cuando el botón NO está seleccionado)
       let bgColor = '#F8FAFC';
       let textColor = '#94A3B8';
       let borderColor = '#E2E8F0';
 
-      // Colores cuando el botón SÍ está seleccionado
       if (isSelected) {
-        if (v === 'activo') {
-          bgColor = '#ECFDF5';     // Verde claro
-          textColor = '#065F46';   // Verde oscuro
-          borderColor = '#6EE7B7'; 
-        } else if (v === 'inactivo') {
-          bgColor = '#FEF2F2';     // Rojo claro
-          textColor = '#DC2626';   // Rojo oscuro
-          borderColor = '#FECACA'; 
-        } else if (v === 'stock') {
-          bgColor = '#FEF9C3';     // Amarillo claro (¡Adiós al azul!)
-          textColor = '#854D0E';   // Amarillo/Marrón oscuro
-          borderColor = '#FDE047'; // Borde amarillo
+        // Buscamos el nombre del estado (en minúsculas para comparar el color)
+        const nombreMin = est.nombre.toLowerCase();
+        
+        if (nombreMin.includes('activ')) {
+          bgColor = '#ECFDF5';
+          textColor = '#065F46';
+          borderColor = '#6EE7B7';
+        } else if (nombreMin.includes('inactiv')) {
+          bgColor = '#FEF2F2';
+          textColor = '#DC2626';
+          borderColor = '#FECACA';
+        } else if (nombreMin.includes('stock')) {
+          bgColor = '#FEF9C3'; // ¡Tu amarillo de Stock!
+          textColor = '#854D0E';
+          borderColor = '#FDE047';
         }
       }
 
       return (
         <button
-          key={v}
+          key={est.id}
           type="button"
-          onClick={() => set('activo', v)}
+          onClick={() => set('id_estado', est.id)} // Guardamos directamente el ID
           className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all capitalize"
           style={{
             backgroundColor: bgColor,
@@ -333,7 +318,7 @@ function DeviceModal({
             border: `1.5px solid ${borderColor}`,
           }}
         >
-          {v === 'activo' ? 'Activo' : v === 'inactivo' ? 'Inactivo' : 'Stock'}
+          {est.nombre}
         </button>
       );
     })}

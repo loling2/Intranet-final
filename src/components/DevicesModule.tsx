@@ -154,24 +154,20 @@ function EmployeePicker({
 
 // ── Device Modal ──────────────────────────────────────────────────────────────
 
-// 1. Asegúrate de añadir "estados" en las propiedades del componente
 function DeviceModal({
   existing,
   empleados,
   centros,
-  estados, // <-- Añade esto aquí
   onClose,
   onSaved,
 }: {
-  existing?: any;
+  existing?: Dispositivo;
   empleados: Empleado[];
   centros: Centro[];
-  estados: { id: string; nombre: string }[]; // <-- Ajusta el tipo según tu proyecto
   onClose: () => void;
   onSaved: () => void;
 }) {
-
-  const [form, setForm] = useState<any>(
+  const [form, setForm] = useState<FormState>(
     existing
       ? {
           tipo: existing.tipo,
@@ -179,33 +175,38 @@ function DeviceModal({
           caracteristicas: existing.caracteristicas,
           centro_trabajo: existing.centro_trabajo,
           numero_serie: existing.numero_serie,
-          
-          // LEEMOS EL ID DE ESTADO DE LA BASE DE DATOS
-          id_estado: existing.id_estado, 
-          
+          activo: existing.activo,
           society_id: existing.society_id,
           empleado_id: existing.empleado_id ?? '',
-          usuario_assigned_nombre: existing.usuario_asignado_nombre,
+          usuario_asignado_nombre: existing.usuario_asignado_nombre,
           fecha_asignacion: existing.fecha_asignacion ?? '',
           notas: existing.notas,
         }
-      : { 
-          ...EMPTY_FORM, 
-          society_id: societies[0]?.id ?? '',
-          id_estado: estados.find(e => e.nombre.toLowerCase().includes('activ'))?.id ?? '' // Activo por defecto
-        }
+      : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const set = (key: keyof FormState, value: string | boolean) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
+
+  const filteredEmpleados = empleados.filter(
+    (e) => !form.society_id || e.id_sociedad === form.society_id
   );
 
-  // ... (Tus funciones filteredEmpleados, filteredCentros, etc. se quedan igual)
+  const filteredCentros = centros.filter(
+    (c) => !c.id_sociedad || c.id_sociedad === form.society_id
+  );
+
+  const handleEmpleadoChange = (empId: string, nombre: string) => {
+    set('empleado_id', empId);
+    set('usuario_asignado_nombre', nombre);
+  };
 
   const handleSave = async () => {
     if (!form.marca_modelo.trim()) { setError('La marca/modelo es obligatoria.'); return; }
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
     setSaving(true); setError('');
-
-    // Averiguamos si el estado seleccionado es "Stock" para limpiar el usuario automáticamente
-    const estadoSeleccionado = estados.find(e => e.id === form.id_estado);
-    const esStock = estadoSeleccionado?.nombre.toLowerCase().includes('stock');
 
     const payload = {
       tipo: form.tipo,
@@ -213,19 +214,14 @@ function DeviceModal({
       caracteristicas: form.caracteristicas.trim(),
       centro_trabajo: form.centro_trabajo.trim(),
       numero_serie: form.numero_serie.trim(),
-      
-      // PASAMOS LA NUEVA COLUMNA A SUPABASE (¡Ya no usamos "activo"!)
-      id_estado: form.id_estado, 
-      
+      activo: form.activo,
       society_id: form.society_id,
-      
-      // Si es Stock, limpiamos las asignaciones automáticamente
-      empleado_id: esStock ? null : (form.empleado_id || null),
-      usuario_asignado_nombre: esStock ? 'Sin asignar' : form.usuario_asignado_nombre.trim(),
-      fecha_asignacion: esStock ? null : (form.fecha_asignacion || null),
-      
+      empleado_id: form.empleado_id || null,
+      usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
+      fecha_asignacion: form.fecha_asignacion || null,
       notas: form.notas.trim(),
     };
+
     try {
       if (existing) {
         const { error: err } = await supabase.from('dispositivos').update(payload).eq('id', existing.id);
@@ -276,54 +272,26 @@ function DeviceModal({
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
               </div>
             </div>
-<div>
-  <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
-  <div className="flex gap-2 pt-1">
-    {estados.map((est) => {
-      // Comparamos por el ID de la nueva tabla de estados
-      const isSelected = form.id_estado === est.id; 
-
-      let bgColor = '#F8FAFC';
-      let textColor = '#94A3B8';
-      let borderColor = '#E2E8F0';
-
-      if (isSelected) {
-        // Buscamos el nombre del estado (en minúsculas para comparar el color)
-        const nombreMin = est.nombre.toLowerCase();
-        
-        if (nombreMin.includes('activ')) {
-          bgColor = '#ECFDF5';
-          textColor = '#065F46';
-          borderColor = '#6EE7B7';
-        } else if (nombreMin.includes('inactiv')) {
-          bgColor = '#FEF2F2';
-          textColor = '#DC2626';
-          borderColor = '#FECACA';
-        } else if (nombreMin.includes('stock')) {
-          bgColor = '#FEF9C3'; // ¡Tu amarillo de Stock!
-          textColor = '#854D0E';
-          borderColor = '#FDE047';
-        }
-      }
-
-      return (
-        <button
-          key={est.id}
-          type="button"
-          onClick={() => set('id_estado', est.id)} // Guardamos directamente el ID
-          className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all capitalize"
-          style={{
-            backgroundColor: bgColor,
-            color: textColor,
-            border: `1.5px solid ${borderColor}`,
-          }}
-        >
-          {est.nombre}
-        </button>
-      );
-    })}
-  </div>
-</div>
+            <div>
+              <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
+              <div className="flex gap-2 pt-1">
+                {[true, false].map((v) => (
+                  <button
+                    key={String(v)}
+                    type="button"
+                    onClick={() => set('activo', v)}
+                    className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+                    style={{
+                      backgroundColor: form.activo === v ? (v ? '#ECFDF5' : '#FEF2F2') : '#F8FAFC',
+                      color: form.activo === v ? (v ? '#065F46' : '#DC2626') : '#94A3B8',
+                      border: `1.5px solid ${form.activo === v ? (v ? '#6EE7B7' : '#FECACA') : '#E2E8F0'}`,
+                    }}
+                  >
+                    {v ? 'Activo' : 'Inactivo'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Marca/Modelo */}

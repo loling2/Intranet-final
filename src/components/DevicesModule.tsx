@@ -252,9 +252,9 @@ function DeviceModal({
       onClose();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al guardar');
-    } file {
-      setSaving(false);
-    }
+   } finally {
+  setSaving(false);
+}
   };
 
   return (

@@ -208,6 +208,16 @@ function DeviceModal({
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
     setSaving(true); setError('');
 
+// 1. Averiguamos qué booleano mandarle a la base de datos basándonos en el texto del formulario
+  let valorActivoBD = true;
+  if (form.activo === 'inactivo') {
+    valorActivoBD = false;
+  } else if (form.activo === 'stock') {
+    // Si tu sistema define el Stock como "activo: true pero sin usuario", lo dejamos en true.
+    // Si lo define como inactivo, cámbialo a false. Normalmente el stock en estos sistemas cuenta como activo: true.
+    valorActivoBD = true; 
+  }
+    
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),

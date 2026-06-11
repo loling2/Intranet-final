@@ -62,9 +62,7 @@ useEffect(() => {
 }, []);
 
   const activeCount = devices.filter((d) => d.estado_id === 1).length;
-  const isActive = device.estado_id === 1;
-const isInactive = device.estado_id === 2;
-const isStock = device.estado_id === 3;
+
 
   return (
     <div
@@ -113,6 +111,9 @@ const isStock = device.estado_id === 3;
           </div>
         ) : (
           devices.map((device) => {
+              const isActive = device.estado_id === 1;
+const isInactive = device.estado_id === 2;
+const isStock = device.estado_id === 3;
             const Icon = typeIcons[device.tipo] ?? Laptop;
             return (
               <div
@@ -136,7 +137,15 @@ border: `1px solid ${
   isActive ? `${theme.primary}15` :
   isInactive ? '#FEE2E2' :
   '#FEF3C7'}}>
-                  <Icon size={16} style={{ color: device.activo ? theme.primary : '#DC2626' }} />
+                  <Icon
+  size={16}
+  style={{
+    color:
+      isActive ? theme.primary :
+      isInactive ? '#DC2626' :
+      '#CA8A04'
+  }}
+/>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: theme.textPrimary }}>
@@ -157,7 +166,10 @@ border: `1px solid ${
   isActive ? '#22C55E' :
   isInactive ? '#EF4444' :
   '#EAB308',
-                    boxShadow: device.activo ? '0 0 6px #22C55E80' : '0 0 6px #EF444480',
+                    boxShadow:
+  isActive ? '0 0 6px #22C55E80' :
+  isInactive ? '0 0 6px #EF444480' :
+  '0 0 6px #EAB30880',
                   }} />
                   <span className="text-xs font-medium">
   {isActive

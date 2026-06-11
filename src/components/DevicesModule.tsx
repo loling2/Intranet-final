@@ -177,7 +177,7 @@ function DeviceModal({
           estado_id: (existing.estado_id as 1 | 2 | 3) || 1,
           society_id: existing.society_id,
           empleado_id: existing.empleado_id ?? '',
-          usuario_asignado_nombre: existing.usuario_asignado_nombre || '',
+          usuario_assigned_nombre: (existing as any).usuario_asignado_nombre || '',
           fecha_asignacion: existing.fecha_asignacion ?? '',
           notas: existing.notas || '',
         }

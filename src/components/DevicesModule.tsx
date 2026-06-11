@@ -700,7 +700,7 @@ const totalActivos =
               <div className="col-span-1">ETIQUETA</div>
               <div className="col-span-2">Serie</div>
               <div className="col-span-2">Asignado a</div>
-              <div className="col-span-2">Centro / Sociedad</div>
+              <div className="col-span-1">Centro / Sociedad</div>
               <div className="col-span-1">Estado</div>
               <div className="col-span-1 text-right">Acciones</div>
             </div>

@@ -5,8 +5,25 @@ import {
   CheckCircle2, ChevronDown, Settings, MapPin,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import type { Dispositivo, Empleado, Centro } from '../supabaseClient';
+import type { Empleado, Centro } from '../supabaseClient';
 import { societies } from '../themes';
+
+// Forzamos que la interfaz local use string para el estado de los nuevos botones
+interface Dispositivo Local {
+  id: string;
+  created_at?: string;
+  tipo: string;
+  marca_modelo: string;
+  caracteristicas: string;
+  centro_trabajo: string;
+  numero_serie: string;
+  activo: string | boolean; // Soporta tanto boolean antiguo como string nuevo
+  society_id: string;
+  empleado_id: string | null;
+  usuario_asignado_nombre: string;
+  fecha_asignacion: string | null;
+  notas: string;
+}
 
 const TIPOS = ['Portatil', 'Sobremesa', 'Monitor', 'Movil', 'Tablet', 'Periferico', 'VoIP', 'Otro'];
 
@@ -35,7 +52,7 @@ interface FormState {
   caracteristicas: string;
   centro_trabajo: string;
   numero_serie: string;
-  activo: boolean;
+  activo: string; 
   society_id: string;
   empleado_id: string;
   usuario_asignado_nombre: string;
@@ -49,7 +66,7 @@ const EMPTY_FORM: FormState = {
   caracteristicas: '',
   centro_trabajo: '',
   numero_serie: '',
-  activo: true,
+  activo: 'activo', 
   society_id: '',
   empleado_id: '',
   usuario_asignado_nombre: '',
@@ -161,7 +178,7 @@ function DeviceModal({
   onClose,
   onSaved,
 }: {
-  existing?: Dispositivo;
+  existing?: DispositivoLocal | null;
   empleados: Empleado[];
   centros: Centro[];
   onClose: () => void;
@@ -172,15 +189,15 @@ function DeviceModal({
       ? {
           tipo: existing.tipo,
           marca_modelo: existing.marca_modelo,
-          caracteristicas: existing.caracteristicas,
-          centro_trabajo: existing.centro_trabajo,
-          numero_serie: existing.numero_serie,
-          activo: existing.activo,
+          caracteristicas: existing.caracteristicas || '',
+          centro_trabajo: existing.centro_trabajo || '',
+          numero_serie: existing.numero_serie || '',
+          activo: String(existing.activo), 
           society_id: existing.society_id,
           empleado_id: existing.empleado_id ?? '',
-          usuario_asignado_nombre: existing.usuario_asignado_nombre,
+          usuario_asignado_nombre: existing.usuario_asignado_nombre || '',
           fecha_asignacion: existing.fecha_asignacion ?? '',
-          notas: existing.notas,
+          notas: existing.notas || '',
         }
       : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
   );
@@ -208,23 +225,13 @@ function DeviceModal({
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
     setSaving(true); setError('');
 
-// 1. Averiguamos qué booleano mandarle a la base de datos basándonos en el texto del formulario
-  let valorActivoBD = true;
-  if (form.activo === 'inactivo') {
-    valorActivoBD = false;
-  } else if (form.activo === 'stock') {
-    // Si tu sistema define el Stock como "activo: true pero sin usuario", lo dejamos en true.
-    // Si lo define como inactivo, cámbialo a false. Normalmente el stock en estos sistemas cuenta como activo: true.
-    valorActivoBD = true; 
-  }
-    
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),
       caracteristicas: form.caracteristicas.trim(),
       centro_trabajo: form.centro_trabajo.trim(),
       numero_serie: form.numero_serie.trim(),
-      activo: form.activo,
+      activo: form.activo, 
       society_id: form.society_id,
       empleado_id: form.empleado_id || null,
       usuario_asignado_nombre: form.usuario_asignado_nombre.trim(),
@@ -282,52 +289,50 @@ function DeviceModal({
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
               </div>
             </div>
-           <div>
-  <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
-  <div className="flex gap-2 pt-1">
-    {['activo', 'inactivo', 'stock'].map((v) => {
-      const isSelected = form.activo === v;
+            <div>
+              <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
+              <div className="flex gap-2 pt-1">
+                {['activo', 'inactivo', 'stock'].map((v) => {
+                  const isSelected = form.activo === v;
 
-      // Colores por defecto (Cuando el botón NO está seleccionado)
-      let bgColor = '#F8FAFC';
-      let textColor = '#94A3B8';
-      let borderColor = '#E2E8F0';
+                  let bgColor = '#F8FAFC';
+                  let textColor = '#94A3B8';
+                  let borderColor = '#E2E8F0';
 
-      // Colores cuando el botón SÍ está seleccionado
-      if (isSelected) {
-        if (v === 'activo') {
-          bgColor = '#ECFDF5';     // Verde claro
-          textColor = '#065F46';   // Verde oscuro
-          borderColor = '#6EE7B7'; 
-        } else if (v === 'inactivo') {
-          bgColor = '#FEF2F2';     // Rojo claro
-          textColor = '#DC2626';   // Rojo oscuro
-          borderColor = '#FECACA'; 
-        } else if (v === 'stock') {
-          bgColor = '#FEF9C3';     // Amarillo claro (¡Adiós al azul!)
-          textColor = '#854D0E';   // Amarillo/Marrón oscuro
-          borderColor = '#FDE047'; // Borde amarillo
-        }
-      }
+                  if (isSelected) {
+                    if (v === 'activo' || v === 'true') {
+                      bgColor = '#ECFDF5';
+                      textColor = '#065F46';
+                      borderColor = '#6EE7B7';
+                    } else if (v === 'inactivo' || v === 'false') {
+                      bgColor = '#FEF2F2';
+                      textColor = '#DC2626';
+                      borderColor = '#FECACA';
+                    } else if (v === 'stock') {
+                      bgColor = '#FEF9C3';
+                      textColor = '#854D0E';
+                      borderColor = '#FDE047';
+                    }
+                  }
 
-      return (
-        <button
-          key={v}
-          type="button"
-          onClick={() => set('activo', v)}
-          className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all capitalize"
-          style={{
-            backgroundColor: bgColor,
-            color: textColor,
-            border: `1.5px solid ${borderColor}`,
-          }}
-        >
-          {v === 'activo' ? 'Activo' : v === 'inactivo' ? 'Inactivo' : 'Stock'}
-        </button>
-      );
-    })}
-  </div>
-</div>
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => set('activo', v)}
+                      className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all capitalize"
+                      style={{
+                        backgroundColor: bgColor,
+                        color: textColor,
+                        border: `1.5px solid ${borderColor}`,
+                      }}
+                    >
+                      {v === 'activo' ? 'Activo' : v === 'inactivo' ? 'Inactivo' : 'Stock'}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           {/* Marca/Modelo */}
@@ -413,7 +418,7 @@ function DeviceModal({
               <EmployeePicker
                 empleados={filteredEmpleados}
                 value={form.empleado_id}
-                onChange={handleEmpleadoChange}
+                onChange={handleEmpleadoChange} // <-- ¡Arreglado aquí!
               />
             </div>
             <div>
@@ -502,18 +507,18 @@ function ConfirmDelete({ name, onConfirm, onClose, loading }: {
 // ── Main DevicesModule ────────────────────────────────────────────────────────
 
 export default function DevicesModule() {
-  const [devices, setDevices] = useState<Dispositivo[]>([]);
+  const [devices, setDevices] = useState<DispositivoLocal[]>([]);
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [centros, setCentros] = useState<Centro[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterSociety, setFilterSociety] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
-  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo'>('all');
+  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo' | 'stock'>('all');
 
   const [showCreate, setShowCreate] = useState(false);
-  const [editing, setEditing] = useState<Dispositivo | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Dispositivo | null>(null);
+  const [editing, setEditing] = useState<DispositivoLocal | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DispositivoLocal | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const [error, setError] = useState('');
@@ -528,7 +533,7 @@ export default function DevicesModule() {
       .select('*')
       .order('created_at', { ascending: false });
     if (err) setError(err.message);
-    else setDevices((data ?? []) as Dispositivo[]);
+    else setDevices((data ?? []) as DispositivoLocal[]);
     setLoading(false);
   }, []);
 
@@ -564,22 +569,26 @@ export default function DevicesModule() {
   const filtered = devices.filter((d) => {
     if (filterSociety && d.society_id !== filterSociety) return false;
     if (filterTipo && d.tipo !== filterTipo) return false;
-    if (filterActivo === 'activo' && !d.activo) return false;
-    if (filterActivo === 'inactivo' && d.activo) return false;
+    
+    const estadoNormalizado = String(d.activo); 
+    if (filterActivo === 'activo' && estadoNormalizado !== 'activo' && estadoNormalizado !== 'true') return false;
+    if (filterActivo === 'inactivo' && estadoNormalizado !== 'inactivo' && estadoNormalizado !== 'false') return false;
+    if (filterActivo === 'stock' && estadoNormalizado !== 'stock') return false;
+
     if (search) {
       const q = search.toLowerCase();
       return (
         d.marca_modelo.toLowerCase().includes(q) ||
         d.tipo.toLowerCase().includes(q) ||
-        d.numero_serie.toLowerCase().includes(q) ||
-        d.usuario_asignado_nombre.toLowerCase().includes(q) ||
-        d.centro_trabajo.toLowerCase().includes(q)
+        (d.numero_serie && d.numero_serie.toLowerCase().includes(q)) ||
+        (d.usuario_asignado_nombre && d.usuario_asignado_nombre.toLowerCase().includes(q)) ||
+        (d.centro_trabajo && d.centro_trabajo.toLowerCase().includes(q))
       );
     }
     return true;
   });
 
-  const totalActivos = devices.filter((d) => d.activo).length;
+  const totalActivos = devices.filter((d) => String(d.activo) === 'activo' || String(d.activo) === 'true').length;
 
   return (
     <div className="space-y-4">
@@ -637,12 +646,13 @@ export default function DevicesModule() {
             <option value="">Todos los tipos</option>
             {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select value={filterActivo} onChange={(e) => setFilterActivo(e.target.value as 'all' | 'activo' | 'inactivo')}
+          <select value={filterActivo} onChange={(e) => setFilterActivo(e.target.value as any)}
             className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
             style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
             <option value="all">Todos los estados</option>
             <option value="activo">Activos</option>
             <option value="inactivo">Inactivos</option>
+            <option value="stock">En Stock</option>
           </select>
         </div>
 
@@ -692,13 +702,19 @@ export default function DevicesModule() {
             {filtered.map((dev) => {
               const Icon = typeIcon(dev.tipo);
               const society = societies.find((s) => s.id === dev.society_id);
+              const est = String(dev.activo);
+              const isActivo = est === 'activo' || est === 'true';
+
               return (
                 <div key={dev.id} className="px-6 py-3.5 grid grid-cols-12 gap-3 items-center hover:bg-slate-50 transition-colors duration-100">
                   {/* Tipo icon */}
                   <div className="col-span-1">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: dev.activo ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${dev.activo ? '#BBF7D0' : '#FECACA'}` }}>
-                      <Icon size={14} style={{ color: dev.activo ? '#16A34A' : '#DC2626' }} />
+                      style={{ 
+                        backgroundColor: isActivo ? '#F0FDF4' : est === 'stock' ? '#FEF9C3' : '#FEF2F2', 
+                        border: `1px solid ${isActivo ? '#BBF7D0' : est === 'stock' ? '#FDE047' : '#FECACA'}` 
+                      }}>
+                      <Icon size={14} style={{ color: isActivo ? '#16A34A' : est === 'stock' ? '#854D0E' : '#DC2626' }} />
                     </div>
                   </div>
 
@@ -718,9 +734,9 @@ export default function DevicesModule() {
                     </p>
                   </div>
 
-                  {/* Usuario + fecha */}
+                  {/* Asignado a */}
                   <div className="col-span-2 min-w-0">
-                    <p className="text-xs font-medium truncate" style={{ color: dev.usuario_asignado_nombre ? '#1E293B' : '#CBD5E1' }}>
+                    <p className="text-sm font-medium truncate" style={{ color: dev.usuario_asignado_nombre ? '#1E293B' : '#94A3B8' }}>
                       {dev.usuario_asignado_nombre || 'Sin asignar'}
                     </p>
                     {dev.fecha_asignacion && (
@@ -728,45 +744,29 @@ export default function DevicesModule() {
                     )}
                   </div>
 
-                  {/* Centro + sociedad */}
+                  {/* Centro / Sociedad */}
                   <div className="col-span-2 min-w-0">
-                    {dev.centro_trabajo && (
-                      <p className="text-xs truncate" style={{ color: '#1E293B' }}>{dev.centro_trabajo}</p>
-                    )}
-                    {society && (
-                      <span className="inline-block text-xs px-1.5 py-0.5 rounded mt-0.5" style={{ backgroundColor: society.primaryLight, color: society.primary, border: `1px solid ${society.border}` }}>
-                        {society.name}
-                      </span>
-                    )}
+                    <p className="text-sm truncate" style={{ color: '#1E293B' }}>{dev.centro_trabajo || '—'}</p>
+                    <p className="text-xs mt-0.5 truncate" style={{ color: '#64748B' }}>{society ? society.name : '—'}</p>
                   </div>
 
                   {/* Estado */}
                   <div className="col-span-1">
-                    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg"
-                      style={{ backgroundColor: dev.activo ? '#ECFDF5' : '#FEF2F2', border: `1px solid ${dev.activo ? '#6EE7B7' : '#FECACA'}` }}>
-                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dev.activo ? '#22C55E' : '#EF4444' }} />
-                      <span className="text-xs font-semibold" style={{ color: dev.activo ? '#065F46' : '#DC2626' }}>
-                        {dev.activo ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </div>
+                    <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full capitalize"
+                      style={{
+                        backgroundColor: isActivo ? '#D1FAE5' : est === 'stock' ? '#FEF9C3' : '#FEE2E2',
+                        color: isActivo ? '#065F46' : est === 'stock' ? '#854D0E' : '#991B1B'
+                      }}>
+                      {est === 'activo' || est === 'true' ? 'Activo' : est === 'stock' ? 'Stock' : 'Inactivo'}
+                    </span>
                   </div>
 
-                  {/* Actions */}
+                  {/* Acciones */}
                   <div className="col-span-1 flex items-center justify-end gap-1">
-                    <button
-                      onClick={() => setEditing(dev)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors"
-                      title="Editar"
-                      style={{ color: '#CBD5E1' }}
-                    >
+                    <button onClick={() => setEditing(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#64748B' }}>
                       <Pencil size={13} />
                     </button>
-                    <button
-                      onClick={() => setDeleteTarget(dev)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors"
-                      title="Eliminar"
-                      style={{ color: '#CBD5E1' }}
-                    >
+                    <button onClick={() => setDeleteTarget(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors" style={{ color: '#EF4444' }}>
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -778,4 +778,3 @@ export default function DevicesModule() {
       </div>
     </div>
   );
-}

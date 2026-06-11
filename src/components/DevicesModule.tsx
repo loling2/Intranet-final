@@ -35,7 +35,7 @@ interface FormState {
   caracteristicas: string;
   centro_trabajo: string;
   numero_serie: string;
-  activo: 'activo' | 'inactivo' | 'stock'; // Mantenemos el estado como texto tal como espera tu BD
+  estado_id: 1 | 2 | 3;
   society_id: string;
   empleado_id: string;
   usuario_asignado_nombre: string;
@@ -49,7 +49,7 @@ const EMPTY_FORM: FormState = {
   caracteristicas: '',
   centro_trabajo: '',
   numero_serie: '',
-  activo: 'activo',
+  estado_id: 1,
   society_id: '',
   empleado_id: '',
   usuario_asignado_nombre: '',
@@ -174,7 +174,7 @@ function DeviceModal({
           caracteristicas: existing.caracteristicas || '',
           centro_trabajo: existing.centro_trabajo || '',
           numero_serie: existing.numero_serie || '',
-          activo: (existing.activo as any) || 'activo', // Mandamos directamente el valor string que viene de la BD
+          estado_id: (existing.estado_id as 1 | 2 | 3) || 1,
           society_id: existing.society_id,
           empleado_id: existing.empleado_id ?? '',
           usuario_assigned_nombre: (existing as any).usuario_asignado_nombre || '',
@@ -200,9 +200,9 @@ function DeviceModal({
   const handleEmpleadoChange = (empId: string, nombre: string) => {
     set('empleado_id', empId);
     set('usuario_asignado_nombre', nombre);
-    if (empId && form.activo === 'stock') {
-      set('activo', 'activo');
-    }
+    if (empId && form.estado_id === 3) {
+  set('estado_id', 1);
+}
   };
 
   const handleSave = async () => {
@@ -216,11 +216,11 @@ function DeviceModal({
       caracteristicas: form.caracteristicas.trim(),
       centro_trabajo: form.centro_trabajo.trim(),
       numero_serie: form.numero_serie.trim(),
-      activo: form.activo, // Enviamos directamente el string ('activo', 'inactivo', 'stock') tal como lo gestiona tu BD
+     estado_id: form.estado_id,
       society_id: form.society_id,
-      empleado_id: form.activo === 'stock' ? null : (form.empleado_id || null),
-      usuario_asignado_nombre: form.activo === 'stock' ? '' : form.usuario_asignado_nombre.trim(),
-      fecha_asignacion: form.activo === 'stock' ? null : (form.fecha_asignacion || null),
+      empleado_id: form.estado_id === 3 ? null : (form.empleado_id || null),
+      usuario_asignado_nombre: form.estado_id === 3 ? '' : form.usuario_asignado_nombre.trim(),
+      fecha_asignacion: form.estado_id === 3 ? null : (form.fecha_asignacion || null),
       notas: form.notas.trim(),
     };
 
@@ -277,39 +277,46 @@ function DeviceModal({
             <div>
               <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Estado</label>
               <div className="flex gap-2 pt-1">
-                {['activo', 'inactivo', 'stock'].map((v) => {
-                  const isSelected = form.activo === v;
-                  let bgColor = '#F8FAFC';
-                  let textColor = '#94A3B8';
-                  let borderColor = '#E2E8F0';
+                {[
+  { id: 1, label: 'Activo' },
+  { id: 2, label: 'Inactivo' },
+  { id: 3, label: 'Stock' },
+].map((estado) => {
 
-                  if (isSelected) {
-                    if (v === 'activo') {
-                      bgColor = '#ECFDF5';
-                      textColor = '#065F46';
-                      borderColor = '#6EE7B7';
-                    } else if (v === 'inactivo') {
-                      bgColor = '#FEF2F2';
-                      textColor = '#DC2626';
-                      borderColor = '#FECACA';
-                    } else if (v === 'stock') {
-                      bgColor = '#FEF9C3';
-                      textColor = '#854D0E';
-                      borderColor = '#FDE047';
-                    }
-                  }
+  const isSelected = form.estado_id === estado.id;
 
-                  return (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => {
-                        set('activo', v);
-                        if (v === 'stock') {
-                          set('empleado_id', '');
-                          set('usuario_asignado_nombre', '');
-                          set('fecha_asignacion', '');
-                        }
+                let bgColor = '#F8FAFC';
+  let textColor = '#94A3B8';
+  let borderColor = '#E2E8F0';
+
+  if (isSelected) {
+    if (estado.id === 1) {
+      bgColor = '#ECFDF5';
+      textColor = '#065F46';
+      borderColor = '#6EE7B7';
+    } else if (estado.id === 2) {
+      bgColor = '#FEF2F2';
+      textColor = '#DC2626';
+      borderColor = '#FECACA';
+    } else {
+      bgColor = '#FEF9C3';
+      textColor = '#854D0E';
+      borderColor = '#FDE047';
+    }
+  }
+
+            return (
+    <button
+      key={estado.id}
+      type="button"
+      onClick={() => {
+        set('estado_id', estado.id);
+
+        if (estado.id === 3) {
+          set('empleado_id', '');
+          set('usuario_asignado_nombre', '');
+          set('fecha_asignacion', '');
+        }
                       }}
                       className="flex-1 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all capitalize"
                       style={{
@@ -318,8 +325,8 @@ function DeviceModal({
                         border: `1.5px solid ${borderColor}`,
                       }}
                     >
-                      {v === 'activo' ? 'Activo' : v === 'inactivo' ? 'Inactivo' : 'Stock'}
-                    </button>
+                     {estado.label}
+    </button>
                   );
                 })}
               </div>

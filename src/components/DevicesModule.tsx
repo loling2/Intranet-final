@@ -177,7 +177,7 @@ function DeviceModal({
           estado_id: (existing.estado_id as 1 | 2 | 3) || 1,
           society_id: existing.society_id,
           empleado_id: existing.empleado_id ?? '',
-          usuario_assigned_nombre: (existing as any).usuario_asignado_nombre || '',
+          usuario_asignado_nombre: existing.usuario_asignado_nombre || '',
           fecha_asignacion: existing.fecha_asignacion ?? '',
           notas: existing.notas || '',
         }
@@ -512,7 +512,7 @@ export default function DevicesModule() {
   const [search, setSearch] = useState('');
   const [filterSociety, setFilterSociety] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
-  const [filterActivo, setFilterActivo] = useState<'all' | 'activo' | 'inactivo' | 'stock'>('all');
+  const [filterEstado, setFilterEstado] = useState<'all' | '1' | '2' | '3'>('all');
 
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Dispositivo | null>(null);
@@ -568,7 +568,11 @@ export default function DevicesModule() {
     if (filterTipo && d.tipo !== filterTipo) return false;
     
     // Filtro basado en la cadena de texto exacta de la BD
-    if (filterActivo !== 'all' && d.activo !== filterActivo) return false;
+   if (
+  filterEstado !== 'all' &&
+  d.estado_id !== Number(filterEstado)
+)
+  return false;
 
     if (search) {
       const q = search.toLowerCase();
@@ -583,7 +587,8 @@ export default function DevicesModule() {
     return true;
   });
 
-  const totalActivos = devices.filter((d) => d.activo === 'activo').length;
+const totalActivos =
+  devices.filter((d) => d.estado_id === 1).length;
 
   return (
     <div className="space-y-4">
@@ -705,13 +710,13 @@ export default function DevicesModule() {
               let colorDot = '#EF4444';
               let colorBorder = '#FECACA';
 
-              if (dev.activo === 'activo') {
+              if (dev.estado_id === 1){
                 labelEstado = 'Activo';
                 colorBg = '#ECFDF5';
                 colorTxt = '#065F46';
                 colorDot = '#22C55E';
                 colorBorder = '#6EE7B7';
-              } else if (dev.activo === 'stock') {
+              } else if (dev.estado_id === 3) {
                 labelEstado = 'Stock';
                 colorBg = '#FEF9C3';
                 colorTxt = '#854D0E';
@@ -724,8 +729,8 @@ export default function DevicesModule() {
                   {/* Tipo icon */}
                   <div className="col-span-1">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: dev.activo === 'inactivo' ? '#FEF2F2' : '#F0FDF4', border: `1px solid ${dev.activo === 'inactivo' ? '#FECACA' : '#BBF7D0'}` }}>
-                      <Icon size={14} style={{ color: dev.activo === 'inactivo' ? '#DC2626' : '#16A34A' }} />
+                      style={{ backgroundColor: dev.estado_id === 2 ? '#FEF2F2' : '#F0FDF4', border: `1px solid ${dev.estado_id === 2 ? '#FECACA' : '#BBF7D0'}` }}>
+                      <Icon size={14} style={{ color: dev.estado_id === 2 ? '#DC2626' : '#16A34A' }} />
                     </div>
                   </div>
 

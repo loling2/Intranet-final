@@ -42,7 +42,7 @@ interface VehicleInfo {
 }
 
 function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
-  // step: 'plate' → enter plate | 'id' → enter employee ID to check | 'action' → libre/en_uso_mismo/en_uso_otro
+// step: 'plate' → matrícula | 'id' → validación PIN to check | 'action' → libre/en_uso_mismo/en_uso_otro
   const [step, setStep] = useState<'plate' | 'id' | 'action'>('plate');
   const [plate, setPlate] = useState('');
   const [empleadoId, setEmpleadoId] = useState('');
@@ -125,17 +125,18 @@ const handleCheckId = async () => {
       const now = new Date().toISOString();
       const { error: logErr } = await supabase.from('vehicle_logs').insert({
         vehicle_id: vehicle.id,
-        user_id: null,
-        user_nombre: `Empleado ${empleadoId.trim()}`,
+        user_id: usuarioPin.id,
+        user_nombre: usuarioPin.nombre,
         fecha_inicio: now,
         km_inicio: kmVal,
         tipo: 'normal',
-        motivo: `Registro rápido. ID empleado: ${empleadoId.trim()}`,
+       motivo: `Registro rápido. PIN validado (${usuarioPin.nombre})`,
       });
       if (logErr) throw new Error(logErr.message);
       const { error: vUpErr } = await supabase.from('vehicles').update({
         estado: 'en_uso',
-        current_user_nombre: `Empleado ${empleadoId.trim()}`,
+        current_user_id: usuarioPin.id,
+        current_user_nombre: usuarioPin.nombre,
         current_km_inicio: kmVal,
         current_fecha_inicio: now,
         kilometros_actuales: kmVal,
@@ -227,7 +228,7 @@ const handleCheckId = async () => {
                 {done === 'started' ? 'Uso iniciado correctamente' : 'Uso finalizado correctamente'}
               </p>
               <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
-                {vehicle?.matricula} — Empleado {empleadoId} — {km} km
+                {vehicle?.matricula} — {usuarioPin?.nombre} — {km} km
               </p>
               <button onClick={onClose} className="mt-5 w-full py-2.5 rounded-xl text-sm font-semibold cursor-pointer" style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}>
                 Cerrar
@@ -312,7 +313,7 @@ const handleCheckId = async () => {
                 <Car size={16} style={{ color: '#64748B' }} />
                 <div>
                   <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{vehicle?.matricula}</p>
-                  <p className="text-xs" style={{ color: '#64748B' }}>{vehicle?.marca} {vehicle?.modelo} — Empleado {empleadoId}</p>
+                  <p className="text-xs" style={{ color: '#64748B' }}>{vehicle?.marca} {vehicle?.modelo} — {usuarioPin?.nombre}</p>
                 </div>
               </div>
 

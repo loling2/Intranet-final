@@ -1429,7 +1429,7 @@ useEffect(() => {
       const { count, error } = await supabase
         .from('dispositivos')
         .select('*', { count: 'exact', head: true })
-        .eq('activo', true)
+      //  .eq('activo', true)
         .eq('empleado_id', realEmpleadoId);
 
       if (!error && count !== null) {

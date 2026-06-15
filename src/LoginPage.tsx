@@ -119,7 +119,12 @@ const handleCheckId = async () => {
   const handleStart = async () => {
     setError('');
     const kmVal = parseInt(km, 10);
-    if (isNaN(kmVal) || kmVal < 0) { setError('Kilometraje inválido'); return; }
+    if (kmVal < (vehicle.kilometros_actuales ?? 0)) {
+  setError(
+    `Los kilómetros no pueden ser inferiores a ${vehicle.kilometros_actuales}`
+  );
+  return;
+}
     if (!vehicle) return;
     setLoading(true);
     try {

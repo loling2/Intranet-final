@@ -92,7 +92,6 @@ const handleCheckId = async () => {
 console.log('TODOS', data);
 console.log('ERROR', error);
 
-return;
   return;
 }
 

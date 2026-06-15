@@ -39,10 +39,11 @@ interface VehicleInfo {
   current_user_nombre: string | null;
   current_km_inicio: number | null;
   kilometros_actuales: number;
+  current_user_id?: string | null;
 }
 
 function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
-  // step: 'plate' → enter plate | 'id' → enter employee ID to check | 'action' → libre/en_uso_mismo/en_uso_otro
+// step: 'plate' → matrícula | 'id' → validación PIN to check | 'action' → libre/en_uso_mismo/en_uso_otro
   const [step, setStep] = useState<'plate' | 'id' | 'action'>('plate');
   const [plate, setPlate] = useState('');
   const [empleadoId, setEmpleadoId] = useState('');
@@ -62,7 +63,7 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
     try {
       const { data, error: vErr } = await supabase
         .from('vehicles')
-        .select('id,matricula,marca,modelo,estado,current_user_nombre,current_km_inicio,kilometros_actuales')
+        .select('id,matricula,marca,modelo,estado,current_user_id,current_user_nombre,current_km_inicio,kilometros_actuales')
         .eq('matricula', plate.trim().toUpperCase())
         .maybeSingle();
       if (vErr) throw new Error(vErr.message);
@@ -118,7 +119,12 @@ const handleCheckId = async () => {
   const handleStart = async () => {
     setError('');
     const kmVal = parseInt(km, 10);
-    if (isNaN(kmVal) || kmVal < 0) { setError('Kilometraje inválido'); return; }
+    if (kmVal < (vehicle.kilometros_actuales ?? 0)) {
+  setError(
+    `Los kilómetros no pueden ser inferiores a ${vehicle.kilometros_actuales}`
+  );
+  return;
+}
     if (!vehicle) return;
     setLoading(true);
     try {
@@ -154,7 +160,16 @@ const handleCheckId = async () => {
   const handleFinish = async () => {
     setError('');
     const kmVal = parseInt(km, 10);
-    if (isNaN(kmVal) || kmVal < 0) { setError('Kilometraje final inválido'); return; }
+    if (isNaN(kmVal) || kmVal < 0) {
+    setError('Kilometraje inválido');
+    return;
+  }
+      if (kmVal < (vehicle.kilometros_actuales ?? 0)) {
+    setError(
+      `Los kilómetros no pueden ser inferiores a ${vehicle.kilometros_actuales}`
+    );
+    return;
+  }
     if (!vehicle) return;
     setLoading(true);
     try {

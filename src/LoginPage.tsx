@@ -46,6 +46,7 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<'plate' | 'id' | 'action'>('plate');
   const [plate, setPlate] = useState('');
   const [empleadoId, setEmpleadoId] = useState('');
+  const [usuarioPin, setUsuarioPin] = useState<any>(null);
   const [km, setKm] = useState('');
   const [vehicle, setVehicle] = useState<VehicleInfo | null>(null);
   const [vehicleStatus, setVehicleStatus] = useState<VehicleStatus>('libre');
@@ -76,18 +77,42 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
   };
 
   // Step 2: enter employee ID → determine action
-  const handleCheckId = () => {
-    if (!empleadoId.trim() || !vehicle) return;
-    setError('');
+const handleCheckId = async () => {
+  if (!empleadoId.trim() || !vehicle) return;
+
+  setError('');
+
+  try {
+    const { data: usuario, error } = await supabase
+      .from('user_profiles')
+      .select('id,nombre,activo')
+      .eq('pin', empleadoId.trim())
+      .eq('activo', true)
+      .single();
+
+    if (error || !usuario) {
+      setError('PIN incorrecto');
+      return;
+    }
+
+    setUsuarioPin(usuario);
+
     if (vehicle.estado === 'libre') {
       setVehicleStatus('libre');
     } else {
-      // compare by empleado_id embedded in current_user_nombre
-      const isSame = vehicle.current_user_nombre === `Empleado ${empleadoId.trim()}`;
-      setVehicleStatus(isSame ? 'en_uso_mismo' : 'en_uso_otro');
+      const isSame =
+        vehicle.current_user_id === usuario.id;
+
+      setVehicleStatus(
+        isSame ? 'en_uso_mismo' : 'en_uso_otro'
+      );
     }
+
     setStep('action');
-  };
+  } catch {
+    setError('Error al validar PIN');
+  }
+};
 
   // Action: start use (libre)
   const handleStart = async () => {

@@ -90,6 +90,10 @@ const handleCheckId = async () => {
       .eq('pin', empleadoId.trim())
       .eq('activo', true)
       .single();
+
+   console.log('PIN introducido:', empleadoId);
+    console.log('Usuario encontrado:', usuario);
+    console.log('Error Supabase:', error);
     
     if (error || !usuario) {
       setError('PIN incorrecto');

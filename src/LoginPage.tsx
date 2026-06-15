@@ -84,21 +84,17 @@ const handleCheckId = async () => {
   setError('');
 
   try {
-    const { data: usuario, error } = await supabase
-      
-      .from('user_profiles')
-      .select('id,nombre,activo')
-      .eq('pin', empleadoId.trim())
-      .eq('activo', true)
-      .single();
+  const { data, error } = await supabase
+  .rpc('validate_vehicle_pin', {
+    p_pin: empleadoId.trim()
+  });
 
-   console.log('PIN introducido:', empleadoId);
-    console.log('Usuario encontrado:', usuario);
-    console.log('Error Supabase:', error);
+const usuario = data?.[0];
+
+  
     
  if (error || !usuario) {
-  console.log('ERROR PIN', error);
-  console.log('USUARIO', usuario);
+
   setError(JSON.stringify(error));
   return;
 }

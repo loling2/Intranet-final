@@ -1640,23 +1640,11 @@ useEffect(() => {
             </div>
 
             {/* Main Cards */}
-           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-  <DocumentsCard
-    theme={theme}
-    userEmail={email}
-    userId={currentUserId}
-    societyId={theme.id}
-  />
-
-  <DevicesCard theme={theme} />
-
-  <VehicleCard theme={theme} />
-
-  <PrevencionDocsCard
-    theme={theme}
-    userEmail={email}
-  />
-</div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
+              <DevicesCard theme={theme} />
+              <PrevencionDocsCard theme={theme} userEmail={email} />
+            </div>
           </>
         )}
 

@@ -95,10 +95,12 @@ const handleCheckId = async () => {
     console.log('Usuario encontrado:', usuario);
     console.log('Error Supabase:', error);
     
-    if (error || !usuario) {
-      setError('PIN incorrecto');
-      return;
-    }
+ if (error || !usuario) {
+  console.log('ERROR PIN', error);
+  console.log('USUARIO', usuario);
+  setError(JSON.stringify(error));
+  return;
+}
 
     setUsuarioPin(usuario);
 

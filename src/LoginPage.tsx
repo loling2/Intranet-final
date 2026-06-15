@@ -252,16 +252,23 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
                 <button onClick={() => { setStep('plate'); setError(''); setVehicle(null); }} className="ml-auto text-xs cursor-pointer" style={{ color: '#94A3B8' }}>Cambiar</button>
               </div>
               <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>ID Empleado</label>
-                <input
-                  type="text"
-                  value={empleadoId}
-                  onChange={(e) => setEmpleadoId(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleCheckId()}
-                  placeholder="88888888"
-                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-                  style={inputStyle}
-                />
+               <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider">
+  PIN DE ACCESO
+</label>
+
+<input
+  type="password"
+  value={empleadoId}
+  onChange={(e) =>
+    setEmpleadoId(e.target.value.replace(/\D/g, '').slice(0, 6))
+  }
+  onKeyDown={(e) => e.key === 'Enter' && handleCheckId()}
+  placeholder="••••••"
+  maxLength={6}
+  inputMode="numeric"
+  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+  style={inputStyle}
+/>
               </div>
               {error && <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}><AlertCircle size={13} style={{ color: '#DC2626' }} /><p className="text-xs" style={{ color: '#DC2626' }}>{error}</p></div>}
               <div className="flex gap-3">

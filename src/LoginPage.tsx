@@ -62,7 +62,7 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
     try {
       const { data, error: vErr } = await supabase
         .from('vehicles')
-        .select('id,matricula,marca,modelo,estado,current_user_nombre,current_km_inicio,kilometros_actuales')
+        .select('id,matricula,marca,modelo,estado,current_user_id,current_user_nombre,current_km_inicio,kilometros_actuales')
         .eq('matricula', plate.trim().toUpperCase())
         .maybeSingle();
       if (vErr) throw new Error(vErr.message);

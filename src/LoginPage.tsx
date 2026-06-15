@@ -6,6 +6,7 @@ import type { AppRole } from './supabaseClient';
 type UserRole = AppRole;
 import DocumentsCard from './DocumentsCard';
 import DevicesCard from './DevicesCard';
+import VehicleCard from './VehicleCard';
 import CertificatesCard from './CertificatesCard';
 import ExamsCard from './ExamsCard';
 import PrevencionDocsCard from './PrevencionDocsCard';

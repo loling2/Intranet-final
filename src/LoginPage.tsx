@@ -121,16 +121,25 @@ const handleCheckId = async () => {
 
   // Action: start use (libre)
   const handleStart = async () => {
-    setError('');
-    const kmVal = parseInt(km, 10);
-    if (kmVal < (vehicle.kilometros_actuales ?? 0)) {
-  setError(
-    `Los kilómetros no pueden ser inferiores a ${vehicle.kilometros_actuales}`
-  );
-  return;
-}
-    if (!vehicle) return;
-    setLoading(true);
+  setError('');
+
+  if (!vehicle) return;
+
+  const kmVal = parseInt(km, 10);
+
+  if (isNaN(kmVal)) {
+    setError('Debe introducir un kilometraje válido');
+    return;
+  }
+
+  if (kmVal < (vehicle.kilometros_actuales ?? 0)) {
+    setError(
+      `Los kilómetros no pueden ser inferiores a ${vehicle.kilometros_actuales}`
+    );
+    return;
+  }
+
+  setLoading(true);
     try {
       const now = new Date().toISOString();
       const { error: logErr } = await supabase.from('vehicle_logs').insert({

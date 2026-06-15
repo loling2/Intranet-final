@@ -39,6 +39,7 @@ interface VehicleInfo {
   current_user_nombre: string | null;
   current_km_inicio: number | null;
   kilometros_actuales: number;
+  current_user_id?: string | null;
 }
 
 function VehicleRegisterModal({ onClose }: { onClose: () => void }) {

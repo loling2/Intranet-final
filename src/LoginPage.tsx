@@ -86,7 +86,6 @@ const handleCheckId = async () => {
   try {
     const { data: usuario, error } = await supabase
       
-     const { data, error } = await supabase
   .from('user_profiles')
   .select('id,nombre,pin');
 

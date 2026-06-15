@@ -86,20 +86,14 @@ const handleCheckId = async () => {
   try {
     const { data: usuario, error } = await supabase
       
-      .from('user_profiles')
-      .select('id,nombre,activo')
-      .eq('pin', empleadoId.trim())
-      .eq('activo', true)
-      .single();
+     const { data, error } = await supabase
+  .from('user_profiles')
+  .select('id,nombre,pin');
 
-   console.log('PIN introducido:', empleadoId);
-    console.log('Usuario encontrado:', usuario);
-    console.log('Error Supabase:', error);
-    
- if (error || !usuario) {
-  console.log('ERROR PIN', error);
-  console.log('USUARIO', usuario);
-  setError(JSON.stringify(error));
+console.log('TODOS', data);
+console.log('ERROR', error);
+
+return;
   return;
 }
 
@@ -1429,7 +1423,7 @@ useEffect(() => {
       const { count, error } = await supabase
         .from('dispositivos')
         .select('*', { count: 'exact', head: true })
-      //  .eq('activo', true)
+       .eq('activo', true)
         .eq('empleado_id', realEmpleadoId);
 
       if (!error && count !== null) {

@@ -85,8 +85,7 @@ const handleCheckId = async () => {
 
   try {
     const { data: usuario, error } = await supabase
-      console.log('PIN RAW:', empleadoId);
-console.log('PIN JSON:', JSON.stringify(empleadoId));
+      
       .from('user_profiles')
       .select('id,nombre,activo')
       .eq('pin', empleadoId.trim())

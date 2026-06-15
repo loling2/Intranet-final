@@ -84,13 +84,14 @@ const handleCheckId = async () => {
   setError('');
 
   try {
-const { data, error } = await supabase
+const { data: usuario, error } = await supabase
   .from('user_profiles')
-  .select('id,nombre,pin');
+  .select('id,nombre,activo,pin')
+  .eq('nombre', 'JULIO CESAR LINO FLORES')
+  .maybeSingle();
 
-console.log('TODOS LOS USUARIOS:', data);
-console.log('ERROR:', error);
-
+console.log(usuario);
+console.log(error);
 return;
     setUsuarioPin(usuario);
 

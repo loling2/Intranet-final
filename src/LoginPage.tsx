@@ -49,6 +49,7 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
   const [empleadoId, setEmpleadoId] = useState('');
   const [usuarioPin, setUsuarioPin] = useState<any>(null);
   const [km, setKm] = useState('');
+ const [numeroPersonas, setNumeroPersonas] = useState('1');
   const [vehicle, setVehicle] = useState<VehicleInfo | null>(null);
   const [vehicleStatus, setVehicleStatus] = useState<VehicleStatus>('libre');
   const [loading, setLoading] = useState(false);
@@ -82,6 +83,10 @@ const handleCheckId = async () => {
   if (!empleadoId.trim() || !vehicle) return;
 
   setError('');
+   if (!numeroPersonas || Number(numeroPersonas) < 1) {
+    setError('Debe indicar el número de personas');
+    return;
+  }
 
   try {
   const { data, error } = await supabase
@@ -147,6 +152,7 @@ const usuario = data?.[0];
         user_nombre: usuarioPin.nombre,
         fecha_inicio: now,
         km_inicio: kmVal,
+         numero_personas: Number(numeroPersonas),
         tipo: 'normal',
        motivo: `Registro rápido. PIN validado (${usuarioPin.nombre})`,
       });
@@ -304,6 +310,21 @@ const usuario = data?.[0];
                 </div>
                 <button onClick={() => { setStep('plate'); setError(''); setVehicle(null); }} className="ml-auto text-xs cursor-pointer" style={{ color: '#94A3B8' }}>Cambiar</button>
               </div>
+              <div>
+  <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider">
+    NÚMERO DE PERSONAS
+  </label>
+
+  <input
+    type="number"
+    min="1"
+    max="9"
+    value={numeroPersonas}
+    onChange={(e) => setNumeroPersonas(e.target.value)}
+    className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+    style={inputStyle}
+  />
+</div>
               <div>
                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider">
   PIN DE ACCESO

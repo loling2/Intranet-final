@@ -84,15 +84,25 @@ const handleCheckId = async () => {
   setError('');
 
   try {
-const { data: usuario, error } = await supabase
-  .from('user_profiles')
-  .select('id,nombre,activo,pin')
-  .eq('nombre', 'JULIO CESAR LINO FLORES')
-  .maybeSingle();
+    const { data: usuario, error } = await supabase
+      
+      .from('user_profiles')
+      .select('id,nombre,activo')
+      .eq('pin', empleadoId.trim())
+      .eq('activo', true)
+      .single();
 
-console.log(usuario);
-console.log(error);
-return;
+   console.log('PIN introducido:', empleadoId);
+    console.log('Usuario encontrado:', usuario);
+    console.log('Error Supabase:', error);
+    
+ if (error || !usuario) {
+  console.log('ERROR PIN', error);
+  console.log('USUARIO', usuario);
+  setError(JSON.stringify(error));
+  return;
+}
+
     setUsuarioPin(usuario);
 
     if (vehicle.estado === 'libre') {

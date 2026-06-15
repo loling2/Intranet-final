@@ -84,17 +84,14 @@ const handleCheckId = async () => {
   setError('');
 
   try {
-    const { data: usuario, error } = await supabase
-      
+const { data, error } = await supabase
   .from('user_profiles')
   .select('id,nombre,pin');
 
-console.log('TODOS', data);
-console.log('ERROR', error);
+console.log('TODOS LOS USUARIOS:', data);
+console.log('ERROR:', error);
 
-  return;
-}
-
+return;
     setUsuarioPin(usuario);
 
     if (vehicle.estado === 'libre') {

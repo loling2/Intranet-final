@@ -27,7 +27,7 @@ export default function VehicleCard() {
 
           <div>
             <h3 className="font-semibold">
-              Vehículo Asignado
+              Vehículo Fichado
             </h3>
 
             <p className="text-xs text-slate-500">

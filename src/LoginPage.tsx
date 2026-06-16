@@ -402,19 +402,6 @@ const usuario = data?.[0];
                     </div>
                   )}
 
-                  <div>
-                    <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
-                      {vehicleStatus === 'libre' ? 'Kilómetros actuales' : 'Kilómetros finales'}
-                    </label>
-                    <input
-                      type="number"
-                      value={km}
-                      onChange={(e) => setKm(e.target.value)}
-                      placeholder={String(vehicle?.kilometros_actuales ?? 0)}
-                      className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-                      style={inputStyle}
-                    />
-                  </div>
 
 <div>
   <label

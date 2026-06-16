@@ -58,7 +58,74 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState('');
   const [done, setDone] = useState<'started' | 'finished' | null>(null);
 const [showVehicleIncident, setShowVehicleIncident] = useState(false);
+    const [incidentTitle, setIncidentTitle] = useState('');
+const [incidentDescription, setIncidentDescription] = useState('');
   // Step 1: look up plate
+
+const handleCreateVehicleIncident = async () => {
+  try {
+    if (!vehicle) {
+      setError('No hay vehículo seleccionado');
+      return;
+    }
+
+    if (!incidentTitle.trim()) {
+      setError('Debe indicar un título');
+      return;
+    }
+
+    if (!incidentDescription.trim()) {
+      setError('Debe indicar una descripción');
+      return;
+    }
+
+    const { data: departamento, error: deptError } = await supabase
+      .from('departamentos')
+      .select('id,nombre')
+      .ilike('nombre', 'VEHICULOS')
+      .maybeSingle();
+
+    if (deptError) throw deptError;
+
+    if (!departamento) {
+      throw new Error('No existe el departamento VEHICULOS');
+    }
+
+    const { error: incError } = await supabase
+      .from('incidencias')
+      .insert({
+        titulo: incidentTitle.trim(),
+        descripcion: incidentDescription.trim(),
+
+        estado: 'pendiente',
+
+        vehicle_id: vehicle.id,
+        matricula: vehicle.matricula,
+
+        creado_por_id: usuarioPin?.id ?? null,
+        creado_por_nombre: usuarioPin?.nombre ?? 'Usuario',
+
+        departamento_id: departamento.id,
+        departamento_nombre: departamento.nombre,
+
+        fecha_creacion: new Date().toISOString(),
+      });
+
+    if (incError) throw incError;
+
+    setIncidentTitle('');
+    setIncidentDescription('');
+    setShowVehicleIncident(false);
+
+    alert('Incidencia registrada correctamente');
+
+  } catch (err: any) {
+    setError(err.message ?? 'Error al registrar incidencia');
+  }
+};
+
+
+  
   const handleSearchPlate = async () => {
     if (!plate.trim()) return;
     setError('');
@@ -575,6 +642,7 @@ export default function LoginPage() {
   const [showVehicleModal, setShowVehicleModal] = useState(false);
   const [bgImage, setBgImage] = useState<string>('/foto1_(2).png');
   const [societies, setSocieties] = useState<SocietyTheme[]>(staticSocieties);
+
 
   useEffect(() => {
     supabase

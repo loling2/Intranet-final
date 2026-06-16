@@ -60,6 +60,10 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
 const [showVehicleIncident, setShowVehicleIncident] = useState(false);
     const [incidentTitle, setIncidentTitle] = useState('');
 const [incidentDescription, setIncidentDescription] = useState('');
+const VEHICULOS_DEPARTAMENTO_ID =
+  '172f43e7-f3dc-4207-98dc-b9c9bb6d3cfb';
+
+  
   // Step 1: look up plate
 
 const handleCreateVehicleIncident = async () => {
@@ -79,22 +83,10 @@ const handleCreateVehicleIncident = async () => {
       return;
     }
 
-    const { data: departamento, error: deptError } = await supabase
-      .from('departamentos')
-      .select('id,nombre')
-      .ilike('nombre', 'Vehiculos')
-      .maybeSingle();
-
-    if (deptError) throw deptError;
-
-    if (!departamento) {
-      throw new Error('No existe el departamento VEHICULOS');
-    }
-
     const { error: incError } = await supabase
       .from('incidencias')
       .insert({
-        titulo: incidentTitle.trim(),
+        titulo: `[${vehicle.matricula}] ${incidentTitle.trim()}`,
         descripcion: incidentDescription.trim(),
 
         estado: 'pendiente',
@@ -105,8 +97,8 @@ const handleCreateVehicleIncident = async () => {
         creado_por_id: usuarioPin?.id ?? null,
         creado_por_nombre: usuarioPin?.nombre ?? 'Usuario',
 
-        departamento_id: departamento.id,
-        departamento_nombre: departamento.nombre,
+        departamento_id: VEHICULOS_DEPARTAMENTO_ID,
+        departamento_nombre: 'Vehiculos',
 
         fecha_creacion: new Date().toISOString(),
       });
@@ -120,10 +112,10 @@ const handleCreateVehicleIncident = async () => {
     alert('Incidencia registrada correctamente');
 
   } catch (err: any) {
+    console.error(err);
     setError(err.message ?? 'Error al registrar incidencia');
   }
 };
-
 
   
   const handleSearchPlate = async () => {

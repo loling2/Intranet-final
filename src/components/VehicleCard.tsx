@@ -53,117 +53,76 @@ export default function VehicleCard({
 
         </div>
 
-{hasVehicle ? (
-  <>
-    <div
-      className="border-t p-4"
-      style={{
-        borderColor: '#E2E8F0',
-      }}
-    >
-      <div
-        className="rounded-xl p-4"
-        style={{
-          backgroundColor: '#ECFDF5',
-          border: '1px solid #A7F3D0',
-        }}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="font-semibold">
-              {vehicle.marca} {vehicle.modelo}
+        {hasVehicle ? (
+          <>
+            <div
+              className="rounded-xl p-3 mb-4"
+              style={{
+                backgroundColor: '#F8FAFC',
+                border: '1px solid #E2E8F0',
+              }}
+            >
+              <div className="font-semibold">
+                {vehicle.marca} {vehicle.modelo}
+              </div>
+
+              <div className="text-sm text-slate-500">
+                {vehicle.matricula}
+              </div>
             </div>
 
-            <div className="text-sm text-slate-500">
-              {vehicle.matricula}
+            <div className="space-y-2 text-sm">
+
+              <div className="flex justify-between">
+                <span className="flex items-center gap-2">
+                  <Shield size={14} />
+                  Seguro
+                </span>
+
+                <span>{vehicle.aseguradora || '-'}</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="flex items-center gap-2">
+                  <FileText size={14} />
+                  Nº póliza
+                </span>
+
+                <span>{vehicle.numero_poliza || '-'}</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="flex items-center gap-2">
+                  <Calendar size={14} />
+                  ITV
+                </span>
+
+                <span>{vehicle.fecha_itv || '-'}</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="flex items-center gap-2">
+                  <Phone size={14} />
+                  Asistencia
+                </span>
+
+                <span>{vehicle.telefono_asistencia || '-'}</span>
+              </div>
+
             </div>
+          </>
+        ) : (
+          <div
+            className="text-sm text-slate-500"
+            style={{
+              paddingTop: '10px',
+            }}
+          >
+            No hay ningún vehículo fichado actualmente.
           </div>
-
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-500" />
-
-            <span className="text-sm font-medium">
-              Activo
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 space-y-3 text-sm">
-
-        <div className="flex justify-between">
-          <span className="flex items-center gap-2">
-            <Shield size={14} />
-            Seguro
-          </span>
-
-          <span>{vehicle.aseguradora || '-'}</span>
-        </div>
-
-        <div className="flex justify-between">
-          <span className="flex items-center gap-2">
-            <FileText size={14} />
-            Nº póliza
-          </span>
-
-          <span>{vehicle.numero_poliza || '-'}</span>
-        </div>
-
-        <div className="flex justify-between">
-          <span className="flex items-center gap-2">
-            <Phone size={14} />
-            Asistencia
-          </span>
-
-          <span>{vehicle.telefono_asistencia || '-'}</span>
-        </div>
-
-        <div className="flex justify-between">
-          <span className="flex items-center gap-2">
-            <Calendar size={14} />
-            ITV
-          </span>
-
-          <span>{vehicle.fecha_itv || '-'}</span>
-        </div>
+        )}
 
       </div>
     </div>
-
-    <div
-      className="border-t px-4 py-3 text-center text-sm"
-      style={{
-        borderColor: '#E2E8F0',
-        color: '#64748B',
-      }}
-    >
-      Asignado actualmente
-    </div>
-  </>
-) : (
-         <div
-  className="border-t p-4"
-  style={{
-    borderColor: '#E2E8F0',
-  }}
->
-  <div
-    className="rounded-xl p-4 text-center"
-    style={{
-      backgroundColor: '#F8FAFC',
-      border: '1px solid #E2E8F0',
-    }}
-  >
-    <Car
-      size={24}
-      className="mx-auto mb-2"
-      style={{ color: '#94A3B8' }}
-    />
-
-    <p className="text-sm text-slate-500">
-      No hay ningún vehículo fichado actualmente
-    </p>
-  </div>
-</div>
-  
+  );
 }

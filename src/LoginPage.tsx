@@ -560,11 +560,13 @@ const usuario = data?.[0];
         Nombre de la incidencia
       </label>
 
-      <input
-        type="text"
-        placeholder="Ej: Luz de motor encendida"
-        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-      />
+     <input
+  type="text"
+  value={incidentTitle}
+  onChange={(e) => setIncidentTitle(e.target.value)}
+  placeholder="Ej: Luz de motor encendida"
+  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+/>
     </div>
 
     <div>
@@ -576,10 +578,12 @@ const usuario = data?.[0];
       </label>
 
       <textarea
-        rows={3}
-        placeholder="Describe el problema..."
-        className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
-      />
+  rows={3}
+  value={incidentDescription}
+  onChange={(e) => setIncidentDescription(e.target.value)}
+  placeholder="Describe el problema..."
+  className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
+/>
     </div>
 
     <div className="flex gap-2">

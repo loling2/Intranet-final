@@ -82,7 +82,7 @@ const handleCreateVehicleIncident = async () => {
     const { data: departamento, error: deptError } = await supabase
       .from('departamentos')
       .select('id,nombre')
-      .ilike('nombre', 'VEHICULOS')
+      .ilike('nombre', 'Vehiculos')
       .maybeSingle();
 
     if (deptError) throw deptError;

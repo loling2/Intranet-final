@@ -51,6 +51,7 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
   const [usuarioPin, setUsuarioPin] = useState<any>(null);
   const [km, setKm] = useState('');
  const [numeroPersonas, setNumeroPersonas] = useState('1');
+  const [motivoUso, setMotivoUso] = useState('');
   const [vehicle, setVehicle] = useState<VehicleInfo | null>(null);
   const [vehicleStatus, setVehicleStatus] = useState<VehicleStatus>('libre');
   const [loading, setLoading] = useState(false);
@@ -144,19 +145,23 @@ const usuario = data?.[0];
     return;
   }
 
+    if (!motivoUso.trim()) {
+  setError('Debe indicar el motivo del uso');
+  return;
+}
   setLoading(true);
     try {
       const now = new Date().toISOString();
-      const { error: logErr } = await supabase.from('vehicle_logs').insert({
-        vehicle_id: vehicle.id,
-        user_id: usuarioPin.id,
-        user_nombre: usuarioPin.nombre,
-        fecha_inicio: now,
-        km_inicio: kmVal,
-         numero_personas: Number(numeroPersonas),
-        tipo: 'normal',
-       motivo: `Registro rápido. PIN validado (${usuarioPin.nombre})`,
-      });
+ const { error: logErr } = await supabase.from('vehicle_logs').insert({
+  vehicle_id: vehicle.id,
+  user_id: usuarioPin.id,
+  user_nombre: usuarioPin.nombre,
+  fecha_inicio: now,
+  km_inicio: kmVal,
+  numero_personas: Number(numeroPersonas),
+  tipo: 'normal',
+  motivo: motivoUso.trim(),
+});
       if (logErr) throw new Error(logErr.message);
       const { error: vUpErr } = await supabase.from('vehicles').update({
         estado: 'en_uso',
@@ -411,6 +416,44 @@ const usuario = data?.[0];
                     />
                   </div>
 
+<div>
+  <label
+    className="block text-xs font-semibold mb-1.5 uppercase tracking-wider"
+    style={{ color: '#64748B' }}
+  >
+    {vehicleStatus === 'libre'
+      ? 'Kilómetros actuales'
+      : 'Kilómetros finales'}
+  </label>
+
+  <input
+    type="number"
+    value={km}
+    onChange={(e) => setKm(e.target.value)}
+    placeholder={String(vehicle?.kilometros_actuales ?? 0)}
+    className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+    style={inputStyle}
+  />
+</div>
+
+<div className="mt-4">
+  <label
+    className="block text-xs font-semibold mb-1.5 uppercase tracking-wider"
+    style={{ color: '#64748B' }}
+  >
+    Descripción / motivo del uso
+  </label>
+
+  <textarea
+    value={motivoUso}
+    onChange={(e) => setMotivoUso(e.target.value)}
+    placeholder="Ej: Visita usuarios SPH Arona"
+    rows={3}
+    className="w-full px-4 py-2.5 rounded-xl text-sm outline-none resize-none"
+    style={inputStyle}
+  />
+</div>
+                  
                   {error && <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}><AlertCircle size={13} style={{ color: '#DC2626' }} /><p className="text-xs" style={{ color: '#DC2626' }}>{error}</p></div>}
 
                   <div className="flex gap-3">

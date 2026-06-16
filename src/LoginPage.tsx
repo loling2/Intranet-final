@@ -57,7 +57,7 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<'started' | 'finished' | null>(null);
-
+const [showVehicleIncident, setShowVehicleIncident] = useState(false);
   // Step 1: look up plate
   const handleSearchPlate = async () => {
     if (!plate.trim()) return;
@@ -458,25 +458,18 @@ const usuario = data?.[0];
                     )}
                   </div>
 
-<div
-  className="mt-4 pt-4 border-t"
-  style={{ borderColor: '#E2E8F0' }}
+<button
+  type="button"
+  onClick={() => setShowVehicleIncident(true)}
+  className="w-full text-left rounded-xl p-3 transition-colors cursor-pointer"
+  style={{
+    backgroundColor: '#FEF2F2',
+    border: '1px solid #FECACA',
+    color: '#DC2626',
+  }}
 >
-  <button
-    type="button"
-    onClick={() => {
-      // aquí irá el modal de incidencia
-    }}
-    className="w-full text-left rounded-xl p-3 transition-colors cursor-pointer"
-    style={{
-      backgroundColor: '#FEF2F2',
-      border: '1px solid #FECACA',
-      color: '#DC2626',
-    }}
-  >
-    ⚠ Registrar incidencia del vehículo
-  </button>
-</div>
+  ⚠ Registrar incidencia del vehículo
+</button>
 
 
                   

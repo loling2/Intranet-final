@@ -1414,6 +1414,7 @@ function Dashboard({
   const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [activeDeviceCount, setActiveDeviceCount] = useState<number | null>(null);
+  const [assignedVehicle, setAssignedVehicle] = useState<any>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -1461,6 +1462,43 @@ useEffect(() => {
   })();
 }, []);
 
+useEffect(() => {
+  (async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      setAssignedVehicle(null);
+      return;
+    }
+
+    const { data: empleadoData } = await supabase
+      .from('empleados')
+      .select('id')
+      .or(`id.eq.${user.id},email.eq.${user.email}`)
+      .maybeSingle();
+
+    const realEmpleadoId = empleadoData?.id || user.id;
+
+    const { data } = await supabase
+      .from('vehicles')
+      .select(`
+        matricula,
+        marca,
+        modelo,
+        fecha_itv,
+        aseguradora,
+        numero_poliza,
+        telefono_asistencia
+      `)
+      .eq('current_user_id', realEmpleadoId)
+      .maybeSingle();
+
+    setAssignedVehicle(data);
+  })();
+}, []);
+
+
+  
   const certificates = mockCertificates[theme.id] ?? [];
   const exams = mockExams[theme.id] ?? [];
 
@@ -1644,7 +1682,7 @@ useEffect(() => {
               <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
               <DevicesCard theme={theme} />
               <PrevencionDocsCard theme={theme} userEmail={email} />
-              <VehicleCard />
+             <VehicleCard vehicle={assignedVehicle} />
             </div>
           </>
         )}

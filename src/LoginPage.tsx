@@ -434,7 +434,7 @@ const usuario = data?.[0];
   <textarea
     value={motivoUso}
     onChange={(e) => setMotivoUso(e.target.value)}
-    placeholder="Ej: Visita usuarios SPH Arona"
+    placeholder="Ej: Salida de usuarios a la playa..."
     rows={3}
     className="w-full px-4 py-2.5 rounded-xl text-sm outline-none resize-none"
     style={inputStyle}

@@ -1644,12 +1644,7 @@ useEffect(() => {
               <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
               <DevicesCard theme={theme} />
               <PrevencionDocsCard theme={theme} userEmail={email} />
-               <DocumentsCard
-    theme={theme}
-    userEmail={email}
-    userId={currentUserId}
-    societyId={theme.id}
-  />
+              <VehicleCard />
             </div>
           </>
         )}

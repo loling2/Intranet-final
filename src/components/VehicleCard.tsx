@@ -25,10 +25,9 @@ export default function VehicleCard({
         border: '1px solid #E2E8F0',
       }}
     >
+      {/* CABECERA */}
       <div className="p-5">
-
-        <div className="flex items-center gap-3 mb-4">
-
+        <div className="flex items-center gap-3">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center"
             style={{
@@ -50,28 +49,49 @@ export default function VehicleCard({
               {hasVehicle ? 'Vehículo activo' : 'Sin vehículo'}
             </p>
           </div>
-
         </div>
+      </div>
 
-        {hasVehicle ? (
-          <>
+      {/* CONTENIDO */}
+      {hasVehicle ? (
+        <>
+          <div
+            className="border-t p-4"
+            style={{
+              borderColor: '#E2E8F0',
+            }}
+          >
+            {/* TARJETA VEHÍCULO */}
             <div
-              className="rounded-xl p-3 mb-4"
+              className="rounded-xl p-4"
               style={{
-                backgroundColor: '#F8FAFC',
-                border: '1px solid #E2E8F0',
+                backgroundColor: '#ECFDF5',
+                border: '1px solid #A7F3D0',
               }}
             >
-              <div className="font-semibold">
-                {vehicle.marca} {vehicle.modelo}
-              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-semibold">
+                    {vehicle.marca} {vehicle.modelo}
+                  </div>
 
-              <div className="text-sm text-slate-500">
-                {vehicle.matricula}
+                  <div className="text-sm text-slate-500">
+                    {vehicle.matricula}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+
+                  <span className="text-sm font-medium">
+                    Activo
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-2 text-sm">
+            {/* DATOS */}
+            <div className="mt-4 space-y-3 text-sm">
 
               <div className="flex justify-between">
                 <span className="flex items-center gap-2">
@@ -93,15 +113,6 @@ export default function VehicleCard({
 
               <div className="flex justify-between">
                 <span className="flex items-center gap-2">
-                  <Calendar size={14} />
-                  ITV
-                </span>
-
-                <span>{vehicle.fecha_itv || '-'}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="flex items-center gap-2">
                   <Phone size={14} />
                   Asistencia
                 </span>
@@ -109,20 +120,55 @@ export default function VehicleCard({
                 <span>{vehicle.telefono_asistencia || '-'}</span>
               </div>
 
+              <div className="flex justify-between">
+                <span className="flex items-center gap-2">
+                  <Calendar size={14} />
+                  ITV
+                </span>
+
+                <span>{vehicle.fecha_itv || '-'}</span>
+              </div>
+
             </div>
-          </>
-        ) : (
+          </div>
+
+          {/* PIE */}
           <div
-            className="text-sm text-slate-500"
+            className="border-t px-4 py-3 text-center text-sm"
             style={{
-              paddingTop: '10px',
+              borderColor: '#E2E8F0',
+              color: '#64748B',
             }}
           >
-            No hay ningún vehículo fichado actualmente.
+            Asignado actualmente
           </div>
-        )}
+        </>
+      ) : (
+        <div
+          className="border-t p-4"
+          style={{
+            borderColor: '#E2E8F0',
+          }}
+        >
+          <div
+            className="rounded-xl p-4 text-center"
+            style={{
+              backgroundColor: '#F8FAFC',
+              border: '1px solid #E2E8F0',
+            }}
+          >
+            <Car
+              size={24}
+              className="mx-auto mb-2"
+              style={{ color: '#94A3B8' }}
+            />
 
-      </div>
+            <p className="text-sm text-slate-500">
+              No hay ningún vehículo fichado actualmente
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

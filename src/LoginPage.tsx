@@ -460,7 +460,10 @@ const usuario = data?.[0];
 
 <button
   type="button"
-  onClick={() => setShowVehicleIncident(true)}
+  onClick={() => {
+    console.log('CLICK INCIDENCIA');
+    alert('CLICK INCIDENCIA');
+  }}
   className="w-full text-left rounded-xl p-3 transition-colors cursor-pointer"
   style={{
     backgroundColor: '#FEF2F2',

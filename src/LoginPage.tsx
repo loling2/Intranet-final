@@ -476,6 +476,37 @@ const usuario = data?.[0];
                 </>
               )}
 
+
+{showVehicleIncident && (
+  <div
+    className="rounded-xl p-4"
+    style={{
+      backgroundColor: '#FEF2F2',
+      border: '1px solid #FECACA',
+    }}
+  >
+    <p style={{ color: '#DC2626', fontWeight: 600 }}>
+      Modal incidencia funcionando
+    </p>
+
+    <button
+      onClick={() => setShowVehicleIncident(false)}
+      className="mt-3 px-3 py-2 rounded-lg"
+      style={{
+        backgroundColor: '#DC2626',
+        color: '#FFF',
+      }}
+    >
+      Cerrar
+    </button>
+  </div>
+)}
+
+
+
+
+
+              
               {vehicleStatus === 'en_uso_otro' && (
                 <button onClick={onClose} className="w-full py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cerrar</button>
               )}

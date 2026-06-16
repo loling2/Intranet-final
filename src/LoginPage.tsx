@@ -1419,6 +1419,7 @@ function Dashboard({
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const uid = session?.user?.id ?? null;
+      console.log('SESSION USER ID:', uid);
       setCurrentUserId(uid);
       if (uid) {
         supabase.from('user_profiles').select('nombre').eq('id', uid).maybeSingle()
@@ -1471,28 +1472,17 @@ useEffect(() => {
       return;
     }
 
-    const { data: empleadoData } = await supabase
-      .from('empleados')
-      .select('id')
-      .or(`id.eq.${user.id},email.eq.${user.email}`)
-      .maybeSingle();
-
-    const realEmpleadoId = empleadoData?.id || user.id;
-
     const { data, error } = await supabase
       .from('vehicles')
       .select('*')
-      .eq('current_user_id', realEmpleadoId);
+      .eq('current_user_id', user.id)
+      .maybeSingle();
 
-    console.log('EMPLEADO:', realEmpleadoId);
-    console.log('VEHICULOS ENCONTRADOS:', data);
+    console.log('AUTH USER ID:', user.id);
+    console.log('VEHICULO:', data);
     console.log('ERROR:', error);
 
-    if (data && data.length > 0) {
-      setAssignedVehicle(data[0]);
-    } else {
-      setAssignedVehicle(null);
-    }
+    setAssignedVehicle(data);
   })();
 }, []);
 

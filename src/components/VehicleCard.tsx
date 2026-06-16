@@ -165,5 +165,5 @@ export default function VehicleCard({
     </p>
   </div>
 </div>
-  );
+  
 }

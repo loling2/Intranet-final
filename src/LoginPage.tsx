@@ -479,26 +479,61 @@ const usuario = data?.[0];
 
 {showVehicleIncident && (
   <div
-    className="rounded-xl p-4"
+    className="rounded-xl p-4 space-y-3"
     style={{
       backgroundColor: '#FEF2F2',
       border: '1px solid #FECACA',
     }}
   >
-    <p style={{ color: '#DC2626', fontWeight: 600 }}>
-      Modal incidencia funcionando
-    </p>
+    <div>
+      <label
+        className="block text-xs font-semibold mb-1.5 uppercase tracking-wider"
+        style={{ color: '#991B1B' }}
+      >
+        Nombre de la incidencia
+      </label>
 
-    <button
-      onClick={() => setShowVehicleIncident(false)}
-      className="mt-3 px-3 py-2 rounded-lg"
-      style={{
-        backgroundColor: '#DC2626',
-        color: '#FFF',
-      }}
-    >
-      Cerrar
-    </button>
+      <input
+        type="text"
+        placeholder="Ej: Luz de motor encendida"
+        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+      />
+    </div>
+
+    <div>
+      <label
+        className="block text-xs font-semibold mb-1.5 uppercase tracking-wider"
+        style={{ color: '#991B1B' }}
+      >
+        Descripción
+      </label>
+
+      <textarea
+        rows={3}
+        placeholder="Describe el problema..."
+        className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
+      />
+    </div>
+
+    <div className="flex gap-2">
+      <button
+        onClick={() => setShowVehicleIncident(false)}
+        className="flex-1 py-2 rounded-lg"
+      >
+        Cancelar
+      </button>
+
+      <button
+        onClick={handleCreateVehicleIncident}
+        className="flex-1 py-2 rounded-lg"
+        style={{
+          backgroundColor: '#DC2626',
+          color: '#FFF'
+        }}
+      >
+        Enviar incidencia
+      </button>
+    </div>
   </div>
 )}
 

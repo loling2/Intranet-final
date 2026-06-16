@@ -1479,21 +1479,17 @@ useEffect(() => {
 
     const realEmpleadoId = empleadoData?.id || user.id;
 
-    const { data } = await supabase
-      .from('vehicles')
-      .select(`
-        matricula,
-        marca,
-        modelo,
-        fecha_itv,
-        aseguradora,
-        numero_poliza,
-        telefono_asistencia
-      `)
-      .eq('current_user_id', realEmpleadoId)
-      .maybeSingle();
+const { data, error } = await supabase
+  .from('vehicles')
+  .select('*')
+  .eq('current_user_id', realEmpleadoId);
 
-    setAssignedVehicle(data);
+console.log('EMPLEADO:', realEmpleadoId);
+console.log('VEHICULOS ENCONTRADOS:', data);
+console.log('ERROR:', error);
+
+if (data && data.length > 0) {
+  setAssignedVehicle(data[0]);
   })();
 }, []);
 

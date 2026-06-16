@@ -464,8 +464,10 @@ const usuario = data?.[0];
 >
   <button
     type="button"
-    onClick={() => setShowVehicleIncident(true)}
-    className="w-full text-left rounded-xl p-3 transition-colors"
+    onClick={() => {
+      // aquí irá el modal de incidencia
+    }}
+    className="w-full text-left rounded-xl p-3 transition-colors cursor-pointer"
     style={{
       backgroundColor: '#FEF2F2',
       border: '1px solid #FECACA',

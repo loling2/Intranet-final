@@ -1479,20 +1479,22 @@ useEffect(() => {
 
     const realEmpleadoId = empleadoData?.id || user.id;
 
-const { data, error } = await supabase
-  .from('vehicles')
-  .select('*')
-  .eq('current_user_id', realEmpleadoId);
+    const { data, error } = await supabase
+      .from('vehicles')
+      .select('*')
+      .eq('current_user_id', realEmpleadoId);
 
-console.log('EMPLEADO:', realEmpleadoId);
-console.log('VEHICULOS ENCONTRADOS:', data);
-console.log('ERROR:', error);
+    console.log('EMPLEADO:', realEmpleadoId);
+    console.log('VEHICULOS ENCONTRADOS:', data);
+    console.log('ERROR:', error);
 
-if (data && data.length > 0) {
-  setAssignedVehicle(data[0]);
+    if (data && data.length > 0) {
+      setAssignedVehicle(data[0]);
+    } else {
+      setAssignedVehicle(null);
+    }
   })();
 }, []);
-
 
   
   const certificates = mockCertificates[theme.id] ?? [];

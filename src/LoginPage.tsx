@@ -457,6 +457,27 @@ const usuario = data?.[0];
                       </button>
                     )}
                   </div>
+
+<div
+  className="mt-4 pt-4 border-t"
+  style={{ borderColor: '#E2E8F0' }}
+>
+  <button
+    type="button"
+    onClick={() => setShowVehicleIncident(true)}
+    className="w-full text-left rounded-xl p-3 transition-colors"
+    style={{
+      backgroundColor: '#FEF2F2',
+      border: '1px solid #FECACA',
+      color: '#DC2626',
+    }}
+  >
+    ⚠ Registrar incidencia del vehículo
+  </button>
+</div>
+
+
+                  
                 </>
               )}
 

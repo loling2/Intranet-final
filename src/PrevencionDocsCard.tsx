@@ -148,17 +148,19 @@ export default function PrevencionDocsCard({ theme }: Props) {
         const rawDocs = (data ?? []) as (Omit<PrevDoc, 'society_id' | 'society_nombre'> & { folder_society_id?: string })[];
 
         // Resolve society name from the frontend themes list
-        const docs: PrevDoc[] = rawDocs.map((d) => {
-          const sid = d.folder_society_id ?? '';
-          const match = allSocieties.find((s) => s.id === sid);
-          return {
-            ...d,
-            society_id: sid,
-            society_nombre: match?.name ?? sid,
-          };
-        });
+const docs: PrevDoc[] = rawDocs.map((d) => {
+  const sid = d.folder_society_id ?? '';
+  const match = allSocieties.find((s) => s.id === sid);
+
+  return {
+    ...d,
+    society_id: sid,
+    society_nombre: match?.name ?? sid,
+  };
+});
+
 const map = new Map<string, GroupedDocs>();
-        // Group by society
+
 for (const doc of docs) {
   if (!map.has(doc.society_id)) {
     map.set(doc.society_id, {
@@ -182,7 +184,9 @@ const grouped = Array.from(map.values())
       )
       .slice(0, 3)
   }))
-  .sort((a, b) => a.society_nombre.localeCompare(b.society_nombre));
+  .sort((a, b) =>
+    a.society_nombre.localeCompare(b.society_nombre)
+  );
         setGroups(grouped);
 
         // Expand all by default

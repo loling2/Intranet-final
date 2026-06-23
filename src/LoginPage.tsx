@@ -299,15 +299,22 @@ const usuario = data?.[0];
   const inputStyle = { border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' };
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
-<div
-  className="fixed inset-0 z-[300] flex justify-center p-4"
-  style={{
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    backdropFilter: 'blur(4px)',
-    overflowY: 'auto'
-  }}
->
+ <div
+    className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+    style={{
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      backdropFilter: 'blur(4px)',
+    }}
+  >
+    <div
+      className="bg-white rounded-2xl shadow-2xl"
+      style={{
+        width: '100%',
+        maxWidth: '560px',
+        maxHeight: '90vh',
+        overflowY: 'auto',
+      }}
+    >
         {/* Header */}
         <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}>
           <div className="flex items-center gap-2">

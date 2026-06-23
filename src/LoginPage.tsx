@@ -300,7 +300,14 @@ const usuario = data?.[0];
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-white rounded-2xl max-w-md w-full mx-4 overflow-hidden shadow-2xl">
+<div
+  className="fixed inset-0 z-[300] flex justify-center p-4"
+  style={{
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    backdropFilter: 'blur(4px)',
+    overflowY: 'auto'
+  }}
+>
         {/* Header */}
         <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}>
           <div className="flex items-center gap-2">

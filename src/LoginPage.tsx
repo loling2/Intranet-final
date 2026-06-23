@@ -60,6 +60,7 @@ function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
 const [showVehicleIncident, setShowVehicleIncident] = useState(false);
     const [incidentTitle, setIncidentTitle] = useState('');
 const [incidentDescription, setIncidentDescription] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 const VEHICULOS_DEPARTAMENTO_ID =
   '172f43e7-f3dc-4207-98dc-b9c9bb6d3cfb';
 
@@ -109,7 +110,11 @@ const handleCreateVehicleIncident = async () => {
     setIncidentDescription('');
     setShowVehicleIncident(false);
 
-    alert('Incidencia registrada correctamente');
+    setSuccessMessage('Incidencia creada correctamente');
+
+setTimeout(() => {
+  setSuccessMessage('');
+}, 3000);
 
   } catch (err: any) {
     console.error(err);

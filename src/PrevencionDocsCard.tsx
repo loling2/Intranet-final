@@ -148,45 +148,25 @@ export default function PrevencionDocsCard({ theme }: Props) {
         const rawDocs = (data ?? []) as (Omit<PrevDoc, 'society_id' | 'society_nombre'> & { folder_society_id?: string })[];
 
         // Resolve society name from the frontend themes list
-const docs: PrevDoc[] = rawDocs.map((d) => {
-  const sid = d.folder_society_id ?? '';
-  const match = allSocieties.find((s) => s.id === sid);
+        const docs: PrevDoc[] = rawDocs.map((d) => {
+          const sid = d.folder_society_id ?? '';
+          const match = allSocieties.find((s) => s.id === sid);
+          return {
+            ...d,
+            society_id: sid,
+            society_nombre: match?.name ?? sid,
+          };
+        });
 
-  return {
-    ...d,
-    society_id: sid,
-    society_nombre: match?.name ?? sid,
-  };
-});
-
-const map = new Map<string, GroupedDocs>();
-
-for (const doc of docs) {
-  if (!map.has(doc.society_id)) {
-    map.set(doc.society_id, {
-      society_id: doc.society_id,
-      society_nombre: doc.society_nombre,
-      docs: []
-    });
-  }
-
-  map.get(doc.society_id)!.docs.push(doc);
-}
-
-const grouped = Array.from(map.values())
-  .map(group => ({
-    ...group,
-    docs: group.docs
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() -
-          new Date(a.created_at).getTime()
-      )
-      .slice(0, 3)
-  }))
-  .sort((a, b) =>
-    a.society_nombre.localeCompare(b.society_nombre)
-  );
+        // Group by society
+        const map = new Map<string, GroupedDocs>();
+        for (const doc of docs) {
+          if (!map.has(doc.society_id)) {
+            map.set(doc.society_id, { society_id: doc.society_id, society_nombre: doc.society_nombre, docs: [] });
+          }
+          map.get(doc.society_id)!.docs.push(doc);
+        }
+        const grouped = Array.from(map.values()).sort((a, b) => a.society_nombre.localeCompare(b.society_nombre));
         setGroups(grouped);
 
         // Expand all by default

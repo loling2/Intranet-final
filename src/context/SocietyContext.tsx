@@ -40,8 +40,10 @@ const SocietyContext = createContext<SocietyContextValue>({
 export function SocietyProvider({ children, defaultSocietyId }: { children: ReactNode; defaultSocietyId?: string }) {
   const [societies, setSocieties] = useState<SocietyTheme[]>(staticSocieties);
   const [activeSocietyId, setActiveSocietyIdState] = useState<string>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return stored;
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored && staticSocieties.some(s => s.id === stored)) return stored;
+    } catch { /* ignore storage errors */ }
     return defaultSocietyId ?? staticSocieties[0].id;
   });
 
@@ -63,7 +65,7 @@ export function SocietyProvider({ children, defaultSocietyId }: { children: Reac
       } else if (Object.keys(colorOverrides).length > 0) {
         setSocieties(mergeSocieties([], colorOverrides));
       }
-    });
+    }).catch(() => { /* keep static societies on network error */ });
   }, []);
 
   useEffect(() => {

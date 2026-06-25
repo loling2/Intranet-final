@@ -4,6 +4,7 @@ import {
   CreditCard as Edit2, Key, X, Eye, EyeOff, AlertCircle,
   RefreshCw, Hash, UserCheck,
 } from 'lucide-react';
+import { Pagination, paginate, totalPages as calcTotalPages } from './components/Pagination';
 import { supabase, UserProfile, AppRole, Empleado } from './supabaseClient';
 import { useAuth } from './context/AuthContext';
 import { useSociety } from './context/SocietyContext';
@@ -612,6 +613,7 @@ export default function UserManagement({ currentUserRole }: Props) {
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [page, setPage] = useState(1);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -625,6 +627,7 @@ export default function UserManagement({ currentUserRole }: Props) {
   }, []);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
+  useEffect(() => { setPage(1); }, [search, filterRole, filterStatus]);
 
   const userIds = new Set(users.map((u) => u.id));
   // Empleados that don't have a linked user_profiles entry
@@ -646,7 +649,14 @@ export default function UserManagement({ currentUserRole }: Props) {
     return e.nombre.toLowerCase().includes(q) || e.email.toLowerCase().includes(q);
   });
 
-  const totalVisible = filtered.length + filteredEmpleados.length;
+  const PAGE_SIZE = 25;
+  const allRows = [...filtered.map(u => ({ type: 'user' as const, data: u })), ...filteredEmpleados.map(e => ({ type: 'emp' as const, data: e }))];
+  const tp = calcTotalPages(allRows.length, PAGE_SIZE);
+  const safePage = Math.min(page, tp);
+  const pageRows = paginate(allRows, safePage, PAGE_SIZE);
+  const pageUsers = pageRows.filter(r => r.type === 'user').map(r => r.data as UserProfile);
+  const pageEmps = pageRows.filter(r => r.type === 'emp').map(r => r.data as Empleado);
+  const totalVisible = allRows.length;
 
   return (
     <div>
@@ -713,7 +723,7 @@ export default function UserManagement({ currentUserRole }: Props) {
             </div>
 
             {/* Users with accounts */}
-            {filtered.map((u) => {
+            {pageUsers.map((u) => {
               const rc = ROLE_COLORS[u.role];
               const userSocieties = (u.societies ?? []).map((sid) => societies.find((s) => s.id === sid)).filter(Boolean);
               return (
@@ -761,7 +771,7 @@ export default function UserManagement({ currentUserRole }: Props) {
             })}
 
             {/* Employees without accounts */}
-            {filteredEmpleados.length > 0 && (
+            {pageEmps.length > 0 && (
               <>
                 <div className="px-6 py-2 flex items-center gap-2" style={{ backgroundColor: '#FFFBEB', borderTop: '1px solid #FDE68A' }}>
                   <UserCheck size={13} style={{ color: '#D97706' }} />
@@ -769,7 +779,7 @@ export default function UserManagement({ currentUserRole }: Props) {
                     Empleados sin cuenta de acceso ({filteredEmpleados.length})
                   </span>
                 </div>
-                {filteredEmpleados.map((e) => (
+                {pageEmps.map((e) => (
                   <div key={e.id} className="px-6 py-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-center hover:bg-amber-50 transition-colors duration-150" style={{ opacity: 0.85 }}>
                     <div className="sm:col-span-4 flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ backgroundColor: '#FFFBEB', color: '#D97706', border: '1px dashed #FDE68A' }}>
@@ -807,6 +817,7 @@ export default function UserManagement({ currentUserRole }: Props) {
             )}
           </div>
         )}
+        <Pagination page={safePage} totalPages={tp} totalItems={totalVisible} pageSize={PAGE_SIZE} onPage={setPage} />
       </div>
     </div>
   );

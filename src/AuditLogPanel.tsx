@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Shield, Search, RefreshCw, User, Car, FileText, Key, AlertTriangle, Clock, Activity } from 'lucide-react';
+import { Pagination, paginate, totalPages as calcTotalPages } from './components/Pagination';
 import { supabase, AuditLog } from './supabaseClient';
 import { useSociety } from './context/SocietyContext';
 
@@ -25,6 +26,7 @@ export default function AuditLogPanel() {
   const [search, setSearch] = useState('');
   const [filterEvento, setFilterEvento] = useState('');
   const [filterAll, setFilterAll] = useState(true); // show all societies
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,6 +46,7 @@ export default function AuditLogPanel() {
   }, [activeSocietyId, filterAll]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [search, filterEvento, filterAll]);
 
   const filtered = logs.filter((l) => {
     const matchSearch = !search || l.descripcion.toLowerCase().includes(search.toLowerCase()) || l.autor_email.toLowerCase().includes(search.toLowerCase());
@@ -52,6 +55,11 @@ export default function AuditLogPanel() {
   });
 
   const uniqueEventos = [...new Set(logs.map((l) => l.evento))];
+
+  const AUDIT_PAGE_SIZE = 25;
+  const auditTotalPages = calcTotalPages(filtered.length, AUDIT_PAGE_SIZE);
+  const auditSafePage = Math.min(page, auditTotalPages);
+  const pagedLogs = paginate(filtered, auditSafePage, AUDIT_PAGE_SIZE);
 
   return (
     <div className="space-y-6">
@@ -114,7 +122,7 @@ export default function AuditLogPanel() {
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-            {filtered.map((log) => {
+            {pagedLogs.map((log) => {
               const cfg = EVENT_ICONS[log.evento] ?? DEFAULT_ICON;
               const { Icon } = cfg;
               return (
@@ -148,6 +156,7 @@ export default function AuditLogPanel() {
                 </div>
               );
             })}
+            <Pagination page={auditSafePage} totalPages={auditTotalPages} totalItems={filtered.length} pageSize={AUDIT_PAGE_SIZE} onPage={setPage} />
           </div>
         )}
       </div>

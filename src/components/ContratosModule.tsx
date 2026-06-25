@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination';
 import { Ligature as FileSignature, Clock, Bell, Search, Filter, Upload, X, RefreshCw, AlertCircle, CheckCircle2, FileText, Download } from 'lucide-react';
 import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
@@ -141,6 +142,7 @@ export default function ContratosModule({ currentUserRole }: Props) {
   const [loadingHistorial, setLoadingHistorial] = useState<string | null>(null);
   const [uploadModal, setUploadModal] = useState<EmpleadoConHistorial | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [page, setPage] = useState(1);
 
   void currentUserRole;
 
@@ -164,6 +166,7 @@ export default function ContratosModule({ currentUserRole }: Props) {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { setPage(1); }, [search, filterSociedad, filterEstado]);
 
   const loadHistorial = async (empleadoId: string) => {
     if (historialMap[empleadoId]) return;
@@ -191,6 +194,11 @@ export default function ContratosModule({ currentUserRole }: Props) {
     }
     return true;
   });
+
+  const CONT_PAGE_SIZE = 25;
+  const contTotalPages = calcTotalPages(filtered.length, CONT_PAGE_SIZE);
+  const contSafePage = Math.min(page, contTotalPages);
+  const pagedContratos = paginate(filtered, contSafePage, CONT_PAGE_SIZE);
 
   const counts = {
     pendiente: empleados.filter((e) => (e.estado_contrato ?? 'pendiente') === 'pendiente').length,
@@ -296,7 +304,7 @@ export default function ContratosModule({ currentUserRole }: Props) {
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-            {filtered.map((emp) => {
+            {pagedContratos.map((emp) => {
               const estado = ESTADOS.find((e) => e.value === (emp.estado_contrato ?? 'pendiente')) ?? ESTADOS[0];
               const isExpanded = expandedId === emp.id;
               const historial = historialMap[emp.id] ?? [];
@@ -383,6 +391,7 @@ export default function ContratosModule({ currentUserRole }: Props) {
                 </div>
               );
             })}
+            <Pagination page={contSafePage} totalPages={contTotalPages} totalItems={filtered.length} pageSize={CONT_PAGE_SIZE} onPage={setPage} />
           </div>
         )}
       </div>

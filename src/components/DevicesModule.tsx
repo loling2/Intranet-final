@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination';
 import {
   Laptop, Smartphone, Monitor, Headphones, Tablet, Phone,
   Plus, Search, Pencil, Trash2, X, RefreshCw, AlertCircle,
@@ -544,6 +545,7 @@ export default function DevicesModule() {
   const [filterSociety, setFilterSociety] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
   const [filterEstado, setFilterEstado] = useState<'all' | '1' | '2' | '3'>('all');
+  const [page, setPage] = useState(1);
 const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Dispositivo | null>(null);
@@ -580,6 +582,7 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
   }, []);
 
   useEffect(() => { loadDevices(); loadEmpleados(); loadCentros(); }, [loadDevices, loadEmpleados, loadCentros]);
+  useEffect(() => { setPage(1); }, [search, filterSociety, filterTipo, filterEstado]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -629,6 +632,11 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
 
 const totalActivos =
   devices.filter((d) => d.estado_id === 1).length;
+
+  const DEV_PAGE_SIZE = 25;
+  const devTotalPages = calcTotalPages(filtered.length, DEV_PAGE_SIZE);
+  const devSafePage = Math.min(page, devTotalPages);
+  const pagedDevices = paginate(filtered, devSafePage, DEV_PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -750,7 +758,7 @@ const totalActivos =
               <div className="col-span-1 text-right">Acciones</div>
             </div>
 
-            {filtered.map((dev) => {
+            {pagedDevices.map((dev) => {
               const Icon = typeIcon(dev.tipo);
               const society = societies.find((s) => s.id === dev.society_id);
               
@@ -884,6 +892,7 @@ const totalActivos =
                 </div>
               );
             })}
+            <Pagination page={devSafePage} totalPages={devTotalPages} totalItems={filtered.length} pageSize={DEV_PAGE_SIZE} onPage={setPage} />
           </div>
         )}
       </div>

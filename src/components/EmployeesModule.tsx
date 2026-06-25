@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination';
 import { Users, Plus, Search, X, Save, ChevronDown, ChevronUp, Pencil, Trash2, AlertCircle, CheckCircle2, Building2, Tag, RefreshCw, UserPlus, Ligature as FileSignature, Clock, Bell, Upload, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad, type Centro, type Asignacion, type Tag as TagType, type UserProfile } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
@@ -716,6 +717,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSociedad, setFilterSociedad] = useState('');
   const [filterActivo, setFilterActivo] = useState('');
+  const [page, setPage] = useState(1);
 
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -787,6 +789,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { setPage(1); }, [searchQuery, filterSociedad, filterActivo]);
 
   const loadDetail = useCallback(async (empleadoId: string) => {
     setLoadingDetail(true);
@@ -1077,6 +1080,11 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     }
     return true;
   });
+
+  const EMP_PAGE_SIZE = 25;
+  const empTotalPages = calcTotalPages(filtered.length, EMP_PAGE_SIZE);
+  const empSafePage = Math.min(page, empTotalPages);
+  const pagedEmpleados = paginate(filtered, empSafePage, EMP_PAGE_SIZE);
 
   const getSociedad = (id: string) => sociedades.find((s) => s.id === id);
 
@@ -1475,7 +1483,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-            {filtered.map((emp) => {
+            {pagedEmpleados.map((emp) => {
               const soc = getSociedad(emp.id_sociedad);
               const isExpanded = expandedId === emp.id;
               return (
@@ -1682,6 +1690,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                 </div>
               );
             })}
+            <Pagination page={empSafePage} totalPages={empTotalPages} totalItems={filtered.length} pageSize={EMP_PAGE_SIZE} onPage={setPage} />
           </div>
         )}
       </div>

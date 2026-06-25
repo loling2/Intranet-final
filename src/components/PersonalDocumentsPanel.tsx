@@ -199,7 +199,8 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   }
 
   return (
-    <div className="flex gap-0 rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', minHeight: 520 }}>
+    <>
+    <div className="flex gap-0 rounded-2xl overflow-hidden" translate="no" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', minHeight: 520 }}>
 
       {/* ── Left: employee list (RRHH only) ── */}
       {isRrhh && (
@@ -254,7 +255,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
             <p className="text-sm" style={{ color: '#94A3B8' }}>Selecciona un empleado para ver sus documentos</p>
           </div>
         ) : (
-          <>
+          <div key={selected.id || selected.dni || 'self'} className="flex-1 flex flex-col min-w-0">
             {/* Employee header */}
             <div className="px-6 py-4 border-b flex items-center justify-between gap-4" style={{ borderColor: '#E2E8F0' }}>
               <div className="flex items-center gap-3">
@@ -360,9 +361,11 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
+
+    </div>
 
       {/* ── Upload modal ── */}
       {uploadModal && selected && (
@@ -451,6 +454,6 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
           )}
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -553,6 +553,7 @@ function DepartamentosPrlTab() {
   const [assigningDeptId, setAssigningDeptId] = useState<string | null>(null);
   const [selectedEmpIds, setSelectedEmpIds] = useState<Set<string>>(new Set());
   const [assigning, setAssigning] = useState(false);
+  const [assignSearch, setAssignSearch] = useState('');
 
   const flash = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(null), 3000); };
 
@@ -674,6 +675,7 @@ function DepartamentosPrlTab() {
   const openAssign = (deptId: string) => {
     setAssigningDeptId(deptId);
     setSelectedEmpIds(new Set());
+    setAssignSearch('');
   };
 
   const handleAssign = async () => {
@@ -799,9 +801,32 @@ function DepartamentosPrlTab() {
             </div>
             <div className="p-6">
               <p className="text-xs mb-3" style={{ color: '#94A3B8' }}>Selecciona los empleados a vincular. Los ya asignados no aparecen.</p>
+              {/* Search */}
+              <div className="relative mb-3">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+                <input
+                  type="text"
+                  placeholder="Buscar empleado..."
+                  value={assignSearch}
+                  onChange={(e) => setAssignSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2 rounded-lg text-sm outline-none"
+                  style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
+                  autoFocus
+                />
+                {assignSearch && (
+                  <button onClick={() => setAssignSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer" style={{ color: '#94A3B8' }}>
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
               <div className="max-h-72 overflow-y-auto space-y-1 pr-1">
                 {empleados
-                  .filter((e) => !(deptEmpleados[assigningDeptId] ?? []).some((de) => de.empleado_id === e.id))
+                  .filter((e) => {
+                    if ((deptEmpleados[assigningDeptId] ?? []).some((de) => de.empleado_id === e.id)) return false;
+                    if (!assignSearch.trim()) return true;
+                    const q = assignSearch.toLowerCase();
+                    return e.nombre.toLowerCase().includes(q) || e.email.toLowerCase().includes(q) || (e.dni ?? '').toLowerCase().includes(q);
+                  })
                   .map((emp) => {
                     const sel = selectedEmpIds.has(emp.id);
                     return (
@@ -820,6 +845,16 @@ function DepartamentosPrlTab() {
                       </button>
                     );
                   })}
+                {empleados.filter((e) => {
+                  if ((deptEmpleados[assigningDeptId] ?? []).some((de) => de.empleado_id === e.id)) return false;
+                  if (!assignSearch.trim()) return true;
+                  const q = assignSearch.toLowerCase();
+                  return e.nombre.toLowerCase().includes(q) || e.email.toLowerCase().includes(q) || (e.dni ?? '').toLowerCase().includes(q);
+                }).length === 0 && (
+                  <p className="text-xs text-center py-4" style={{ color: '#94A3B8' }}>
+                    {assignSearch.trim() ? 'Sin resultados para esta busqueda' : 'Todos los empleados ya estan asignados'}
+                  </p>
+                )}
               </div>
               <div className="flex gap-3 mt-4">
                 <button onClick={() => setAssigningDeptId(null)} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>

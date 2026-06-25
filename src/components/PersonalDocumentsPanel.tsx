@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search, User, FolderOpen, FileText, Upload, Download, Eye,
-  ChevronRight, X, Loader2, AlertCircle, Lock, Globe, Plus, Building2,
-  UserX,
+  ChevronRight, X, Loader2, AlertCircle, Lock, Globe, Plus,
+  UserX, CheckCircle2, UploadCloud,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import {
@@ -87,11 +87,15 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   const [previewName, setPreviewName] = useState('');
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [uploadModal, setUploadModal] = useState<UploadModal | null>(null);
+  const [uploadQueue, setUploadQueue] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, 'pending' | 'done' | 'error'>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
   const [anio, setAnio] = useState(new Date().getFullYear().toString());
   const [mes, setMes] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
 
   // Load employees and societies
   useEffect(() => {
@@ -173,35 +177,93 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     }
   }
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!e.target.files?.length || !selected?.dni || !uploadModal) return;
-    const file = e.target.files[0];
+  function addFilesToQueue(incoming: FileList | File[]) {
+    const arr = Array.from(incoming);
+    setUploadQueue(prev => {
+      const names = new Set(prev.map(f => f.name));
+      return [...prev, ...arr.filter(f => !names.has(f.name))];
+    });
+  }
+
+  function removeFromQueue(name: string) {
+    setUploadQueue(prev => prev.filter(f => f.name !== name));
+    setUploadProgress(prev => { const n = { ...prev }; delete n[name]; return n; });
+  }
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files?.length) addFilesToQueue(e.target.files);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!dropZoneRef.current?.contains(e.relatedTarget as Node)) setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setIsDragging(false);
+    if (e.dataTransfer.files.length) addFilesToQueue(e.dataTransfer.files);
+  }, []);
+
+  async function handleUpload() {
+    if (!uploadQueue.length || !selected?.dni || !uploadModal) return;
     setUploading(true);
     setUploadError('');
-    try {
-      let key: string;
-      if (uploadModal.folder === 'privado') {
-        const folderKey = `rrhh/privado/${selected.dni}-${sanitizeName(selected.nombre)}/`;
-        await ensureRrhhFolder(folderKey);
-        key = `${folderKey}${file.name}`;
-        await uploadToWasabiKey(file, key);
-      } else {
-        const y = uploadModal.anio ?? anio;
-        const m = uploadModal.mes ?? mes;
-        for (const fk of [`rrhh/publico/${y}/`, `rrhh/publico/${y}/${m}/`]) {
-          await ensureRrhhFolder(fk);
-        }
-        key = `rrhh/publico/${y}/${m}/${selected.dni}.pdf`;
-        await uploadToWasabiKey(file, key);
+    const progress: Record<string, 'pending' | 'done' | 'error'> = {};
+    uploadQueue.forEach(f => { progress[f.name] = 'pending'; });
+    setUploadProgress({ ...progress });
+
+    let folderKey = '';
+    if (uploadModal.folder === 'privado') {
+      folderKey = `rrhh/privado/${selected.dni}-${sanitizeName(selected.nombre)}/`;
+      await ensureRrhhFolder(folderKey);
+    } else {
+      const y = uploadModal.anio ?? anio;
+      const m = uploadModal.mes ?? mes;
+      for (const fk of [`rrhh/publico/${y}/`, `rrhh/publico/${y}/${m}/`]) {
+        await ensureRrhhFolder(fk);
       }
-      setUploadModal(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      await loadFiles(selected, activeFolder);
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Error al subir');
-    } finally {
-      setUploading(false);
     }
+
+    let anyError = false;
+    for (const file of uploadQueue) {
+      try {
+        let key: string;
+        if (uploadModal.folder === 'privado') {
+          key = `${folderKey}${file.name}`;
+        } else {
+          const y = uploadModal.anio ?? anio;
+          const m = uploadModal.mes ?? mes;
+          // For nominas, use dni as filename (last file wins if multiple)
+          key = `rrhh/publico/${y}/${m}/${selected.dni}_${file.name}`;
+        }
+        await uploadToWasabiKey(file, key);
+        setUploadProgress(prev => ({ ...prev, [file.name]: 'done' }));
+      } catch {
+        setUploadProgress(prev => ({ ...prev, [file.name]: 'error' }));
+        anyError = true;
+      }
+    }
+
+    if (anyError) {
+      setUploadError('Algunos archivos no se pudieron subir');
+    } else {
+      setUploadModal(null);
+      setUploadQueue([]);
+      setUploadProgress({});
+    }
+    setUploading(false);
+    await loadFiles(selected, activeFolder);
+  }
+
+  function closeUploadModal() {
+    setUploadModal(null);
+    setUploadQueue([]);
+    setUploadProgress({});
+    setUploadError('');
   }
 
   // Filter employees based on view mode, society, and search
@@ -485,18 +547,24 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
 
       {/* ── Upload modal ── */}
       {uploadModal && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="w-full max-w-md mx-4 rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
+          <div className="w-full max-w-lg mx-4 rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
+            {/* Header */}
             <div className="px-6 py-4 flex items-center justify-between border-b" style={{ borderColor: '#E2E8F0' }}>
-              <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>
-                Subir {uploadModal.folder === 'privado' ? 'documento privado' : 'nomina'} — {selected.nombre}
-              </h3>
-              <button onClick={() => { setUploadModal(null); setUploadError(''); }}
+              <div>
+                <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>
+                  Subir {uploadModal.folder === 'privado' ? 'documentos' : 'nominas'} — {selected.nombre}
+                </h3>
+                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Puedes subir varios archivos a la vez</p>
+              </div>
+              <button onClick={closeUploadModal} disabled={uploading}
                 className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100">
                 <X size={16} style={{ color: '#64748B' }} />
               </button>
             </div>
+
             <div className="px-6 py-5 space-y-4">
+              {/* Year/month selectors for nominas */}
               {uploadModal.folder === 'publico' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -515,31 +583,103 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                   </div>
                 </div>
               )}
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>
-                  {uploadModal.folder === 'publico' ? 'Archivo PDF de la nomina' : 'Documento'}
-                </label>
+
+              {/* Drop zone */}
+              <div
+                ref={dropZoneRef}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => !uploading && fileInputRef.current?.click()}
+                className="flex flex-col items-center justify-center gap-3 rounded-xl cursor-pointer transition-all select-none"
+                style={{
+                  border: `2px dashed ${isDragging ? '#0369A1' : '#CBD5E1'}`,
+                  backgroundColor: isDragging ? '#EFF6FF' : '#F8FAFC',
+                  padding: '28px 16px',
+                  minHeight: 130,
+                }}
+              >
+                <UploadCloud size={32} style={{ color: isDragging ? '#0369A1' : '#94A3B8' }} />
+                <div className="text-center">
+                  <p className="text-sm font-medium" style={{ color: isDragging ? '#0369A1' : '#475569' }}>
+                    {isDragging ? 'Suelta los archivos aqui' : 'Arrastra archivos o haz clic para seleccionar'}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
+                    {uploadModal.folder === 'publico' ? 'Solo PDF' : 'Cualquier tipo de archivo'} · Multiples archivos permitidos
+                  </p>
+                </div>
                 <input
                   ref={fileInputRef}
                   type="file"
+                  multiple
                   accept={uploadModal.folder === 'publico' ? 'application/pdf' : undefined}
-                  onChange={handleUpload}
+                  onChange={handleFileInput}
                   disabled={uploading}
-                  className="w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:cursor-pointer"
-                  style={{ color: '#475569' }}
+                  className="hidden"
                 />
               </div>
-              {uploading && (
-                <div className="flex items-center gap-2 text-sm" style={{ color: '#0369A1' }}>
-                  <Loader2 size={14} className="animate-spin" /> Subiendo...
+
+              {/* Queue list */}
+              {uploadQueue.length > 0 && (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {uploadQueue.map(file => {
+                    const status = uploadProgress[file.name];
+                    return (
+                      <div key={file.name}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg"
+                        style={{
+                          backgroundColor: status === 'done' ? '#F0FDF4' : status === 'error' ? '#FEF2F2' : '#F8FAFC',
+                          border: `1px solid ${status === 'done' ? '#BBF7D0' : status === 'error' ? '#FECACA' : '#E2E8F0'}`,
+                        }}>
+                        <FileText size={14} style={{ color: status === 'done' ? '#16A34A' : status === 'error' ? '#DC2626' : '#64748B', flexShrink: 0 }} />
+                        <span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{file.name}</span>
+                        <span className="text-xs flex-shrink-0" style={{ color: '#94A3B8' }}>
+                          {(file.size / 1024).toFixed(0)} KB
+                        </span>
+                        {status === 'pending' && uploading && <Loader2 size={13} className="animate-spin flex-shrink-0" style={{ color: '#0369A1' }} />}
+                        {status === 'done' && <CheckCircle2 size={13} className="flex-shrink-0" style={{ color: '#16A34A' }} />}
+                        {status === 'error' && <AlertCircle size={13} className="flex-shrink-0" style={{ color: '#DC2626' }} />}
+                        {!uploading && !status && (
+                          <button onClick={e => { e.stopPropagation(); removeFromQueue(file.name); }}
+                            className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 hover:bg-slate-200 cursor-pointer">
+                            <X size={11} style={{ color: '#94A3B8' }} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
+
               {uploadError && (
-                <div className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg"
+                <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
                   style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
-                  <AlertCircle size={14} /> {uploadError}
+                  <AlertCircle size={13} /> {uploadError}
                 </div>
               )}
+
+              {/* Actions */}
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-xs" style={{ color: '#94A3B8' }}>
+                  {uploadQueue.length > 0 ? `${uploadQueue.length} archivo${uploadQueue.length !== 1 ? 's' : ''} seleccionado${uploadQueue.length !== 1 ? 's' : ''}` : 'Ningun archivo seleccionado'}
+                </span>
+                <div className="flex gap-2">
+                  <button onClick={closeUploadModal} disabled={uploading}
+                    className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                    style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleUpload}
+                    disabled={uploading || uploadQueue.length === 0}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50 transition-all"
+                    style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
+                  >
+                    {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                    {uploading ? 'Subiendo...' : `Subir${uploadQueue.length > 1 ? ` (${uploadQueue.length})` : ''}`}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

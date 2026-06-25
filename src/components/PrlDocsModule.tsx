@@ -374,6 +374,7 @@ export default function PrlDocsModule() {
 
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'folder' | 'doc'; id: string; name: string; folderId?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -436,8 +437,10 @@ export default function PrlDocsModule() {
     if (!documents[folderId]) loadDocs(folderId);
   };
 
-  const handleFilesSelected = async (files: FileList, folderId: string) => {
-    if (!files.length) return;
+  const handleFilesSelected = async (files: FileList | File[], folderId: string) => {
+    // Convert to Array immediately so the FileList isn't invalidated when the input is cleared
+    const fileArray = Array.from(files);
+    if (!fileArray.length) return;
     setUploadingFolder(folderId);
     setError('');
     let uploaded = 0;
@@ -445,12 +448,12 @@ export default function PrlDocsModule() {
     const folderObj = folders.find((f) => f.id === folderId);
     const resolvedSocietyId = folderObj?.society_id ?? activeSocietyId;
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const ts = Date.now();
+    for (let i = 0; i < fileArray.length; i++) {
+      const file = fileArray[i];
+      const ts = Date.now() + i; // +i guarantees unique key even if multiple files start same ms
       const key = `prevencion/${resolvedSocietyId}/${folderId}/${ts}-${file.name}`;
       try {
-        setUploadProgress((p) => ({ ...p, [folderId]: Math.round((i / files.length) * 100) }));
+        setUploadProgress((p) => ({ ...p, [folderId]: Math.round((i / fileArray.length) * 100) }));
         await uploadToWasabiKey(file, key);
         const { error: insertErr } = await supabase.from('prl_documents').insert({
           folder_id: folderId,
@@ -525,9 +528,12 @@ export default function PrlDocsModule() {
         className="hidden"
         onChange={(e) => {
           if (e.target.files && uploadingFolder) {
-            handleFilesSelected(e.target.files, uploadingFolder);
+            const fileArray = Array.from(e.target.files); // copy before clearing
+            e.target.value = '';
+            handleFilesSelected(fileArray, uploadingFolder);
+          } else {
+            e.target.value = '';
           }
-          e.target.value = '';
         }}
       />
 
@@ -641,15 +647,40 @@ export default function PrlDocsModule() {
             const folderTags = folder._tags ?? [];
             const hasTag = folderTags.length > 0;
 
+            const isDragOver = dragOverFolder === folder.id;
+
             return (
               <div key={folder.id} className="rounded-2xl overflow-hidden transition-all duration-200"
-                style={{ backgroundColor: '#FFFFFF', border: `1px solid ${isOpen ? '#6EE7B7' : '#E2E8F0'}` }}>
+                style={{ backgroundColor: '#FFFFFF', border: `1px solid ${isDragOver ? '#065F46' : isOpen ? '#6EE7B7' : '#E2E8F0'}` }}
+                onDragOver={(e) => { e.preventDefault(); setDragOverFolder(folder.id); }}
+                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverFolder(null); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverFolder(null);
+                  if (e.dataTransfer.files.length) {
+                    const fileArray = Array.from(e.dataTransfer.files);
+                    if (!isOpen) {
+                      setExpandedFolder(folder.id);
+                      if (!documents[folder.id]) loadDocs(folder.id);
+                    }
+                    handleFilesSelected(fileArray, folder.id);
+                  }
+                }}
+              >
+
+                {/* Drag-over overlay hint */}
+                {isDragOver && (
+                  <div className="px-5 py-2 flex items-center gap-2 text-xs font-semibold"
+                    style={{ backgroundColor: '#ECFDF5', borderBottom: '1px solid #6EE7B7', color: '#065F46' }}>
+                    <Upload size={12} /> Suelta aqui para subir
+                  </div>
+                )}
 
                 {/* Folder header row */}
                 <div
                   className="px-5 py-4 flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors duration-150"
                   onClick={() => toggleFolder(folder.id)}
-                  style={{ backgroundColor: isOpen ? '#F0FDF9' : undefined }}
+                  style={{ backgroundColor: isDragOver ? '#F0FDF9' : isOpen ? '#F0FDF9' : undefined }}
                 >
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{ backgroundColor: isOpen ? '#065F46' : '#ECFDF5', border: `1px solid ${isOpen ? '#065F46' : '#6EE7B7'}` }}>
@@ -758,16 +789,9 @@ export default function PrlDocsModule() {
                       </div>
                     ) : (
                       <div className="divide-y" style={{ borderColor: '#E2E8F0' }}>
-                        <div
-                          className="px-5 py-2.5 flex items-center justify-between"
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            if (e.dataTransfer.files.length) handleFilesSelected(e.dataTransfer.files, folder.id);
-                          }}
-                        >
+                        <div className="px-5 py-2.5 flex items-center justify-between">
                           <p className="text-xs" style={{ color: '#94A3B8' }}>
-                            {docs.length} archivo{docs.length !== 1 ? 's' : ''} &middot; Arrastra archivos aqui o usa el boton Subir
+                            {docs.length} archivo{docs.length !== 1 ? 's' : ''} &middot; Arrastra archivos a la carpeta o usa el boton Subir
                           </p>
                         </div>
                         {docs.map((doc) => {

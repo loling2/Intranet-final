@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FolderOpen, FolderPlus, Folder, FileText, Upload, Trash2,
   RefreshCw, AlertCircle, CheckCircle2, X, Download,
-  ChevronRight, Search, Plus, Tag, Lock, Globe,
+  ChevronRight, Search, Plus, Tag, Lock, Globe, Building2,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { uploadToWasabiKey, downloadFromWasabi } from '../lib/wasabi';
@@ -10,6 +10,11 @@ import { useAuth } from '../context/AuthContext';
 import { useSociety } from '../context/SocietyContext';
 
 const MAX_TAGS = 5;
+
+interface DeptRow {
+  id: string;
+  nombre: string;
+}
 
 interface PrlFolder {
   id: string;
@@ -21,6 +26,7 @@ interface PrlFolder {
   created_at: string;
   _docCount?: number;
   _tags?: TagRow[];
+  _depts?: DeptRow[];
 }
 
 interface PrlDocument {
@@ -69,7 +75,11 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(
     existing?._tags?.map((t) => t.id) ?? (existing?.access_tag_id ? [existing.access_tag_id] : [])
   );
+  const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>(
+    existing?._depts?.map((d) => d.id) ?? []
+  );
   const [tags, setTags] = useState<TagRow[]>([]);
+  const [depts, setDepts] = useState<DeptRow[]>([]);
   const [tagsLoading, setTagsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -78,8 +88,12 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from('tags').select('id, nombre').order('nombre');
-      setTags(data ?? []);
+      const [tagsRes, deptsRes] = await Promise.all([
+        supabase.from('tags').select('id, nombre').order('nombre'),
+        supabase.from('departamentos_prl').select('id, nombre').order('nombre'),
+      ]);
+      setTags(tagsRes.data ?? []);
+      setDepts(deptsRes.data ?? []);
       setTagsLoading(false);
     })();
   }, []);
@@ -87,7 +101,15 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
   const toggleTag = (id: string) => {
     setSelectedTagIds((prev) => {
       if (prev.includes(id)) return prev.filter((t) => t !== id);
-      if (prev.length >= MAX_TAGS) return prev; // silently cap at 5
+      if (prev.length >= MAX_TAGS) return prev;
+      return [...prev, id];
+    });
+  };
+
+  const toggleDept = (id: string) => {
+    setSelectedDeptIds((prev) => {
+      if (prev.includes(id)) return prev.filter((d) => d !== id);
+      if (prev.length >= MAX_TAGS) return prev;
       return [...prev, id];
     });
   };
@@ -122,17 +144,21 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
       }
 
       // Sync prl_folder_tags
-      // Delete all existing tags for this folder, then re-insert
-      const { error: delErr } = await supabase
-        .from('prl_folder_tags')
-        .delete()
-        .eq('folder_id', folderId!);
-      if (delErr) throw delErr;
-
+      const { error: delTagErr } = await supabase.from('prl_folder_tags').delete().eq('folder_id', folderId!);
+      if (delTagErr) throw delTagErr;
       if (selectedTagIds.length > 0) {
         const rows = selectedTagIds.slice(0, MAX_TAGS).map((tag_id) => ({ folder_id: folderId!, tag_id }));
         const { error: insTagErr } = await supabase.from('prl_folder_tags').insert(rows);
         if (insTagErr) throw insTagErr;
+      }
+
+      // Sync prl_folder_departamentos
+      const { error: delDeptErr } = await supabase.from('prl_folder_departamentos').delete().eq('folder_id', folderId!);
+      if (delDeptErr) throw delDeptErr;
+      if (selectedDeptIds.length > 0) {
+        const deptRows = selectedDeptIds.slice(0, MAX_TAGS).map((departamento_prl_id) => ({ folder_id: folderId!, departamento_prl_id }));
+        const { error: insDeptErr } = await supabase.from('prl_folder_departamentos').insert(deptRows);
+        if (insDeptErr) throw insDeptErr;
       }
 
       onSaved();
@@ -299,6 +325,117 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
             )}
           </div>
 
+          {/* Departamentos PRL */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>
+                Departamentos PRL
+              </label>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                style={{
+                  backgroundColor: selectedDeptIds.length >= MAX_TAGS ? '#FEF2F2' : '#F0FDF4',
+                  color: selectedDeptIds.length >= MAX_TAGS ? '#DC2626' : '#15803D',
+                  border: `1px solid ${selectedDeptIds.length >= MAX_TAGS ? '#FECACA' : '#BBF7D0'}`,
+                }}>
+                {selectedDeptIds.length}/{MAX_TAGS}
+              </span>
+            </div>
+            <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>
+              Solo empleados de estos departamentos podran ver esta carpeta. Sin departamento = sin filtro por departamento.
+            </p>
+
+            {tagsLoading ? (
+              <div className="flex items-center gap-2 py-3">
+                <RefreshCw size={13} className="animate-spin" style={{ color: '#94A3B8' }} />
+                <span className="text-xs" style={{ color: '#94A3B8' }}>Cargando departamentos...</span>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {/* Sin restriccion */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedDeptIds([])}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all cursor-pointer"
+                  style={{
+                    border: `1.5px solid ${selectedDeptIds.length === 0 ? '#15803D' : '#E2E8F0'}`,
+                    backgroundColor: selectedDeptIds.length === 0 ? '#F0FDF4' : '#F8FAFC',
+                  }}
+                >
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: selectedDeptIds.length === 0 ? '#15803D' : '#E2E8F0' }}>
+                    <Globe size={13} style={{ color: selectedDeptIds.length === 0 ? '#FFFFFF' : '#94A3B8' }} />
+                  </div>
+                  <div className="text-left">
+                    <span className="font-semibold" style={{ color: '#1E293B' }}>Sin restriccion</span>
+                    <span className="block text-xs" style={{ color: '#94A3B8' }}>Sin filtro por departamento</span>
+                  </div>
+                  {selectedDeptIds.length === 0 && <CheckCircle2 size={14} className="ml-auto" style={{ color: '#15803D' }} />}
+                </button>
+
+                {/* Dept list */}
+                <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                  {depts.length === 0 ? (
+                    <p className="text-xs px-3 py-2" style={{ color: '#94A3B8' }}>No hay departamentos PRL. Crealos en la pestaña Departamentos PRL.</p>
+                  ) : depts.map((dept) => {
+                    const selected = selectedDeptIds.includes(dept.id);
+                    const disabled = !selected && selectedDeptIds.length >= MAX_TAGS;
+                    return (
+                      <button
+                        key={dept.id}
+                        type="button"
+                        onClick={() => toggleDept(dept.id)}
+                        disabled={disabled}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{
+                          border: `1.5px solid ${selected ? '#15803D' : '#E2E8F0'}`,
+                          backgroundColor: selected ? '#F0FDF4' : '#F8FAFC',
+                        }}
+                      >
+                        <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: selected ? '#15803D' : '#E2E8F0' }}>
+                          <Building2 size={12} style={{ color: selected ? '#FFFFFF' : '#94A3B8' }} />
+                        </div>
+                        <span className="font-medium flex-1 text-left" style={{ color: '#1E293B' }}>{dept.nombre}</span>
+                        {selected && <CheckCircle2 size={14} className="flex-shrink-0" style={{ color: '#15803D' }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Selected depts preview */}
+            {selectedDeptIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {selectedDeptIds.map((id) => {
+                  const dept = depts.find((d) => d.id === id);
+                  if (!dept) return null;
+                  return (
+                    <span key={id} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+                      style={{ backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}>
+                      <Building2 size={9} />
+                      {dept.nombre}
+                      <button
+                        type="button"
+                        onClick={() => toggleDept(id)}
+                        className="ml-0.5 cursor-pointer hover:opacity-70"
+                        style={{ color: '#15803D' }}>
+                        <X size={10} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedDeptIds.length >= MAX_TAGS && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg mt-2" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                <AlertCircle size={12} style={{ color: '#DC2626' }} />
+                <p className="text-xs" style={{ color: '#DC2626' }}>Maximo {MAX_TAGS} departamentos por carpeta</p>
+              </div>
+            )}
+          </div>
+
           {error && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
               <AlertCircle size={13} style={{ color: '#DC2626' }} />
@@ -385,13 +522,14 @@ export default function PrlDocsModule() {
     setLoadingFolders(true);
     const { data, error: err } = await supabase
       .from('prl_folders')
-      .select('*, prl_folder_tags(tag_id, tags(id, nombre))')
+      .select('*, prl_folder_tags(tag_id, tags(id, nombre)), prl_folder_departamentos(departamento_prl_id, departamentos_prl(id, nombre))')
       .eq('society_id', activeSocietyId)
       .order('nombre');
     if (err) { setError(err.message); setLoadingFolders(false); return; }
 
     const folderList = (data ?? []) as (PrlFolder & {
       prl_folder_tags: { tag_id: string; tags: { id: string; nombre: string } | null }[];
+      prl_folder_departamentos: { departamento_prl_id: string; departamentos_prl: { id: string; nombre: string } | null }[];
     })[];
 
     const counts = await Promise.all(
@@ -412,6 +550,9 @@ export default function PrlDocsModule() {
       _tags: (f.prl_folder_tags ?? [])
         .map((ft) => ft.tags)
         .filter((t): t is { id: string; nombre: string } => t !== null),
+      _depts: (f.prl_folder_departamentos ?? [])
+        .map((fd) => fd.departamentos_prl)
+        .filter((d): d is { id: string; nombre: string } => d !== null),
     }));
 
     setFolders(enriched);
@@ -645,7 +786,9 @@ export default function PrlDocsModule() {
             const isLoadingDocs = loadingDocs[folder.id];
             const progress = uploadProgress[folder.id];
             const folderTags = folder._tags ?? [];
+            const folderDepts = folder._depts ?? [];
             const hasTag = folderTags.length > 0;
+            const hasDept = folderDepts.length > 0;
 
             const isDragOver = dragOverFolder === folder.id;
 
@@ -693,13 +836,22 @@ export default function PrlDocsModule() {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{folder.nombre}</p>
                       {/* Tag badges */}
-                      {hasTag ? folderTags.map((tag) => (
+                      {hasTag && folderTags.map((tag) => (
                         <span key={tag.id} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
                           style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
                           <Lock size={9} />
                           {tag.nombre}
                         </span>
-                      )) : (
+                      ))}
+                      {/* Dept badges */}
+                      {hasDept && folderDepts.map((dept) => (
+                        <span key={dept.id} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+                          style={{ backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}>
+                          <Building2 size={9} />
+                          {dept.nombre}
+                        </span>
+                      ))}
+                      {!hasTag && !hasDept && (
                         <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
                           style={{ backgroundColor: '#F1F5F9', color: '#94A3B8', border: '1px solid #E2E8F0' }}>
                           <Globe size={9} />

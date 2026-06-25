@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, GetObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 
 const wasabiClient = new S3Client({
   endpoint: import.meta.env.VITE_WASABI_ENDPOINT as string,
@@ -235,6 +235,52 @@ export async function uploadNomina(file: File, dni: string, anio: string, mes: s
     Body: new Uint8Array(buffer), ContentType: 'application/pdf', ContentLength: file.size,
   }));
   return key;
+}
+
+// Move all files under rrhh/privado/<dni>-<nombre>/ to rrhh/bajas/<sociedadSlug>/<dni>-<nombre>/
+export async function moveRrhhFolderToBajas(dni: string, nombre: string, sociedadSlug: string): Promise<void> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const srcPrefix = `rrhh/privado/${dni}-${nombre}/`;
+  const dstPrefix = `rrhh/bajas/${sociedadSlug}/${dni}-${nombre}/`;
+
+  // Ensure destination folder exists
+  await wasabiClient.send(new PutObjectCommand({
+    Bucket: bucket, Key: `${dstPrefix}.keep`,
+    Body: new Uint8Array(0), ContentType: 'application/octet-stream', ContentLength: 0,
+  }));
+
+  // List all objects under source prefix
+  const resp = await wasabiClient.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: srcPrefix }));
+  const objects = resp.Contents ?? [];
+
+  for (const obj of objects) {
+    if (!obj.Key) continue;
+    const relPath = obj.Key.replace(srcPrefix, '');
+    const dstKey = `${dstPrefix}${relPath}`;
+    // Copy to destination
+    await wasabiClient.send(new CopyObjectCommand({
+      Bucket: bucket,
+      CopySource: `${bucket}/${obj.Key}`,
+      Key: dstKey,
+    }));
+    // Delete original
+    await wasabiClient.send(new DeleteObjectCommand({ Bucket: bucket, Key: obj.Key }));
+  }
+}
+
+// List files for a baja employee under rrhh/bajas/<sociedadSlug>/<dni>-<nombre>/
+export async function listBajasEmployeeFiles(sociedadSlug: string, dni: string, nombre: string): Promise<RrhhFile[]> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const folderKey = `rrhh/bajas/${sociedadSlug}/${dni}-${nombre}/`;
+  const resp = await wasabiClient.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: folderKey }));
+  return (resp.Contents ?? [])
+    .filter(obj => obj.Key && !obj.Key.endsWith('/') && !obj.Key.endsWith('.keep'))
+    .map(obj => ({
+      key: obj.Key!,
+      name: obj.Key!.replace(folderKey, ''),
+      size: obj.Size ?? 0,
+      lastModified: obj.LastModified ?? new Date(),
+    }));
 }
 
 // Download a file by key and trigger browser download

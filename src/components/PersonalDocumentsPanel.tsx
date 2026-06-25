@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Search, User, FolderOpen, FileText, Upload, Download, Eye,
-  ChevronRight, X, Loader2, AlertCircle, Lock, Globe, Plus,
+  ChevronRight, X, Loader2, AlertCircle, Lock, Globe, Plus, Building2,
+  UserX,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import {
   listRrhhEmployeeFiles, ensureRrhhFolder, uploadToWasabiKey,
   getWasabiBlobUrl, downloadFromWasabi, listNominasForDni,
+  listBajasEmployeeFiles,
   type RrhhFile,
 } from '../lib/wasabi';
 import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
@@ -18,9 +20,17 @@ interface Employee {
   nombre: string;
   dni: string | null;
   email: string;
+  id_sociedad: string | null;
+  activo: boolean;
+}
+
+interface Sociedad {
+  id: string;
+  nombre: string;
 }
 
 type FolderType = 'privado' | 'publico';
+type ViewMode = 'activos' | 'bajas';
 
 interface UploadModal {
   folder: FolderType;
@@ -28,7 +38,7 @@ interface UploadModal {
   mes?: string;
 }
 
-// ─── Wasabi client (reused from lib but we need direct listing) ──────────────
+// ─── Wasabi client (local for direct listing) ────────────────────────────────
 
 const wasabiClient = new S3Client({
   endpoint: import.meta.env.VITE_WASABI_ENDPOINT as string,
@@ -59,14 +69,15 @@ async function listPrefix(prefix: string): Promise<RrhhFile[]> {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 interface Props {
-  /** If provided, panel acts in employee self-service mode (only shows that employee's docs) */
   employeeDni?: string;
-  /** If provided, panel acts in RRHH admin mode showing all employees */
   isRrhh?: boolean;
 }
 
 export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: Props) {
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [sociedades, setSociedades] = useState<Sociedad[]>([]);
+  const [selectedSociedadId, setSelectedSociedadId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('activos');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Employee | null>(null);
   const [activeFolder, setActiveFolder] = useState<FolderType>('privado');
@@ -82,42 +93,64 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   const [mes, setMes] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load employees list (RRHH mode)
+  // Load employees and societies
   useEffect(() => {
     if (!isRrhh) return;
-    supabase
-      .from('empleados')
-      .select('id, nombre, dni, email')
-      .eq('activo', true)
-      .order('nombre')
-      .then(({ data }) => setEmployees((data as Employee[]) ?? []));
+    Promise.all([
+      supabase.from('empleados').select('id, nombre, dni, email, id_sociedad, activo').order('nombre'),
+      supabase.from('sociedades').select('id, nombre').order('nombre'),
+    ]).then(([empRes, socRes]) => {
+      setAllEmployees((empRes.data as Employee[]) ?? []);
+      setSociedades((socRes.data as Sociedad[]) ?? []);
+    });
   }, [isRrhh]);
 
-  // If employee self-service mode, auto-select by DNI
+  // Self-service mode
   useEffect(() => {
     if (employeeDni && !isRrhh) {
-      setSelected({ id: '', nombre: '', dni: employeeDni, email: '' });
+      setSelected({ id: '', nombre: '', dni: employeeDni, email: '', id_sociedad: null, activo: true });
     }
   }, [employeeDni, isRrhh]);
 
-  // Load files when employee or folder changes
+  // Load files when selection changes
   useEffect(() => {
     if (!selected?.dni) { setFiles([]); return; }
-    loadFiles(selected.dni, activeFolder);
+    loadFiles(selected, activeFolder);
   }, [selected, activeFolder]);
 
-  async function loadFiles(dni: string, folder: FolderType) {
+  function sanitizeName(nombre: string) {
+    return nombre.replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ ]/g, '').trim();
+  }
+
+  function slugify(text: string) {
+    return text
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9\s]/g, '')
+      .trim().replace(/\s+/g, '_');
+  }
+
+  function getSociedadSlug(emp: Employee): string {
+    const soc = sociedades.find(s => s.id === emp.id_sociedad);
+    return soc ? slugify(soc.nombre) : 'sin_sociedad';
+  }
+
+  async function loadFiles(emp: Employee, folder: FolderType) {
+    if (!emp.dni) { setFiles([]); return; }
     setLoadingFiles(true);
     setFiles([]);
     try {
-      if (folder === 'privado') {
-        const folderKey = `rrhh/privado/${dni}-${sanitizeName(selected?.nombre ?? '')}/`;
+      if (!emp.activo) {
+        // Baja employee — files come from rrhh/bajas/<sociedad>/<dni>-<nombre>/
+        const slug = getSociedadSlug(emp);
+        const result = await listBajasEmployeeFiles(slug, emp.dni, sanitizeName(emp.nombre));
+        setFiles(result);
+      } else if (folder === 'privado') {
+        const folderKey = `rrhh/privado/${emp.dni}-${sanitizeName(emp.nombre)}/`;
         await ensureRrhhFolder(folderKey);
         const result = await listRrhhEmployeeFiles(folderKey);
         setFiles(result);
       } else {
-        // publico = nominas, list all matching DNI
-        const result = await listNominasForDni(dni);
+        const result = await listNominasForDni(emp.dni);
         setFiles(result);
       }
     } catch (e) {
@@ -125,10 +158,6 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     } finally {
       setLoadingFiles(false);
     }
-  }
-
-  function sanitizeName(nombre: string) {
-    return nombre.replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ ]/g, '').trim();
   }
 
   async function handlePreview(file: RrhhFile) {
@@ -157,10 +186,8 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
         key = `${folderKey}${file.name}`;
         await uploadToWasabiKey(file, key);
       } else {
-        // nomina
         const y = uploadModal.anio ?? anio;
         const m = uploadModal.mes ?? mes;
-        // ensure year/month folders
         for (const fk of [`rrhh/publico/${y}/`, `rrhh/publico/${y}/${m}/`]) {
           await ensureRrhhFolder(fk);
         }
@@ -169,7 +196,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
       }
       setUploadModal(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      await loadFiles(selected.dni, activeFolder);
+      await loadFiles(selected, activeFolder);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Error al subir');
     } finally {
@@ -177,15 +204,16 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     }
   }
 
-  const filteredEmployees = employees.filter(e =>
-    !search ||
-    e.nombre.toLowerCase().includes(search.toLowerCase()) ||
-    (e.dni ?? '').toLowerCase().includes(search.toLowerCase())
-  );
+  // Filter employees based on view mode, society, and search
+  const employees = allEmployees.filter(e => {
+    if (viewMode === 'activos' && !e.activo) return false;
+    if (viewMode === 'bajas' && e.activo) return false;
+    if (selectedSociedadId && e.id_sociedad !== selectedSociedadId) return false;
+    if (search && !e.nombre.toLowerCase().includes(search.toLowerCase()) && !(e.dni ?? '').toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
-  const months = [
-    '01','02','03','04','05','06','07','08','09','10','11','12'
-  ];
+  const months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   const monthNames: Record<string, string> = {
     '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril',
     '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto',
@@ -198,6 +226,8 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 
+  const isBaja = selected && !selected.activo;
+
   return (
     <>
     <div className="flex gap-0 rounded-2xl overflow-hidden" translate="no" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', minHeight: 520 }}>
@@ -205,42 +235,103 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
       {/* ── Left: employee list (RRHH only) ── */}
       {isRrhh && (
         <div className="w-72 flex-shrink-0 border-r flex flex-col" style={{ borderColor: '#E2E8F0' }}>
-          <div className="p-4 border-b" style={{ borderColor: '#E2E8F0' }}>
+
+          {/* Society filter chips */}
+          <div className="p-3 border-b flex flex-wrap gap-1.5" style={{ borderColor: '#E2E8F0' }}>
+            <button
+              onClick={() => { setSelectedSociedadId(null); setSelected(null); }}
+              className="px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer"
+              style={{
+                backgroundColor: selectedSociedadId === null ? '#0F172A' : '#F1F5F9',
+                color: selectedSociedadId === null ? '#FFFFFF' : '#475569',
+              }}
+            >
+              Todas
+            </button>
+            {sociedades.map(s => (
+              <button
+                key={s.id}
+                onClick={() => { setSelectedSociedadId(s.id); setSelected(null); }}
+                className="px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer"
+                style={{
+                  backgroundColor: selectedSociedadId === s.id ? '#DC2626' : '#FEF2F2',
+                  color: selectedSociedadId === s.id ? '#FFFFFF' : '#DC2626',
+                  border: `1px solid ${selectedSociedadId === s.id ? '#DC2626' : '#FECACA'}`,
+                }}
+              >
+                {s.nombre}
+              </button>
+            ))}
+          </div>
+
+          {/* View mode toggle */}
+          <div className="flex border-b" style={{ borderColor: '#E2E8F0' }}>
+            <button
+              onClick={() => { setViewMode('activos'); setSelected(null); }}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-all cursor-pointer"
+              style={{
+                backgroundColor: viewMode === 'activos' ? '#EFF6FF' : 'transparent',
+                color: viewMode === 'activos' ? '#0369A1' : '#94A3B8',
+                borderBottom: viewMode === 'activos' ? '2px solid #0369A1' : '2px solid transparent',
+              }}
+            >
+              <User size={12} /> Activos
+            </button>
+            <button
+              onClick={() => { setViewMode('bajas'); setSelected(null); }}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-all cursor-pointer"
+              style={{
+                backgroundColor: viewMode === 'bajas' ? '#FFF7ED' : 'transparent',
+                color: viewMode === 'bajas' ? '#EA580C' : '#94A3B8',
+                borderBottom: viewMode === 'bajas' ? '2px solid #EA580C' : '2px solid transparent',
+              }}
+            >
+              <UserX size={12} /> Bajas
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="p-3 border-b" style={{ borderColor: '#E2E8F0' }}>
             <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
               <input
                 type="text"
                 placeholder="Buscar trabajador..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 rounded-lg text-sm outline-none"
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg text-sm outline-none"
                 style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
               />
             </div>
           </div>
+
+          {/* Employee list */}
           <div className="flex-1 overflow-y-auto">
-            {filteredEmployees.map(emp => (
+            {employees.map(emp => (
               <button
                 key={emp.id}
                 onClick={() => setSelected(emp)}
                 className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer border-b"
                 style={{
                   borderColor: '#F1F5F9',
-                  backgroundColor: selected?.id === emp.id ? '#EFF6FF' : 'transparent',
+                  backgroundColor: selected?.id === emp.id ? (viewMode === 'bajas' ? '#FFF7ED' : '#EFF6FF') : 'transparent',
                 }}
               >
                 <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: selected?.id === emp.id ? '#0369A1' : '#E2E8F0' }}>
-                  <User size={14} style={{ color: selected?.id === emp.id ? '#FFFFFF' : '#64748B' }} />
+                  style={{ backgroundColor: selected?.id === emp.id ? (viewMode === 'bajas' ? '#EA580C' : '#0369A1') : '#E2E8F0' }}>
+                  {viewMode === 'bajas'
+                    ? <UserX size={13} style={{ color: selected?.id === emp.id ? '#FFFFFF' : '#94A3B8' }} />
+                    : <User size={13} style={{ color: selected?.id === emp.id ? '#FFFFFF' : '#64748B' }} />
+                  }
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>{emp.nombre}</p>
                   <p className="text-xs" style={{ color: '#94A3B8' }}>{emp.dni ?? 'Sin DNI/NIE'}</p>
                 </div>
-                {selected?.id === emp.id && <ChevronRight size={14} className="ml-auto flex-shrink-0" style={{ color: '#0369A1' }} />}
+                {selected?.id === emp.id && <ChevronRight size={13} className="ml-auto flex-shrink-0" style={{ color: viewMode === 'bajas' ? '#EA580C' : '#0369A1' }} />}
               </button>
             ))}
-            {filteredEmployees.length === 0 && (
+            {employees.length === 0 && (
               <p className="text-center text-sm py-8" style={{ color: '#94A3B8' }}>Sin resultados</p>
             )}
           </div>
@@ -259,15 +350,27 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
             {/* Employee header */}
             <div className="px-6 py-4 border-b flex items-center justify-between gap-4" style={{ borderColor: '#E2E8F0' }}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}>
-                  <User size={18} style={{ color: '#0369A1' }} />
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: isBaja ? '#FFF7ED' : '#EFF6FF' }}>
+                  {isBaja
+                    ? <UserX size={18} style={{ color: '#EA580C' }} />
+                    : <User size={18} style={{ color: '#0369A1' }} />
+                  }
                 </div>
                 <div>
-                  <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{selected.nombre || 'Empleado'}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{selected.nombre || 'Empleado'}</p>
+                    {isBaja && (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                        style={{ backgroundColor: '#FFF7ED', color: '#EA580C', border: '1px solid #FED7AA' }}>
+                        BAJA
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs" style={{ color: '#64748B' }}>DNI/NIE: {selected.dni ?? '—'}</p>
                 </div>
               </div>
-              {isRrhh && (
+              {isRrhh && !isBaja && (
                 <button
                   onClick={() => setUploadModal({ folder: activeFolder, anio, mes })}
                   disabled={!selected.dni}
@@ -280,23 +383,35 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
               )}
             </div>
 
-            {/* Folder tabs */}
-            <div className="flex gap-1 px-6 pt-4 pb-2">
-              {(['privado', 'publico'] as FolderType[]).map(f => (
-                <button
-                  key={f}
-                  onClick={() => setActiveFolder(f)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer"
-                  style={{
-                    backgroundColor: activeFolder === f ? (f === 'privado' ? '#0369A1' : '#0F172A') : '#F1F5F9',
-                    color: activeFolder === f ? '#FFFFFF' : '#475569',
-                  }}
-                >
-                  {f === 'privado' ? <Lock size={13} /> : <Globe size={13} />}
-                  {f === 'privado' ? 'Privado (documentos)' : 'Nóminas'}
-                </button>
-              ))}
-            </div>
+            {/* Folder tabs — hidden for bajas (only show their privado docs) */}
+            {!isBaja && (
+              <div className="flex gap-1 px-6 pt-4 pb-2">
+                {(['privado', 'publico'] as FolderType[]).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setActiveFolder(f)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer"
+                    style={{
+                      backgroundColor: activeFolder === f ? (f === 'privado' ? '#0369A1' : '#0F172A') : '#F1F5F9',
+                      color: activeFolder === f ? '#FFFFFF' : '#475569',
+                    }}
+                  >
+                    {f === 'privado' ? <Lock size={13} /> : <Globe size={13} />}
+                    {f === 'privado' ? 'Privado (documentos)' : 'Nominas'}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {isBaja && (
+              <div className="px-6 pt-4 pb-2">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+                  style={{ backgroundColor: '#FFF7ED', color: '#EA580C', border: '1px solid #FED7AA' }}>
+                  <UserX size={13} />
+                  Documentos archivados en carpeta de bajas
+                </div>
+              </div>
+            )}
 
             {/* Files list */}
             <div className="flex-1 overflow-y-auto px-6 pb-6">
@@ -308,9 +423,10 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                 <div className="flex flex-col items-center justify-center py-16 gap-3">
                   <FolderOpen size={32} style={{ color: '#CBD5E1' }} />
                   <p className="text-sm" style={{ color: '#94A3B8' }}>
-                    {activeFolder === 'privado' ? 'No hay documentos en esta carpeta' : 'No hay nóminas registradas'}
+                    {isBaja ? 'No hay documentos archivados para este empleado' :
+                     activeFolder === 'privado' ? 'No hay documentos en esta carpeta' : 'No hay nominas registradas'}
                   </p>
-                  {isRrhh && selected.dni && (
+                  {isRrhh && selected.dni && !isBaja && (
                     <button
                       onClick={() => setUploadModal({ folder: activeFolder, anio, mes })}
                       className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer mt-1"
@@ -329,8 +445,8 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                       style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}
                     >
                       <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: '#EFF6FF' }}>
-                        <FileText size={16} style={{ color: '#0369A1' }} />
+                        style={{ backgroundColor: isBaja ? '#FFF7ED' : '#EFF6FF' }}>
+                        <FileText size={16} style={{ color: isBaja ? '#EA580C' : '#0369A1' }} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{file.name}</p>
@@ -373,7 +489,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
           <div className="w-full max-w-md mx-4 rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
             <div className="px-6 py-4 flex items-center justify-between border-b" style={{ borderColor: '#E2E8F0' }}>
               <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>
-                Subir {uploadModal.folder === 'privado' ? 'documento privado' : 'nómina'} — {selected.nombre}
+                Subir {uploadModal.folder === 'privado' ? 'documento privado' : 'nomina'} — {selected.nombre}
               </h3>
               <button onClick={() => { setUploadModal(null); setUploadError(''); }}
                 className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100">
@@ -384,7 +500,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
               {uploadModal.folder === 'publico' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>Año</label>
+                    <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>Ano</label>
                     <input type="number" value={anio} onChange={e => setAnio(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg text-sm outline-none"
                       style={{ border: '1px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
@@ -401,7 +517,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
               )}
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>
-                  {uploadModal.folder === 'publico' ? 'Archivo PDF de la nómina' : 'Documento'}
+                  {uploadModal.folder === 'publico' ? 'Archivo PDF de la nomina' : 'Documento'}
                 </label>
                 <input
                   ref={fileInputRef}

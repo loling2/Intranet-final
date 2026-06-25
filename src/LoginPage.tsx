@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2 } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
@@ -17,7 +17,7 @@ import AdministracionPanel from './AdministracionPanel';
 import { supabase } from './supabaseClient';
 import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
-import { downloadFromWasabi } from './lib/wasabi';
+import { downloadFromWasabi, uploadToWasabiKey } from './lib/wasabi';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import IncidenciasModule from './components/IncidenciasModule';
 
@@ -43,81 +43,84 @@ interface VehicleInfo {
   current_user_id?: string | null;
 }
 
-function VehicleRegisterModal({ onClose }: { onClose: () => void }) {
-// step: 'plate' → matrícula | 'id' → validación PIN to check | 'action' → libre/en_uso_mismo/en_uso_otro
-  const [step, setStep] = useState<'plate' | 'id' | 'action'>('plate');
-  const [plate, setPlate] = useState('');
-  const [empleadoId, setEmpleadoId] = useState('');
+type JornadaAction = 'entrada' | 'descanso' | 'fin_descanso' | 'salida' | 'permiso' | 'vehiculo' | 'incidencia_vehiculo' | 'incidencia_fichaje';
+
+function JornadaModal({ onClose }: { onClose: () => void }) {
+  // ── Global steps: pin → menu → sub-flow ──
+  const [step, setStep] = useState<'pin' | 'menu' | 'vehiculo_plate' | 'vehiculo_action' | 'incidencia_vehiculo' | 'fichaje_form' | 'done'>('pin');
+  const [pin, setPin] = useState('');
   const [usuarioPin, setUsuarioPin] = useState<any>(null);
-  const [km, setKm] = useState('');
- const [numeroPersonas, setNumeroPersonas] = useState('1');
-  const [motivoUso, setMotivoUso] = useState('');
-  const [vehicle, setVehicle] = useState<VehicleInfo | null>(null);
-  const [vehicleStatus, setVehicleStatus] = useState<VehicleStatus>('libre');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [done, setDone] = useState<'started' | 'finished' | null>(null);
-const [showVehicleIncident, setShowVehicleIncident] = useState(false);
-    const [incidentTitle, setIncidentTitle] = useState('');
-const [incidentDescription, setIncidentDescription] = useState('');
-const VEHICULOS_DEPARTAMENTO_ID =
-  '172f43e7-f3dc-4207-98dc-b9c9bb6d3cfb';
+  const [doneMsg, setDoneMsg] = useState('');
+  const [doneColor, setDoneColor] = useState('#16A34A');
 
-  
-  // Step 1: look up plate
+  // ── Fichaje state ──
+  const [fichajeAction, setFichajeAction] = useState<JornadaAction | null>(null);
 
-const handleCreateVehicleIncident = async () => {
-  try {
-    if (!vehicle) {
-      setError('No hay vehículo seleccionado');
-      return;
-    }
+  // ── Vehicle state ──
+  const [plate, setPlate] = useState('');
+  const [vehicle, setVehicle] = useState<VehicleInfo | null>(null);
+  const [vehicleStatus, setVehicleStatus] = useState<VehicleStatus>('libre');
+  const [km, setKm] = useState('');
+  const [numeroPersonas, setNumeroPersonas] = useState('1');
+  const [motivoUso, setMotivoUso] = useState('');
 
-    if (!incidentTitle.trim()) {
-      setError('Debe indicar un título');
-      return;
-    }
+  // ── Incident state ──
+  const [incidentTitle, setIncidentTitle] = useState('');
+  const [incidentDescription, setIncidentDescription] = useState('');
+  const [incidentPhotos, setIncidentPhotos] = useState<File[]>([]);
+  const [incidentVehiclePlate, setIncidentVehiclePlate] = useState('');
+  const [fichajeNota, setFichajeNota] = useState('');
 
-    if (!incidentDescription.trim()) {
-      setError('Debe indicar una descripción');
-      return;
-    }
+  const VEHICULOS_DEPARTAMENTO_ID = '172f43e7-f3dc-4207-98dc-b9c9bb6d3cfb';
+  const inputStyle = { border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' };
 
-    const { error: incError } = await supabase
-      .from('incidencias')
-      .insert({
-        titulo: `[${vehicle.matricula}] ${incidentTitle.trim()}`,
-        descripcion: incidentDescription.trim(),
+  // ── PIN validation ──
+  const handleValidatePin = async () => {
+    if (!pin.trim()) return;
+    setError('');
+    setLoading(true);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc('validate_vehicle_pin', { p_pin: pin.trim() });
+      if (rpcErr || !data?.[0]) { setError('PIN incorrecto o no encontrado'); return; }
+      setUsuarioPin(data[0]);
+      setStep('menu');
+    } catch { setError('Error al validar PIN'); }
+    finally { setLoading(false); }
+  };
 
-        estado: 'pendiente',
+  // ── Fichaje save ──
+  const handleSaveFichaje = async (tipo: JornadaAction) => {
+    if (!usuarioPin) return;
+    setError('');
+    setLoading(true);
+    try {
+      const tipoEvento = tipo === 'entrada' ? 'entrada'
+        : tipo === 'salida' ? 'salida'
+        : tipo === 'descanso' ? 'pausa_inicio'
+        : tipo === 'fin_descanso' ? 'pausa_fin'
+        : 'permiso';
 
-        vehicle_id: vehicle.id,
-        matricula: vehicle.matricula,
-
-        creado_por_id: usuarioPin?.id ?? null,
-        creado_por_nombre: usuarioPin?.nombre ?? 'Usuario',
-
-        departamento_id: VEHICULOS_DEPARTAMENTO_ID,
-        departamento_nombre: 'Vehiculos',
-
-        fecha_creacion: new Date().toISOString(),
+      const { error: insErr } = await supabase.from('fichajes').insert({
+        empleado_id: usuarioPin.empleado_id ?? null,
+        nombre_empleado: usuarioPin.nombre,
+        fecha: new Date().toISOString().split('T')[0],
+        timestamp: new Date().toISOString(),
+        tipo_evento: tipoEvento,
+        metodo: 'web',
+        user_agent: navigator.userAgent,
+        es_manual: false,
       });
+      if (insErr) throw new Error(insErr.message);
+      setDoneMsg(`${tipo === 'entrada' ? 'Entrada' : tipo === 'salida' ? 'Salida' : tipo === 'descanso' ? 'Descanso iniciado' : tipo === 'fin_descanso' ? 'Descanso finalizado' : 'Permiso'} registrado — ${usuarioPin.nombre}`);
+      setDoneColor(tipo === 'salida' ? '#DC2626' : '#16A34A');
+      setStep('done');
+    } catch (err: any) { setError(err.message ?? 'Error al registrar'); }
+    finally { setLoading(false); }
+  };
 
-    if (incError) throw incError;
-
-    setIncidentTitle('');
-    setIncidentDescription('');
-    setShowVehicleIncident(false);
-
-    alert('Incidencia registrada correctamente');
-
-  } catch (err: any) {
-    console.error(err);
-    setError(err.message ?? 'Error al registrar incidencia');
-  }
-};
-
-  
+  // ── Vehicle plate search ──
   const handleSearchPlate = async () => {
     if (!plate.trim()) return;
     setError('');
@@ -131,182 +134,161 @@ const handleCreateVehicleIncident = async () => {
       if (vErr) throw new Error(vErr.message);
       if (!data) throw new Error(`Matrícula ${plate.trim().toUpperCase()} no encontrada`);
       setVehicle(data as VehicleInfo);
-      setStep('id');
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al buscar');
-    } finally {
-      setLoading(false);
-    }
+      const status: VehicleStatus = data.estado === 'libre' ? 'libre' : data.current_user_id === usuarioPin?.id ? 'en_uso_mismo' : 'en_uso_otro';
+      setVehicleStatus(status);
+      setStep('vehiculo_action');
+    } catch (err: any) { setError(err.message ?? 'Error al buscar'); }
+    finally { setLoading(false); }
   };
 
-  // Step 2: enter employee ID → determine action
-const handleCheckId = async () => {
-  if (!empleadoId.trim() || !vehicle) return;
-
-  setError('');
-   if (!numeroPersonas || Number(numeroPersonas) < 1) {
-    setError('Debe indicar el número de personas');
-    return;
-  }
-
-  try {
-  const { data, error } = await supabase
-  .rpc('validate_vehicle_pin', {
-    p_pin: empleadoId.trim()
-  });
-
-const usuario = data?.[0];
-
-  
-    
- if (error || !usuario) {
-
-  setError(JSON.stringify(error));
-  return;
-}
-
-    setUsuarioPin(usuario);
-
-    if (vehicle.estado === 'libre') {
-      setVehicleStatus('libre');
-    } else {
-      const isSame =
-        vehicle.current_user_id === usuario.id;
-
-      setVehicleStatus(
-        isSame ? 'en_uso_mismo' : 'en_uso_otro'
-      );
-    }
-
-    setStep('action');
-  } catch {
-    setError('Error al validar PIN');
-  }
-};
-
-  // Action: start use (libre)
-  const handleStart = async () => {
-  setError('');
-
-  if (!vehicle) return;
-
-  const kmVal = parseInt(km, 10);
-
-  if (isNaN(kmVal)) {
-    setError('Debe introducir un kilometraje válido');
-    return;
-  }
-
-  if (kmVal < (vehicle.kilometros_actuales ?? 0)) {
-    setError(
-      `Los kilómetros no pueden ser inferiores a ${vehicle.kilometros_actuales}`
-    );
-    return;
-  }
-
-    if (!motivoUso.trim()) {
-  setError('Debe indicar el motivo del uso');
-  return;
-}
-  setLoading(true);
-    try {
-      const now = new Date().toISOString();
- const { error: logErr } = await supabase.from('vehicle_logs').insert({
-  vehicle_id: vehicle.id,
-  user_id: usuarioPin.id,
-  user_nombre: usuarioPin.nombre,
-  fecha_inicio: now,
-  km_inicio: kmVal,
-  numero_personas: Number(numeroPersonas),
-  tipo: 'normal',
-  motivo: motivoUso.trim(),
-});
-      if (logErr) throw new Error(logErr.message);
-      const { error: vUpErr } = await supabase.from('vehicles').update({
-        estado: 'en_uso',
-        current_user_id: usuarioPin.id,
-        current_user_nombre: usuarioPin.nombre,
-        current_km_inicio: kmVal,
-        current_fecha_inicio: now,
-        kilometros_actuales: kmVal,
-      }).eq('id', vehicle.id);
-      if (vUpErr) throw new Error(vUpErr.message);
-      setDone('started');
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al registrar');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Action: finish use (en_uso_mismo)
-  const handleFinish = async () => {
+  // ── Vehicle start ──
+  const handleVehicleStart = async () => {
+    if (!vehicle || !usuarioPin) return;
     setError('');
     const kmVal = parseInt(km, 10);
-    if (isNaN(kmVal) || kmVal < 0) {
-    setError('Kilometraje inválido');
-    return;
-  }
-      if (kmVal < (vehicle.kilometros_actuales ?? 0)) {
-    setError(
-      `Los kilómetros no pueden ser inferiores a ${vehicle.kilometros_actuales}`
-    );
-    return;
-  }
-    if (!vehicle) return;
+    if (isNaN(kmVal)) { setError('Kilometraje inválido'); return; }
+    if (kmVal < (vehicle.kilometros_actuales ?? 0)) { setError(`Los km no pueden ser inferiores a ${vehicle.kilometros_actuales}`); return; }
+    if (!motivoUso.trim()) { setError('Debe indicar el motivo del uso'); return; }
     setLoading(true);
     try {
       const now = new Date().toISOString();
-      // close the open log
-      const { data: openLog } = await supabase
-        .from('vehicle_logs')
-        .select('id,km_inicio,fecha_inicio')
-        .eq('vehicle_id', vehicle.id)
-        .is('fecha_fin', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (openLog) {
-        const inicio = new Date(openLog.fecha_inicio).getTime();
-        const fin = new Date(now).getTime();
-        const duracion = Math.round((fin - inicio) / 60000);
-        const { error: logUpErr } = await supabase.from('vehicle_logs').update({
-          fecha_fin: now,
-          km_fin: kmVal,
-          duracion_minutos: duracion,
-        }).eq('id', openLog.id);
-        if (logUpErr) throw new Error(logUpErr.message);
-      }
-
-      const { error: vUpErr } = await supabase.from('vehicles').update({
-        estado: 'libre',
-        current_user_id: null,
-        current_user_nombre: null,
-        current_km_inicio: null,
-        current_fecha_inicio: null,
-        kilometros_actuales: kmVal,
+      const { error: logErr } = await supabase.from('vehicle_logs').insert({
+        vehicle_id: vehicle.id, user_id: usuarioPin.id, user_nombre: usuarioPin.nombre,
+        fecha_inicio: now, km_inicio: kmVal, numero_personas: Number(numeroPersonas),
+        tipo: 'normal', motivo: motivoUso.trim(),
+      });
+      if (logErr) throw new Error(logErr.message);
+      await supabase.from('vehicles').update({
+        estado: 'en_uso', current_user_id: usuarioPin.id, current_user_nombre: usuarioPin.nombre,
+        current_km_inicio: kmVal, current_fecha_inicio: now, kilometros_actuales: kmVal,
       }).eq('id', vehicle.id);
-      if (vUpErr) throw new Error(vUpErr.message);
-      setDone('finished');
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al finalizar');
-    } finally {
-      setLoading(false);
-    }
+      setDoneMsg(`Uso iniciado — ${vehicle.matricula} · ${usuarioPin.nombre} · ${kmVal} km`);
+      setDoneColor('#16A34A');
+      setStep('done');
+    } catch (err: any) { setError(err.message ?? 'Error'); }
+    finally { setLoading(false); }
   };
 
-  const inputStyle = { border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' };
+  // ── Vehicle finish ──
+  const handleVehicleFinish = async () => {
+    if (!vehicle || !usuarioPin) return;
+    setError('');
+    const kmVal = parseInt(km, 10);
+    if (isNaN(kmVal)) { setError('Kilometraje inválido'); return; }
+    if (kmVal < (vehicle.kilometros_actuales ?? 0)) { setError(`Los km no pueden ser inferiores a ${vehicle.kilometros_actuales}`); return; }
+    setLoading(true);
+    try {
+      const now = new Date().toISOString();
+      const { data: openLog } = await supabase.from('vehicle_logs').select('id,km_inicio,fecha_inicio')
+        .eq('vehicle_id', vehicle.id).is('fecha_fin', null)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (openLog) {
+        const duracion = Math.round((new Date(now).getTime() - new Date(openLog.fecha_inicio).getTime()) / 60000);
+        await supabase.from('vehicle_logs').update({ fecha_fin: now, km_fin: kmVal, duracion_minutos: duracion }).eq('id', openLog.id);
+      }
+      await supabase.from('vehicles').update({
+        estado: 'libre', current_user_id: null, current_user_nombre: null,
+        current_km_inicio: null, current_fecha_inicio: null, kilometros_actuales: kmVal,
+      }).eq('id', vehicle.id);
+      setDoneMsg(`Uso finalizado — ${vehicle.matricula} · ${kmVal} km`);
+      setDoneColor('#2563EB');
+      setStep('done');
+    } catch (err: any) { setError(err.message ?? 'Error'); }
+    finally { setLoading(false); }
+  };
+
+  // ── Vehicle incident ──
+  const handleVehicleIncident = async () => {
+    const mat = (incidentVehiclePlate || vehicle?.matricula || '').trim().toUpperCase();
+    if (!incidentTitle.trim() || !incidentDescription.trim()) { setError('Título y descripción requeridos'); return; }
+    if (!mat) { setError('Indica la matrícula del vehículo'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      // Upload photos to Wasabi under vehiculos/<matricula>/
+      const photoKeys: string[] = [];
+      for (const photo of incidentPhotos) {
+        const ext = photo.name.split('.').pop() ?? 'jpg';
+        const key = `vehiculos/${mat}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+        await uploadToWasabiKey(photo, key);
+        photoKeys.push(key);
+      }
+
+      const vehicleData = vehicle ?? (await supabase.from('vehicles').select('id').eq('matricula', mat).maybeSingle()).data;
+
+      const { error: incErr } = await supabase.from('incidencias').insert({
+        titulo: `[${mat}] ${incidentTitle.trim()}`,
+        descripcion: `${incidentDescription.trim()}${photoKeys.length ? `\n\nFotos: ${photoKeys.join(', ')}` : ''}`,
+        estado: 'pendiente',
+        vehicle_id: vehicleData?.id ?? null,
+        matricula: mat,
+        creado_por_id: usuarioPin?.id ?? null,
+        creado_por_nombre: usuarioPin?.nombre ?? 'Usuario',
+        departamento_id: VEHICULOS_DEPARTAMENTO_ID,
+        departamento_nombre: 'Vehiculos',
+        fecha_creacion: new Date().toISOString(),
+      });
+      if (incErr) throw new Error(incErr.message);
+      setDoneMsg(`Incidencia registrada — ${mat} · ${photoKeys.length} foto(s)`);
+      setDoneColor('#D97706');
+      setStep('done');
+    } catch (err: any) { setError(err.message ?? 'Error'); }
+    finally { setLoading(false); }
+  };
+
+  // ── Fichaje incident ──
+  const handleFichajeIncident = async () => {
+    if (!fichajeNota.trim()) { setError('Describe la incidencia'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      const { error: insErr } = await supabase.from('fichajes').insert({
+        empleado_id: usuarioPin?.empleado_id ?? null,
+        nombre_empleado: usuarioPin?.nombre ?? 'Usuario',
+        fecha: new Date().toISOString().split('T')[0],
+        timestamp: new Date().toISOString(),
+        tipo_evento: 'entrada',
+        metodo: 'web',
+        user_agent: navigator.userAgent,
+        es_manual: true,
+        nota_correccion: fichajeNota.trim(),
+      });
+      if (insErr) throw new Error(insErr.message);
+      setDoneMsg('Incidencia de fichaje registrada correctamente');
+      setDoneColor('#7C3AED');
+      setStep('done');
+    } catch (err: any) { setError(err.message ?? 'Error'); }
+    finally { setLoading(false); }
+  };
+
+  
+
+  const MENU_ACTIONS: { id: JornadaAction; label: string; icon: React.FC<{ size?: number }>; color: string; bg: string; border: string }[] = [
+    { id: 'entrada',             label: 'Entrada',             icon: Play,        color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' },
+    { id: 'descanso',            label: 'Descanso',            icon: Coffee,      color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+    { id: 'fin_descanso',        label: 'Fin descanso',        icon: Play,        color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
+    { id: 'salida',              label: 'Salida',              icon: Square,      color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+    { id: 'permiso',             label: 'Permiso',             icon: Plane,       color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
+    { id: 'vehiculo',            label: 'Vehículo',            icon: Car,         color: '#0F172A', bg: '#F8FAFC', border: '#E2E8F0' },
+    { id: 'incidencia_vehiculo', label: 'Incidencia Vehículo', icon: Wrench,      color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' },
+    { id: 'incidencia_fichaje',  label: 'Incidencia Fichaje',  icon: AlertCircle, color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
+  ];
+
+  const errBox = error ? (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+      <AlertCircle size={13} style={{ color: '#DC2626' }} />
+      <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
+    </div>
+  ) : null;
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-white rounded-2xl max-w-md w-full mx-4 overflow-hidden shadow-2xl">
-        {/* Header */}
-        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}>
+      <div className="bg-white rounded-2xl max-w-md w-full mx-4 shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="px-6 py-4 flex items-center justify-between flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}>
           <div className="flex items-center gap-2">
-            <Car size={18} className="text-white" />
+            <Clock size={18} className="text-white" />
             <div>
-              <h2 className="text-white font-semibold text-sm">Registrar Vehículo</h2>
+              <h2 className="text-white font-semibold text-sm">Registro de Jornada</h2>
               <p className="text-white/60 text-xs">Acceso rápido sin login</p>
             </div>
           </div>
@@ -315,32 +297,103 @@ const usuario = data?.[0];
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
-          {/* ── DONE ── */}
-          {done ? (
+        <div className="p-6 space-y-4 overflow-y-auto">
+
+          {step === 'done' && (
             <div className="text-center py-4">
-              <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: done === 'started' ? '#F0FDF4' : '#EFF6FF', border: `2px solid ${done === 'started' ? '#BBF7D0' : '#BFDBFE'}` }}>
-                <Car size={24} style={{ color: done === 'started' ? '#16A34A' : '#2563EB' }} />
+              <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: `${doneColor}18`, border: `2px solid ${doneColor}44` }}>
+                <Clock size={24} style={{ color: doneColor }} />
               </div>
-              <p className="font-semibold" style={{ color: done === 'started' ? '#16A34A' : '#2563EB' }}>
-                {done === 'started' ? 'Uso iniciado correctamente' : 'Uso finalizado correctamente'}
-              </p>
-              <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
-                {vehicle?.matricula} — {usuarioPin?.nombre} — {km} km
-              </p>
+              <p className="font-semibold" style={{ color: doneColor }}>{doneMsg}</p>
               <button onClick={onClose} className="mt-5 w-full py-2.5 rounded-xl text-sm font-semibold cursor-pointer" style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}>
                 Cerrar
               </button>
             </div>
+          )}
 
-          /* ── STEP: PLATE ── */
-          ) : step === 'plate' ? (
+          {step === 'pin' && (
             <>
               <div className="flex flex-col items-center py-5 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: '#F1F5F9' }}>
-                  <QrCode size={32} style={{ color: '#94A3B8' }} />
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: '#F1F5F9' }}>
+                  <KeyRound size={28} style={{ color: '#94A3B8' }} />
                 </div>
-                <p className="text-sm font-medium" style={{ color: '#1E293B' }}>Introduce la matrícula</p>
+                <p className="text-sm font-medium" style={{ color: '#1E293B' }}>Introduce tu PIN de acceso</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>PIN</label>
+                <input
+                  type="password"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  onKeyDown={(e) => e.key === 'Enter' && handleValidatePin()}
+                  placeholder="••••••"
+                  maxLength={6}
+                  inputMode="numeric"
+                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none text-center font-mono font-bold tracking-widest"
+                  style={{ ...inputStyle, fontSize: '18px' }}
+                />
+              </div>
+              {errBox}
+              <div className="flex gap-3">
+                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+                <button onClick={handleValidatePin} disabled={loading || pin.length < 4} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#0F172A' }}>
+                  {loading && <RefreshCw size={13} className="animate-spin" />}
+                  Validar PIN
+                </button>
+              </div>
+            </>
+          )}
+
+          {step === 'menu' && (
+            <>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: '#065F46', color: '#fff' }}>
+                  {usuarioPin?.nombre?.[0]?.toUpperCase() ?? 'U'}
+                </div>
+                <p className="text-sm font-semibold" style={{ color: '#15803D' }}>{usuarioPin?.nombre}</p>
+              </div>
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Selecciona una acción</p>
+              <div className="grid grid-cols-2 gap-2">
+                {MENU_ACTIONS.map((action) => {
+                  const Icon = action.icon;
+                  const isFichaje = ['entrada', 'descanso', 'fin_descanso', 'salida', 'permiso'].includes(action.id);
+                  return (
+                    <button
+                      key={action.id}
+                      onClick={() => {
+                        setError('');
+                        if (isFichaje) {
+                          handleSaveFichaje(action.id);
+                        } else if (action.id === 'vehiculo') {
+                          setStep('vehiculo_plate');
+                        } else if (action.id === 'incidencia_vehiculo') {
+                          setStep('incidencia_vehiculo');
+                        } else if (action.id === 'incidencia_fichaje') {
+                          setStep('fichaje_form');
+                        }
+                      }}
+                      disabled={loading}
+                      className="flex flex-col items-center gap-2 p-3 rounded-xl cursor-pointer transition-all hover:scale-[1.02] disabled:opacity-60"
+                      style={{ backgroundColor: action.bg, border: `1.5px solid ${action.border}` }}
+                    >
+                      <Icon size={20} style={{ color: action.color }} />
+                      <span className="text-xs font-semibold" style={{ color: action.color }}>{action.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {loading && <div className="flex items-center justify-center gap-2 py-2"><RefreshCw size={14} className="animate-spin" style={{ color: '#94A3B8' }} /><p className="text-xs" style={{ color: '#94A3B8' }}>Registrando...</p></div>}
+              {errBox}
+            </>
+          )}
+
+          {step === 'vehiculo_plate' && (
+            <>
+              <div className="flex flex-col items-center py-5 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: '#F1F5F9' }}>
+                  <QrCode size={28} style={{ color: '#94A3B8' }} />
+                </div>
+                <p className="text-sm font-medium" style={{ color: '#1E293B' }}>Introduce la matrícula del vehículo</p>
               </div>
               <div>
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Matrícula</label>
@@ -354,101 +407,42 @@ const usuario = data?.[0];
                   style={{ ...inputStyle, fontSize: '16px' }}
                 />
               </div>
-              {error && <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}><AlertCircle size={13} style={{ color: '#DC2626' }} /><p className="text-xs" style={{ color: '#DC2626' }}>{error}</p></div>}
+              {errBox}
               <div className="flex gap-3">
-                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+                <button onClick={() => { setStep('menu'); setError(''); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Atrás</button>
                 <button onClick={handleSearchPlate} disabled={loading || !plate.trim()} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#0F172A' }}>
                   {loading && <RefreshCw size={13} className="animate-spin" />}
-                  Buscar Vehículo
+                  Buscar
                 </button>
               </div>
             </>
+          )}
 
-          /* ── STEP: ID EMPLEADO ── */
-          ) : step === 'id' ? (
+          {step === 'vehiculo_action' && vehicle && (
             <>
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                <Car size={16} style={{ color: '#16A34A' }} />
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: '#15803D' }}>{vehicle?.matricula}</p>
-                  <p className="text-xs" style={{ color: '#64748B' }}>{vehicle?.marca} {vehicle?.modelo}</p>
-                </div>
-                <button onClick={() => { setStep('plate'); setError(''); setVehicle(null); }} className="ml-auto text-xs cursor-pointer" style={{ color: '#94A3B8' }}>Cambiar</button>
-              </div>
-              <div>
-  <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider">
-    NÚMERO DE PERSONAS
-  </label>
-
-  <input
-    type="number"
-    min="1"
-    max="9"
-    value={numeroPersonas}
-    onChange={(e) => setNumeroPersonas(e.target.value)}
-    className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-    style={inputStyle}
-  />
-</div>
-              <div>
-               <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider">
-  PIN DE ACCESO
-</label>
-
-<input
-  type="password"
-  value={empleadoId}
-  onChange={(e) =>
-    setEmpleadoId(e.target.value.replace(/\D/g, '').slice(0, 6))
-  }
-  onKeyDown={(e) => e.key === 'Enter' && handleCheckId()}
-  placeholder="••••••"
-  maxLength={6}
-  inputMode="numeric"
-  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-  style={inputStyle}
-/>
-              </div>
-              {error && <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}><AlertCircle size={13} style={{ color: '#DC2626' }} /><p className="text-xs" style={{ color: '#DC2626' }}>{error}</p></div>}
-              <div className="flex gap-3">
-                <button onClick={() => { setStep('plate'); setError(''); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Atrás</button>
-                <button onClick={handleCheckId} disabled={!empleadoId.trim()} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60" style={{ backgroundColor: '#0F172A' }}>
-                  Continuar
-                </button>
-              </div>
-            </>
-
-          /* ── STEP: ACTION ── */
-          ) : (
-            <>
-              {/* Vehicle badge */}
               <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
                 <Car size={16} style={{ color: '#64748B' }} />
                 <div>
-                  <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{vehicle?.matricula}</p>
-                  <p className="text-xs" style={{ color: '#64748B' }}>{vehicle?.marca} {vehicle?.modelo} — {usuarioPin?.nombre}</p>
+                  <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{vehicle.matricula}</p>
+                  <p className="text-xs" style={{ color: '#64748B' }}>{vehicle.marca} {vehicle.modelo} — {usuarioPin?.nombre}</p>
                 </div>
+                <button onClick={() => { setStep('vehiculo_plate'); setError(''); setVehicle(null); setKm(''); }} className="ml-auto text-xs cursor-pointer" style={{ color: '#94A3B8' }}>Cambiar</button>
               </div>
 
-              {/* EN USO POR OTRO → blocked */}
               {vehicleStatus === 'en_uso_otro' ? (
-                <div className="rounded-xl p-4 space-y-3" style={{ backgroundColor: '#FEF2F2', border: '1.5px solid #FECACA' }}>
+                <div className="rounded-xl p-4" style={{ backgroundColor: '#FEF2F2', border: '1.5px solid #FECACA' }}>
                   <div className="flex items-start gap-2">
                     <AlertCircle size={18} style={{ color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
                     <div>
                       <p className="text-sm font-semibold" style={{ color: '#B91C1C' }}>Vehículo en uso por otro empleado</p>
-                      <p className="text-xs mt-1" style={{ color: '#DC2626' }}>
-                        Actualmente asignado a: <strong>{vehicle?.current_user_nombre ?? 'desconocido'}</strong>
-                      </p>
-                      <p className="text-xs mt-2" style={{ color: '#7F1D1D' }}>
-                        No es posible registrar este vehículo. Llame a RRHH o Informática para que liberen el vehículo.
-                      </p>
+                      <p className="text-xs mt-1" style={{ color: '#DC2626' }}>Asignado a: <strong>{vehicle.current_user_nombre ?? 'desconocido'}</strong></p>
+                      <p className="text-xs mt-2" style={{ color: '#7F1D1D' }}>Contacta con RRHH o Informática para liberar el vehículo.</p>
                     </div>
                   </div>
+                  <button onClick={() => { setStep('menu'); setError(''); }} className="mt-3 w-full py-2 rounded-lg text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Volver al menú</button>
                 </div>
               ) : (
                 <>
-                  {/* Status banner */}
                   {vehicleStatus === 'libre' ? (
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#16A34A' }} />
@@ -460,161 +454,118 @@ const usuario = data?.[0];
                       <p className="text-xs font-medium" style={{ color: '#1D4ED8' }}>En uso por ti — introduce los km finales para terminar</p>
                     </div>
                   )}
-
-
-<div>
-  <label
-    className="block text-xs font-semibold mb-1.5 uppercase tracking-wider"
-    style={{ color: '#64748B' }}
-  >
-    {vehicleStatus === 'libre'
-      ? 'Kilómetros actuales'
-      : 'Kilómetros finales'}
-  </label>
-
-  <input
-    type="number"
-    value={km}
-    onChange={(e) => setKm(e.target.value)}
-    placeholder={String(vehicle?.kilometros_actuales ?? 0)}
-    className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-    style={inputStyle}
-  />
-</div>
-
-<div className="mt-4">
-  <label
-    className="block text-xs font-semibold mb-1.5 uppercase tracking-wider"
-    style={{ color: '#64748B' }}
-  >
-    Descripción / motivo del uso
-  </label>
-
-  <textarea
-    value={motivoUso}
-    onChange={(e) => setMotivoUso(e.target.value)}
-    placeholder="Ej: Salida de usuarios a la playa..."
-    rows={3}
-    className="w-full px-4 py-2.5 rounded-xl text-sm outline-none resize-none"
-    style={inputStyle}
-  />
-</div>
-                  
-                  {error && <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}><AlertCircle size={13} style={{ color: '#DC2626' }} /><p className="text-xs" style={{ color: '#DC2626' }}>{error}</p></div>}
-
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
+                      {vehicleStatus === 'libre' ? 'Kilómetros actuales' : 'Kilómetros finales'}
+                    </label>
+                    <input type="number" value={km} onChange={(e) => setKm(e.target.value)} placeholder={String(vehicle.kilometros_actuales ?? 0)} className="w-full px-4 py-2.5 rounded-xl text-sm outline-none" style={inputStyle} />
+                  </div>
+                  {vehicleStatus === 'libre' && (
+                    <div>
+                      <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Número de personas</label>
+                      <input type="number" min="1" max="9" value={numeroPersonas} onChange={(e) => setNumeroPersonas(e.target.value)} className="w-full px-4 py-2.5 rounded-xl text-sm outline-none" style={inputStyle} />
+                    </div>
+                  )}
+                  {vehicleStatus === 'libre' && (
+                    <div>
+                      <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Motivo del uso</label>
+                      <textarea value={motivoUso} onChange={(e) => setMotivoUso(e.target.value)} placeholder="Ej: Salida de usuarios a la playa..." rows={2} className="w-full px-4 py-2.5 rounded-xl text-sm outline-none resize-none" style={inputStyle} />
+                    </div>
+                  )}
+                  {errBox}
                   <div className="flex gap-3">
-                    <button onClick={() => { setStep('id'); setError(''); setKm(''); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Atrás</button>
+                    <button onClick={() => { setStep('vehiculo_plate'); setError(''); setKm(''); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Atrás</button>
                     {vehicleStatus === 'libre' ? (
-                      <button onClick={handleStart} disabled={loading || !km} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#16A34A' }}>
+                      <button onClick={handleVehicleStart} disabled={loading || !km} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#16A34A' }}>
                         {loading && <RefreshCw size={13} className="animate-spin" />}
                         Empezar uso
                       </button>
                     ) : (
-                      <button onClick={handleFinish} disabled={loading || !km} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#2563EB' }}>
+                      <button onClick={handleVehicleFinish} disabled={loading || !km} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#2563EB' }}>
                         {loading && <RefreshCw size={13} className="animate-spin" />}
                         Terminar uso
                       </button>
                     )}
                   </div>
-
-<button
-  type="button"
- onClick={() => setShowVehicleIncident(true)}
-  className="w-full text-left rounded-xl p-3 transition-colors cursor-pointer"
-  style={{
-    backgroundColor: '#FEF2F2',
-    border: '1px solid #FECACA',
-    color: '#DC2626',
-  }}
->
-  ⚠ Registrar incidencia del vehículo
-</button>
-
-
-                  
                 </>
-              )}
-
-
-{showVehicleIncident && (
-  <div
-    className="rounded-xl p-4 space-y-3"
-    style={{
-      backgroundColor: '#FEF2F2',
-      border: '1px solid #FECACA',
-    }}
-  >
-    <div>
-      <label
-        className="block text-xs font-semibold mb-1.5 uppercase tracking-wider"
-        style={{ color: '#991B1B' }}
-      >
-        Nombre de la incidencia
-      </label>
-
-     <input
-  type="text"
-  value={incidentTitle}
-  onChange={(e) => setIncidentTitle(e.target.value)}
-  placeholder="Ej: Luz de motor encendida"
-  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-/>
-    </div>
-
-    <div>
-      <label
-        className="block text-xs font-semibold mb-1.5 uppercase tracking-wider"
-        style={{ color: '#991B1B' }}
-      >
-        Descripción
-      </label>
-
-      <textarea
-  rows={3}
-  value={incidentDescription}
-  onChange={(e) => setIncidentDescription(e.target.value)}
-  placeholder="Describe el problema..."
-  className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
-/>
-    </div>
-
-    <div className="flex gap-2">
-      <button
-        onClick={() => setShowVehicleIncident(false)}
-        className="flex-1 py-2 rounded-lg"
-      >
-        Cancelar
-      </button>
-
-      <button
-        onClick={handleCreateVehicleIncident}
-        className="flex-1 py-2 rounded-lg"
-        style={{
-          backgroundColor: '#DC2626',
-          color: '#FFF'
-        }}
-      >
-        Enviar incidencia
-      </button>
-    </div>
-  </div>
-)}
-
-
-
-
-
-              
-              {vehicleStatus === 'en_uso_otro' && (
-                <button onClick={onClose} className="w-full py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cerrar</button>
               )}
             </>
           )}
+
+          {step === 'incidencia_vehiculo' && (
+            <>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFF7ED', border: '1px solid #FED7AA' }}>
+                <Wrench size={14} style={{ color: '#EA580C' }} />
+                <p className="text-xs font-semibold" style={{ color: '#EA580C' }}>Incidencia de vehículo</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Matrícula</label>
+                <input type="text" value={incidentVehiclePlate || vehicle?.matricula || ''} onChange={(e) => setIncidentVehiclePlate(e.target.value.toUpperCase())} placeholder="1234-ABC" className="w-full px-4 py-2.5 rounded-xl text-sm outline-none font-mono font-bold tracking-widest" style={inputStyle} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Título de la incidencia</label>
+                <input type="text" value={incidentTitle} onChange={(e) => setIncidentTitle(e.target.value)} placeholder="Ej: Luz de motor encendida" className="w-full px-4 py-2.5 rounded-xl text-sm outline-none" style={inputStyle} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Descripción</label>
+                <textarea value={incidentDescription} onChange={(e) => setIncidentDescription(e.target.value)} placeholder="Describe el problema..." rows={3} className="w-full px-4 py-2.5 rounded-xl text-sm outline-none resize-none" style={inputStyle} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Fotos (opcional)</label>
+                <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer" style={{ backgroundColor: '#F1F5F9', border: '1.5px dashed #CBD5E1' }}>
+                  <Camera size={16} style={{ color: '#94A3B8' }} />
+                  <span className="text-sm" style={{ color: '#64748B' }}>Añadir fotos</span>
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => setIncidentPhotos(Array.from(e.target.files ?? []))} />
+                </label>
+                {incidentPhotos.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {incidentPhotos.map((f, i) => (
+                      <div key={i} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8' }}>
+                        <span>{f.name}</span>
+                        <button onClick={() => setIncidentPhotos((prev) => prev.filter((_, j) => j !== i))} className="cursor-pointer"><Trash2 size={11} /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {errBox}
+              <div className="flex gap-3">
+                <button onClick={() => { setStep('menu'); setError(''); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Atrás</button>
+                <button onClick={handleVehicleIncident} disabled={loading || !incidentTitle.trim() || !incidentDescription.trim()} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#EA580C' }}>
+                  {loading && <RefreshCw size={13} className="animate-spin" />}
+                  Enviar incidencia
+                </button>
+              </div>
+            </>
+          )}
+
+          {step === 'fichaje_form' && (
+            <>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F5F3FF', border: '1px solid #DDD6FE' }}>
+                <AlertCircle size={14} style={{ color: '#7C3AED' }} />
+                <p className="text-xs font-semibold" style={{ color: '#7C3AED' }}>Incidencia de fichaje</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Describe la incidencia</label>
+                <textarea value={fichajeNota} onChange={(e) => setFichajeNota(e.target.value)} placeholder="Ej: Olvidé fichar la entrada a las 8:00..." rows={4} className="w-full px-4 py-2.5 rounded-xl text-sm outline-none resize-none" style={inputStyle} />
+              </div>
+              {errBox}
+              <div className="flex gap-3">
+                <button onClick={() => { setStep('menu'); setError(''); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Atrás</button>
+                <button onClick={handleFichajeIncident} disabled={loading || !fichajeNota.trim()} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#7C3AED' }}>
+                  {loading && <RefreshCw size={13} className="animate-spin" />}
+                  Guardar incidencia
+                </button>
+              </div>
+            </>
+          )}
+
         </div>
       </div>
     </div>
   );
 }
+
 
 type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion';
 
@@ -1131,14 +1082,14 @@ export default function LoginPage() {
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer hover:opacity-80"
               style={{ backgroundColor: '#F1F5F9', color: '#334155', border: '1.5px solid #E2E8F0' }}
             >
-              <Car size={15} />
-              REGISTRAR VEHÍCULO
+              <Clock size={15} />
+              REGISTRO DE JORNADA
             </button>
           </div>
         </div>
       </div>
 
-      {showVehicleModal && <VehicleRegisterModal onClose={() => setShowVehicleModal(false)} />}
+      {showVehicleModal && <JornadaModal onClose={() => setShowVehicleModal(false)} />}
     </div>
   );
 }

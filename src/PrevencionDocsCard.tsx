@@ -3,7 +3,6 @@ import { ShieldCheck, FileText, Download, Tag, RefreshCw, Folder, X, ZoomIn, Che
 import { supabase } from './supabaseClient';
 import { downloadFromWasabi, getWasabiBlobUrl } from './lib/wasabi';
 import type { SocietyTheme } from './themes';
-import { societies as allSocieties } from './themes';
 
 interface PrevDoc {
   id: string;
@@ -13,8 +12,6 @@ interface PrevDoc {
   wasabi_key: string | null;
   folder_id: string;
   folder_nombre: string;
-  // RPC returns folder_society_id; society_id/society_nombre resolved client-side
-  folder_society_id?: string;
   society_id: string;
   society_nombre: string;
 }
@@ -145,20 +142,9 @@ export default function PrevencionDocsCard({ theme }: Props) {
         const { data, error } = await supabase.rpc('get_my_prl_documents');
         if (error) throw error;
 
-        const rawDocs = (data ?? []) as (Omit<PrevDoc, 'society_id' | 'society_nombre'> & { folder_society_id?: string })[];
+        const docs = (data ?? []) as PrevDoc[];
 
-        // Resolve society name from the frontend themes list
-        const docs: PrevDoc[] = rawDocs.map((d) => {
-          const sid = d.folder_society_id ?? '';
-          const match = allSocieties.find((s) => s.id === sid);
-          return {
-            ...d,
-            society_id: sid,
-            society_nombre: match?.name ?? sid,
-          };
-        });
-
-        // Group by society
+        // Sort by created_at desc within each society, keep only 3 newest per society
         const map = new Map<string, GroupedDocs>();
         for (const doc of docs) {
           if (!map.has(doc.society_id)) {
@@ -166,7 +152,15 @@ export default function PrevencionDocsCard({ theme }: Props) {
           }
           map.get(doc.society_id)!.docs.push(doc);
         }
-        const grouped = Array.from(map.values()).sort((a, b) => a.society_nombre.localeCompare(b.society_nombre));
+        // Sort docs within each group by created_at desc, cap at 3
+        const grouped = Array.from(map.values())
+          .map((g) => ({
+            ...g,
+            docs: g.docs
+              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+              .slice(0, 3),
+          }))
+          .sort((a, b) => a.society_nombre.localeCompare(b.society_nombre));
         setGroups(grouped);
 
         // Expand all by default

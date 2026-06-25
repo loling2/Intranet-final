@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound } from 'lucide-react';
+import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2 } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
 import SocietySwitcher from './SocietySwitcher';
 import PrlDocsModule from './components/PrlDocsModule';
@@ -12,7 +12,7 @@ interface Props {
   onNavigateEmployee?: () => void;
 }
 
-type PrevTab = 'empleados' | 'documentos' | 'trazabilidad';
+type PrevTab = 'empleados' | 'documentos' | 'trazabilidad' | 'departamentos';
 
 // Colors per prevention tag category
 const TAG_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -40,6 +40,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
     { id: 'empleados',     label: 'Empleados y Tags',   icon: Users },
     { id: 'documentos',    label: 'Documentos PRL',      icon: FileText },
     { id: 'trazabilidad',  label: 'Trazabilidad',        icon: CheckCircle2 },
+    { id: 'departamentos', label: 'Departamentos PRL',   icon: Building2 },
   ];
 
   return (
@@ -135,6 +136,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
         {activeTab === 'empleados' && <EmpleadosTagsTab />}
         {activeTab === 'documentos' && <PrlDocsModule />}
         {activeTab === 'trazabilidad' && <TrazabilidadModule />}
+        {activeTab === 'departamentos' && <DepartamentosPrlTab />}
       </div>
     </div>
   );
@@ -505,6 +507,447 @@ function EmpleadosTagsTab() {
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Departamentos PRL tab ───────────────────────────────────────────────────
+
+interface DeptPrl {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  society_id: string;
+  created_at: string;
+}
+
+interface DeptEmpleado {
+  id: string;           // empleados_departamentos_prl.id
+  empleado_id: string;
+  empleado_nombre: string;
+  empleado_email: string;
+}
+
+function DepartamentosPrlTab() {
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
+  const [sociedades, setSociedades] = useState<Sociedad[]>([]);
+  const [depts, setDepts] = useState<DeptPrl[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Per-dept expanded + employee assignment cache
+  const [expandedDeptId, setExpandedDeptId] = useState<string | null>(null);
+  const [deptEmpleados, setDeptEmpleados] = useState<Record<string, DeptEmpleado[]>>({});
+  const [loadingDeptEmps, setLoadingDeptEmps] = useState(false);
+
+  // Create / edit dept modal
+  const [showForm, setShowForm] = useState(false);
+  const [editingDept, setEditingDept] = useState<DeptPrl | null>(null);
+  const [formNombre, setFormNombre] = useState('');
+  const [formDescripcion, setFormDescripcion] = useState('');
+  const [formSociety, setFormSociety] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Assign employee modal state
+  const [assigningDeptId, setAssigningDeptId] = useState<string | null>(null);
+  const [selectedEmpIds, setSelectedEmpIds] = useState<Set<string>>(new Set());
+  const [assigning, setAssigning] = useState(false);
+
+  const flash = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(null), 3000); };
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [depRes, empRes, socRes] = await Promise.all([
+        supabase.from('departamentos_prl').select('*').order('nombre'),
+        supabase.from('empleados').select('*').order('nombre'),
+        supabase.from('sociedades').select('*').order('nombre'),
+      ]);
+      if (depRes.error) throw new Error(depRes.error.message);
+      if (empRes.error) throw new Error(empRes.error.message);
+      if (socRes.error) throw new Error(socRes.error.message);
+      setDepts(depRes.data ?? []);
+      setEmpleados(empRes.data ?? []);
+      setSociedades(socRes.data ?? []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al cargar');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  const loadDeptEmpleados = async (deptId: string) => {
+    setLoadingDeptEmps(true);
+    const { data, error: err } = await supabase
+      .from('empleados_departamentos_prl')
+      .select('id, empleado_id, empleados(nombre, email)')
+      .eq('departamento_prl_id', deptId);
+    if (!err) {
+      const rows: DeptEmpleado[] = (data ?? []).map((r: { id: string; empleado_id: string; empleados: { nombre: string; email: string } | null }) => ({
+        id: r.id,
+        empleado_id: r.empleado_id,
+        empleado_nombre: r.empleados?.nombre ?? '',
+        empleado_email: r.empleados?.email ?? '',
+      }));
+      setDeptEmpleados((prev) => ({ ...prev, [deptId]: rows }));
+    }
+    setLoadingDeptEmps(false);
+  };
+
+  const toggleExpand = (deptId: string) => {
+    if (expandedDeptId === deptId) { setExpandedDeptId(null); return; }
+    setExpandedDeptId(deptId);
+    loadDeptEmpleados(deptId);
+  };
+
+  const openCreateForm = () => {
+    setEditingDept(null);
+    setFormNombre('');
+    setFormDescripcion('');
+    setFormSociety(sociedades[0]?.id ?? '');
+    setShowForm(true);
+  };
+
+  const openEditForm = (dept: DeptPrl) => {
+    setEditingDept(dept);
+    setFormNombre(dept.nombre);
+    setFormDescripcion(dept.descripcion);
+    setFormSociety(dept.society_id);
+    setShowForm(true);
+  };
+
+  const handleSaveDept = async () => {
+    if (!formNombre.trim()) { setError('El nombre es obligatorio'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      if (editingDept) {
+        const { error: err } = await supabase
+          .from('departamentos_prl')
+          .update({ nombre: formNombre.trim(), descripcion: formDescripcion.trim(), society_id: formSociety })
+          .eq('id', editingDept.id);
+        if (err) throw err;
+        flash('Departamento actualizado');
+      } else {
+        const { error: err } = await supabase
+          .from('departamentos_prl')
+          .insert({ nombre: formNombre.trim(), descripcion: formDescripcion.trim(), society_id: formSociety });
+        if (err) throw err;
+        flash('Departamento creado');
+      }
+      setShowForm(false);
+      await loadAll();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteDept = async (dept: DeptPrl) => {
+    if (!confirm(`¿Eliminar el departamento "${dept.nombre}"? Se desvincularán todos los empleados.`)) return;
+    try {
+      const { error: err } = await supabase.from('departamentos_prl').delete().eq('id', dept.id);
+      if (err) throw err;
+      flash('Departamento eliminado');
+      if (expandedDeptId === dept.id) setExpandedDeptId(null);
+      await loadAll();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al eliminar');
+    }
+  };
+
+  const handleRemoveEmpleado = async (assignId: string, deptId: string) => {
+    try {
+      const { error: err } = await supabase.from('empleados_departamentos_prl').delete().eq('id', assignId);
+      if (err) throw err;
+      await loadDeptEmpleados(deptId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al desvincular');
+    }
+  };
+
+  const openAssign = (deptId: string) => {
+    setAssigningDeptId(deptId);
+    setSelectedEmpIds(new Set());
+  };
+
+  const handleAssign = async () => {
+    if (!assigningDeptId || selectedEmpIds.size === 0) return;
+    setAssigning(true);
+    try {
+      const rows = Array.from(selectedEmpIds).map((eid) => ({
+        empleado_id: eid,
+        departamento_prl_id: assigningDeptId,
+      }));
+      const { error: err } = await supabase.from('empleados_departamentos_prl').insert(rows);
+      if (err) throw err;
+      flash(`${rows.length} empleado${rows.length > 1 ? 's' : ''} vinculado${rows.length > 1 ? 's' : ''}`);
+      setAssigningDeptId(null);
+      await loadDeptEmpleados(assigningDeptId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al asignar');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const getSociedad = (id: string) => sociedades.find((s) => s.id === id);
+
+  return (
+    <div className="space-y-5">
+      {/* Toast */}
+      {error && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
+          <AlertCircle size={15} /><span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} className="cursor-pointer"><X size={13} /></button>
+        </div>
+      )}
+      {success && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: '#ECFDF5', border: '1px solid #6EE7B7', color: '#065F46' }}>
+          <CheckCircle2 size={15} /><span>{success}</span>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Departamentos PRL</h2>
+          <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>
+            Agrupa empleados por departamento para asignarles documentos de prevención independientemente de las incidencias.
+          </p>
+        </div>
+        <button
+          onClick={openCreateForm}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer hover:opacity-90 transition-all"
+          style={{ backgroundColor: '#065F46' }}
+        >
+          <Plus size={15} /> Nuevo departamento
+        </button>
+      </div>
+
+      {/* Create / Edit form modal */}
+      {showForm && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #064E3B, #065F46)' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+                  <Building2 size={16} className="text-white" />
+                </div>
+                <h2 className="text-white font-semibold text-sm">{editingDept ? 'Editar departamento' : 'Nuevo departamento PRL'}</h2>
+              </div>
+              <button onClick={() => setShowForm(false)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+                <X size={14} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Nombre *</label>
+                <input autoFocus type="text" value={formNombre} onChange={(e) => setFormNombre(e.target.value)}
+                  placeholder="Ej: Mantenimiento" className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Descripcion</label>
+                <input type="text" value={formDescripcion} onChange={(e) => setFormDescripcion(e.target.value)}
+                  placeholder="Breve descripcion" className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Sociedad</label>
+                <select value={formSociety} onChange={(e) => setFormSociety(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none cursor-pointer"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}>
+                  {sociedades.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+                <button onClick={handleSaveDept} disabled={saving || !formNombre.trim()}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: '#065F46' }}>
+                  {saving ? <RefreshCw size={14} className="animate-spin" /> : <Building2 size={14} />}
+                  {editingDept ? 'Guardar cambios' : 'Crear departamento'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign employees modal */}
+      {assigningDeptId && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-white rounded-2xl w-full max-w-lg mx-4 shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #064E3B, #065F46)' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+                  <Users size={16} className="text-white" />
+                </div>
+                <h2 className="text-white font-semibold text-sm">
+                  Añadir empleados — {depts.find((d) => d.id === assigningDeptId)?.nombre}
+                </h2>
+              </div>
+              <button onClick={() => setAssigningDeptId(null)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+                <X size={14} />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-xs mb-3" style={{ color: '#94A3B8' }}>Selecciona los empleados a vincular. Los ya asignados no aparecen.</p>
+              <div className="max-h-72 overflow-y-auto space-y-1 pr-1">
+                {empleados
+                  .filter((e) => !(deptEmpleados[assigningDeptId] ?? []).some((de) => de.empleado_id === e.id))
+                  .map((emp) => {
+                    const sel = selectedEmpIds.has(emp.id);
+                    return (
+                      <button key={emp.id} onClick={() => setSelectedEmpIds((prev) => { const n = new Set(prev); sel ? n.delete(emp.id) : n.add(emp.id); return n; })}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all cursor-pointer"
+                        style={{ border: `1.5px solid ${sel ? '#065F46' : '#E2E8F0'}`, backgroundColor: sel ? '#ECFDF5' : '#F8FAFC' }}>
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                          style={{ backgroundColor: sel ? '#065F46' : '#E2E8F0', color: sel ? '#FFFFFF' : '#94A3B8' }}>
+                          {emp.nombre.charAt(0)}
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="font-medium text-xs" style={{ color: '#1E293B' }}>{emp.nombre}</p>
+                          <p className="text-xs" style={{ color: '#94A3B8' }}>{emp.email}</p>
+                        </div>
+                        {sel && <CheckCircle2 size={14} style={{ color: '#065F46', flexShrink: 0 }} />}
+                      </button>
+                    );
+                  })}
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button onClick={() => setAssigningDeptId(null)} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+                <button onClick={handleAssign} disabled={assigning || selectedEmpIds.size === 0}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: '#065F46' }}>
+                  {assigning ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+                  Vincular {selectedEmpIds.size > 0 ? selectedEmpIds.size : ''} empleado{selectedEmpIds.size !== 1 ? 's' : ''}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dept list */}
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <RefreshCw size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
+        </div>
+      ) : depts.length === 0 ? (
+        <div className="flex flex-col items-center py-20 rounded-2xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: '#ECFDF5' }}>
+            <Building2 size={32} style={{ color: '#6EE7B7' }} />
+          </div>
+          <p className="text-base font-semibold" style={{ color: '#1E293B' }}>Sin departamentos PRL</p>
+          <p className="text-sm mt-1" style={{ color: '#94A3B8' }}>Crea departamentos para agrupar empleados por área de prevención</p>
+          <button onClick={openCreateForm} className="mt-5 flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer" style={{ backgroundColor: '#065F46' }}>
+            <Plus size={14} /> Crear primer departamento
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {depts.map((dept) => {
+            const isOpen = expandedDeptId === dept.id;
+            const members = deptEmpleados[dept.id] ?? [];
+            const soc = getSociedad(dept.society_id);
+            return (
+              <div key={dept.id} className="rounded-2xl overflow-hidden transition-all duration-200"
+                style={{ backgroundColor: '#FFFFFF', border: `1px solid ${isOpen ? '#6EE7B7' : '#E2E8F0'}` }}>
+                {/* Header row */}
+                <div className="px-5 py-4 flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors duration-150"
+                  onClick={() => toggleExpand(dept.id)}
+                  style={{ backgroundColor: isOpen ? '#F0FDF9' : undefined }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: isOpen ? '#065F46' : '#ECFDF5', border: `1px solid ${isOpen ? '#065F46' : '#6EE7B7'}` }}>
+                    <Building2 size={18} style={{ color: isOpen ? '#FFFFFF' : '#065F46' }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{dept.nombre}</p>
+                    {dept.descripcion && <p className="text-xs mt-0.5 truncate" style={{ color: '#94A3B8' }}>{dept.descripcion}</p>}
+                  </div>
+                  {soc && (
+                    <span className="hidden sm:inline text-xs font-medium px-2.5 py-1 rounded-md flex-shrink-0"
+                      style={{ backgroundColor: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }}>
+                      {soc.nombre}
+                    </span>
+                  )}
+                  <button onClick={(e) => { e.stopPropagation(); openAssign(dept.id); loadDeptEmpleados(dept.id); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all hover:opacity-80"
+                    style={{ backgroundColor: '#065F46', color: '#FFFFFF' }}>
+                    <Plus size={11} /> Añadir
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); openEditForm(dept); }}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors"
+                    style={{ color: '#CBD5E1' }}>
+                    <Edit2 size={13} />
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); handleDeleteDept(dept); }}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors"
+                    style={{ color: '#CBD5E1' }}>
+                    <Trash2 size={13} />
+                  </button>
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: isOpen ? '#ECFDF5' : '#F8FAFC', border: '1px solid #E2E8F0', color: isOpen ? '#065F46' : '#94A3B8' }}>
+                    {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                  </div>
+                </div>
+
+                {/* Member list */}
+                {isOpen && (
+                  <div style={{ borderTop: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+                    {loadingDeptEmps && !deptEmpleados[dept.id] ? (
+                      <div className="flex items-center justify-center py-8">
+                        <RefreshCw size={16} className="animate-spin" style={{ color: '#94A3B8' }} />
+                      </div>
+                    ) : members.length === 0 ? (
+                      <div className="flex flex-col items-center py-10">
+                        <Users size={28} className="mb-2" style={{ color: '#CBD5E1' }} />
+                        <p className="text-sm" style={{ color: '#94A3B8' }}>Sin empleados asignados</p>
+                        <button onClick={() => openAssign(dept.id)}
+                          className="mt-3 flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer"
+                          style={{ backgroundColor: '#065F46', color: '#FFFFFF' }}>
+                          <Plus size={12} /> Añadir empleados
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="divide-y" style={{ borderColor: '#E2E8F0' }}>
+                        <div className="px-5 py-2.5">
+                          <p className="text-xs" style={{ color: '#94A3B8' }}>{members.length} empleado{members.length !== 1 ? 's' : ''} en este departamento</p>
+                        </div>
+                        {members.map((m) => (
+                          <div key={m.id} className="px-5 py-3 flex items-center gap-3 hover:bg-white transition-colors duration-100">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                              style={{ backgroundColor: '#ECFDF5', color: '#065F46' }}>
+                              {m.empleado_nombre.charAt(0)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{m.empleado_nombre}</p>
+                              <p className="text-xs" style={{ color: '#94A3B8' }}>{m.empleado_email}</p>
+                            </div>
+                            <button onClick={() => handleRemoveEmpleado(m.id, dept.id)}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors"
+                              title="Desvincular"
+                              style={{ color: '#CBD5E1' }}>
+                              <X size={13} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

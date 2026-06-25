@@ -1153,7 +1153,7 @@ interface PrevDoc {
   wasabi_key: string | null;
   folder_id: string;
   folder_nombre: string;
-  society_id: string;
+  society_id: string;   // text (UUID string) from updated RPC
   society_nombre: string;
 }
 
@@ -1422,25 +1422,41 @@ function MisNominasView({ theme }: { theme: SocietyTheme }) {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
-      // Wait until a real session is available (setSession may still be resolving)
-      let session = (await supabase.auth.getSession()).data.session;
-      if (!session) {
-        await new Promise<void>((resolve) => {
-          const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-            if (s) { subscription.unsubscribe(); resolve(); }
-          });
-          setTimeout(resolve, 3000); // fallback
-        });
-      }
-      if (cancelled) return;
-      const { data } = await supabase
-        .from('nominas')
-        .select('id, dni, anio, mes, wasabi_key, nombre_archivo, tamano_bytes, created_at')
-        .order('anio', { ascending: false })
-        .order('mes', { ascending: false });
-      if (!cancelled) {
-        setNominas((data ?? []) as NominaRow[]);
-        setLoading(false);
+      try {
+        // Resolve user's DNI from empleados table
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || cancelled) { setLoading(false); return; }
+
+        const { data: empData } = await supabase
+          .from('empleados')
+          .select('dni')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        const dni = empData?.dni;
+        if (!dni) {
+          // Also try user_profiles for dni field
+          const { data: profData } = await supabase
+            .from('user_profiles')
+            .select('dni')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (!profData?.dni || cancelled) { setLoading(false); return; }
+        }
+
+        const resolvedDni = empData?.dni ?? (await supabase.from('user_profiles').select('dni').eq('id', user.id).maybeSingle()).data?.dni;
+        if (!resolvedDni || cancelled) { setLoading(false); return; }
+
+        const { data } = await supabase
+          .from('nominas')
+          .select('id, dni, anio, mes, wasabi_key, nombre_archivo, tamano_bytes, created_at')
+          .eq('dni', resolvedDni)
+          .order('anio', { ascending: false })
+          .order('mes', { ascending: false });
+
+        if (!cancelled) setNominas((data ?? []) as NominaRow[]);
+      } catch { /* silent */ } finally {
+        if (!cancelled) setLoading(false);
       }
     };
     load();

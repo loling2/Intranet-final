@@ -60,6 +60,8 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 
   // ── Vehicle state ──
   const [plate, setPlate] = useState('');
+  const [plateOptions, setPlateOptions] = useState<{ matricula: string; marca: string; modelo: string }[]>([]);
+  const [plateDropdownOpen, setPlateDropdownOpen] = useState(false);
   const [vehicle, setVehicle] = useState<VehicleInfo | null>(null);
   const [vehicleStatus, setVehicleStatus] = useState<VehicleStatus>('libre');
   const [km, setKm] = useState('');
@@ -71,7 +73,20 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
   const [incidentDescription, setIncidentDescription] = useState('');
   const [incidentPhotos, setIncidentPhotos] = useState<File[]>([]);
   const [incidentVehiclePlate, setIncidentVehiclePlate] = useState('');
+  const [incidentPlateOptions, setIncidentPlateOptions] = useState<{ matricula: string; marca: string; modelo: string }[]>([]);
+  const [incidentPlateDropdownOpen, setIncidentPlateDropdownOpen] = useState(false);
   const [fichajeNota, setFichajeNota] = useState('');
+
+  // ── Plate search helper ──
+  const searchPlates = async (query: string, setter: typeof setPlateOptions) => {
+    if (!query.trim()) { setter([]); return; }
+    const { data } = await supabase
+      .from('vehicles')
+      .select('matricula,marca,modelo')
+      .ilike('matricula', `%${query.trim()}%`)
+      .limit(6);
+    setter((data ?? []) as { matricula: string; marca: string; modelo: string }[]);
+  };
 
   const VEHICULOS_DEPARTAMENTO_ID = '172f43e7-f3dc-4207-98dc-b9c9bb6d3cfb';
   const inputStyle = { border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' };
@@ -389,27 +404,43 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 
           {step === 'vehiculo_plate' && (
             <>
-              <div className="flex flex-col items-center py-5 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
+              <div className="flex flex-col items-center py-4 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
                 <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: '#F1F5F9' }}>
                   <QrCode size={28} style={{ color: '#94A3B8' }} />
                 </div>
-                <p className="text-sm font-medium" style={{ color: '#1E293B' }}>Introduce la matrícula del vehículo</p>
+                <p className="text-sm font-medium" style={{ color: '#1E293B' }}>Introduce o selecciona la matrícula</p>
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Matrícula</label>
                 <input
                   type="text"
                   value={plate}
-                  onChange={(e) => setPlate(e.target.value.toUpperCase())}
+                  onChange={(e) => { const v = e.target.value.toUpperCase(); setPlate(v); setPlateDropdownOpen(true); searchPlates(v, setPlateOptions); }}
                   onKeyDown={(e) => e.key === 'Enter' && handleSearchPlate()}
+                  onFocus={() => { if (plate) { setPlateDropdownOpen(true); searchPlates(plate, setPlateOptions); } }}
                   placeholder="1234-ABC"
                   className="w-full px-4 py-2.5 rounded-xl text-sm outline-none text-center font-mono font-bold tracking-widest"
                   style={{ ...inputStyle, fontSize: '16px' }}
                 />
+                {plateDropdownOpen && plateOptions.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 rounded-xl overflow-hidden shadow-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                    {plateOptions.map((opt) => (
+                      <button
+                        key={opt.matricula}
+                        onClick={() => { setPlate(opt.matricula); setPlateOptions([]); setPlateDropdownOpen(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer text-left"
+                      >
+                        <Car size={14} style={{ color: '#94A3B8', flexShrink: 0 }} />
+                        <span className="font-mono font-bold text-sm" style={{ color: '#1E293B' }}>{opt.matricula}</span>
+                        <span className="text-xs ml-auto" style={{ color: '#94A3B8' }}>{opt.marca} {opt.modelo}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               {errBox}
               <div className="flex gap-3">
-                <button onClick={() => { setStep('menu'); setError(''); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Atrás</button>
+                <button onClick={() => { setStep('menu'); setError(''); setPlateOptions([]); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Atrás</button>
                 <button onClick={handleSearchPlate} disabled={loading || !plate.trim()} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#0F172A' }}>
                   {loading && <RefreshCw size={13} className="animate-spin" />}
                   Buscar
@@ -498,9 +529,32 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
                 <Wrench size={14} style={{ color: '#EA580C' }} />
                 <p className="text-xs font-semibold" style={{ color: '#EA580C' }}>Incidencia de vehículo</p>
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Matrícula</label>
-                <input type="text" value={incidentVehiclePlate || vehicle?.matricula || ''} onChange={(e) => setIncidentVehiclePlate(e.target.value.toUpperCase())} placeholder="1234-ABC" className="w-full px-4 py-2.5 rounded-xl text-sm outline-none font-mono font-bold tracking-widest" style={inputStyle} />
+                <input
+                  type="text"
+                  value={incidentVehiclePlate || vehicle?.matricula || ''}
+                  onChange={(e) => { const v = e.target.value.toUpperCase(); setIncidentVehiclePlate(v); setIncidentPlateDropdownOpen(true); searchPlates(v, setIncidentPlateOptions); }}
+                  onFocus={() => { const v = incidentVehiclePlate || vehicle?.matricula || ''; if (v) { setIncidentPlateDropdownOpen(true); searchPlates(v, setIncidentPlateOptions); } }}
+                  placeholder="1234-ABC"
+                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none font-mono font-bold tracking-widest"
+                  style={inputStyle}
+                />
+                {incidentPlateDropdownOpen && incidentPlateOptions.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 rounded-xl overflow-hidden shadow-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                    {incidentPlateOptions.map((opt) => (
+                      <button
+                        key={opt.matricula}
+                        onClick={() => { setIncidentVehiclePlate(opt.matricula); setIncidentPlateOptions([]); setIncidentPlateDropdownOpen(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer text-left"
+                      >
+                        <Car size={14} style={{ color: '#94A3B8', flexShrink: 0 }} />
+                        <span className="font-mono font-bold text-sm" style={{ color: '#1E293B' }}>{opt.matricula}</span>
+                        <span className="text-xs ml-auto" style={{ color: '#94A3B8' }}>{opt.marca} {opt.modelo}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Título de la incidencia</label>

@@ -15,6 +15,7 @@ import ContratosModule from './components/ContratosModule';
 import PersonalDocumentsPanel from './components/PersonalDocumentsPanel';
 import FacturasModule from './components/FacturasModule';
 import IncidenciasModule from './components/IncidenciasModule';
+import FichajesModule from './components/FichajesModule';
 import { supabase } from './supabaseClient';
 
 interface Props {
@@ -26,7 +27,7 @@ interface Props {
   onNavigateEmployee?: () => void;
 }
 
-type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'facturas' | 'incidencias';
+type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'facturas' | 'incidencias' | 'fichajes';
 
 export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, onNavigateEmployee }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
@@ -101,6 +102,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     { id: 'facturas', label: 'Facturas', icon: Receipt },
     { id: 'audit', label: 'Auditoria', icon: ScrollText },
     { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },
+    { id: 'fichajes', label: 'Fichajes', icon: Clock },
   ];
 
   const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'vacations', 'certificates', 'exams', 'facturas'];
@@ -612,6 +614,11 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
             currentUserNombre={currentUserNombre || email}
             currentUserRole="rrhh"
           />
+        )}
+
+        {/* Fichajes Tab */}
+        {activeTab === 'fichajes' && (
+          <FichajesModule />
         )}
 
         {/* Prevencion/Calidad Tab */}

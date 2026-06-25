@@ -3,7 +3,7 @@ import {
   Shield, Users, Building2, Laptop, FileText, Palmtree, Award,
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
   Eye, Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette,
-  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle,
+  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock,
 } from 'lucide-react';
 import { validUsers } from './mockData';
 import UserManagement from './UserManagement';
@@ -20,6 +20,7 @@ import DevicesModule from './components/DevicesModule';
 import CssPanel from './components/CssPanel';
 import IncidenciasModule from './components/IncidenciasModule';
 import DepartamentosModule from './components/DepartamentosModule';
+import FichajesModule from './components/FichajesModule';
 import { useSociety } from './context/SocietyContext';
 import { supabase } from './supabaseClient';
 import type { Centro } from './supabaseClient';
@@ -30,7 +31,7 @@ interface Props {
   onNavigate: (view: 'admin' | 'rrhh' | 'society', societyId?: string) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'audit' | 'css' | 'incidencias';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'audit' | 'css' | 'incidencias' | 'fichajes';
 
 export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -124,6 +125,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     { id: 'audit',        label: 'Auditoria',            icon: ScrollText },
     { id: 'css',        label: 'CSS',                 icon: Palette },
     { id: 'incidencias', label: 'Incidencias',        icon: AlertCircle },
+    { id: 'fichajes',    label: 'Fichajes',            icon: Clock },
   ];
 
   const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
@@ -640,6 +642,10 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
             currentUserNombre={currentUserNombre || email}
             currentUserRole="admin"
           />
+        )}
+
+        {activeTab === 'fichajes' && (
+          <FichajesModule />
         )}
       </div>
     </div>

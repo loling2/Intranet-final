@@ -135,8 +135,8 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
-              onClick={onLogout}
-              title="Volver al inicio"
+              onClick={() => onNavigate('dashboard')}
+              title="Volver al panel de empleado"
               className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 hover:opacity-80"
               style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: '#CBD5E1' }}
             >

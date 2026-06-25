@@ -54,8 +54,8 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
         <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              onClick={onLogout}
-              title="Volver al inicio"
+              onClick={onNavigateEmployee ?? onLogout}
+              title="Volver al panel de empleado"
               className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 hover:opacity-80"
               style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#A7F3D0' }}
             >

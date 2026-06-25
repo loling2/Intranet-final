@@ -139,8 +139,8 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Universal back button */}
             <button
-              onClick={isAdmin && onNavigateAdmin ? onNavigateAdmin : onLogout}
-              title={isAdmin && onNavigateAdmin ? 'Volver a Admin' : 'Volver al inicio'}
+              onClick={isAdmin && onNavigateAdmin ? onNavigateAdmin : onNavigateEmployee ?? onLogout}
+              title={isAdmin && onNavigateAdmin ? 'Volver a Admin' : 'Volver al panel de empleado'}
               className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 hover:opacity-80"
               style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#E0F2FE' }}
             >

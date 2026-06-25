@@ -105,6 +105,28 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     finally { setLoading(false); }
   };
 
+  // ── Device info helper ──
+  const getDeviceInfo = () => {
+    const ua = navigator.userAgent;
+    const mobile = /Android|iPhone|iPad|iPod/i.test(ua);
+    const tablet = /iPad|Android(?!.*Mobile)/i.test(ua);
+    const type = tablet ? 'Tablet' : mobile ? 'Móvil' : 'Escritorio';
+    const browser = /Chrome/i.test(ua) ? 'Chrome' : /Firefox/i.test(ua) ? 'Firefox' : /Safari/i.test(ua) ? 'Safari' : /Edge/i.test(ua) ? 'Edge' : 'Navegador';
+    const os = /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'Mac' : /Android/i.test(ua) ? 'Android' : /iOS|iPhone|iPad/i.test(ua) ? 'iOS' : /Linux/i.test(ua) ? 'Linux' : 'Sistema';
+    return `${type} · ${browser} · ${os}`;
+  };
+
+  const getGeolocation = (): Promise<string | null> =>
+    new Promise((resolve) => {
+      if (!navigator.geolocation) { resolve(null); return; }
+      const timer = setTimeout(() => resolve(null), 4000);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => { clearTimeout(timer); resolve(`${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`); },
+        () => { clearTimeout(timer); resolve(null); },
+        { timeout: 4000, maximumAge: 60000 }
+      );
+    });
+
   // ── Fichaje save ──
   const handleSaveFichaje = async (tipo: JornadaAction) => {
     if (!usuarioPin) return;
@@ -117,6 +139,8 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
         : tipo === 'fin_descanso' ? 'pausa_fin'
         : 'permiso';
 
+      const [ubicacion] = await Promise.all([getGeolocation()]);
+
       const { error: insErr } = await supabase.from('fichajes').insert({
         empleado_id: usuarioPin.empleado_id ?? null,
         nombre_empleado: usuarioPin.nombre,
@@ -125,6 +149,8 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
         tipo_evento: tipoEvento,
         metodo: 'web',
         user_agent: navigator.userAgent,
+        dispositivo: getDeviceInfo(),
+        ubicacion,
         es_manual: false,
       });
       if (insErr) throw new Error(insErr.message);

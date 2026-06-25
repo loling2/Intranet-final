@@ -3,7 +3,7 @@ import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination
 import { Users, Plus, Search, X, Save, ChevronDown, ChevronUp, Pencil, Trash2, AlertCircle, CheckCircle2, Building2, Tag, RefreshCw, UserPlus, Ligature as FileSignature, Clock, Bell, Upload, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad, type Centro, type Asignacion, type Tag as TagType, type UserProfile } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { uploadToWasabi, moveRrhhFolderToBajas } from '../lib/wasabi';
+import { uploadToWasabi, moveRrhhFolderToBajas, moveRrhhFolderToActivo } from '../lib/wasabi';
 import { writeAuditLog } from '../lib/auditLog';
 
 interface Props {
@@ -876,16 +876,24 @@ export default function EmployeesModule({ currentUserRole }: Props) {
           if (err.code === '42501' || err.message?.includes('security')) throw new Error('Sin permiso para modificar empleados. Vuelve a iniciar sesion.');
           throw err;
         }
-        if (wasActivo && nowInactivo && original?.dni && original?.nombre) {
-          const soc = sociedades.find(s => s.id === payload.id_sociedad);
+        if (original?.dni && original?.nombre) {
+          const soc = sociedades.find(s => s.id === (payload.id_sociedad || original.id_sociedad));
           const sociedadSlug = soc
             ? soc.nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_')
             : 'sin_sociedad';
           const nombreSanitized = original.nombre.replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ ]/g, '').trim();
-          try {
-            await moveRrhhFolderToBajas(original.dni, nombreSanitized, sociedadSlug);
-          } catch (moveErr) {
-            console.warn('No se pudo mover la carpeta a bajas:', moveErr);
+          if (wasActivo && nowInactivo) {
+            try {
+              await moveRrhhFolderToBajas(original.dni, nombreSanitized, sociedadSlug);
+            } catch (moveErr) {
+              console.warn('No se pudo mover la carpeta a bajas:', moveErr);
+            }
+          } else if (!wasActivo && payload.activo === true) {
+            try {
+              await moveRrhhFolderToActivo(original.dni, nombreSanitized, sociedadSlug);
+            } catch (moveErr) {
+              console.warn('No se pudo restaurar la carpeta a privado:', moveErr);
+            }
           }
         }
         showSuccess('Empleado actualizado correctamente');

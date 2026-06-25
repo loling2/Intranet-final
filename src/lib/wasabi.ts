@@ -268,6 +268,34 @@ export async function moveRrhhFolderToBajas(dni: string, nombre: string, socieda
   }
 }
 
+// Move all files under rrhh/bajas/<sociedadSlug>/<dni>-<nombre>/ back to rrhh/privado/<dni>-<nombre>/
+export async function moveRrhhFolderToActivo(dni: string, nombre: string, sociedadSlug: string): Promise<void> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const srcPrefix = `rrhh/bajas/${sociedadSlug}/${dni}-${nombre}/`;
+  const dstPrefix = `rrhh/privado/${dni}-${nombre}/`;
+
+  // Ensure destination folder exists
+  await wasabiClient.send(new PutObjectCommand({
+    Bucket: bucket, Key: `${dstPrefix}.keep`,
+    Body: new Uint8Array(0), ContentType: 'application/octet-stream', ContentLength: 0,
+  }));
+
+  const resp = await wasabiClient.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: srcPrefix }));
+  const objects = resp.Contents ?? [];
+
+  for (const obj of objects) {
+    if (!obj.Key) continue;
+    const relPath = obj.Key.replace(srcPrefix, '');
+    const dstKey = `${dstPrefix}${relPath}`;
+    await wasabiClient.send(new CopyObjectCommand({
+      Bucket: bucket,
+      CopySource: `${bucket}/${obj.Key}`,
+      Key: dstKey,
+    }));
+    await wasabiClient.send(new DeleteObjectCommand({ Bucket: bucket, Key: obj.Key }));
+  }
+}
+
 // List files for a baja employee under rrhh/bajas/<sociedadSlug>/<dni>-<nombre>/
 export async function listBajasEmployeeFiles(sociedadSlug: string, dni: string, nombre: string): Promise<RrhhFile[]> {
   const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;

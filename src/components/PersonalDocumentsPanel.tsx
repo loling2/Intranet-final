@@ -2,13 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search, User, FolderOpen, FileText, Upload, Download, Eye,
   ChevronRight, X, Loader2, AlertCircle, Lock, Globe, Plus,
-  UserX, CheckCircle2, UploadCloud,
+  UserX, CheckCircle2, UploadCloud, Trash2,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import {
   listRrhhEmployeeFiles, ensureRrhhFolder, uploadToWasabiKey,
   getWasabiBlobUrl, downloadFromWasabi, listNominasForDni,
-  listBajasEmployeeFiles,
+  listBajasEmployeeFiles, deleteFromWasabi,
   type RrhhFile,
 } from '../lib/wasabi';
 import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
@@ -86,6 +86,8 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState('');
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<RrhhFile | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [uploadModal, setUploadModal] = useState<UploadModal | null>(null);
   const [uploadQueue, setUploadQueue] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<Record<string, 'pending' | 'done' | 'error'>>({});
@@ -174,6 +176,20 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
       console.error(e);
     } finally {
       setLoadingPreview(false);
+    }
+  }
+
+  async function handleDelete(file: RrhhFile) {
+    if (!selected) return;
+    setDeleting(true);
+    try {
+      await deleteFromWasabi(file.key);
+      setConfirmDelete(null);
+      await loadFiles(selected, activeFolder);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -533,6 +549,16 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                         >
                           <Download size={15} />
                         </button>
+                        {isRrhh && (
+                          <button
+                            onClick={() => setConfirmDelete(file)}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:bg-red-50"
+                            title="Eliminar"
+                            style={{ color: '#DC2626' }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -544,6 +570,47 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
       </div>
 
     </div>
+
+      {/* ── Delete confirmation modal ── */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
+          <div className="w-full max-w-sm mx-4 rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
+            <div className="px-6 py-4 flex items-center gap-3 border-b" style={{ borderColor: '#FEE2E2', backgroundColor: '#FEF2F2' }}>
+              <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEE2E2' }}>
+                <Trash2 size={16} style={{ color: '#DC2626' }} />
+              </div>
+              <div>
+                <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Eliminar documento</h3>
+                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Esta accion no se puede deshacer</p>
+              </div>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-sm" style={{ color: '#475569' }}>
+                Vas a eliminar <span className="font-semibold" style={{ color: '#0F172A' }}>{confirmDelete.name}</span> de forma permanente.
+              </p>
+              <div className="flex gap-2 mt-5 justify-end">
+                <button
+                  onClick={() => setConfirmDelete(null)}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                  style={{ backgroundColor: '#F1F5F9', color: '#475569' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => handleDelete(confirmDelete)}
+                  disabled={deleting}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                  style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
+                >
+                  {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  {deleting ? 'Eliminando...' : 'Eliminar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Upload modal ── */}
       {uploadModal && selected && (

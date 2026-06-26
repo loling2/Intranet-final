@@ -1515,7 +1515,8 @@ function MisNominasView({ theme, userId: propUserId }: { theme: SocietyTheme; us
   const [nominas, setNominas] = useState<NominaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<Set<string>>(new Set());
-  const [filterAnio, setFilterAnio] = useState('');
+  const currentYear = new Date().getFullYear();
+  const [filterAnio, setFilterAnio] = useState(String(currentYear));
 
   useEffect(() => {
     let cancelled = false;
@@ -1580,17 +1581,15 @@ function MisNominasView({ theme, userId: propUserId }: { theme: SocietyTheme; us
             )}
           </div>
         </div>
-        {aniosDisponibles.length > 0 && (
-          <select
-            value={filterAnio}
-            onChange={(e) => setFilterAnio(e.target.value)}
-            className="px-3 py-2 rounded-xl text-sm outline-none cursor-pointer"
-            style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
-          >
-            <option value="">Todos los anos</option>
-            {aniosDisponibles.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-        )}
+        <select
+          value={filterAnio}
+          onChange={(e) => setFilterAnio(e.target.value)}
+          className="px-3 py-2 rounded-xl text-sm outline-none cursor-pointer"
+          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
+        >
+          <option value={String(currentYear)}>{currentYear}</option>
+          <option value={String(currentYear - 1)}>{currentYear - 1}</option>
+        </select>
       </div>
 
       {loading ? (

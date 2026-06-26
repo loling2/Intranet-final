@@ -173,11 +173,18 @@ export default function PDFSplitModule() {
     setListLoading(false);
   }, []);
 
+  const abortRef = useRef(false);
+
   const handleFileSelect = async (file: File) => {
     if (!file.type.includes('pdf')) {
       setError('Por favor selecciona un archivo PDF');
       return;
     }
+    // Cancel any in-progress scan
+    abortRef.current = true;
+    await yieldToMain();
+    abortRef.current = false;
+
     setError('');
     setPdfFile(file);
     setLoading(true);
@@ -200,6 +207,8 @@ export default function PDFSplitModule() {
       // Process in batches of 10 to keep UI responsive
       const BATCH = 10;
       for (let i = 1; i <= total; i++) {
+        if (abortRef.current) break;
+
         const page = await pdf.getPage(i);
 
         // Thumbnail at low scale (for preview only)
@@ -207,12 +216,28 @@ export default function PDFSplitModule() {
         const canvas = document.createElement('canvas');
         canvas.width = viewport.width;
         canvas.height = viewport.height;
-        await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const renderTask = page.render({ canvasContext: ctx, viewport });
+          try {
+            await renderTask.promise;
+          } catch (renderErr: unknown) {
+            // Cancelled render (e.g. abort) — skip this page gracefully
+            if (renderErr instanceof Error && renderErr.name === 'RenderingCancelledException') break;
+            throw renderErr;
+          }
+        }
         const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+        // Detach canvas to free memory
+        canvas.width = 0;
+        canvas.height = 0;
 
         // Extract text for detection
         const textContent = await page.getTextContent();
         const text = textContent.items.map((item) => ('str' in item ? item.str : '')).join(' ');
+
+        page.cleanup();
 
         const dni = extractDNI(text);
         const periodoInfo = extractMesAnio(text);
@@ -233,12 +258,16 @@ export default function PDFSplitModule() {
         if (i % BATCH === 0) await yieldToMain();
       }
 
-      setPages(extractedPages);
+      if (!abortRef.current) setPages(extractedPages);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al procesar PDF');
+      if (!abortRef.current) {
+        setError(err instanceof Error ? err.message : 'Error al procesar PDF');
+      }
     } finally {
-      setLoading(false);
-      setLoadProgress(0);
+      if (!abortRef.current) {
+        setLoading(false);
+        setLoadProgress(0);
+      }
     }
   };
 
@@ -250,11 +279,14 @@ export default function PDFSplitModule() {
   };
 
   const reset = () => {
+    abortRef.current = true;
     setPdfFile(null);
     setPdfBytes(null);
     setPages([]);
     setCurrentPageIndex(0);
     setUploadProgress(0);
+    setLoading(false);
+    setLoadProgress(0);
     setError('');
   };
 

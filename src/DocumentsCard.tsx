@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
-import { FileText, Download, ChevronRight, RefreshCw, File, Image, FileSpreadsheet } from 'lucide-react';
+import { FileText, Download, ChevronRight, RefreshCw, File, Image, FileSpreadsheet, Eye, X } from 'lucide-react';
 import { SocietyTheme } from './themes';
 import { supabase, type DocumentRecord } from './supabaseClient';
+import { getWasabiBlobUrl } from './lib/wasabi';
 
 interface Props {
   theme: SocietyTheme;
@@ -30,6 +31,10 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId }: P
   const [docs, setDocs] = useState<DocumentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewName, setPreviewName] = useState<string>('');
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const loadDocs = useCallback(async () => {
     setLoading(true);
@@ -60,6 +65,30 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId }: P
   }, [userId, userEmail, societyId]);
 
   useEffect(() => { loadDocs(); }, [loadDocs]);
+
+  const handlePreview = async (doc: DocumentRecord) => {
+    if (previewing === doc.id) return;
+    setPreviewing(doc.id);
+    setPreviewName(doc.nombre_archivo);
+    setPreviewLoading(true);
+    setPreviewUrl(null);
+    try {
+      const key = doc.wasabi_key ?? `publico/${doc.indexeddb_key}`;
+      const url = await getWasabiBlobUrl(key);
+      setPreviewUrl(url);
+    } catch {
+      setPreviewing(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const closePreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewing(null);
+    setPreviewUrl(null);
+    setPreviewName('');
+  };
 
   const handleDownload = async (doc: DocumentRecord) => {
     setDownloading(doc.id);
@@ -147,29 +176,39 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId }: P
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDownload(doc)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex-shrink-0 cursor-pointer"
-                  style={{
-                    backgroundColor: downloading === doc.id ? theme.primary : theme.primaryLight,
-                    color: downloading === doc.id ? '#FFFFFF' : theme.primary,
-                  }}
-                >
-                  {downloading === doc.id ? (
-                    <span className="flex items-center gap-1">
-                      <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Descargando
-                    </span>
-                  ) : (
-                    <>
-                      <Download size={12} />
-                      Descargar
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={() => handlePreview(doc)}
+                    title="Previsualizar"
+                    className="flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200 cursor-pointer hover:opacity-80"
+                    style={{ backgroundColor: theme.primaryLight, color: theme.primary }}
+                  >
+                    <Eye size={14} />
+                  </button>
+                  <button
+                    onClick={() => handleDownload(doc)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 cursor-pointer"
+                    style={{
+                      backgroundColor: downloading === doc.id ? theme.primary : theme.primaryLight,
+                      color: downloading === doc.id ? '#FFFFFF' : theme.primary,
+                    }}
+                  >
+                    {downloading === doc.id ? (
+                      <span className="flex items-center gap-1">
+                        <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Descargando
+                      </span>
+                    ) : (
+                      <>
+                        <Download size={12} />
+                        Descargar
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             );
           })
@@ -188,6 +227,43 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId }: P
         >
           {docs.length > 5 ? `Ver todos (${docs.length})` : 'Descargar todos'}
           <ChevronRight size={14} />
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {previewing && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col"
+          style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}
+        >
+          <div className="flex items-center justify-between px-6 py-4 flex-shrink-0" style={{ backgroundColor: '#1e293b' }}>
+            <span className="text-white font-medium text-sm truncate max-w-lg">{previewName}</span>
+            <button
+              onClick={closePreview}
+              className="text-white hover:text-gray-300 transition-colors ml-4 flex-shrink-0"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <div className="flex-1 relative">
+            {previewLoading ? (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                  <svg className="animate-spin h-8 w-8 text-white" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span className="text-white text-sm">Cargando documento...</span>
+                </div>
+              </div>
+            ) : previewUrl ? (
+              <iframe
+                src={previewUrl}
+                className="w-full h-full border-0"
+                title={previewName}
+              />
+            ) : null}
+          </div>
         </div>
       )}
     </div>

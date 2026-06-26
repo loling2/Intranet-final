@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
   Upload, FileText, AlertCircle, RefreshCw, X,
   ChevronLeft, ChevronRight, Loader2, CheckCircle2,
@@ -114,23 +114,6 @@ async function extractPageBytes(srcBytes: Uint8Array, pageIndex: number): Promis
   return dest.save();
 }
 
-// Render one page to a data URL (used lazily for preview only)
-async function renderPageToDataUrl(srcBytes: Uint8Array, pageNum: number): Promise<string> {
-  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(srcBytes) }).promise;
-  const page = await pdf.getPage(pageNum);
-  const viewport = page.getViewport({ scale: 1.2 });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  const ctx = canvas.getContext('2d')!;
-  await page.render({ canvasContext: ctx, viewport }).promise;
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-  canvas.width = 0;
-  canvas.height = 0;
-  page.cleanup();
-  return dataUrl;
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function PDFSplitModule() {
@@ -145,8 +128,6 @@ export default function PDFSplitModule() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [previewDataUrl, setPreviewDataUrl] = useState<string>('');
-  const [previewLoading, setPreviewLoading] = useState(false);
   const [separating, setSeparating] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ step: '', done: 0, total: 0 });
   const [dragging, setDragging] = useState(false);
@@ -174,20 +155,6 @@ export default function PDFSplitModule() {
     setListLoading(false);
   }, []);
 
-  // Generate thumbnail lazily when current page changes
-  useEffect(() => {
-    if (!pdfBytes || pages.length === 0) return;
-    const pageNum = pages[currentPageIndex]?.pageNum;
-    if (!pageNum) return;
-    let cancelled = false;
-    setPreviewDataUrl('');
-    setPreviewLoading(true);
-    renderPageToDataUrl(pdfBytes, pageNum)
-      .then((url) => { if (!cancelled) { setPreviewDataUrl(url); setPreviewLoading(false); } })
-      .catch(() => { if (!cancelled) setPreviewLoading(false); });
-    return () => { cancelled = true; };
-  }, [currentPageIndex, pdfBytes, pages]);
-
   const handleFileSelect = async (file: File) => {
     if (!file.type.includes('pdf')) {
       setError('Por favor selecciona un archivo PDF');
@@ -204,7 +171,6 @@ export default function PDFSplitModule() {
     setLoadProgress(0);
     setPages([]);
     setCurrentPageIndex(0);
-    setPreviewDataUrl('');
 
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -271,7 +237,6 @@ export default function PDFSplitModule() {
     setPdfBytes(null);
     setPages([]);
     setCurrentPageIndex(0);
-    setPreviewDataUrl('');
     setUploadProgress({ step: '', done: 0, total: 0 });
     setLoading(false);
     setLoadProgress(0);
@@ -569,20 +534,30 @@ export default function PDFSplitModule() {
                   </span>
                 </div>
 
-                {/* Lazy thumbnail */}
-                <div className="p-4 flex items-center justify-center min-h-64 max-h-[500px] overflow-hidden" style={{ backgroundColor: '#F1F5F9' }}>
-                  {previewLoading ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <Loader2 size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
-                      <span className="text-xs" style={{ color: '#94A3B8' }}>Cargando vista previa...</span>
+                {/* Text-based page info (no canvas rendering) */}
+                <div className="p-6 space-y-4" style={{ backgroundColor: '#F8FAFC', minHeight: 200 }}>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl p-4" style={{ backgroundColor: currentPage?.dni ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${currentPage?.dni ? '#BBF7D0' : '#FECACA'}` }}>
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: currentPage?.dni ? '#166534' : '#991B1B' }}>DNI / NIE</p>
+                      <p className="text-lg font-mono font-bold" style={{ color: currentPage?.dni ? '#15803D' : '#DC2626' }}>
+                        {currentPage?.dni ?? 'No detectado'}
+                      </p>
                     </div>
-                  ) : previewDataUrl ? (
-                    <img
-                      src={previewDataUrl}
-                      alt={`Pagina ${currentPage?.pageNum}`}
-                      className="max-w-full max-h-[460px] object-contain rounded shadow-sm"
-                    />
-                  ) : null}
+                    <div className="rounded-xl p-4" style={{ backgroundColor: currentPage?.anio ? '#EFF6FF' : '#F8FAFC', border: `1px solid ${currentPage?.anio ? '#BFDBFE' : '#E2E8F0'}` }}>
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: currentPage?.anio ? '#1E40AF' : '#64748B' }}>Periodo</p>
+                      <p className="text-lg font-bold" style={{ color: currentPage?.anio ? '#1D4ED8' : '#94A3B8' }}>
+                        {currentPage?.mesNombre ?? '?'} {currentPage?.anio ?? '?'}
+                      </p>
+                    </div>
+                  </div>
+                  {currentPage && (
+                    <div className="rounded-xl p-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Texto extraido (primeras lineas)</p>
+                      <p className="text-xs leading-relaxed line-clamp-4" style={{ color: '#475569', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                        {currentPage.text.slice(0, 400)}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Navigation */}

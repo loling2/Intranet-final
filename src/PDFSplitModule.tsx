@@ -100,17 +100,18 @@ function yieldToMain(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-async function extractPageBytes(srcBytes: Uint8Array, pageIndex: number): Promise<Uint8Array> {
+async function mergePageBytes(srcBytes: Uint8Array, pageIndexes: number[]): Promise<Uint8Array> {
   const src = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
   const dest = await PDFDocument.create();
-  const [copied] = await dest.copyPages(src, [pageIndex]);
-  dest.addPage(copied);
-  const page = dest.getPages()[0];
-  const node = page.node;
-  node.delete(PDFName.of('CropBox'));
-  node.delete(PDFName.of('BleedBox'));
-  node.delete(PDFName.of('TrimBox'));
-  node.delete(PDFName.of('ArtBox'));
+  const copied = await dest.copyPages(src, pageIndexes);
+  for (const page of copied) {
+    dest.addPage(page);
+    const node = page.node;
+    node.delete(PDFName.of('CropBox'));
+    node.delete(PDFName.of('BleedBox'));
+    node.delete(PDFName.of('TrimBox'));
+    node.delete(PDFName.of('ArtBox'));
+  }
   return dest.save();
 }
 
@@ -248,7 +249,7 @@ export default function PDFSplitModule() {
     setTimeout(() => setSuccess(''), 6000);
   };
 
-  // ── Atomic upload: extract ALL bytes first, then upload all ──────────────────
+  // ── Atomic upload: group pages by employee, merge, then upload ───────────────
   const handleSeparate = async () => {
     if (!pages.length || !pdfFile || !profile || !pdfBytes) return;
     setSeparating(true);
@@ -258,42 +259,54 @@ export default function PDFSplitModule() {
     const skipped = pages.length - validPages.length;
 
     try {
-      // Phase 1: Extract all page bytes into memory (fail fast — no uploads yet)
-      setUploadProgress({ step: 'Extrayendo paginas...', done: 0, total: validPages.length });
-      const extracted: { pageInfo: PageInfo; bytes: Uint8Array; wasabiKey: string; nombreArchivo: string }[] = [];
+      // Phase 1: Group pages by (dni, anio, mes) preserving document order
+      setUploadProgress({ step: 'Agrupando paginas por empleado...', done: 0, total: validPages.length });
+      const groups = new Map<string, { pageInfo: PageInfo; pageIndexes: number[] }>();
 
       for (let i = 0; i < validPages.length; i++) {
         const pageInfo = validPages[i];
-        const { dni, anio, mes, pageNum } = pageInfo;
-        const safeDni = dni!.replace(/[^A-Z0-9]/g, '');
+        const safeDni = pageInfo.dni!.replace(/[^A-Z0-9]/g, '');
+        const key = `${safeDni}|${pageInfo.anio}|${pageInfo.mes}`;
+        if (!groups.has(key)) {
+          groups.set(key, { pageInfo: { ...pageInfo, dni: safeDni }, pageIndexes: [] });
+        }
+        groups.get(key)!.pageIndexes.push(pageInfo.pageNum - 1);
+        setUploadProgress({ step: 'Agrupando paginas por empleado...', done: i + 1, total: validPages.length });
+        if ((i + 1) % 10 === 0) await yieldToMain();
+      }
+
+      // Phase 2: Merge pages per group into a single PDF
+      setUploadProgress({ step: 'Generando PDFs por empleado...', done: 0, total: groups.size });
+      type MergedEntry = { pageInfo: PageInfo; bytes: Uint8Array; wasabiKey: string; nombreArchivo: string; numPaginas: number };
+      const merged: MergedEntry[] = [];
+      let gi = 0;
+
+      for (const [, { pageInfo, pageIndexes }] of groups) {
+        const { dni, anio, mes } = pageInfo;
         const mesStr = String(mes!).padStart(2, '0');
-        const wasabiKey = `rrhh/publico/${anio}/${mesStr}/${safeDni}-${mesStr}-${anio}.pdf`;
-        const nombreArchivo = `${safeDni}-${mesStr}-${anio}.pdf`;
-        const singlePageBytes = await extractPageBytes(pdfBytes, pageNum - 1);
-        extracted.push({ pageInfo: { ...pageInfo, dni: safeDni }, bytes: singlePageBytes, wasabiKey, nombreArchivo });
-        setUploadProgress({ step: 'Extrayendo paginas...', done: i + 1, total: validPages.length });
-        if ((i + 1) % 5 === 0) await yieldToMain();
+        const wasabiKey = `rrhh/publico/${anio}/${mesStr}/${dni}-${mesStr}-${anio}.pdf`;
+        const nombreArchivo = `${dni}-${mesStr}-${anio}.pdf`;
+        const bytes = await mergePageBytes(pdfBytes, pageIndexes);
+        merged.push({ pageInfo, bytes, wasabiKey, nombreArchivo, numPaginas: pageIndexes.length });
+        gi++;
+        setUploadProgress({ step: 'Generando PDFs por empleado...', done: gi, total: groups.size });
+        if (gi % 5 === 0) await yieldToMain();
       }
 
-      // Phase 2: Upload to Wasabi (all pages extracted successfully)
-      setUploadProgress({ step: 'Subiendo a Wasabi...', done: 0, total: extracted.length });
-      for (let i = 0; i < extracted.length; i++) {
-        const { bytes, wasabiKey } = extracted[i];
+      // Phase 3: Upload merged PDFs to Wasabi
+      setUploadProgress({ step: 'Subiendo a Wasabi...', done: 0, total: merged.length });
+      for (let i = 0; i < merged.length; i++) {
+        const { bytes, wasabiKey } = merged[i];
         await uploadBytesToWasabi(bytes, wasabiKey, 'application/pdf');
-        setUploadProgress({ step: 'Subiendo a Wasabi...', done: i + 1, total: extracted.length });
+        setUploadProgress({ step: 'Subiendo a Wasabi...', done: i + 1, total: merged.length });
         if ((i + 1) % 5 === 0) await yieldToMain();
       }
 
-      // Phase 3: Save to database — deduplicate by key first, then upsert one at a time
-      // (batch upsert fails if two pages share the same dni+anio+mes)
-      setUploadProgress({ step: 'Guardando en base de datos...', done: 0, total: extracted.length });
+      // Phase 4: Save one DB record per employee-month
+      setUploadProgress({ step: 'Guardando en base de datos...', done: 0, total: merged.length });
       const now = new Date().toISOString();
-      const seen = new Set<string>();
-      let dbDone = 0;
-      for (const { pageInfo, bytes, wasabiKey, nombreArchivo } of extracted) {
-        const key = `${activeSocietyId}|${pageInfo.dni}|${pageInfo.anio}|${pageInfo.mes}`;
-        if (seen.has(key)) { dbDone++; continue; }
-        seen.add(key);
+      for (let i = 0; i < merged.length; i++) {
+        const { pageInfo, bytes, wasabiKey, nombreArchivo } = merged[i];
         const { error: dbError } = await supabase.from('nominas').upsert(
           {
             society_id: activeSocietyId ?? '',
@@ -311,22 +324,23 @@ export default function PDFSplitModule() {
           { onConflict: 'society_id,dni,anio,mes' }
         );
         if (dbError) throw new Error(dbError.message);
-        dbDone++;
-        setUploadProgress({ step: 'Guardando en base de datos...', done: dbDone, total: extracted.length });
+        setUploadProgress({ step: 'Guardando en base de datos...', done: i + 1, total: merged.length });
       }
 
-      setUploadProgress({ step: '', done: extracted.length, total: extracted.length });
+      setUploadProgress({ step: '', done: merged.length, total: merged.length });
 
+      const multiPage = merged.filter((m) => m.numPaginas > 1).length;
       await writeAuditLog({
         evento: 'nominas_separated',
-        descripcion: `Nominas separadas: ${extracted.length} subidas, ${skipped} sin DNI/fecha`,
+        descripcion: `Nominas separadas: ${merged.length} empleados (${multiPage} con nomina de varias hojas), ${skipped} sin DNI/fecha`,
         autor: profile,
         entidad: 'nomina',
-        metadata: { archivo_original: pdfFile.name, total_paginas: pages.length, skipped },
+        metadata: { archivo_original: pdfFile.name, total_paginas: pages.length, skipped, multi_page: multiPage },
         society_id: activeSocietyId,
       });
 
-      flashSuccess(`${extracted.length} nominas subidas correctamente${skipped > 0 ? ` (${skipped} paginas sin DNI/fecha ignoradas)` : ''}.`);
+      const multiMsg = multiPage > 0 ? `, ${multiPage} con nomina multipagina` : '';
+      flashSuccess(`${merged.length} nominas subidas${multiMsg}${skipped > 0 ? ` (${skipped} paginas sin DNI/fecha ignoradas)` : ''}.`);
       reset();
       setTab('list');
       await loadNominas();
@@ -350,6 +364,10 @@ export default function PDFSplitModule() {
   const currentPage = pages[currentPageIndex];
   const detected = pages.filter((p) => p.dni && p.anio && p.mes).length;
   const undetected = pages.length - detected;
+  const uniqueEmployees = new Set(
+    pages.filter((p) => p.dni && p.anio && p.mes)
+      .map((p) => `${p.dni!.replace(/[^A-Z0-9]/g, '')}|${p.anio}|${p.mes}`)
+  ).size;
 
   const filteredNominas = nominas.filter((n) => {
     if (listSearch && !n.dni.toLowerCase().includes(listSearch.toLowerCase())) return false;
@@ -445,8 +463,16 @@ export default function PDFSplitModule() {
                 <div className="px-4 py-3 space-y-2">
                   <div className="flex justify-between text-xs" style={{ color: '#64748B' }}>
                     <span>{pages.length} paginas totales</span>
-                    <span>{detected} detectadas</span>
+                    <span>{detected} detectadas · <strong>{uniqueEmployees} empleados</strong></span>
                   </div>
+                  {detected > uniqueEmployees && (
+                    <div className="flex items-start gap-2 p-2 rounded-lg" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                      <Info size={12} style={{ color: '#1D4ED8', flexShrink: 0, marginTop: 1 }} />
+                      <p className="text-xs" style={{ color: '#1E40AF' }}>
+                        {detected - uniqueEmployees} paginas se agruparan con otra hoja del mismo empleado
+                      </p>
+                    </div>
+                  )}
                   {undetected > 0 && (
                     <div className="flex items-start gap-2 p-2 rounded-lg" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
                       <Info size={12} style={{ color: '#D97706', flexShrink: 0, marginTop: 1 }} />
@@ -498,7 +524,7 @@ export default function PDFSplitModule() {
                 ) : (
                   <>
                     <Upload size={14} />
-                    Separar y subir {detected} nominas
+                    Separar y subir {uniqueEmployees} nominas
                   </>
                 )}
               </button>

@@ -391,7 +391,7 @@ export default function PDFSplitModule() {
   const undetected = pages.length - detected;
   const uniqueEmployees = new Set(
     pages.filter((p) => p.dni && p.anio && p.mes)
-      .map((p) => `${p.dni!.replace(/[^A-Z0-9]/g, '')}|${p.anio}|${p.mes}`)
+      .map((p) => `${p.dni!.replace(/[^A-Z0-9]/g, '')}|${p.anio}|${p.mes}|${p.empresa ?? ''}`)
   ).size;
 
   const filteredNominas = nominas.filter((n) => {

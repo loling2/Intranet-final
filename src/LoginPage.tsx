@@ -689,6 +689,7 @@ export default function LoginPage() {
   const [showVehicleModal, setShowVehicleModal] = useState(false);
   const [bgImage, setBgImage] = useState<string>('/foto1_(2).png');
   const [societies, setSocieties] = useState<SocietyTheme[]>(staticSocieties);
+  const [impersonating, setImpersonating] = useState<{ nombre: string } | null>(null);
 
 
   useEffect(() => {
@@ -894,6 +895,26 @@ export default function LoginPage() {
     }
   };
 
+  const handleImpersonate = async (userId: string, societyId: string | null) => {
+    if (!session) return;
+    const { data: targetProfile } = await supabase
+      .from('user_profiles')
+      .select('nombre, societies')
+      .eq('id', userId)
+      .maybeSingle();
+    if (!targetProfile) return;
+    const resolvedSociety = societyId ?? targetProfile.societies?.[0] ?? societies[0]?.id ?? null;
+    setImpersonating({ nombre: targetProfile.nombre });
+    setSession({ ...session, view: 'dashboard', activeSocietyId: resolvedSociety });
+    if (resolvedSociety) setSelectedId(resolvedSociety);
+  };
+
+  const handleStopImpersonating = () => {
+    if (!session) return;
+    setImpersonating(null);
+    setSession({ ...session, view: 'admin' });
+  };
+
   // Route to the right panel
   if (session) {
     if (session.view === 'admin') {
@@ -904,6 +925,7 @@ export default function LoginPage() {
               email={session.email}
               onLogout={handleLogout}
               onNavigate={handleNavigate}
+              onImpersonate={handleImpersonate}
             />
           </SocietyProvider>
         </AuthProvider>
@@ -984,19 +1006,42 @@ export default function LoginPage() {
           null;
 
         return (
-          <Dashboard
-            theme={theme}
-            onLogout={handleLogout}
-            email={session.email}
-            isAdmin={session.role === 'admin'}
-            onNavigateAdmin={session.role === 'admin' ? () => handleNavigate('admin') : undefined}
-            onNavigateRrhh={session.role === 'rrhh' ? () => handleNavigate('rrhh') : undefined}
-            onNavigateSupervisor={session.role === 'supervisor' ? () => handleNavigate('supervisor') : undefined}
-            onNavigateBack={backNav ? () => handleNavigate(backNav.view) : undefined}
-            backLabel={backNav?.label}
-            backColor={backNav?.color}
-            backBorder={backNav?.border}
-          />
+          <>
+            {impersonating && (
+              <div
+                className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-2 text-sm font-medium"
+                style={{ backgroundColor: '#1E3A5F', color: '#BFDBFE', borderBottom: '1px solid #2563EB' }}
+              >
+                <div className="flex items-center gap-2">
+                  <Eye size={14} style={{ color: '#60A5FA' }} />
+                  <span>Viendo como: <strong style={{ color: '#fff' }}>{impersonating.nombre}</strong></span>
+                </div>
+                <button
+                  onClick={handleStopImpersonating}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 hover:opacity-80"
+                  style={{ backgroundColor: '#2563EB', color: '#fff' }}
+                >
+                  <X size={12} />
+                  Volver al Admin
+                </button>
+              </div>
+            )}
+            <div style={impersonating ? { paddingTop: '40px' } : undefined}>
+              <Dashboard
+                theme={theme}
+                onLogout={handleLogout}
+                email={session.email}
+                isAdmin={!impersonating && session.role === 'admin'}
+                onNavigateAdmin={!impersonating && session.role === 'admin' ? () => handleNavigate('admin') : undefined}
+                onNavigateRrhh={!impersonating && session.role === 'rrhh' ? () => handleNavigate('rrhh') : undefined}
+                onNavigateSupervisor={!impersonating && session.role === 'supervisor' ? () => handleNavigate('supervisor') : undefined}
+                onNavigateBack={!impersonating && backNav ? () => handleNavigate(backNav.view) : undefined}
+                backLabel={backNav?.label}
+                backColor={backNav?.color}
+                backBorder={backNav?.border}
+              />
+            </div>
+          </>
         );
       }
     }

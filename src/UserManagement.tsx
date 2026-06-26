@@ -601,9 +601,9 @@ function CredentialRow({
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-interface Props { currentUserRole: AppRole; }
+interface Props { currentUserRole: AppRole; onImpersonate?: (userId: string, societyId: string | null) => void; }
 
-export default function UserManagement({ currentUserRole }: Props) {
+export default function UserManagement({ currentUserRole, onImpersonate }: Props) {
   const { societies } = useSociety();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
@@ -761,6 +761,15 @@ export default function UserManagement({ currentUserRole }: Props) {
                     </div>
                   </div>
                   <div className="sm:col-span-1 flex items-center gap-1">
+                    {onImpersonate && (
+                      <button
+                        onClick={() => onImpersonate(u.id, u.societies?.[0] ?? null)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-blue-50"
+                        title="Ver como este usuario"
+                      >
+                        <Eye size={13} style={{ color: '#3B82F6' }} />
+                      </button>
+                    )}
                     <button onClick={() => setEditingUser(u)}
                       className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-slate-100" title="Editar usuario">
                       <Edit2 size={13} style={{ color: '#64748B' }} />

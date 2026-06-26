@@ -30,11 +30,12 @@ interface Props {
   email: string;
   onLogout: () => void;
   onNavigate: (view: 'admin' | 'rrhh' | 'society', societyId?: string) => void;
+  onImpersonate?: (userId: string, societyId: string | null) => void;
 }
 
 type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions';
 
-export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
+export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [showChangePassword, setShowChangePassword] = useState(false);
   const { activeSocietyId, societies } = useSociety();
@@ -376,7 +377,7 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
 
         {/* Users Tab */}
         {activeTab === 'users' && (
-          <UserManagement currentUserRole="admin" />
+          <UserManagement currentUserRole="admin" onImpersonate={onImpersonate} />
         )}
 
         {/* Societies Tab */}

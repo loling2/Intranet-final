@@ -557,13 +557,29 @@ function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, canMan
         {/* Description + photos */}
         {(incidencia.descripcion || incidencia.foto_url || (incidencia.fotos_urls && incidencia.fotos_urls.length > 0)) && (
           <div className="px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid #F1F5F9' }}>
-            {incidencia.descripcion && (
-              <p className="text-sm mb-3" style={{ color: '#475569' }}>{incidencia.descripcion}</p>
-            )}
-            <PhotoGallery
-              keys={incidencia.fotos_urls}
-              supabasePaths={incidencia.foto_url}
-            />
+            {(() => {
+              // Parse legacy "Fotos:" keys embedded in description
+              const fotosMarker = '\n\nFotos: ';
+              const markerIdx = incidencia.descripcion?.indexOf(fotosMarker) ?? -1;
+              const cleanDesc = markerIdx >= 0
+                ? incidencia.descripcion.slice(0, markerIdx)
+                : incidencia.descripcion;
+              const legacyKeys = markerIdx >= 0
+                ? incidencia.descripcion.slice(markerIdx + fotosMarker.length).split(', ').filter(Boolean)
+                : [];
+              const allKeys = [...(incidencia.fotos_urls ?? []), ...legacyKeys];
+              return (
+                <>
+                  {cleanDesc && (
+                    <p className="text-sm mb-3" style={{ color: '#475569' }}>{cleanDesc}</p>
+                  )}
+                  <PhotoGallery
+                    keys={allKeys.length > 0 ? allKeys : null}
+                    supabasePaths={incidencia.foto_url}
+                  />
+                </>
+              );
+            })()}
             <div className="flex items-center gap-4 mt-2 text-xs" style={{ color: '#94A3B8' }}>
               <span>Creado: {formatDate(incidencia.fecha_creacion)}</span>
               {incidencia.fecha_finalizacion && (

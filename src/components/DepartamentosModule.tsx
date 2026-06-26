@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  Building2, Plus, X, Users, Trash2, Loader2, ChevronDown, ChevronUp, UserPlus,
+  Building2, Plus, X, Users, Trash2, Loader2, ChevronDown, ChevronUp, UserPlus, Search,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -39,6 +39,9 @@ export default function DepartamentosModule() {
   const [createError, setCreateError] = useState('');
   const [addingMember, setAddingMember] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<Record<string, string>>({});
+  const [searchQuery, setSearchQuery] = useState<Record<string, string>>({});
+  const [searchOpen, setSearchOpen] = useState<Record<string, boolean>>({});
+  const searchRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [deletingMember, setDeletingMember] = useState<string | null>(null);
   const [deletingDept, setDeletingDept] = useState<string | null>(null);
 
@@ -70,6 +73,23 @@ export default function DepartamentosModule() {
   useEffect(() => {
     loadDepartamentos();
     loadUsers();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      setSearchOpen((prev) => {
+        const next = { ...prev };
+        for (const deptId of Object.keys(prev)) {
+          const ref = searchRefs.current[deptId];
+          if (ref && !ref.contains(e.target as Node)) {
+            next[deptId] = false;
+          }
+        }
+        return next;
+      });
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleToggle = async (deptId: string) => {
@@ -116,6 +136,7 @@ export default function DepartamentosModule() {
     setAddingMember(null);
     if (!error) {
       setSelectedUser((prev) => ({ ...prev, [deptId]: '' }));
+      setSearchQuery((prev) => ({ ...prev, [deptId]: '' }));
       await loadMiembros(deptId);
     }
   };
@@ -132,6 +153,13 @@ export default function DepartamentosModule() {
   const getAvailableUsers = (deptId: string) => {
     const existing = getMembersForDept(deptId).map((m) => m.user_id);
     return users.filter((u) => !existing.includes(u.id));
+  };
+
+  const getFilteredUsers = (deptId: string) => {
+    const q = (searchQuery[deptId] ?? '').toLowerCase();
+    return getAvailableUsers(deptId).filter(
+      (u) => u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
+    );
   };
 
   return (
@@ -275,23 +303,75 @@ export default function DepartamentosModule() {
                   <div style={{ borderTop: '1px solid #F1F5F9', backgroundColor: '#FAFBFC' }}>
                     {/* Add member row */}
                     <div className="flex items-center gap-2 px-5 py-3">
-                      <select
-                        value={selectedUser[dept.id] ?? ''}
-                        onChange={(e) => setSelectedUser((prev) => ({ ...prev, [dept.id]: e.target.value }))}
-                        className="flex-1 px-3 py-2 rounded-xl text-sm outline-none"
-                        style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#FFFFFF', color: selectedUser[dept.id] ? '#1E293B' : '#94A3B8' }}
+                      <div
+                        className="flex-1 relative"
+                        ref={(el) => { searchRefs.current[dept.id] = el; }}
                       >
-                        <option value="">Selecciona un usuario para añadir...</option>
-                        {available.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.nombre} — {u.email} ({u.role})
-                          </option>
-                        ))}
-                      </select>
+                        <div className="relative">
+                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
+                          <input
+                            type="text"
+                            value={searchQuery[dept.id] ?? ''}
+                            placeholder={selectedUser[dept.id]
+                              ? (users.find((u) => u.id === selectedUser[dept.id])?.nombre ?? 'Buscar trabajador...')
+                              : 'Buscar trabajador...'}
+                            onChange={(e) => {
+                              setSearchQuery((prev) => ({ ...prev, [dept.id]: e.target.value }));
+                              setSelectedUser((prev) => ({ ...prev, [dept.id]: '' }));
+                              setSearchOpen((prev) => ({ ...prev, [dept.id]: true }));
+                            }}
+                            onFocus={() => setSearchOpen((prev) => ({ ...prev, [dept.id]: true }))}
+                            className="w-full pl-8 pr-3 py-2 rounded-xl text-sm outline-none"
+                            style={{
+                              border: `1.5px solid ${selectedUser[dept.id] ? '#0EA5E9' : '#E2E8F0'}`,
+                              backgroundColor: '#FFFFFF',
+                              color: '#1E293B',
+                            }}
+                          />
+                        </div>
+                        {searchOpen[dept.id] && (
+                          <div
+                            className="absolute z-20 mt-1 w-full rounded-xl overflow-hidden shadow-lg"
+                            style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#FFFFFF', maxHeight: '220px', overflowY: 'auto' }}
+                          >
+                            {getFilteredUsers(dept.id).length === 0 ? (
+                              <div className="px-4 py-3 text-xs" style={{ color: '#94A3B8' }}>
+                                {getAvailableUsers(dept.id).length === 0 ? 'Todos los usuarios ya son miembros' : 'Sin resultados'}
+                              </div>
+                            ) : (
+                              getFilteredUsers(dept.id).map((u) => (
+                                <button
+                                  key={u.id}
+                                  type="button"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    setSelectedUser((prev) => ({ ...prev, [dept.id]: u.id }));
+                                    setSearchQuery((prev) => ({ ...prev, [dept.id]: u.nombre }));
+                                    setSearchOpen((prev) => ({ ...prev, [dept.id]: false }));
+                                  }}
+                                  className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-slate-50"
+                                  style={{ color: '#1E293B' }}
+                                >
+                                  <div
+                                    className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                                    style={{ backgroundColor: '#EFF6FF', color: '#2563EB' }}
+                                  >
+                                    {u.nombre.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-medium truncate">{u.nombre}</p>
+                                    <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{u.email}</p>
+                                  </div>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <button
                         onClick={() => handleAddMember(dept.id)}
                         disabled={!selectedUser[dept.id] || addingMember === dept.id}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold disabled:opacity-50 transition-all"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold disabled:opacity-50 transition-all flex-shrink-0"
                         style={{ backgroundColor: '#0EA5E9', color: '#FFFFFF' }}
                       >
                         {addingMember === dept.id

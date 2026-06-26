@@ -913,6 +913,7 @@ export default function LoginPage() {
               onLogout={handleLogout}
               onNavigateAdmin={session.role === 'admin' ? () => handleNavigate('admin') : undefined}
               isAdmin={session.role === 'admin'}
+              role={session.role}
               onNavigateEmployee={() => handleNavigate('dashboard')}
             />
           </SocietyProvider>
@@ -928,6 +929,7 @@ export default function LoginPage() {
               email={session.email}
               onLogout={handleLogout}
               isSupervisor={true}
+              role="supervisor"
               onNavigateEmployee={() => handleNavigate('dashboard')}
             />
           </SocietyProvider>

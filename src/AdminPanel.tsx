@@ -21,6 +21,7 @@ import CssPanel from './components/CssPanel';
 import IncidenciasModule from './components/IncidenciasModule';
 import DepartamentosModule from './components/DepartamentosModule';
 import FichajesModule from './components/FichajesModule';
+import RoleTabPermissionsManager from './components/RoleTabPermissionsManager';
 import { useSociety } from './context/SocietyContext';
 import { supabase } from './supabaseClient';
 import type { Centro } from './supabaseClient';
@@ -31,7 +32,7 @@ interface Props {
   onNavigate: (view: 'admin' | 'rrhh' | 'society', societyId?: string) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'audit' | 'css' | 'incidencias' | 'fichajes';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions';
 
 export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -124,8 +125,9 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
     { id: 'departamentos', label: 'Departamentos',       icon: Building2 },
     { id: 'audit',        label: 'Auditoria',            icon: ScrollText },
     { id: 'css',        label: 'CSS',                 icon: Palette },
-    { id: 'incidencias', label: 'Incidencias',        icon: AlertCircle },
-    { id: 'fichajes',    label: 'Fichajes',            icon: Clock },
+    { id: 'incidencias',  label: 'Incidencias',           icon: AlertCircle },
+    { id: 'fichajes',     label: 'Fichajes',              icon: Clock },
+    { id: 'permissions',  label: 'Permisos de Perfiles',  icon: Lock },
   ];
 
   const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
@@ -646,6 +648,10 @@ export default function AdminPanel({ email, onLogout, onNavigate }: Props) {
 
         {activeTab === 'fichajes' && (
           <FichajesModule />
+        )}
+
+        {activeTab === 'permissions' && (
+          <RoleTabPermissionsManager />
         )}
       </div>
     </div>

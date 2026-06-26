@@ -24,12 +24,13 @@ interface Props {
   onNavigateAdmin?: () => void;
   isAdmin?: boolean;
   isSupervisor?: boolean;
+  role?: string;
   onNavigateEmployee?: () => void;
 }
 
 type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'facturas' | 'incidencias' | 'fichajes';
 
-export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, onNavigateEmployee }: Props) {
+export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, role, onNavigateEmployee }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -39,6 +40,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
   const [contratosPendientes, setContratosPendientes] = useState(0);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
+  const [enabledTabIds, setEnabledTabIds] = useState<Set<string> | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -63,6 +65,20 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
       setContratosPendientes(count ?? 0);
     })();
   }, []);
+
+  // Load tab permissions from DB for the current role
+  useEffect(() => {
+    const effectiveRole = isSupervisor ? 'supervisor' : (role ?? 'rrhh');
+    supabase
+      .from('role_tab_permissions')
+      .select('tab_id, enabled')
+      .eq('role', effectiveRole)
+      .then(({ data }) => {
+        if (!data || data.length === 0) { setEnabledTabIds(null); return; }
+        const enabled = new Set(data.filter(r => r.enabled).map(r => r.tab_id as string));
+        setEnabledTabIds(enabled);
+      });
+  }, [role, isSupervisor]);
 
   const allVacations = Object.entries(mockVacations).flatMap(([sId, v]) =>
     v.requests.map((r) => ({ ...r, societyId: sId }))
@@ -107,9 +123,11 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
 
   const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'vacations', 'certificates', 'exams', 'facturas'];
 
-  const tabs = isSupervisor
-    ? allTabs.filter(t => supervisorTabIds.includes(t.id))
-    : allTabs;
+  const tabs = enabledTabIds !== null
+    ? allTabs.filter(t => enabledTabIds.has(t.id))
+    : isSupervisor
+      ? allTabs.filter(t => supervisorTabIds.includes(t.id))
+      : allTabs;
 
   const getSociety = (id: string) => societies.find((s) => s.id === id);
 

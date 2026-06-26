@@ -108,6 +108,7 @@ export interface Empleado {
   id: string;
   user_id: string | null;
   id_sociedad: string;
+  id_sociedad_secundaria: string | null;
   nombre: string;
   email: string;
   dni: string | null;

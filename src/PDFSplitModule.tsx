@@ -26,6 +26,7 @@ interface PageInfo {
   anio: number | null;
   mes: number | null;
   mesNombre: string | null;
+  empresa: string | null;
 }
 
 interface NominaRecord {
@@ -94,6 +95,22 @@ function extractMesAnio(text: string): { mes: number; nombre: string; anio: numb
     }
   }
   return bestNum;
+}
+
+function extractEmpresa(text: string): string | null {
+  // Try to find the EMPRESA label and extract the value after it
+  // Common patterns in Spanish payslips: "EMPRESA <name>" or the name appears before DOMICILIO
+  const upper = text.toUpperCase();
+  const empresaIdx = upper.indexOf('EMPRESA');
+  if (empresaIdx !== -1) {
+    // Take text after EMPRESA, up to known next column headers
+    const after = text.slice(empresaIdx + 7, empresaIdx + 200);
+    // Stop at known column headers
+    const stop = after.search(/DOMICILIO|N[ºO°]\s*INSCRIPCI[OÓ]N|TRABAJADOR|NIF\/CIF/i);
+    const raw = (stop !== -1 ? after.slice(0, stop) : after).trim().replace(/\s+/g, ' ');
+    if (raw.length > 2 && raw.length < 120) return raw;
+  }
+  return null;
 }
 
 function yieldToMain(): Promise<void> {
@@ -195,6 +212,7 @@ export default function PDFSplitModule() {
 
         const dni = extractDNI(text);
         const periodoInfo = extractMesAnio(text);
+        const empresa = extractEmpresa(text);
 
         extractedPages.push({
           pageNum: i,
@@ -203,6 +221,7 @@ export default function PDFSplitModule() {
           anio: periodoInfo?.anio ?? null,
           mes: periodoInfo?.mes ?? null,
           mesNombre: periodoInfo?.nombre ?? null,
+          empresa,
         });
 
         // Update progress every 5 pages to reduce re-renders
@@ -282,10 +301,14 @@ export default function PDFSplitModule() {
       let gi = 0;
 
       for (const [, { pageInfo, pageIndexes }] of groups) {
-        const { dni, anio, mes } = pageInfo;
+        const { dni, anio, mes, mesNombre, empresa } = pageInfo;
         const mesStr = String(mes!).padStart(2, '0');
-        const wasabiKey = `rrhh/publico/${anio}/${mesStr}/${dni}-${mesStr}-${anio}.pdf`;
-        const nombreArchivo = `${dni}-${mesStr}-${anio}.pdf`;
+        const empresaSuffix = empresa ? `-${empresa.replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ ]/g, '').trim().replace(/\s+/g, '_').slice(0, 40)}` : '';
+        const wasabiKey = `rrhh/publico/${anio}/${mesStr}/${dni}-${mesStr}-${anio}${empresaSuffix}.pdf`;
+        const mesLabel = mesNombre ?? MES_NOMBRES[mes!] ?? mesStr;
+        const nombreArchivo = empresa
+          ? `Nomina ${mesLabel} ${anio} – ${empresa}`
+          : `Nomina ${mesLabel} ${anio}`;
         const bytes = await mergePageBytes(pdfBytes, pageIndexes);
         merged.push({ pageInfo, bytes, wasabiKey, nombreArchivo, numPaginas: pageIndexes.length });
         gi++;
@@ -310,6 +333,7 @@ export default function PDFSplitModule() {
         const { error: dbError } = await supabase.from('nominas').upsert(
           {
             society_id: activeSocietyId ?? '',
+            sociedad_nombre: pageInfo.empresa ?? '',
             dni: pageInfo.dni!,
             anio: pageInfo.anio!,
             mes: pageInfo.mes!,
@@ -713,11 +737,14 @@ export default function PDFSplitModule() {
                     <FileText size={14} style={{ color: '#16A34A' }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-mono font-bold" style={{ color: '#0F172A' }}>{n.dni}</span>
                       <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8' }}>
                         {MES_NOMBRES[n.mes]} {n.anio}
                       </span>
+                      {n.nombre_archivo && (
+                        <span className="text-xs truncate max-w-xs" style={{ color: '#64748B' }}>{n.nombre_archivo}</span>
+                      )}
                     </div>
                     <p className="text-xs mt-0.5 truncate" style={{ color: '#94A3B8' }}>
                       {n.pdf_origen} · {n.subido_por_nombre} · {(n.tamano_bytes / 1024).toFixed(0)} KB

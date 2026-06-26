@@ -22,6 +22,7 @@ const ESTADOS_CONTRATO: { value: EstadoContrato; label: string; color: string; b
 const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   user_id: null,
   id_sociedad: '',
+  id_sociedad_secundaria: null,
   nombre: '',
   email: '',
   dni: null,
@@ -45,6 +46,7 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
   return {
     user_id: e.user_id,
     id_sociedad: e.id_sociedad,
+    id_sociedad_secundaria: e.id_sociedad_secundaria ?? null,
     nombre: e.nombre,
     email: e.email,
     dni: e.dni,
@@ -1313,6 +1315,12 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                 <select value={form.id_sociedad} onChange={(e) => f('id_sociedad', e.target.value)} className="form-input">
                   <option value="">Seleccionar...</option>
                   {sociedades.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Segunda sociedad (opcional)">
+                <select value={form.id_sociedad_secundaria ?? ''} onChange={(e) => f('id_sociedad_secundaria', e.target.value || null)} className="form-input">
+                  <option value="">Ninguna</option>
+                  {sociedades.filter((s) => s.id !== form.id_sociedad).map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                 </select>
               </FormField>
             </div>

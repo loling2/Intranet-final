@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Upload, FileText, AlertCircle, RefreshCw, X,
   ChevronLeft, ChevronRight, Loader2, CheckCircle2,
@@ -21,7 +21,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 interface PageInfo {
   pageNum: number;
-  dataUrl: string;
   text: string;
   dni: string | null;
   anio: number | null;
@@ -59,29 +58,20 @@ function extractDNI(text: string): string | null {
   return match[1].toUpperCase();
 }
 
-// Extract period month/year from nómina text.
-// Priority order:
-// 1. "Mensual - D MesNombre YYYY a D MesNombre YYYY"  (the PERIODO field)
-// 2. "MesNombre YYYY" standalone
-// 3. Numeric "MM/YYYY" or "MM-YYYY"
-// We deliberately avoid picking up dates from ANTIGÜEDAD or FECHA fields.
 function extractMesAnio(text: string): { mes: number; nombre: string; anio: number } | null {
   const lower = text.toLowerCase();
 
-  // Pattern 1: "mensual - \d+ mesNombre YYYY a \d+ mesNombre YYYY"
-  // e.g. "Mensual - 1 Abril 2026 a 30 Abril 2026"
   const periodoMatch = lower.match(
     /mensual\s*-\s*\d+\s+([a-záéíóúü]+)\s+(20\d{2})\s+a\s+\d+\s+([a-záéíóúü]+)\s+(20\d{2})/
   );
   if (periodoMatch) {
     const mesNombre = periodoMatch[1];
-    const anio = parseInt(periodoMatch[4]); // end year
+    const anio = parseInt(periodoMatch[4]);
     const endMes = periodoMatch[3];
     const num = MESES[endMes] ?? MESES[mesNombre];
     if (num) return { mes: num, nombre: MES_NOMBRES[num], anio };
   }
 
-  // Pattern 2: "MesNombre YYYY" — pick the one with the latest year to avoid antigüedad
   const mesAnioMatches = [...lower.matchAll(/\b([a-záéíóúü]+)\s+(20\d{2})\b/g)];
   let best: { mes: number; nombre: string; anio: number } | null = null;
   for (const m of mesAnioMatches) {
@@ -94,7 +84,6 @@ function extractMesAnio(text: string): { mes: number; nombre: string; anio: numb
   }
   if (best) return best;
 
-  // Pattern 3: numeric MM/YYYY — pick latest year
   const numMatches = [...lower.matchAll(/\b(0?[1-9]|1[0-2])[/\-](20\d{2})\b/g)];
   let bestNum: { mes: number; nombre: string; anio: number } | null = null;
   for (const m of numMatches) {
@@ -107,28 +96,39 @@ function extractMesAnio(text: string): { mes: number; nombre: string; anio: numb
   return bestNum;
 }
 
-// Yield control to the browser between heavy iterations
 function yieldToMain(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-// Extract a single page from the original PDF bytes using pdf-lib (preserves text/vectors)
-// Removes CropBox/BleedBox/TrimBox/ArtBox so the full page content is visible
 async function extractPageBytes(srcBytes: Uint8Array, pageIndex: number): Promise<Uint8Array> {
   const src = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
   const dest = await PDFDocument.create();
   const [copied] = await dest.copyPages(src, [pageIndex]);
   dest.addPage(copied);
-
-  // Remove restrictive boxes so the full MediaBox is used by viewers
   const page = dest.getPages()[0];
   const node = page.node;
   node.delete(PDFName.of('CropBox'));
   node.delete(PDFName.of('BleedBox'));
   node.delete(PDFName.of('TrimBox'));
   node.delete(PDFName.of('ArtBox'));
-
   return dest.save();
+}
+
+// Render one page to a data URL (used lazily for preview only)
+async function renderPageToDataUrl(srcBytes: Uint8Array, pageNum: number): Promise<string> {
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(srcBytes) }).promise;
+  const page = await pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 1.2 });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext('2d')!;
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+  canvas.width = 0;
+  canvas.height = 0;
+  page.cleanup();
+  return dataUrl;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -137,7 +137,6 @@ export default function PDFSplitModule() {
   const { profile } = useAuth();
   const { activeSocietyId } = useSociety();
 
-  // Upload state
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
   const [pages, setPages] = useState<PageInfo[]>([]);
@@ -146,12 +145,14 @@ export default function PDFSplitModule() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [previewDataUrl, setPreviewDataUrl] = useState<string>('');
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [separating, setSeparating] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState({ step: '', done: 0, total: 0 });
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef(false);
 
-  // List state
   const [tab, setTab] = useState<'upload' | 'list'>('upload');
   const [nominas, setNominas] = useState<NominaRecord[]>([]);
   const [listLoading, setListLoading] = useState(false);
@@ -173,70 +174,56 @@ export default function PDFSplitModule() {
     setListLoading(false);
   }, []);
 
-  const abortRef = useRef(false);
+  // Generate thumbnail lazily when current page changes
+  useEffect(() => {
+    if (!pdfBytes || pages.length === 0) return;
+    const pageNum = pages[currentPageIndex]?.pageNum;
+    if (!pageNum) return;
+    let cancelled = false;
+    setPreviewDataUrl('');
+    setPreviewLoading(true);
+    renderPageToDataUrl(pdfBytes, pageNum)
+      .then((url) => { if (!cancelled) { setPreviewDataUrl(url); setPreviewLoading(false); } })
+      .catch(() => { if (!cancelled) setPreviewLoading(false); });
+    return () => { cancelled = true; };
+  }, [currentPageIndex, pdfBytes, pages]);
 
   const handleFileSelect = async (file: File) => {
     if (!file.type.includes('pdf')) {
       setError('Por favor selecciona un archivo PDF');
       return;
     }
-    // Cancel any in-progress scan
     abortRef.current = true;
     await yieldToMain();
     abortRef.current = false;
 
     setError('');
     setPdfFile(file);
+    setPdfBytes(null);
     setLoading(true);
     setLoadProgress(0);
     setPages([]);
     setCurrentPageIndex(0);
+    setPreviewDataUrl('');
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      // Keep one copy for pdf-lib (extractPageBytes) — pdfjs transfers the buffer to its worker
-      const bytesForPdfLib = new Uint8Array(arrayBuffer.slice(0));
-      setPdfBytes(bytesForPdfLib);
+      const bytes = new Uint8Array(arrayBuffer);
+      setPdfBytes(bytes);
 
-      // Give pdfjs its own copy so it can transfer without detaching bytesForPdfLib
-      const bytesForPdfjs = new Uint8Array(arrayBuffer.slice(0));
-      const pdf = await pdfjsLib.getDocument({ data: bytesForPdfjs }).promise;
+      // Use a separate copy for pdfjs text extraction (worker may transfer it)
+      const bytesForScan = new Uint8Array(arrayBuffer.slice(0));
+      const pdf = await pdfjsLib.getDocument({ data: bytesForScan }).promise;
       const total = pdf.numPages;
       const extractedPages: PageInfo[] = [];
 
-      // Process in batches of 10 to keep UI responsive
-      const BATCH = 10;
+      // TEXT-ONLY scan — no canvas rendering, no DOM interaction
       for (let i = 1; i <= total; i++) {
         if (abortRef.current) break;
 
         const page = await pdf.getPage(i);
-
-        // Thumbnail at low scale (for preview only)
-        const viewport = page.getViewport({ scale: 1.2 });
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const renderTask = page.render({ canvasContext: ctx, viewport });
-          try {
-            await renderTask.promise;
-          } catch (renderErr: unknown) {
-            // Cancelled render (e.g. abort) — skip this page gracefully
-            if (renderErr instanceof Error && renderErr.name === 'RenderingCancelledException') break;
-            throw renderErr;
-          }
-        }
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-
-        // Detach canvas to free memory
-        canvas.width = 0;
-        canvas.height = 0;
-
-        // Extract text for detection
         const textContent = await page.getTextContent();
         const text = textContent.items.map((item) => ('str' in item ? item.str : '')).join(' ');
-
         page.cleanup();
 
         const dni = extractDNI(text);
@@ -244,7 +231,6 @@ export default function PDFSplitModule() {
 
         extractedPages.push({
           pageNum: i,
-          dataUrl,
           text,
           dni,
           anio: periodoInfo?.anio ?? null,
@@ -252,10 +238,11 @@ export default function PDFSplitModule() {
           mesNombre: periodoInfo?.nombre ?? null,
         });
 
-        setLoadProgress(Math.round((i / total) * 100));
-
-        // Yield every batch to avoid blocking
-        if (i % BATCH === 0) await yieldToMain();
+        // Update progress every 5 pages to reduce re-renders
+        if (i % 5 === 0 || i === total) {
+          setLoadProgress(Math.round((i / total) * 100));
+          await yieldToMain();
+        }
       }
 
       if (!abortRef.current) setPages(extractedPages);
@@ -284,7 +271,8 @@ export default function PDFSplitModule() {
     setPdfBytes(null);
     setPages([]);
     setCurrentPageIndex(0);
-    setUploadProgress(0);
+    setPreviewDataUrl('');
+    setUploadProgress({ step: '', done: 0, total: 0 });
     setLoading(false);
     setLoadProgress(0);
     setError('');
@@ -292,72 +280,80 @@ export default function PDFSplitModule() {
 
   const flashSuccess = (msg: string) => {
     setSuccess(msg);
-    setTimeout(() => setSuccess(''), 5000);
+    setTimeout(() => setSuccess(''), 6000);
   };
 
-  // Separate and upload — extract real PDF pages using pdf-lib
+  // ── Atomic upload: extract ALL bytes first, then upload all ──────────────────
   const handleSeparate = async () => {
     if (!pages.length || !pdfFile || !profile || !pdfBytes) return;
     setSeparating(true);
     setError('');
-    let uploaded = 0;
-    let skipped = 0;
+
+    const validPages = pages.filter((p) => p.dni && p.anio && p.mes);
+    const skipped = pages.length - validPages.length;
 
     try {
-      for (const pageInfo of pages) {
+      // Phase 1: Extract all page bytes into memory (fail fast — no uploads yet)
+      setUploadProgress({ step: 'Extrayendo paginas...', done: 0, total: validPages.length });
+      const extracted: { pageInfo: PageInfo; bytes: Uint8Array; wasabiKey: string; nombreArchivo: string }[] = [];
+
+      for (let i = 0; i < validPages.length; i++) {
+        const pageInfo = validPages[i];
         const { dni, anio, mes, pageNum } = pageInfo;
-
-        if (!dni || !anio || !mes) {
-          skipped++;
-          uploaded++;
-          setUploadProgress(Math.round((uploaded / pages.length) * 100));
-          continue;
-        }
-
-        // Extract the page as a real PDF (preserves text, vectors, fonts)
-        const singlePageBytes = await extractPageBytes(pdfBytes, pageNum - 1);
-
-        const safeDni = dni.replace(/[^A-Z0-9]/g, '');
-        const mesStr = String(mes).padStart(2, '0');
+        const safeDni = dni!.replace(/[^A-Z0-9]/g, '');
+        const mesStr = String(mes!).padStart(2, '0');
         const wasabiKey = `rrhh/publico/${anio}/${mesStr}/${safeDni}-${mesStr}-${anio}.pdf`;
         const nombreArchivo = `${safeDni}-${mesStr}-${anio}.pdf`;
-
-        await uploadBytesToWasabi(singlePageBytes, wasabiKey, 'application/pdf');
-
-        await supabase.from('nominas').upsert(
-          {
-            society_id: activeSocietyId ?? '',
-            dni: safeDni,
-            anio,
-            mes,
-            wasabi_key: wasabiKey,
-            nombre_archivo: nombreArchivo,
-            tamano_bytes: singlePageBytes.byteLength,
-            subido_por: profile.id,
-            subido_por_nombre: profile.nombre,
-            pdf_origen: pdfFile.name,
-            created_at: new Date().toISOString(),
-          },
-          { onConflict: 'society_id,dni,anio,mes' }
-        );
-
-        uploaded++;
-        setUploadProgress(Math.round((uploaded / pages.length) * 100));
-
-        // Yield every 5 uploads to keep UI alive
-        if (uploaded % 5 === 0) await yieldToMain();
+        const singlePageBytes = await extractPageBytes(pdfBytes, pageNum - 1);
+        extracted.push({ pageInfo: { ...pageInfo, dni: safeDni }, bytes: singlePageBytes, wasabiKey, nombreArchivo });
+        setUploadProgress({ step: 'Extrayendo paginas...', done: i + 1, total: validPages.length });
+        if ((i + 1) % 5 === 0) await yieldToMain();
       }
+
+      // Phase 2: Upload to Wasabi (all pages extracted successfully)
+      setUploadProgress({ step: 'Subiendo a Wasabi...', done: 0, total: extracted.length });
+      for (let i = 0; i < extracted.length; i++) {
+        const { bytes, wasabiKey } = extracted[i];
+        await uploadBytesToWasabi(bytes, wasabiKey, 'application/pdf');
+        setUploadProgress({ step: 'Subiendo a Wasabi...', done: i + 1, total: extracted.length });
+        if ((i + 1) % 5 === 0) await yieldToMain();
+      }
+
+      // Phase 3: Save to database (batch upsert)
+      setUploadProgress({ step: 'Guardando en base de datos...', done: 0, total: extracted.length });
+      const now = new Date().toISOString();
+      const records = extracted.map(({ pageInfo, bytes, wasabiKey, nombreArchivo }) => ({
+        society_id: activeSocietyId ?? '',
+        dni: pageInfo.dni!,
+        anio: pageInfo.anio!,
+        mes: pageInfo.mes!,
+        wasabi_key: wasabiKey,
+        nombre_archivo: nombreArchivo,
+        tamano_bytes: bytes.byteLength,
+        subido_por: profile.id,
+        subido_por_nombre: profile.nombre,
+        pdf_origen: pdfFile.name,
+        created_at: now,
+      }));
+
+      const { error: dbError } = await supabase
+        .from('nominas')
+        .upsert(records, { onConflict: 'society_id,dni,anio,mes' });
+
+      if (dbError) throw new Error(dbError.message);
+
+      setUploadProgress({ step: '', done: extracted.length, total: extracted.length });
 
       await writeAuditLog({
         evento: 'nominas_separated',
-        descripcion: `Nominas separadas: ${uploaded - skipped} procesadas, ${skipped} sin DNI/fecha`,
+        descripcion: `Nominas separadas: ${extracted.length} subidas, ${skipped} sin DNI/fecha`,
         autor: profile,
         entidad: 'nomina',
         metadata: { archivo_original: pdfFile.name, total_paginas: pages.length, skipped },
         society_id: activeSocietyId,
       });
 
-      flashSuccess(`${uploaded - skipped} nominas subidas correctamente${skipped > 0 ? ` (${skipped} paginas sin DNI/fecha ignoradas)` : ''}.`);
+      flashSuccess(`${extracted.length} nominas subidas correctamente${skipped > 0 ? ` (${skipped} paginas sin DNI/fecha ignoradas)` : ''}.`);
       reset();
       setTab('list');
       await loadNominas();
@@ -390,6 +386,10 @@ export default function PDFSplitModule() {
   });
 
   const aniosDisponibles = [...new Set(nominas.map((n) => n.anio))].sort((a, b) => b - a);
+
+  const uploadPct = uploadProgress.total > 0
+    ? Math.round((uploadProgress.done / uploadProgress.total) * 100)
+    : 0;
 
   return (
     <div className="space-y-5">
@@ -493,7 +493,6 @@ export default function PDFSplitModule() {
               </div>
             )}
 
-            {/* Loading progress */}
             {loading && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -521,7 +520,7 @@ export default function PDFSplitModule() {
                 {separating ? (
                   <>
                     <Loader2 size={14} className="animate-spin" />
-                    Procesando... {uploadProgress}%
+                    {uploadProgress.step || 'Procesando...'} {uploadPct}%
                   </>
                 ) : (
                   <>
@@ -537,17 +536,17 @@ export default function PDFSplitModule() {
                 <div className="w-full rounded-full overflow-hidden" style={{ backgroundColor: '#E2E8F0', height: 6 }}>
                   <div
                     className="h-full rounded-full transition-all duration-300"
-                    style={{ width: `${uploadProgress}%`, backgroundColor: '#0F172A' }}
+                    style={{ width: `${uploadPct}%`, backgroundColor: '#0F172A' }}
                   />
                 </div>
                 <p className="text-xs text-center" style={{ color: '#94A3B8' }}>
-                  Subiendo nominas a Wasabi ({uploadProgress}%)
+                  {uploadProgress.step} ({uploadProgress.done}/{uploadProgress.total})
                 </p>
               </div>
             )}
           </div>
 
-          {/* Right panel: Preview + page data */}
+          {/* Right panel: Preview + page list */}
           {pages.length > 0 && !loading && (
             <div className="lg:col-span-2 space-y-3">
               <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
@@ -570,15 +569,20 @@ export default function PDFSplitModule() {
                   </span>
                 </div>
 
-                {/* Image preview */}
+                {/* Lazy thumbnail */}
                 <div className="p-4 flex items-center justify-center min-h-64 max-h-[500px] overflow-hidden" style={{ backgroundColor: '#F1F5F9' }}>
-                  {currentPage && (
+                  {previewLoading ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <Loader2 size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
+                      <span className="text-xs" style={{ color: '#94A3B8' }}>Cargando vista previa...</span>
+                    </div>
+                  ) : previewDataUrl ? (
                     <img
-                      src={currentPage.dataUrl}
-                      alt={`Pagina ${currentPage.pageNum}`}
+                      src={previewDataUrl}
+                      alt={`Pagina ${currentPage?.pageNum}`}
                       className="max-w-full max-h-[460px] object-contain rounded shadow-sm"
                     />
-                  )}
+                  ) : null}
                 </div>
 
                 {/* Navigation */}
@@ -650,7 +654,6 @@ export default function PDFSplitModule() {
       {/* ── LIST TAB ── */}
       {tab === 'list' && (
         <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF' }}>
-          {/* Filters */}
           <div className="px-5 py-4 flex flex-wrap items-center gap-3" style={{ borderBottom: '1px solid #F1F5F9', backgroundColor: '#F8FAFC' }}>
             <div className="relative flex-1 min-w-48">
               <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />

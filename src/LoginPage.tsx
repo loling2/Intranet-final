@@ -259,7 +259,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 
       const { error: incErr } = await supabase.from('incidencias').insert({
         titulo: `[${mat}] ${incidentTitle.trim()}`,
-        descripcion: `${incidentDescription.trim()}${photoKeys.length ? `\n\nFotos: ${photoKeys.join(', ')}` : ''}`,
+        descripcion: incidentDescription.trim(),
         estado: 'pendiente',
         vehicle_id: vehicleData?.id ?? null,
         matricula: mat,
@@ -268,6 +268,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
         departamento_id: VEHICULOS_DEPARTAMENTO_ID,
         departamento_nombre: 'Vehiculos',
         fecha_creacion: new Date().toISOString(),
+        fotos_urls: photoKeys,
       });
       if (incErr) throw new Error(incErr.message);
       setDoneMsg(`Incidencia registrada — ${mat} · ${photoKeys.length} foto(s)`);
@@ -592,10 +593,29 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
               </div>
               <div>
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Fotos (opcional)</label>
-                <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer" style={{ backgroundColor: '#F1F5F9', border: '1.5px dashed #CBD5E1' }}>
+                <label
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer"
+                  style={{
+                    backgroundColor: incidentPhotos.length >= 5 ? '#F1F5F9' : '#F1F5F9',
+                    border: '1.5px dashed #CBD5E1',
+                    opacity: incidentPhotos.length >= 5 ? 0.5 : 1,
+                    pointerEvents: incidentPhotos.length >= 5 ? 'none' : 'auto',
+                  }}
+                >
                   <Camera size={16} style={{ color: '#94A3B8' }} />
-                  <span className="text-sm" style={{ color: '#64748B' }}>Añadir fotos</span>
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => setIncidentPhotos(Array.from(e.target.files ?? []))} />
+                  <span className="text-sm" style={{ color: '#64748B' }}>
+                    {incidentPhotos.length >= 5 ? 'Máximo 5 fotos alcanzado' : `Añadir fotos (${incidentPhotos.length}/5)`}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const nuevas = Array.from(e.target.files ?? []);
+                      setIncidentPhotos((prev) => [...prev, ...nuevas].slice(0, 5));
+                    }}
+                  />
                 </label>
                 {incidentPhotos.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">

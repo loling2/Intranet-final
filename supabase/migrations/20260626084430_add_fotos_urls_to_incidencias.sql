@@ -1,0 +1,1 @@
+ALTER TABLE incidencias ADD COLUMN IF NOT EXISTS fotos_urls text[] DEFAULT '{}';

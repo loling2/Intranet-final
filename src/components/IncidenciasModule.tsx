@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   AlertCircle, Plus, X, Send, Clock, CheckCircle2, Loader2,
-  Upload, Image, User, Building2,
+  Upload, Image, User, Building2, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { getWasabiBlobUrl } from '../lib/wasabi';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,7 @@ interface Incidencia {
   descripcion: string;
   estado: Estado;
   foto_url: string | null;
+  fotos_urls: string[] | null;
   creado_por_id: string;
   creado_por_nombre: string;
   departamento_id: string | null;
@@ -81,8 +83,7 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
   const [titulo, setTitulo] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [departamentoId, setDepartamentoId] = useState('');
-  const [foto, setFoto] = useState<File | null>(null);
-  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [fotos, setFotos] = useState<{ file: File; preview: string }[]>([]);
   const [departamentos, setDepartamentos] = useState<Departamento[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -93,13 +94,25 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
       .then(({ data }) => setDepartamentos((data ?? []) as Departamento[]));
   }, []);
 
-  const handleFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setFoto(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => setFotoPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
+  const handleFotos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    setFotos((prev) => {
+      const combined = [...prev];
+      for (const file of files) {
+        if (combined.length >= 5) break;
+        const preview = URL.createObjectURL(file);
+        combined.push({ file, preview });
+      }
+      return combined;
+    });
+    e.target.value = '';
+  };
+
+  const removeFoto = (idx: number) => {
+    setFotos((prev) => {
+      URL.revokeObjectURL(prev[idx].preview);
+      return prev.filter((_, i) => i !== idx);
+    });
   };
 
   const handleSubmit = async () => {
@@ -107,19 +120,16 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
     if (!departamentoId) { setError('Selecciona el departamento destinatario'); return; }
     setSaving(true); setError('');
 
-    let foto_url: string | null = null;
-
-    if (foto) {
-      const ext = foto.name.split('.').pop();
-      const path = `incidencias/${currentUserId}/${Date.now()}.${ext}`;
+    const fotosKeys: string[] = [];
+    for (const { file } of fotos) {
+      const ext = file.name.split('.').pop() ?? 'jpg';
+      const path = `incidencias/${currentUserId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
       const { error: upErr } = await supabase.storage
         .from('incidencias-fotos')
-        .upload(path, foto, { upsert: true });
+        .upload(path, file, { upsert: true });
       if (!upErr) {
         const { data: pub } = supabase.storage.from('incidencias-fotos').getPublicUrl(path);
-        foto_url = pub.publicUrl;
-      } else {
-        foto_url = fotoPreview;
+        fotosKeys.push(pub.publicUrl);
       }
     }
 
@@ -132,7 +142,7 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
       creado_por_nombre: currentUserNombre,
       departamento_id: departamentoId,
       departamento_nombre: dept?.nombre ?? '',
-      foto_url,
+      fotos_urls: fotosKeys,
     });
 
     setSaving(false);
@@ -154,7 +164,7 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
+        <div className="px-6 py-5 space-y-4 overflow-y-auto" style={{ maxHeight: '70vh' }}>
           {error && (
             <div className="px-4 py-2.5 rounded-lg text-sm" style={{ backgroundColor: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}>
               {error}
@@ -211,9 +221,7 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
                   >
                     <div
                       className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{
-                        backgroundColor: departamentoId === dept.id ? '#BFDBFE' : '#E2E8F0',
-                      }}
+                      style={{ backgroundColor: departamentoId === dept.id ? '#BFDBFE' : '#E2E8F0' }}
                     >
                       <Building2 size={13} style={{ color: departamentoId === dept.id ? '#1D4ED8' : '#94A3B8' }} />
                     </div>
@@ -226,28 +234,37 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
 
           <div>
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>
-              Foto (opcional)
+              Fotos (máximo 5)
             </label>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFoto} />
-            {fotoPreview ? (
-              <div className="relative rounded-xl overflow-hidden" style={{ maxHeight: 160 }}>
-                <img src={fotoPreview} alt="preview" className="w-full object-cover" style={{ maxHeight: 160 }} />
-                <button
-                  onClick={() => { setFoto(null); setFotoPreview(null); }}
-                  className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center"
-                  style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-                >
-                  <X size={12} className="text-white" />
-                </button>
+            <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFotos} />
+
+            {fotos.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {fotos.map(({ preview }, idx) => (
+                  <div key={idx} className="relative rounded-xl overflow-hidden" style={{ aspectRatio: '1', border: '1px solid #E2E8F0' }}>
+                    <img src={preview} alt={`foto ${idx + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      onClick={() => removeFoto(idx)}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+                    >
+                      <X size={10} className="text-white" />
+                    </button>
+                  </div>
+                ))}
               </div>
-            ) : (
+            )}
+
+            {fotos.length < 5 && (
               <button
                 onClick={() => fileRef.current?.click()}
-                className="w-full py-6 rounded-xl flex flex-col items-center gap-2 transition-colors hover:bg-slate-50"
+                className="w-full py-5 rounded-xl flex flex-col items-center gap-2 transition-colors hover:bg-slate-50"
                 style={{ border: '1.5px dashed #CBD5E1' }}
               >
-                <Upload size={20} style={{ color: '#94A3B8' }} />
-                <span className="text-xs" style={{ color: '#94A3B8' }}>Haz clic para adjuntar una imagen</span>
+                <Upload size={18} style={{ color: '#94A3B8' }} />
+                <span className="text-xs" style={{ color: '#94A3B8' }}>
+                  {fotos.length === 0 ? 'Añadir fotos' : `Añadir más (${fotos.length}/5)`}
+                </span>
               </button>
             )}
           </div>
@@ -273,6 +290,173 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Photo Gallery ────────────────────────────────────────────────────────────
+
+function PhotoGallery({ keys, supabasePaths }: { keys?: string[] | null; supabasePaths?: string | null }) {
+  const [urls, setUrls] = useState<string[]>([]);
+  const [current, setCurrent] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [lightbox, setLightbox] = useState(false);
+
+  useEffect(() => {
+    const allKeys: string[] = [];
+    if (keys && keys.length > 0) allKeys.push(...keys);
+
+    if (allKeys.length === 0 && !supabasePaths) return;
+
+    setLoading(true);
+
+    const load = async () => {
+      const loaded: string[] = [];
+
+      for (const key of allKeys) {
+        if (key.startsWith('http')) {
+          // Already a full URL (Supabase public URL or direct link)
+          loaded.push(key);
+        } else {
+          // Wasabi key — fetch via signed blob URL
+          try {
+            const url = await getWasabiBlobUrl(key);
+            loaded.push(url);
+          } catch {
+            // skip failed
+          }
+        }
+      }
+
+      // Legacy single foto_url
+      if (supabasePaths) {
+        if (supabasePaths.startsWith('http')) {
+          loaded.push(supabasePaths);
+        } else {
+          try {
+            const { data } = supabase.storage.from('incidencias-fotos').getPublicUrl(supabasePaths);
+            if (data?.publicUrl) loaded.push(data.publicUrl);
+          } catch {
+            // skip
+          }
+        }
+      }
+
+      setUrls(loaded);
+      setLoading(false);
+    };
+
+    load();
+  }, [keys, supabasePaths]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+        <Loader2 size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
+        <span className="ml-2 text-xs" style={{ color: '#94A3B8' }}>Cargando fotos...</span>
+      </div>
+    );
+  }
+
+  if (urls.length === 0) return null;
+
+  return (
+    <>
+      <div className="space-y-2">
+        <div className="relative rounded-xl overflow-hidden cursor-pointer" style={{ border: '1px solid #E2E8F0' }} onClick={() => setLightbox(true)}>
+          <img src={urls[current]} alt={`foto ${current + 1}`} className="w-full object-contain" style={{ maxHeight: 200, backgroundColor: '#F8FAFC' }} />
+          {urls.length > 1 && (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); setCurrent((c) => (c - 1 + urls.length) % urls.length); }}
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+              >
+                <ChevronLeft size={14} className="text-white" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setCurrent((c) => (c + 1) % urls.length); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+              >
+                <ChevronRight size={14} className="text-white" />
+              </button>
+              <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1">
+                {urls.map((_, i) => (
+                  <div
+                    key={i}
+                    className="w-1.5 h-1.5 rounded-full transition-all"
+                    style={{ backgroundColor: i === current ? '#FFFFFF' : 'rgba(255,255,255,0.4)' }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+          <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: 'rgba(0,0,0,0.5)', color: '#FFFFFF' }}>
+            {current + 1}/{urls.length}
+          </div>
+        </div>
+
+        {urls.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {urls.map((url, i) => (
+              <button
+                key={i}
+                onClick={() => setCurrent(i)}
+                className="flex-shrink-0 rounded-lg overflow-hidden transition-all"
+                style={{
+                  width: 48, height: 48,
+                  border: i === current ? '2px solid #0EA5E9' : '2px solid #E2E8F0',
+                }}
+              >
+                <img src={url} alt={`miniatura ${i + 1}`} className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}
+          onClick={() => setLightbox(false)}
+        >
+          <button
+            className="absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
+            onClick={() => setLightbox(false)}
+          >
+            <X size={18} className="text-white" />
+          </button>
+          {urls.length > 1 && (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); setCurrent((c) => (c - 1 + urls.length) % urls.length); }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
+              >
+                <ChevronLeft size={20} className="text-white" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setCurrent((c) => (c + 1) % urls.length); }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
+              >
+                <ChevronRight size={20} className="text-white" />
+              </button>
+            </>
+          )}
+          <img
+            src={urls[current]}
+            alt={`foto ${current + 1}`}
+            className="max-w-full max-h-full object-contain rounded-xl"
+            style={{ maxWidth: '90vw', maxHeight: '90vh' }}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <p className="absolute bottom-4 text-white/60 text-sm">{current + 1} / {urls.length}</p>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -370,20 +554,16 @@ function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, canMan
           </button>
         </div>
 
-        {/* Description + photo */}
-        {(incidencia.descripcion || incidencia.foto_url) && (
+        {/* Description + photos */}
+        {(incidencia.descripcion || incidencia.foto_url || (incidencia.fotos_urls && incidencia.fotos_urls.length > 0)) && (
           <div className="px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid #F1F5F9' }}>
             {incidencia.descripcion && (
               <p className="text-sm mb-3" style={{ color: '#475569' }}>{incidencia.descripcion}</p>
             )}
-            {incidencia.foto_url && (
-              <img
-                src={incidencia.foto_url}
-                alt="foto incidencia"
-                className="rounded-xl max-h-40 object-contain"
-                style={{ border: '1px solid #E2E8F0' }}
-              />
-            )}
+            <PhotoGallery
+              keys={incidencia.fotos_urls}
+              supabasePaths={incidencia.foto_url}
+            />
             <div className="flex items-center gap-4 mt-2 text-xs" style={{ color: '#94A3B8' }}>
               <span>Creado: {formatDate(incidencia.fecha_creacion)}</span>
               {incidencia.fecha_finalizacion && (
@@ -522,7 +702,14 @@ function KanbanColumn({ estado, incidencias, onSelect }: KanbanColumnProps) {
               <span className="text-xs font-mono font-semibold" style={{ color: '#94A3B8' }}>
                 INC-{String(inc.numero).padStart(4, '0')}
               </span>
-              {inc.foto_url && <Image size={12} style={{ color: '#94A3B8', flexShrink: 0 }} />}
+              {(inc.foto_url || (inc.fotos_urls && inc.fotos_urls.length > 0)) && (
+                <span className="flex items-center gap-0.5">
+                  <Image size={12} style={{ color: '#94A3B8', flexShrink: 0 }} />
+                  {inc.fotos_urls && inc.fotos_urls.length > 1 && (
+                    <span className="text-xs" style={{ color: '#94A3B8' }}>{inc.fotos_urls.length}</span>
+                  )}
+                </span>
+              )}
             </div>
             <p className="text-sm font-semibold mb-2" style={{ color: '#1E293B' }}>{inc.titulo}</p>
             {inc.descripcion && (

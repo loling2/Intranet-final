@@ -689,7 +689,7 @@ export default function LoginPage() {
   const [showVehicleModal, setShowVehicleModal] = useState(false);
   const [bgImage, setBgImage] = useState<string>('/foto1_(2).png');
   const [societies, setSocieties] = useState<SocietyTheme[]>(staticSocieties);
-  const [impersonating, setImpersonating] = useState<{ nombre: string } | null>(null);
+  const [impersonating, setImpersonating] = useState<{ nombre: string; email: string; userId: string } | null>(null);
 
 
   useEffect(() => {
@@ -899,12 +899,12 @@ export default function LoginPage() {
     if (!session) return;
     const { data: targetProfile } = await supabase
       .from('user_profiles')
-      .select('nombre, societies')
+      .select('nombre, email, societies')
       .eq('id', userId)
       .maybeSingle();
     if (!targetProfile) return;
     const resolvedSociety = societyId ?? targetProfile.societies?.[0] ?? societies[0]?.id ?? null;
-    setImpersonating({ nombre: targetProfile.nombre });
+    setImpersonating({ nombre: targetProfile.nombre, email: targetProfile.email ?? '', userId });
     setSession({ ...session, view: 'dashboard', activeSocietyId: resolvedSociety });
     if (resolvedSociety) setSelectedId(resolvedSociety);
   };
@@ -1030,7 +1030,8 @@ export default function LoginPage() {
               <Dashboard
                 theme={theme}
                 onLogout={handleLogout}
-                email={session.email}
+                email={impersonating ? impersonating.email : session.email}
+                impersonatingUserId={impersonating?.userId}
                 isAdmin={!impersonating && session.role === 'admin'}
                 onNavigateAdmin={!impersonating && session.role === 'admin' ? () => handleNavigate('admin') : undefined}
                 onNavigateRrhh={!impersonating && session.role === 'rrhh' ? () => handleNavigate('rrhh') : undefined}
@@ -1510,7 +1511,7 @@ interface NominaRow {
   created_at: string;
 }
 
-function MisNominasView({ theme }: { theme: SocietyTheme }) {
+function MisNominasView({ theme, userId: propUserId }: { theme: SocietyTheme; userId?: string | null }) {
   const [nominas, setNominas] = useState<NominaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<Set<string>>(new Set());
@@ -1521,28 +1522,16 @@ function MisNominasView({ theme }: { theme: SocietyTheme }) {
     const load = async () => {
       setLoading(true);
       try {
-        // Resolve user's DNI from empleados table
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user || cancelled) { setLoading(false); return; }
+        const resolvedUserId = propUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
+        if (!resolvedUserId || cancelled) { setLoading(false); return; }
 
         const { data: empData } = await supabase
           .from('empleados')
           .select('dni')
-          .eq('user_id', user.id)
+          .eq('user_id', resolvedUserId)
           .maybeSingle();
 
-        const dni = empData?.dni;
-        if (!dni) {
-          // Also try user_profiles for dni field
-          const { data: profData } = await supabase
-            .from('user_profiles')
-            .select('dni')
-            .eq('id', user.id)
-            .maybeSingle();
-          if (!profData?.dni || cancelled) { setLoading(false); return; }
-        }
-
-        const resolvedDni = empData?.dni ?? (await supabase.from('user_profiles').select('dni').eq('id', user.id).maybeSingle()).data?.dni;
+        const resolvedDni = empData?.dni ?? (await supabase.from('user_profiles').select('dni').eq('id', resolvedUserId).maybeSingle()).data?.dni;
         if (!resolvedDni || cancelled) { setLoading(false); return; }
 
         const { data } = await supabase
@@ -1559,7 +1548,7 @@ function MisNominasView({ theme }: { theme: SocietyTheme }) {
     };
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [propUserId]);
 
   const aniosDisponibles = [...new Set(nominas.map((n) => n.anio))].sort((a, b) => b - a);
   const filtered = filterAnio ? nominas.filter((n) => String(n.anio) === filterAnio) : nominas;
@@ -1677,6 +1666,7 @@ function Dashboard({
   theme,
   onLogout,
   email,
+  impersonatingUserId,
   isAdmin,
   onNavigateAdmin,
   onNavigateRrhh,
@@ -1689,6 +1679,7 @@ function Dashboard({
   theme: SocietyTheme;
   onLogout: () => void;
   email: string;
+  impersonatingUserId?: string;
   isAdmin?: boolean;
   onNavigateAdmin?: () => void;
   onNavigateRrhh?: () => void;
@@ -1707,74 +1698,53 @@ function Dashboard({
   const [assignedVehicle, setAssignedVehicle] = useState<any>(null);
 
   useEffect(() => {
+    if (impersonatingUserId) {
+      setCurrentUserId(impersonatingUserId);
+      supabase.from('user_profiles').select('nombre').eq('id', impersonatingUserId).maybeSingle()
+        .then(({ data }) => setCurrentUserNombre(data?.nombre ?? email));
+      return;
+    }
     supabase.auth.getSession().then(({ data: { session } }) => {
       const uid = session?.user?.id ?? null;
-      console.log('SESSION USER ID:', uid);
       setCurrentUserId(uid);
       if (uid) {
         supabase.from('user_profiles').select('nombre').eq('id', uid).maybeSingle()
           .then(({ data }) => setCurrentUserNombre(data?.nombre ?? email));
       }
     });
-  }, [email]);
+  }, [email, impersonatingUserId]);
 
 useEffect(() => {
   (async () => {
-    // 1. Obtener el usuario autenticado (Auth)
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (user) {
-      // 2. CONSULTA INTERMEDIA: Buscamos el ID real de empleado usando el ID de Auth o su Email
-      // (Asegúrate de que la tabla se llame 'empleados'. Si se llama 'profiles' o 'usuarios', cámbialo aquí)
-      const { data: empleadoData } = await supabase
-        .from('empleados')
-        .select('id')
-        .or(`id.eq.${user.id},email.eq.${user.email}`)
-        .single();
+    const resolvedUserId = impersonatingUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
+    if (!resolvedUserId) { setActiveDeviceCount(0); return; }
 
-      // Usamos el ID de la tabla si existe, o el de auth como plan de respaldo
-      const realEmpleadoId = empleadoData?.id || user.id;
-
-      // 3. CONSULTA FINAL: Pedimos a Supabase el conteo exacto usando el empleado_id real
-      const { count, error } = await supabase
-        .from('dispositivos')
-        .select('*', { count: 'exact', head: true })
-       .eq('activo', true)
-        .eq('empleado_id', realEmpleadoId);
-
-      if (!error && count !== null) {
-        setActiveDeviceCount(count);
-      } else {
-        setActiveDeviceCount(0);
-      }
-    } else {
-      setActiveDeviceCount(0);
-    }
-  })();
-}, []);
-
-useEffect(() => {
-  (async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      setAssignedVehicle(null);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('vehicles')
-      .select('*')
-      .eq('current_user_id', user.id)
+    const { data: empleadoData } = await supabase
+      .from('empleados')
+      .select('id')
+      .eq('id', resolvedUserId)
       .maybeSingle();
 
-    console.log('AUTH USER ID:', user.id);
-    console.log('VEHICULO:', data);
-    console.log('ERROR:', error);
+    const realEmpleadoId = empleadoData?.id || resolvedUserId;
 
+    const { count, error } = await supabase
+      .from('dispositivos')
+      .select('*', { count: 'exact', head: true })
+      .eq('activo', true)
+      .eq('empleado_id', realEmpleadoId);
+
+    setActiveDeviceCount(!error && count !== null ? count : 0);
+  })();
+}, [impersonatingUserId]);
+
+useEffect(() => {
+  (async () => {
+    const resolvedUserId = impersonatingUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
+    if (!resolvedUserId) { setAssignedVehicle(null); return; }
+    const { data } = await supabase.from('vehicles').select('*').eq('current_user_id', resolvedUserId).maybeSingle();
     setAssignedVehicle(data);
   })();
-}, []);
+}, [impersonatingUserId]);
 
   
   const certificates = mockCertificates[theme.id] ?? [];
@@ -1856,7 +1826,7 @@ useEffect(() => {
             </button>
             <div className="text-right hidden md:block">
               <p className="text-white text-xs font-medium truncate max-w-[140px]">{email || 'empleado@empresa.com'}</p>
-              <p className="text-white/60 text-xs">{isAdmin ? 'Administrador' : 'Empleado'}</p>
+              <p className="text-white/60 text-xs">Empleado</p>
             </div>
             <button
               onClick={() => setShowChangePassword(true)}
@@ -1884,7 +1854,7 @@ useEffect(() => {
         <div className="mb-5 sm:mb-6 flex items-start justify-between">
           <div>
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight" style={{ color: theme.textPrimary }}>
-              Bienvenido, {email.split('@')[0]}
+              Bienvenido, {currentUserNombre || email.split('@')[0]}
             </h2>
             <p className="mt-1 text-sm" style={{ color: theme.textSecondary }}>
               Resumen de tus recursos y solicitudes
@@ -1958,7 +1928,7 @@ useEffect(() => {
             {/* Main Cards */}
            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
               <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
-              <DevicesCard theme={theme} />
+              <DevicesCard theme={theme} userId={currentUserId} />
               <PrevencionDocsCard theme={theme} userEmail={email} />
              <VehicleCard vehicle={assignedVehicle} />
             </div>
@@ -1966,7 +1936,7 @@ useEffect(() => {
         )}
 
         {activeTab === 'nominas' && (
-          <MisNominasView theme={theme} />
+          <MisNominasView theme={theme} userId={currentUserId} />
         )}
 
         {activeTab === 'prevencion' && (

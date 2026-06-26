@@ -6,6 +6,7 @@ import type { SocietyTheme } from './themes';
 
 interface Props {
   theme: SocietyTheme;
+  userId?: string | null;
 }
 
 const typeIcons: Record<string, React.FC<{ size?: number; className?: string }>> = {
@@ -18,48 +19,34 @@ const typeIcons: Record<string, React.FC<{ size?: number; className?: string }>>
   VoIP: Phone,
 };
 
-export default function DevicesCard({ theme }: Props) {
+export default function DevicesCard({ theme, userId: propUserId }: Props) {
   const [devices, setDevices] = useState<Dispositivo[]>([]);
   const [loading, setLoading] = useState(true);
 
 useEffect(() => {
   (async () => {
     setLoading(true);
-    
-    // 1. Obtener el usuario autenticado (Auth)
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (user) {
-      // 2. CONSULTA INTERMEDIA: Buscamos el ID del empleado usando el ID de Auth o su Email
-      // Nota: Ajusta 'empleados' por el nombre exacto de tu tabla de perfiles si se llama distinto (ej: 'profiles')
-      const { data: empleadoData, error: empleadoError } = await supabase
-        .from('empleados') 
-        .select('id')
-        .or(`id.eq.${user.id},email.eq.${user.email}`)
-        .single();
+    const resolvedUserId = propUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
+    if (!resolvedUserId) { setDevices([]); setLoading(false); return; }
 
-      // Guardamos el ID correcto (ya sea el encontrado en la tabla o el de auth como plan de respaldo)
-      const realEmpleadoId = empleadoData?.id || user.id;
+    const { data: empleadoData } = await supabase
+      .from('empleados')
+      .select('id')
+      .eq('id', resolvedUserId)
+      .maybeSingle();
 
-      // 3. CONSULTA FINAL: Traemos los dispositivos usando el ID real del empleado obtenido
-      const { data, error } = await supabase
-        .from('dispositivos')
-        .select('*')
-        .eq('empleado_id', realEmpleadoId)
-        .order('fecha_asignacion', { ascending: true });
+    const realEmpleadoId = empleadoData?.id || resolvedUserId;
 
-      if (!error && data) {
-        setDevices(data as Dispositivo[]);
-      } else {
-        setDevices([]);
-      }
-    } else {
-      setDevices([]);
-    }
-    
+    const { data, error } = await supabase
+      .from('dispositivos')
+      .select('*')
+      .eq('empleado_id', realEmpleadoId)
+      .order('fecha_asignacion', { ascending: true });
+
+    setDevices(!error && data ? data as Dispositivo[] : []);
     setLoading(false);
   })();
-}, []);
+}, [propUserId]);
 
   const activeCount = devices.filter((d) => d.estado_id === 1).length;
 

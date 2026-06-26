@@ -285,7 +285,8 @@ export default function PDFSplitModule() {
       for (let i = 0; i < validPages.length; i++) {
         const pageInfo = validPages[i];
         const safeDni = pageInfo.dni!.replace(/[^A-Z0-9]/g, '');
-        const key = `${safeDni}|${pageInfo.anio}|${pageInfo.mes}`;
+        const empresaKey = pageInfo.empresa ?? '';
+        const key = `${safeDni}|${pageInfo.anio}|${pageInfo.mes}|${empresaKey}`;
         if (!groups.has(key)) {
           groups.set(key, { pageInfo: { ...pageInfo, dni: safeDni }, pageIndexes: [] });
         }

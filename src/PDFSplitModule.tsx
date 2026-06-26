@@ -345,7 +345,7 @@ export default function PDFSplitModule() {
             pdf_origen: pdfFile.name,
             created_at: now,
           },
-          { onConflict: 'society_id,dni,anio,mes' }
+          { onConflict: 'society_id,dni,anio,mes,sociedad_nombre' }
         );
         if (dbError) throw new Error(dbError.message);
         setUploadProgress({ step: 'Guardando en base de datos...', done: i + 1, total: merged.length });

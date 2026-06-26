@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FolderOpen, FolderPlus, Folder, FileText, Upload, Trash2,
   RefreshCw, AlertCircle, CheckCircle2, X, Download,
-  ChevronRight, Search, Plus, Tag, Lock, Globe, Building2,
+  ChevronRight, Search, Plus, Tag, Lock, Globe, Building2, Eye,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { uploadToWasabiKey, downloadFromWasabi } from '../lib/wasabi';
+import { uploadToWasabiKey, downloadFromWasabi, getWasabiBlobUrl } from '../lib/wasabi';
 import { useAuth } from '../context/AuthContext';
 import { useSociety } from '../context/SocietyContext';
 
@@ -59,6 +59,88 @@ function fileIcon(tipo: string) {
   if (tipo.includes('sheet') || tipo.includes('excel')) return { color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' };
   if (tipo.includes('image')) return { color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' };
   return { color: '#475569', bg: '#F8FAFC', border: '#E2E8F0' };
+}
+
+// ─── Document Preview Modal ───────────────────────────────────────────────────
+
+function PreviewModal({ doc, onClose }: { doc: PrlDocument; onClose: () => void }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let url: string | null = null;
+    getWasabiBlobUrl(doc.wasabi_key)
+      .then((u) => { url = u; setBlobUrl(u); })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Error al cargar'))
+      .finally(() => setLoading(false));
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [doc.wasabi_key]);
+
+  const isPdf = doc.tipo.includes('pdf');
+  const isImage = doc.tipo.includes('image');
+
+  return (
+    <div className="fixed inset-0 z-[400] flex flex-col" style={{ backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 flex-shrink-0" style={{ backgroundColor: '#0F172A', borderBottom: '1px solid #1E293B' }}>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#1E293B' }}>
+            <Eye size={15} style={{ color: '#94A3B8' }} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white truncate">{doc.nombre_archivo}</p>
+            <p className="text-xs" style={{ color: '#64748B' }}>{doc.subido_por_nombre} &middot; {new Date(doc.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-slate-700 flex-shrink-0 ml-4"
+          style={{ color: '#94A3B8' }}>
+          <X size={16} />
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 flex items-center justify-center overflow-hidden p-4">
+        {loading && (
+          <div className="flex flex-col items-center gap-3">
+            <RefreshCw size={24} className="animate-spin" style={{ color: '#94A3B8' }} />
+            <p className="text-sm" style={{ color: '#94A3B8' }}>Cargando previa...</p>
+          </div>
+        )}
+        {error && (
+          <div className="flex flex-col items-center gap-3 text-center">
+            <AlertCircle size={24} style={{ color: '#DC2626' }} />
+            <p className="text-sm" style={{ color: '#DC2626' }}>{error}</p>
+          </div>
+        )}
+        {blobUrl && isPdf && (
+          <iframe
+            src={blobUrl}
+            title={doc.nombre_archivo}
+            className="w-full h-full rounded-xl"
+            style={{ maxWidth: '960px', border: 'none' }}
+          />
+        )}
+        {blobUrl && isImage && (
+          <img
+            src={blobUrl}
+            alt={doc.nombre_archivo}
+            className="max-w-full max-h-full rounded-xl object-contain"
+            style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}
+          />
+        )}
+        {blobUrl && !isPdf && !isImage && (
+          <div className="flex flex-col items-center gap-4 text-center p-8 rounded-2xl" style={{ backgroundColor: '#1E293B' }}>
+            <FileText size={48} style={{ color: '#64748B' }} />
+            <p className="text-sm font-medium text-white">Este tipo de archivo no se puede previsualizar</p>
+            <p className="text-xs" style={{ color: '#64748B' }}>{doc.tipo || 'Tipo desconocido'}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─── Create / Edit Folder Modal ───────────────────────────────────────────────
@@ -512,6 +594,9 @@ export default function PrlDocsModule() {
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'folder' | 'doc'; id: string; name: string; folderId?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<PrlDocument | null>(null);
+
+  const canPreview = profile?.role === 'admin' || profile?.role === 'prevencion';
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -692,6 +777,9 @@ export default function PrlDocsModule() {
           societyId={activeSocietyId}
           existing={editingFolder}
         />
+      )}
+      {previewDoc && (
+        <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
       {deleteTarget && (
         <ConfirmDeleteModal
@@ -963,6 +1051,15 @@ export default function PrlDocsModule() {
                                 </p>
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0">
+                                {canPreview && (
+                                  <button
+                                    onClick={() => setPreviewDoc(doc)}
+                                    className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:bg-blue-50"
+                                    title="Previsualizar"
+                                    style={{ color: '#94A3B8' }}>
+                                    <Eye size={13} />
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => handleDownload(doc)}
                                   className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:bg-green-50"

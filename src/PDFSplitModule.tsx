@@ -284,28 +284,36 @@ export default function PDFSplitModule() {
         if ((i + 1) % 5 === 0) await yieldToMain();
       }
 
-      // Phase 3: Save to database (batch upsert)
+      // Phase 3: Save to database — deduplicate by key first, then upsert one at a time
+      // (batch upsert fails if two pages share the same dni+anio+mes)
       setUploadProgress({ step: 'Guardando en base de datos...', done: 0, total: extracted.length });
       const now = new Date().toISOString();
-      const records = extracted.map(({ pageInfo, bytes, wasabiKey, nombreArchivo }) => ({
-        society_id: activeSocietyId ?? '',
-        dni: pageInfo.dni!,
-        anio: pageInfo.anio!,
-        mes: pageInfo.mes!,
-        wasabi_key: wasabiKey,
-        nombre_archivo: nombreArchivo,
-        tamano_bytes: bytes.byteLength,
-        subido_por: profile.id,
-        subido_por_nombre: profile.nombre,
-        pdf_origen: pdfFile.name,
-        created_at: now,
-      }));
-
-      const { error: dbError } = await supabase
-        .from('nominas')
-        .upsert(records, { onConflict: 'society_id,dni,anio,mes' });
-
-      if (dbError) throw new Error(dbError.message);
+      const seen = new Set<string>();
+      let dbDone = 0;
+      for (const { pageInfo, bytes, wasabiKey, nombreArchivo } of extracted) {
+        const key = `${activeSocietyId}|${pageInfo.dni}|${pageInfo.anio}|${pageInfo.mes}`;
+        if (seen.has(key)) { dbDone++; continue; }
+        seen.add(key);
+        const { error: dbError } = await supabase.from('nominas').upsert(
+          {
+            society_id: activeSocietyId ?? '',
+            dni: pageInfo.dni!,
+            anio: pageInfo.anio!,
+            mes: pageInfo.mes!,
+            wasabi_key: wasabiKey,
+            nombre_archivo: nombreArchivo,
+            tamano_bytes: bytes.byteLength,
+            subido_por: profile.id,
+            subido_por_nombre: profile.nombre,
+            pdf_origen: pdfFile.name,
+            created_at: now,
+          },
+          { onConflict: 'society_id,dni,anio,mes' }
+        );
+        if (dbError) throw new Error(dbError.message);
+        dbDone++;
+        setUploadProgress({ step: 'Guardando en base de datos...', done: dbDone, total: extracted.length });
+      }
 
       setUploadProgress({ step: '', done: extracted.length, total: extracted.length });
 

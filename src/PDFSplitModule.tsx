@@ -324,18 +324,22 @@ export default function PDFSplitModule() {
 
         await uploadBytesToWasabi(singlePageBytes, wasabiKey, 'application/pdf');
 
-        await supabase.from('nominas').insert({
-          society_id: activeSocietyId ?? '',
-          dni: safeDni,
-          anio,
-          mes,
-          wasabi_key: wasabiKey,
-          nombre_archivo: nombreArchivo,
-          tamano_bytes: singlePageBytes.byteLength,
-          subido_por: profile.id,
-          subido_por_nombre: profile.nombre,
-          pdf_origen: pdfFile.name,
-        });
+        await supabase.from('nominas').upsert(
+          {
+            society_id: activeSocietyId ?? '',
+            dni: safeDni,
+            anio,
+            mes,
+            wasabi_key: wasabiKey,
+            nombre_archivo: nombreArchivo,
+            tamano_bytes: singlePageBytes.byteLength,
+            subido_por: profile.id,
+            subido_por_nombre: profile.nombre,
+            pdf_origen: pdfFile.name,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: 'society_id,dni,anio,mes' }
+        );
 
         uploaded++;
         setUploadProgress(Math.round((uploaded / pages.length) * 100));

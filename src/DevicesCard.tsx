@@ -32,10 +32,10 @@ useEffect(() => {
     const { data: empleadoData } = await supabase
       .from('empleados')
       .select('id')
-      .eq('id', resolvedUserId)
+      .eq('user_id', resolvedUserId)
       .maybeSingle();
 
-    const realEmpleadoId = empleadoData?.id || resolvedUserId;
+    const realEmpleadoId = empleadoData?.id ?? resolvedUserId;
 
     const { data, error } = await supabase
       .from('dispositivos')

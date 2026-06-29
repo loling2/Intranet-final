@@ -43,7 +43,7 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId }: P
       // Never include documents with no specific recipient
       const orParts: string[] = [];
       if (userId) orParts.push(`usuario_destino_id.eq.${userId}`);
-      if (userEmail) orParts.push(`usuario_destino_email.eq.${userEmail}`);
+      if (userEmail) orParts.push(`usuario_destino_email.ilike.${userEmail}`);
 
       if (!orParts.length) {
         setDocs([]);
@@ -54,7 +54,6 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId }: P
         .from('documents')
         .select('*')
         .eq('folder', 'publico')
-        .eq('society_id', societyId)
         .or(orParts.join(','))
         .order('fecha_subida', { ascending: false });
 

@@ -3,7 +3,7 @@ import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination
 import { Ligature as FileSignature, Clock, Bell, Search, Filter, Upload, X, RefreshCw, AlertCircle, CheckCircle2, FileText, Download } from 'lucide-react';
 import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { uploadToWasabi } from '../lib/wasabi';
+import { uploadToWasabi, listWasabiFolder } from '../lib/wasabi';
 import { writeAuditLog } from '../lib/auditLog';
 
 interface Props {
@@ -401,25 +401,36 @@ export default function ContratosModule({ currentUserRole }: Props) {
 
 function ContratosDocs({ empleadoId, empleadoEmail }: { empleadoId: string; empleadoEmail: string }) {
   const [docs, setDocs] = useState<{ id: string; nombre_archivo: string; wasabi_key: string | null; fecha_subida: string }[]>([]);
+  const [wasabiKeys, setWasabiKeys] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from('documents')
-        .select('id, nombre_archivo, wasabi_key, fecha_subida')
-        .eq('folder', 'publico')
-        .ilike('nombre_archivo', 'Contrato-%')
-        .or(`usuario_destino_email.eq.${empleadoEmail},usuario_destino_id.eq.${empleadoId}`)
-        .order('fecha_subida', { ascending: false });
-      setDocs((data ?? []) as typeof docs);
+      setLoading(true);
+      const [dbRes, wasabiObjs] = await Promise.all([
+        supabase.from('documents')
+          .select('id, nombre_archivo, wasabi_key, fecha_subida')
+          .eq('folder', 'publico')
+          .ilike('nombre_archivo', 'Contrato-%')
+          .or(`usuario_destino_email.eq.${empleadoEmail},usuario_destino_id.eq.${empleadoId}`)
+          .order('fecha_subida', { ascending: false }),
+        listWasabiFolder('publico').catch(() => [] as { key: string }[]),
+      ]);
+      setDocs((dbRes.data ?? []) as typeof docs);
+      setWasabiKeys(new Set(wasabiObjs.map((w) => w.key)));
+      setLoading(false);
     })();
   }, [empleadoId, empleadoEmail]);
 
-  if (docs.length === 0) return null;
+  const validDocs = docs.filter((d) => !d.wasabi_key || wasabiKeys.has(d.wasabi_key));
+
+  if (loading || validDocs.length === 0) return null;
 
   return (
     <div className="mt-3">
       <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Contratos subidos</p>
       <div className="space-y-1.5">
-        {docs.map((d) => (
+        {validDocs.map((d) => (
           <div key={d.id} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #BBF7D0' }}>
             <FileText size={13} style={{ color: '#16A34A' }} />
             <p className="text-xs flex-1 truncate font-medium" style={{ color: '#1E293B' }}>{d.nombre_archivo}</p>

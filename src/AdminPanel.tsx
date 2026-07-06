@@ -3,7 +3,7 @@ import {
   Shield, Users, Building2, Laptop, FileText, Palmtree, Award,
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
   Eye, Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette,
-  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock,
+  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock, Mail,
 } from 'lucide-react';
 import { validUsers } from './mockData';
 import UserManagement from './UserManagement';
@@ -20,6 +20,7 @@ import DevicesModule from './components/DevicesModule';
 import CssPanel from './components/CssPanel';
 import IncidenciasModule from './components/IncidenciasModule';
 import DepartamentosModule from './components/DepartamentosModule';
+import EmailModule from './components/EmailModule';
 import FichajesModule from './components/FichajesModule';
 import RoleTabPermissionsManager from './components/RoleTabPermissionsManager';
 import { useSociety } from './context/SocietyContext';
@@ -33,7 +34,7 @@ interface Props {
   onImpersonate?: (userId: string, societyId: string | null) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions';
 
 export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -124,6 +125,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     { id: 'tags',       label: 'Tags PRL',            icon: Activity },
     { id: 'roles',        label: 'Roles',               icon: ShieldCheck },
     { id: 'departamentos', label: 'Departamentos',       icon: Building2 },
+    { id: 'email',         label: 'Email',               icon: Mail },
     { id: 'audit',        label: 'Auditoria',            icon: ScrollText },
     { id: 'css',        label: 'CSS',                 icon: Palette },
     { id: 'incidencias',  label: 'Incidencias',           icon: AlertCircle },
@@ -633,6 +635,10 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
 
         {activeTab === 'departamentos' && (
           <DepartamentosModule />
+        )}
+
+        {activeTab === 'email' && (
+          <EmailModule />
         )}
 
         {activeTab === 'css' && (

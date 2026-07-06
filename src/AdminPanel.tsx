@@ -3,7 +3,7 @@ import {
   Shield, Users, Building2, Laptop, FileText, Palmtree, Award,
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
   Eye, Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette,
-  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock, Mail,
+  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock, Mail, Menu,
 } from 'lucide-react';
 import { validUsers } from './mockData';
 import UserManagement from './UserManagement';
@@ -214,8 +214,28 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
         </div>
 
         {/* Tab Navigation */}
+        {/* Mobile: Dropdown select */}
+        <div className="md:hidden mb-6">
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-xl"
+            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
+          >
+            <Menu size={16} style={{ color: '#64748B' }} />
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value as AdminTab)}
+              className="flex-1 bg-transparent text-sm font-medium outline-none cursor-pointer"
+              style={{ color: '#0F172A' }}
+            >
+              {tabs.map((tab) => (
+                <option key={tab.id} value={tab.id}>{tab.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {/* Desktop: Horizontal tabs */}
         <div
-          className="flex gap-1 p-1 rounded-xl mb-6 sm:mb-8 overflow-x-auto"
+          className="hidden md:flex gap-1 p-1 rounded-xl mb-6 sm:mb-8 overflow-x-auto"
           style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
         >
           {tabs.map((tab) => {

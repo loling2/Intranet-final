@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound, AlertCircle } from 'lucide-react';
+import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound, AlertCircle, Menu } from 'lucide-react';
 import { mockVacations, mockCertificates, mockExams, mockDocuments } from './mockData';
 import UserManagement from './UserManagement';
 import VehiclesModule from './VehiclesModule';
@@ -224,8 +224,30 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
 
       <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Tab Navigation */}
+        {/* Mobile: Dropdown select */}
+        <div className="md:hidden mb-6">
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-xl"
+            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
+          >
+            <Menu size={16} style={{ color: '#64748B' }} />
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value as RRHHTab)}
+              className="flex-1 bg-transparent text-sm font-medium outline-none cursor-pointer"
+              style={{ color: '#0F172A' }}
+            >
+              {tabs.map((tab) => (
+                <option key={tab.id} value={tab.id}>
+                  {tab.label}{tab.badge != null && tab.badge > 0 ? ` (${tab.badge})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {/* Desktop: Horizontal tabs */}
         <div
-          className="flex gap-1 p-1 rounded-xl mb-8 overflow-x-auto"
+          className="hidden md:flex gap-1 p-1 rounded-xl mb-8 overflow-x-auto"
           style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
         >
           {tabs.map((tab) => {

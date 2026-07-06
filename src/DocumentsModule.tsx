@@ -367,6 +367,7 @@ const PAGE_SIZE = 50;
 function FolderPanel({
   folder, dbEntries, canManage, wasabiError: parentWasabiError,
   onPreview, onDownload, onDelete, deleting, search, onUpload, onRefresh,
+  refreshKey,
 }: {
   folder: Folder;
   dbEntries: FileEntry[];        // already-loaded DB entries from parent
@@ -379,6 +380,7 @@ function FolderPanel({
   search: string;
   onUpload: () => void;
   onRefresh: () => void;
+  refreshKey?: number;
 }) {
   const isPrivado = folder === 'privado';
   const isPrevencionFolder = folder === 'prevencion';
@@ -394,6 +396,24 @@ function FolderPanel({
   const [wasabiError, setWasabiError] = useState(false);
   const [page, setPage] = useState(0);
   const loadedRef = useRef(false);
+
+  // Reset and re-fetch Wasabi when parent signals refresh
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey > 0) {
+      loadedRef.current = false;
+      setWasabiObjs([]);
+      setWasabiError(false);
+      if (expanded) {
+        // Inline fetch to avoid stale closure
+        setWasabiLoading(true);
+        listWasabiFolder(folder)
+          .then(setWasabiObjs)
+          .catch(() => setWasabiError(true))
+          .finally(() => setWasabiLoading(false));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
 
   const loadWasabi = async () => {
     if (loadedRef.current) return;
@@ -424,8 +444,16 @@ function FolderPanel({
     onRefresh();
   };
 
-  // Merge DB + Wasabi entries — deduplicate by wasabi_key (exact key match)
-  const trackedKeys = new Set(dbEntries.map((d) => d.wasabiKey).filter(Boolean));
+  // Merge DB + Wasabi entries
+  // Build set of actual Wasabi keys to validate DB entries against
+  const wasabiKeys = new Set(wasabiObjs.map((w) => w.key));
+  // Filter DB entries: only show if their wasabiKey exists in Wasabi (or no key for legacy entries)
+  const validDbEntries = !wasabiLoading && wasabiObjs.length >= 0 && expanded
+    ? dbEntries.filter((d) => !d.wasabiKey || wasabiKeys.has(d.wasabiKey))
+    : dbEntries;
+  // Deduplicate: Wasabi files already tracked in DB
+  const trackedKeys = new Set(validDbEntries.map((d) => d.wasabiKey).filter(Boolean));
+  // Wasabi-only files (not in DB)
   const wasabiOnly: FileEntry[] = wasabiObjs
     .filter((w) => !trackedKeys.has(w.key) && w.nombre !== '.keep')
     .map((w) => ({
@@ -437,7 +465,7 @@ function FolderPanel({
       source: 'wasabi' as const,
       wasabiKey: w.key,
     }));
-  const allEntries = [...dbEntries, ...wasabiOnly].sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
+  const allEntries = [...validDbEntries, ...wasabiOnly].sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
 
   const filtered = allEntries.filter(
     (e) => !search || e.nombre.toLowerCase().includes(search.toLowerCase())
@@ -653,6 +681,7 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [initializingFolders, setInitializingFolders] = useState(false);
   const [foldersInitialized, setFoldersInitialized] = useState(false);
+  const [wasabiRefreshKey, setWasabiRefreshKey] = useState(0);
 
   const isPrevencion = currentUserRole === 'prevencion';
   const canManage = currentUserRole === 'admin' || currentUserRole === 'rrhh' || isPrevencion;
@@ -712,11 +741,11 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
         if (entry.idbKey) await deleteBlob(entry.idbKey);
         await supabase.from('documents').delete().eq('id', entry.dbRecord.id);
       }
-      // Also delete from Wasabi if we have the key
+      // Always delete from Wasabi if we have the key
       const keyToDelete = entry.wasabiKey ?? (entry.dbRecord
-        ? `${entry.dbRecord.folder}/${entry.dbRecord.indexeddb_key}` // fallback — may not match
+        ? entry.dbRecord.wasabi_key ?? null
         : null);
-      if (keyToDelete && entry.source === 'wasabi') {
+      if (keyToDelete) {
         await deleteFromWasabi(keyToDelete);
       }
       if (profile && entry.dbRecord) {
@@ -731,6 +760,7 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
         });
       }
       await loadAll();
+      setWasabiRefreshKey((k) => k + 1);
     } finally {
       setDeleting(null);
     }
@@ -851,6 +881,7 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
               search={search}
               onUpload={() => openUpload('prevencion')}
               onRefresh={loadAll}
+              refreshKey={wasabiRefreshKey}
             />
           ) : (
             <>
@@ -866,6 +897,7 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
                 search={search}
                 onUpload={() => openUpload('publico')}
                 onRefresh={loadAll}
+                refreshKey={wasabiRefreshKey}
               />
               {canManage && (
                 <>
@@ -881,6 +913,7 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
                     search={search}
                     onUpload={() => openUpload('privado')}
                     onRefresh={loadAll}
+                    refreshKey={wasabiRefreshKey}
                   />
                   <FolderPanel
                     folder="prevencion"
@@ -894,6 +927,7 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
                     search={search}
                     onUpload={() => openUpload('prevencion')}
                     onRefresh={loadAll}
+                    refreshKey={wasabiRefreshKey}
                   />
                 </>
               )}

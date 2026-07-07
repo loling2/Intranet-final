@@ -1509,6 +1509,7 @@ interface NominaRow {
   nombre_archivo: string;
   tamano_bytes: number;
   created_at: string;
+  sociedad_nombre: string;
 }
 
 function MisNominasView({ theme, userId: propUserId }: { theme: SocietyTheme; userId?: string | null }) {
@@ -1537,7 +1538,7 @@ function MisNominasView({ theme, userId: propUserId }: { theme: SocietyTheme; us
 
         const { data } = await supabase
           .from('nominas')
-          .select('id, dni, anio, mes, wasabi_key, nombre_archivo, tamano_bytes, created_at')
+          .select('id, dni, anio, mes, wasabi_key, nombre_archivo, tamano_bytes, created_at, sociedad_nombre')
           .eq('dni', resolvedDni)
           .order('anio', { ascending: false })
           .order('mes', { ascending: false });
@@ -1628,9 +1629,16 @@ function MisNominasView({ theme, userId: propUserId }: { theme: SocietyTheme; us
                           <FileText size={16} style={{ color: theme.primary }} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold" style={{ color: theme.textPrimary }}>
-                            {n.nombre_archivo || `Nomina ${MES_NOMBRES_EMP[n.mes]} ${n.anio}`}
-                          </p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-semibold" style={{ color: theme.textPrimary }}>
+                              {n.nombre_archivo || `Nomina ${MES_NOMBRES_EMP[n.mes]} ${n.anio}`}
+                            </p>
+                            {n.sociedad_nombre && (
+                              <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: theme.primaryLight, color: theme.primary }}>
+                                {n.sociedad_nombre}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs mt-0.5" style={{ color: theme.textSecondary }}>
                             {(n.tamano_bytes / 1024).toFixed(0)} KB · {new Date(n.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
                           </p>

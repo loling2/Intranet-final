@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import {
   Upload, FileText, AlertCircle, RefreshCw, X,
   ChevronLeft, ChevronRight, Loader2, CheckCircle2,
-  Trash2, Download, Search, Calendar, User, Info
+  Trash2, Download, Search, Calendar, User, Info, Building2
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFDocument, PDFName } from 'pdf-lib';
@@ -99,18 +99,47 @@ function extractMesAnio(text: string): { mes: number; nombre: string; anio: numb
 }
 
 function extractEmpresa(text: string): string | null {
-  // Try to find the EMPRESA label and extract the value after it
-  // Common patterns in Spanish payslips: "EMPRESA <name>" or the name appears before DOMICILIO
   const upper = text.toUpperCase();
+  const STOP_PATTERN = /DOMICILIO|N[ºO°°]\s*INSCRIPCI[OÓ]N|TRABAJADOR|NIF\/CIF|C\.I\.F\b|CIF\b|CENTRO\b/i;
+
+  // Pattern 1: labeled "EMPRESA" field
   const empresaIdx = upper.indexOf('EMPRESA');
   if (empresaIdx !== -1) {
-    // Take text after EMPRESA, up to known next column headers
-    const after = text.slice(empresaIdx + 7, empresaIdx + 200);
-    // Stop at known column headers
-    const stop = after.search(/DOMICILIO|N[ºO°]\s*INSCRIPCI[OÓ]N|TRABAJADOR|NIF\/CIF/i);
+    const after = text.slice(empresaIdx + 7, empresaIdx + 250);
+    const stop = after.search(STOP_PATTERN);
     const raw = (stop !== -1 ? after.slice(0, stop) : after).trim().replace(/\s+/g, ' ');
     if (raw.length > 2 && raw.length < 120) return raw;
   }
+
+  // Pattern 2: "RAZÓN SOCIAL" / "RAZON SOCIAL" label
+  const razonIdx = upper.search(/RAZ[OÓ]N\s*SOCIAL/);
+  if (razonIdx !== -1) {
+    const colonOffset = text.slice(razonIdx, razonIdx + 30).search(/:/);
+    const startOffset = colonOffset !== -1 ? razonIdx + colonOffset + 1 : razonIdx + 13;
+    const after = text.slice(startOffset, startOffset + 200).trim();
+    const stop = after.search(STOP_PATTERN);
+    const raw = (stop !== -1 ? after.slice(0, stop) : after).trim().replace(/\s+/g, ' ');
+    if (raw.length > 2 && raw.length < 120) return raw;
+  }
+
+  // Pattern 3: "DENOMINACIÓN SOCIAL" label
+  const denomIdx = upper.search(/DENOMINACI[OÓ]N\s*SOCIAL/);
+  if (denomIdx !== -1) {
+    const colonOffset = text.slice(denomIdx, denomIdx + 30).search(/:/);
+    const startOffset = colonOffset !== -1 ? denomIdx + colonOffset + 1 : denomIdx + 20;
+    const after = text.slice(startOffset, startOffset + 200).trim();
+    const stop = after.search(STOP_PATTERN);
+    const raw = (stop !== -1 ? after.slice(0, stop) : after).trim().replace(/\s+/g, ' ');
+    if (raw.length > 2 && raw.length < 120) return raw;
+  }
+
+  // Pattern 4: find a legal entity suffix (S.L., S.A., S.L.U., etc.) and take surrounding text
+  const legalMatch = text.match(/([A-ZÁÉÍÓÚÑ\u00C0-\u024F][^\n]{3,80}?\s(?:S\.L\.U?\.|S\.A\.U?\.|S\.L\.L\.|S\.COOP\.|S\.C\.|SOCIEDAD LIMITADA|SOCIEDAD AN[OÓ]NIMA))/);
+  if (legalMatch) {
+    const raw = legalMatch[1].trim().replace(/\s+/g, ' ');
+    if (raw.length > 4 && raw.length < 120) return raw;
+  }
+
   return null;
 }
 
@@ -576,7 +605,7 @@ export default function PDFSplitModule() {
             <div className="lg:col-span-2 space-y-3">
               <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
                 {/* Page info bar */}
-                <div className="px-4 py-3 flex items-center gap-4" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                <div className="px-4 py-3 flex items-center gap-4 flex-wrap" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
                   <div className="flex items-center gap-1.5">
                     <User size={12} style={{ color: currentPage?.dni ? '#16A34A' : '#DC2626' }} />
                     <span className="text-xs font-mono font-semibold" style={{ color: currentPage?.dni ? '#15803D' : '#DC2626' }}>
@@ -589,6 +618,12 @@ export default function PDFSplitModule() {
                       {currentPage?.mesNombre ?? '?'} {currentPage?.anio ?? '?'}
                     </span>
                   </div>
+                  <div className="flex items-center gap-1.5">
+                    <Building2 size={12} style={{ color: currentPage?.empresa ? '#0D9488' : '#94A3B8' }} />
+                    <span className="text-xs truncate max-w-48" style={{ color: currentPage?.empresa ? '#0F766E' : '#94A3B8' }}>
+                      {currentPage?.empresa ?? 'Empresa no detectada'}
+                    </span>
+                  </div>
                   <span className="text-xs ml-auto" style={{ color: '#94A3B8' }}>
                     Pagina {currentPageIndex + 1} / {pages.length}
                   </span>
@@ -596,7 +631,7 @@ export default function PDFSplitModule() {
 
                 {/* Text-based page info (no canvas rendering) */}
                 <div className="p-6 space-y-4" style={{ backgroundColor: '#F8FAFC', minHeight: 200 }}>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div className="rounded-xl p-4" style={{ backgroundColor: currentPage?.dni ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${currentPage?.dni ? '#BBF7D0' : '#FECACA'}` }}>
                       <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: currentPage?.dni ? '#166534' : '#991B1B' }}>DNI / NIE</p>
                       <p className="text-lg font-mono font-bold" style={{ color: currentPage?.dni ? '#15803D' : '#DC2626' }}>
@@ -607,6 +642,12 @@ export default function PDFSplitModule() {
                       <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: currentPage?.anio ? '#1E40AF' : '#64748B' }}>Periodo</p>
                       <p className="text-lg font-bold" style={{ color: currentPage?.anio ? '#1D4ED8' : '#94A3B8' }}>
                         {currentPage?.mesNombre ?? '?'} {currentPage?.anio ?? '?'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl p-4" style={{ backgroundColor: currentPage?.empresa ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${currentPage?.empresa ? '#99F6E4' : '#E2E8F0'}` }}>
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: currentPage?.empresa ? '#0F766E' : '#64748B' }}>Empresa</p>
+                      <p className="text-sm font-bold leading-tight" style={{ color: currentPage?.empresa ? '#0D9488' : '#94A3B8' }}>
+                        {currentPage?.empresa ?? 'No detectada'}
                       </p>
                     </div>
                   </div>
@@ -671,8 +712,11 @@ export default function PDFSplitModule() {
                       style={{ backgroundColor: p.pageNum - 1 === currentPageIndex ? '#F8FAFC' : undefined }}
                     >
                       <span className="text-xs w-8 flex-shrink-0" style={{ color: '#94A3B8' }}>#{p.pageNum}</span>
-                      <span className={`text-xs font-mono font-semibold flex-1 ${p.dni ? '' : 'opacity-40'}`} style={{ color: p.dni ? '#15803D' : '#DC2626' }}>
+                      <span className={`text-xs font-mono font-semibold w-28 flex-shrink-0 ${p.dni ? '' : 'opacity-40'}`} style={{ color: p.dni ? '#15803D' : '#DC2626' }}>
                         {p.dni ?? 'sin DNI'}
+                      </span>
+                      <span className="text-xs flex-1 truncate" style={{ color: p.empresa ? '#0D9488' : '#CBD5E1' }}>
+                        {p.empresa ?? '—'}
                       </span>
                       <span className="text-xs flex-shrink-0" style={{ color: '#94A3B8' }}>
                         {p.mesNombre} {p.anio}

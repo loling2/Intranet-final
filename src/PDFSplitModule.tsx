@@ -40,6 +40,7 @@ interface NominaRecord {
   subido_por_nombre: string;
   pdf_origen: string;
   created_at: string;
+  sociedad_nombre: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -305,7 +306,7 @@ export default function PDFSplitModule() {
         const { dni, anio, mes, mesNombre, empresa } = pageInfo;
         const mesStr = String(mes!).padStart(2, '0');
         const empresaSuffix = empresa ? `-${empresa.replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ ]/g, '').trim().replace(/\s+/g, '_').slice(0, 40)}` : '';
-        const wasabiKey = `rrhh/publico/${anio}/${mesStr}/${dni}-${mesStr}-${anio}${empresaSuffix}.pdf`;
+        const wasabiKey = `rrhh/publico/${activeSocietyId}/${anio}/${mesStr}/${dni}-${mesStr}-${anio}${empresaSuffix}.pdf`;
         const mesLabel = mesNombre ?? MES_NOMBRES[mes!] ?? mesStr;
         const nombreArchivo = empresa
           ? `Nomina ${mesLabel} ${anio} – ${empresa}`
@@ -743,6 +744,11 @@ export default function PDFSplitModule() {
                       <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8' }}>
                         {MES_NOMBRES[n.mes]} {n.anio}
                       </span>
+                      {n.sociedad_nombre && (
+                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F0FDF4', color: '#166534' }}>
+                          {n.sociedad_nombre}
+                        </span>
+                      )}
                       {n.nombre_archivo && (
                         <span className="text-xs truncate max-w-xs" style={{ color: '#64748B' }}>{n.nombre_archivo}</span>
                       )}

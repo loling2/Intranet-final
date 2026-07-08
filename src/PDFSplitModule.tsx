@@ -100,53 +100,18 @@ function extractMesAnio(text: string): { mes: number; nombre: string; anio: numb
 
 function extractEmpresa(text: string): string | null {
   const upper = text.toUpperCase();
+  const STOP_PATTERN = /DOMICILIO|N[ºO°°]\s*INSCRIPCI[OÓ]N|TRABAJADOR|NIF\/CIF|C\.I\.F\b|CIF\b|CENTRO\b/i;
 
-  // STOP tokens that delimit the end of a company-name field
-  const STOP_PATTERN = /DOMICILIO|N[ºO°°]\s*INSCRIPCI[OÓ]N|TRABAJADOR|NIF\/CIF|C\.I\.F\b|CIF\b|CENTRO\b|COD\.\s*POSTAL|C\.P\./i;
-
-  // ── Pattern 1: "EMPRESA" label followed immediately by other header labels on
-  //    the same line (e.g. "EMPRESA  DOMICILIO  N.I.F./C.I.F.").
-  //    In that case the actual company name is on the NEXT non-empty line/section
-  //    after that header row. We detect this by checking whether the text right
-  //    after "EMPRESA" hits STOP_PATTERN within 40 chars (= it's a header row).
+  // Pattern 1: labeled "EMPRESA" field
   const empresaIdx = upper.indexOf('EMPRESA');
   if (empresaIdx !== -1) {
-    const immediately = text.slice(empresaIdx + 7, empresaIdx + 7 + 40);
-    const hitsSoonStop = immediately.search(STOP_PATTERN) !== -1 || immediately.trim().length === 0;
-
-    if (hitsSoonStop) {
-      // The header row ends at the first occurrence of a multi-word HEADER_ROW sentinel.
-      // Find the end of this header line (stop at DOMICILIO or similar) then look
-      // for the first substantial text token that follows.
-      const headerRowEnd = upper.indexOf('DOMICILIO', empresaIdx);
-      const searchFrom = headerRowEnd !== -1 ? headerRowEnd : empresaIdx + 7;
-      // Advance past the whole header row (until we see a token that looks like data)
-      // We look for a chunk that isn't another column header.
-      const HEADER_TOKENS = /^\s*(?:DOMICILIO|N[ºO°°°\.]\s*INSCRIPCI|NIF|CIF|TRABAJADOR|CENTRO|COD|PERIODO|LIQUID)/i;
-      // Collect non-empty "words" starting after searchFrom, skipping known header tokens
-      const rest = text.slice(searchFrom + 9); // skip past "DOMICILIO"
-      // Split by whitespace sequences of 2+ spaces or newlines (PDF-extracted text uses those as separators)
-      const tokens = rest.split(/\s{2,}|\n/).map(t => t.trim()).filter(Boolean);
-      for (const tok of tokens) {
-        if (HEADER_TOKENS.test(tok)) continue;
-        if (tok.length < 3 || tok.length > 120) continue;
-        // Reject pure numbers or very short codes
-        if (/^\d+$/.test(tok)) continue;
-        // Reject date-like strings
-        if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(tok)) continue;
-        const clean = tok.replace(/\s+/g, ' ');
-        return clean.slice(0, 100);
-      }
-    } else {
-      // "EMPRESA:" or "EMPRESA " followed directly by the name
-      const after = text.slice(empresaIdx + 7, empresaIdx + 250);
-      const stop = after.search(STOP_PATTERN);
-      const raw = (stop !== -1 ? after.slice(0, stop) : after).trim().replace(/\s+/g, ' ');
-      if (raw.length > 2 && raw.length < 120) return raw;
-    }
+    const after = text.slice(empresaIdx + 7, empresaIdx + 250);
+    const stop = after.search(STOP_PATTERN);
+    const raw = (stop !== -1 ? after.slice(0, stop) : after).trim().replace(/\s+/g, ' ');
+    if (raw.length > 2 && raw.length < 120) return raw;
   }
 
-  // ── Pattern 2: "RAZÓN SOCIAL" / "RAZON SOCIAL" label ────────────────────────
+  // Pattern 2: "RAZÓN SOCIAL" / "RAZON SOCIAL" label
   const razonIdx = upper.search(/RAZ[OÓ]N\s*SOCIAL/);
   if (razonIdx !== -1) {
     const colonOffset = text.slice(razonIdx, razonIdx + 30).search(/:/);
@@ -157,7 +122,7 @@ function extractEmpresa(text: string): string | null {
     if (raw.length > 2 && raw.length < 120) return raw;
   }
 
-  // ── Pattern 3: "DENOMINACIÓN SOCIAL" label ──────────────────────────────────
+  // Pattern 3: "DENOMINACIÓN SOCIAL" label
   const denomIdx = upper.search(/DENOMINACI[OÓ]N\s*SOCIAL/);
   if (denomIdx !== -1) {
     const colonOffset = text.slice(denomIdx, denomIdx + 30).search(/:/);
@@ -168,7 +133,7 @@ function extractEmpresa(text: string): string | null {
     if (raw.length > 2 && raw.length < 120) return raw;
   }
 
-  // ── Pattern 4: legal-entity suffix (S.L., S.A., etc.) ───────────────────────
+  // Pattern 4: find a legal entity suffix (S.L., S.A., S.L.U., etc.) and take surrounding text
   const legalMatch = text.match(/([A-ZÁÉÍÓÚÑ\u00C0-\u024F][^\n]{3,80}?\s(?:S\.L\.U?\.|S\.A\.U?\.|S\.L\.L\.|S\.COOP\.|S\.C\.|SOCIEDAD LIMITADA|SOCIEDAD AN[OÓ]NIMA))/);
   if (legalMatch) {
     const raw = legalMatch[1].trim().replace(/\s+/g, ' ');

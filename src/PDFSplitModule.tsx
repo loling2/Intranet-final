@@ -27,6 +27,8 @@ interface PageInfo {
   mes: number | null;
   mesNombre: string | null;
   empresa: string | null;
+  sociedad_nif: string | null;
+  sociedad_nombre_detected: string | null;
 }
 
 interface NominaRecord {
@@ -53,6 +55,22 @@ const MESES: Record<string, number> = {
 
 const MES_NOMBRES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+const NIF_SOCIETY_MAP: Record<string, string> = {
+  'G76604842': 'APEDECA',
+  'B76807973': 'GERONTALIA',
+  'B19484344': 'ELEDA',
+  'B38062667': 'SERCA',
+};
+
+function extractNifCif(text: string): string | null {
+  const match = text.match(/NIF[\s\/]*CIF[:\s]+([A-Z]\d{7}[A-Z0-9]|\d{8}[A-Z])/i);
+  return match ? match[1].toUpperCase().trim() : null;
+}
+
+function getSocietyByNif(nif: string): string | null {
+  return NIF_SOCIETY_MAP[nif] ?? null;
+}
 
 function extractDNI(text: string): string | null {
   const match = text.match(/\b([XYZxyz]?\d{7,8}[A-Za-z])\b/);
@@ -243,6 +261,8 @@ export default function PDFSplitModule() {
         const dni = extractDNI(text);
         const periodoInfo = extractMesAnio(text);
         const empresa = extractEmpresa(text);
+        const sociedadNif = extractNifCif(text);
+        const sociedadNombreDetected = sociedadNif ? getSocietyByNif(sociedadNif) : null;
 
         extractedPages.push({
           pageNum: i,
@@ -252,6 +272,8 @@ export default function PDFSplitModule() {
           mes: periodoInfo?.mes ?? null,
           mesNombre: periodoInfo?.nombre ?? null,
           empresa,
+          sociedad_nif: sociedadNif,
+          sociedad_nombre_detected: sociedadNombreDetected,
         });
 
         // Update progress every 5 pages to reduce re-renders
@@ -315,8 +337,8 @@ export default function PDFSplitModule() {
       for (let i = 0; i < validPages.length; i++) {
         const pageInfo = validPages[i];
         const safeDni = pageInfo.dni!.replace(/[^A-Z0-9]/g, '');
-        const empresaKey = pageInfo.empresa ?? '';
-        const key = `${safeDni}|${pageInfo.anio}|${pageInfo.mes}|${empresaKey}`;
+        const sociedadKey = pageInfo.sociedad_nombre_detected ?? pageInfo.empresa ?? '';
+        const key = `${safeDni}|${pageInfo.anio}|${pageInfo.mes}|${sociedadKey}`;
         if (!groups.has(key)) {
           groups.set(key, { pageInfo: { ...pageInfo, dni: safeDni }, pageIndexes: [] });
         }
@@ -332,13 +354,18 @@ export default function PDFSplitModule() {
       let gi = 0;
 
       for (const [, { pageInfo, pageIndexes }] of groups) {
-        const { dni, anio, mes, mesNombre, empresa } = pageInfo;
+        const { dni, anio, mes, mesNombre, empresa, sociedad_nombre_detected } = pageInfo;
         const mesStr = String(mes!).padStart(2, '0');
-        const empresaSuffix = empresa ? `-${empresa.replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ ]/g, '').trim().replace(/\s+/g, '_').slice(0, 40)}` : '';
-        const wasabiKey = `rrhh/publico/${activeSocietyId}/${anio}/${mesStr}/${dni}-${mesStr}-${anio}${empresaSuffix}.pdf`;
+        const societySlug = sociedad_nombre_detected
+          ? `-${sociedad_nombre_detected.replace(/[^a-zA-Z0-9]/g, '')}`
+          : empresa
+            ? `-${empresa.replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ ]/g, '').trim().replace(/\s+/g, '_').slice(0, 40)}`
+            : '';
+        const wasabiKey = `rrhh/publico/${activeSocietyId}/${anio}/${mesStr}/${dni}-${mesStr}-${anio}${societySlug}.pdf`;
         const mesLabel = mesNombre ?? MES_NOMBRES[mes!] ?? mesStr;
-        const nombreArchivo = empresa
-          ? `Nomina ${mesLabel} ${anio} – ${empresa}`
+        const societyName = sociedad_nombre_detected ?? empresa;
+        const nombreArchivo = societyName
+          ? `Nomina ${mesLabel} ${anio} – ${societyName}`
           : `Nomina ${mesLabel} ${anio}`;
         const bytes = await mergePageBytes(pdfBytes, pageIndexes);
         merged.push({ pageInfo, bytes, wasabiKey, nombreArchivo, numPaginas: pageIndexes.length });
@@ -361,10 +388,11 @@ export default function PDFSplitModule() {
       const now = new Date().toISOString();
       for (let i = 0; i < merged.length; i++) {
         const { pageInfo, bytes, wasabiKey, nombreArchivo } = merged[i];
+        const sociedadNombreFinal = pageInfo.sociedad_nombre_detected ?? pageInfo.empresa ?? '';
         const { error: dbError } = await supabase.from('nominas').upsert(
           {
             society_id: activeSocietyId ?? '',
-            sociedad_nombre: pageInfo.empresa ?? '',
+            sociedad_nombre: sociedadNombreFinal,
             dni: pageInfo.dni!,
             anio: pageInfo.anio!,
             mes: pageInfo.mes!,
@@ -421,7 +449,7 @@ export default function PDFSplitModule() {
   const undetected = pages.length - detected;
   const uniqueEmployees = new Set(
     pages.filter((p) => p.dni && p.anio && p.mes)
-      .map((p) => `${p.dni!.replace(/[^A-Z0-9]/g, '')}|${p.anio}|${p.mes}|${p.empresa ?? ''}`)
+      .map((p) => `${p.dni!.replace(/[^A-Z0-9]/g, '')}|${p.anio}|${p.mes}|${p.sociedad_nombre_detected ?? p.empresa ?? ''}`)
   ).size;
 
   const filteredNominas = nominas.filter((n) => {
@@ -619,9 +647,9 @@ export default function PDFSplitModule() {
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <Building2 size={12} style={{ color: currentPage?.empresa ? '#0D9488' : '#94A3B8' }} />
-                    <span className="text-xs truncate max-w-48" style={{ color: currentPage?.empresa ? '#0F766E' : '#94A3B8' }}>
-                      {currentPage?.empresa ?? 'Empresa no detectada'}
+                    <Building2 size={12} style={{ color: (currentPage?.sociedad_nombre_detected || currentPage?.empresa) ? '#0D9488' : '#94A3B8' }} />
+                    <span className="text-xs truncate max-w-48" style={{ color: (currentPage?.sociedad_nombre_detected || currentPage?.empresa) ? '#0F766E' : '#94A3B8' }}>
+                      {currentPage?.sociedad_nombre_detected ?? currentPage?.empresa ?? 'Empresa no detectada'}
                     </span>
                   </div>
                   <span className="text-xs ml-auto" style={{ color: '#94A3B8' }}>
@@ -644,11 +672,16 @@ export default function PDFSplitModule() {
                         {currentPage?.mesNombre ?? '?'} {currentPage?.anio ?? '?'}
                       </p>
                     </div>
-                    <div className="rounded-xl p-4" style={{ backgroundColor: currentPage?.empresa ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${currentPage?.empresa ? '#99F6E4' : '#E2E8F0'}` }}>
-                      <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: currentPage?.empresa ? '#0F766E' : '#64748B' }}>Empresa</p>
-                      <p className="text-sm font-bold leading-tight" style={{ color: currentPage?.empresa ? '#0D9488' : '#94A3B8' }}>
-                        {currentPage?.empresa ?? 'No detectada'}
+                    <div className="rounded-xl p-4" style={{ backgroundColor: (currentPage?.sociedad_nombre_detected || currentPage?.empresa) ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${(currentPage?.sociedad_nombre_detected || currentPage?.empresa) ? '#99F6E4' : '#E2E8F0'}` }}>
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: (currentPage?.sociedad_nombre_detected || currentPage?.empresa) ? '#0F766E' : '#64748B' }}>Empresa</p>
+                      <p className="text-sm font-bold leading-tight" style={{ color: (currentPage?.sociedad_nombre_detected || currentPage?.empresa) ? '#0D9488' : '#94A3B8' }}>
+                        {currentPage?.sociedad_nombre_detected ?? currentPage?.empresa ?? 'No detectada'}
                       </p>
+                      {currentPage?.sociedad_nif && (
+                        <p className="text-xs mt-1 font-mono" style={{ color: '#64748B', fontSize: 10 }}>
+                          NIF: {currentPage.sociedad_nif}
+                        </p>
+                      )}
                     </div>
                   </div>
                   {currentPage && (
@@ -715,8 +748,8 @@ export default function PDFSplitModule() {
                       <span className={`text-xs font-mono font-semibold w-28 flex-shrink-0 ${p.dni ? '' : 'opacity-40'}`} style={{ color: p.dni ? '#15803D' : '#DC2626' }}>
                         {p.dni ?? 'sin DNI'}
                       </span>
-                      <span className="text-xs flex-1 truncate" style={{ color: p.empresa ? '#0D9488' : '#CBD5E1' }}>
-                        {p.empresa ?? '—'}
+                      <span className="text-xs flex-1 truncate" style={{ color: (p.sociedad_nombre_detected || p.empresa) ? '#0D9488' : '#CBD5E1' }}>
+                        {p.sociedad_nombre_detected ?? p.empresa ?? '—'}
                       </span>
                       <span className="text-xs flex-shrink-0" style={{ color: '#94A3B8' }}>
                         {p.mesNombre} {p.anio}

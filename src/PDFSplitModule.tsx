@@ -335,11 +335,11 @@ export default function PDFSplitModule() {
         const { dni, anio, mes, mesNombre, empresa } = pageInfo;
         const mesStr = String(mes!).padStart(2, '0');
         const empresaSuffix = empresa ? `-${empresa.replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ ]/g, '').trim().replace(/\s+/g, '_').slice(0, 40)}` : '';
-        const wasabiKey = `rrhh/publico/${activeSocietyId}/${anio}/${mesStr}/${dni}-${mesStr}-${anio}${empresaSuffix}.pdf`;
+        // Include source PDF base name (without extension) to avoid overwriting when same DNI in multiple PDFs
+        const pdfBase = pdfFile.name.replace(/\.pdf$/i, '').replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ _-]/g, '').slice(0, 30);
+        const wasabiKey = `rrhh/publico/${activeSocietyId}/${anio}/${mesStr}/${dni}-${mesStr}-${anio}${empresaSuffix}--${pdfBase}.pdf`;
         const mesLabel = mesNombre ?? MES_NOMBRES[mes!] ?? mesStr;
-        const nombreArchivo = empresa
-          ? `Nomina ${mesLabel} ${anio} – ${empresa}`
-          : `Nomina ${mesLabel} ${anio}`;
+        const nombreArchivo = `Nomina ${mesLabel} ${anio} – ${empresa || 'Sin empresa'}`;
         const bytes = await mergePageBytes(pdfBytes, pageIndexes);
         merged.push({ pageInfo, bytes, wasabiKey, nombreArchivo, numPaginas: pageIndexes.length });
         gi++;
@@ -376,7 +376,7 @@ export default function PDFSplitModule() {
             pdf_origen: pdfFile.name,
             created_at: now,
           },
-          { onConflict: 'society_id,dni,anio,mes,sociedad_nombre' }
+          { onConflict: 'society_id,dni,anio,mes,pdf_origen' }
         );
         if (dbError) throw new Error(dbError.message);
         setUploadProgress({ step: 'Guardando en base de datos...', done: i + 1, total: merged.length });

@@ -43,6 +43,26 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const body = await req.json();
+    const { action, userId, password, email, role, pin, nombre, societies } = body;
+
+    // ── set_own_pin (employee self-service) ───────────────────────────────────
+    if (action === "set_own_pin") {
+      if (!pin || String(pin).length < 4) {
+        return new Response(JSON.stringify({ error: "El PIN debe tener al menos 4 digitos" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { error } = await supabaseAdmin
+        .from("user_profiles")
+        .update({ pin: String(pin) })
+        .eq("id", callerUser.id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: callerProfile } = await supabaseAdmin
       .from("user_profiles")
       .select("role")
@@ -54,9 +74,6 @@ Deno.serve(async (req: Request) => {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const body = await req.json();
-    const { action, userId, password, email, role, pin, nombre, societies } = body;
 
     if (!action) {
       return new Response(JSON.stringify({ error: "Faltan parametros" }), {

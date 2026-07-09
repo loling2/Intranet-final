@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Users, UserPlus, Search, Mail, CheckCircle2,
   CreditCard as Edit2, Key, X, Eye, EyeOff, AlertCircle,
-  RefreshCw, Hash, UserCheck, Send,
+  RefreshCw, Hash, UserCheck, Send, FileText,
 } from 'lucide-react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './components/Pagination';
 import { supabase, UserProfile, AppRole, Empleado } from './supabaseClient';
@@ -600,6 +600,163 @@ function CredentialRow({
   );
 }
 
+// ─── Send Email Modal ─────────────────────────────────────────────────────────
+
+interface EmailPlantillaRef {
+  id: string;
+  nombre: string;
+  asunto: string;
+  cuerpo: string;
+  cuenta_id: string | null;
+  activo: boolean;
+}
+
+interface SendEmailModalProps {
+  user: { nombre: string; email: string };
+  onClose: () => void;
+}
+
+function SendEmailModal({ user, onClose }: SendEmailModalProps) {
+  const [plantillas, setPlantillas] = useState<EmailPlantillaRef[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    supabase
+      .from('email_plantillas')
+      .select('id, nombre, asunto, cuerpo, cuenta_id, activo')
+      .eq('activo', true)
+      .order('nombre')
+      .then(({ data }) => {
+        setPlantillas((data ?? []) as EmailPlantillaRef[]);
+        setLoading(false);
+      });
+  }, []);
+
+  const handleSend = async () => {
+    if (!selected) return;
+    const plantilla = plantillas.find((p) => p.id === selected);
+    if (!plantilla) return;
+    setSending(true); setError('');
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-template-email`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            plantilla_id: plantilla.id,
+            destinatario_email: user.email,
+            destinatario_nombre: user.nombre,
+          }),
+        }
+      );
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(body.error ?? `Error ${resp.status}`);
+      setSent(true);
+      setTimeout(onClose, 2000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al enviar');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}>
+          <div className="flex items-center gap-2">
+            <Send size={16} className="text-white" />
+            <h2 className="text-white font-semibold text-sm">Enviar correo a {user.nombre}</h2>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+            <X size={15} />
+          </button>
+        </div>
+
+        <div className="p-6">
+          {sent ? (
+            <div className="flex flex-col items-center py-6 text-center">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center mb-3" style={{ backgroundColor: '#F0FDF4', border: '2px solid #22C55E' }}>
+                <CheckCircle2 size={28} style={{ color: '#22C55E' }} />
+              </div>
+              <p className="font-semibold text-sm" style={{ color: '#1E293B' }}>Correo enviado</p>
+              <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>{user.email}</p>
+            </div>
+          ) : loading ? (
+            <div className="flex items-center justify-center py-10">
+              <RefreshCw size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
+            </div>
+          ) : plantillas.length === 0 ? (
+            <div className="flex flex-col items-center py-8 text-center">
+              <FileText size={32} className="mb-3" style={{ color: '#CBD5E1' }} />
+              <p className="text-sm font-medium" style={{ color: '#64748B' }}>Sin plantillas activas</p>
+              <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Crea una plantilla en Email {'>'} Plantillas antes de enviar.</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#94A3B8' }}>
+                Selecciona una plantilla
+              </p>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {plantillas.map((p) => (
+                  <button key={p.id} onClick={() => setSelected(p.id)}
+                    className="w-full text-left px-4 py-3 rounded-xl border-2 transition-all duration-150 flex items-center gap-3"
+                    style={{
+                      borderColor: selected === p.id ? '#0EA5E9' : '#E2E8F0',
+                      backgroundColor: selected === p.id ? '#EFF6FF' : '#F8FAFC',
+                    }}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: selected === p.id ? '#BFDBFE' : '#E2E8F0' }}>
+                      <FileText size={14} style={{ color: selected === p.id ? '#1D4ED8' : '#94A3B8' }} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>{p.nombre}</p>
+                      <p className="text-xs truncate mt-0.5" style={{ color: '#94A3B8' }}>{p.asunto}</p>
+                    </div>
+                    {selected === p.id && <CheckCircle2 size={16} style={{ color: '#0EA5E9' }} />}
+                  </button>
+                ))}
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 px-3 py-2 mt-3 rounded-lg text-xs"
+                  style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
+                  <AlertCircle size={13} /> {error}
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-4">
+                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium"
+                  style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
+                  Cancelar
+                </button>
+                <button onClick={handleSend} disabled={!selected || sending}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: '#0F172A' }}>
+                  {sending ? <RefreshCw size={13} className="animate-spin" /> : <Send size={13} />}
+                  {sending ? 'Enviando...' : 'Enviar'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 interface Props { currentUserRole: AppRole; onImpersonate?: (userId: string, societyId: string | null) => void; }
@@ -615,8 +772,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [page, setPage] = useState(1);
-  const [sendingInvite, setSendingInvite] = useState<string | null>(null);
-  const [inviteSent, setInviteSent] = useState<string | null>(null);
+  const [sendingEmailUser, setSendingEmailUser] = useState<{ nombre: string; email: string } | null>(null);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -631,19 +787,6 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
   useEffect(() => { setPage(1); }, [search, filterRole, filterStatus]);
-
-  const handleSendInvite = async (userId: string) => {
-    setSendingInvite(userId);
-    try {
-      await callManageUser('send_invite', userId, {});
-      setInviteSent(userId);
-      setTimeout(() => setInviteSent(null), 3000);
-    } catch {
-      // silently ignore — the user can retry
-    } finally {
-      setSendingInvite(null);
-    }
-  };
 
   const userIds = new Set(users.map((u) => u.id));
   // Empleados that don't have a linked user_profiles entry
@@ -678,6 +821,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
     <div>
       {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={loadUsers} currentUserRole={currentUserRole} />}
       {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} currentUserRole={currentUserRole} />}
+      {sendingEmailUser && <SendEmailModal user={sendingEmailUser} onClose={() => setSendingEmailUser(null)} />}
 
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -787,16 +931,11 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
                       </button>
                     )}
                     <button
-                      onClick={() => handleSendInvite(u.id)}
-                      disabled={sendingInvite === u.id}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-green-50 disabled:opacity-50"
-                      title="Enviar correo de confirmacion y contrasena"
+                      onClick={() => setSendingEmailUser({ nombre: u.nombre, email: u.email })}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-green-50"
+                      title="Enviar correo con plantilla"
                     >
-                      {sendingInvite === u.id
-                        ? <RefreshCw size={13} className="animate-spin" style={{ color: '#94A3B8' }} />
-                        : inviteSent === u.id
-                        ? <CheckCircle2 size={13} style={{ color: '#22C55E' }} />
-                        : <Send size={13} style={{ color: '#10B981' }} />}
+                      <Send size={13} style={{ color: '#10B981' }} />
                     </button>
                     <button onClick={() => setEditingUser(u)}
                       className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-slate-100" title="Editar usuario">

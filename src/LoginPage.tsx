@@ -1921,6 +1921,39 @@ useEffect(() => {
     <div className="min-h-screen transition-all duration-700" style={{ backgroundColor: theme.bg }}>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
       {showChangePin && <ChangePinModal onClose={() => setShowChangePin(false)} />}
+      {showNotifications && (
+        <>
+          <div className="fixed inset-0 z-[199]" onClick={() => setShowNotifications(false)} />
+          <div
+            className="fixed right-4 top-16 w-80 rounded-xl shadow-2xl overflow-hidden z-[200]"
+            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
+          >
+            <div className="px-4 py-3 flex items-center justify-between" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+              <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Notificaciones recientes</span>
+              <button onClick={() => setShowNotifications(false)} className="cursor-pointer" style={{ color: '#94A3B8' }}><X size={14} /></button>
+            </div>
+            <div className="max-h-72 overflow-y-auto">
+              {notifications.length === 0 ? (
+                <div className="px-4 py-6 text-center">
+                  <p className="text-sm" style={{ color: '#94A3B8' }}>Sin notificaciones recientes</p>
+                </div>
+              ) : notifications.map((n) => (
+                <div key={n.id} className="px-4 py-3 border-b last:border-b-0 hover:bg-slate-50 transition-colors" style={{ borderColor: '#F1F5F9' }}>
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center mt-0.5" style={{ backgroundColor: n.tipo === 'nomina' ? '#EFF6FF' : '#ECFDF5' }}>
+                      {n.tipo === 'nomina' ? <Zap size={13} style={{ color: '#0369A1' }} /> : <ShieldCheck size={13} style={{ color: '#065F46' }} />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium truncate" style={{ color: '#1E293B' }}>{n.texto}</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{new Date(n.fecha).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
       {/* Header */}
       <header
         className="sticky top-0 z-50 transition-all duration-700"
@@ -1990,36 +2023,6 @@ useEffect(() => {
                   </div>
                 )}
               </button>
-              {showNotifications && (
-                <div
-                  className="absolute right-0 top-full mt-2 w-80 rounded-xl shadow-2xl overflow-hidden z-50"
-                  style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
-                >
-                  <div className="px-4 py-3 flex items-center justify-between" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                    <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Notificaciones recientes</span>
-                    <button onClick={() => setShowNotifications(false)} className="cursor-pointer" style={{ color: '#94A3B8' }}><X size={14} /></button>
-                  </div>
-                  <div className="max-h-72 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="px-4 py-6 text-center">
-                        <p className="text-sm" style={{ color: '#94A3B8' }}>Sin notificaciones recientes</p>
-                      </div>
-                    ) : notifications.map((n) => (
-                      <div key={n.id} className="px-4 py-3 border-b last:border-b-0 hover:bg-slate-50 transition-colors" style={{ borderColor: '#F1F5F9' }}>
-                        <div className="flex items-start gap-2.5">
-                          <div className="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center mt-0.5" style={{ backgroundColor: n.tipo === 'nomina' ? '#EFF6FF' : '#ECFDF5' }}>
-                            {n.tipo === 'nomina' ? <Zap size={13} style={{ color: '#0369A1' }} /> : <ShieldCheck size={13} style={{ color: '#065F46' }} />}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium truncate" style={{ color: '#1E293B' }}>{n.texto}</p>
-                            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{new Date(n.fecha).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
             <div className="text-right hidden md:block">
               <p className="text-white text-xs font-medium truncate max-w-[140px]">{email || 'empleado@empresa.com'}</p>
@@ -2031,7 +2034,7 @@ useEffect(() => {
               style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}
             >
               <Lock size={13} />
-              <span className="hidden lg:inline">Cambiar PIN</span>
+              <span className="hidden sm:inline">Cambiar PIN</span>
             </button>
             <button
               onClick={() => setShowChangePassword(true)}

@@ -40,13 +40,11 @@ const SocietyContext = createContext<SocietyContextValue>({
 export function SocietyProvider({ children, defaultSocietyId }: { children: ReactNode; defaultSocietyId?: string }) {
   const [societies, setSocieties] = useState<SocietyTheme[]>(staticSocieties);
   const [activeSocietyId, setActiveSocietyIdState] = useState<string>(() => {
-    // If a specific society is provided (e.g. employee's assigned society), always use it directly
-    if (defaultSocietyId && staticSocieties.some(s => s.id === defaultSocietyId)) return defaultSocietyId;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored && staticSocieties.some(s => s.id === stored)) return stored;
     } catch { /* ignore storage errors */ }
-    return staticSocieties[0].id;
+    return defaultSocietyId ?? staticSocieties[0].id;
   });
 
   // Load real names and color overrides from Supabase on mount
@@ -71,7 +69,7 @@ export function SocietyProvider({ children, defaultSocietyId }: { children: Reac
   }, []);
 
   useEffect(() => {
-    if (defaultSocietyId && staticSocieties.some(s => s.id === defaultSocietyId)) {
+    if (defaultSocietyId && !localStorage.getItem(STORAGE_KEY)) {
       setActiveSocietyIdState(defaultSocietyId);
     }
   }, [defaultSocietyId]);

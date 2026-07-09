@@ -17,6 +17,7 @@ const ROLE_COLORS: Record<AppRole, { bg: string; text: string; border: string; l
   prevencion:     { bg: '#FFFBEB', text: '#D97706', border: '#FDE68A', label: 'Prevencion' },
   supervisor:     { bg: '#F5F3FF', text: '#7C3AED', border: '#DDD6FE', label: 'Supervisor' },
   administracion: { bg: '#FFF7ED', text: '#C2410C', border: '#FED7AA', label: 'Administracion' },
+  formacion:      { bg: '#ECFDF5', text: '#059669', border: '#A7F3D0', label: 'Formacion' },
 };
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -61,8 +62,8 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
   const [success, setSuccess] = useState(false);
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'employee']
-    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'employee'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'employee', 'formacion']
+    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'employee', 'formacion'];
 
   const toggleSociety = (id: string) =>
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
@@ -311,8 +312,8 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'employee']
-    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'employee'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'employee', 'formacion']
+    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'employee', 'formacion'];
 
   const rc = ROLE_COLORS[user.role];
 

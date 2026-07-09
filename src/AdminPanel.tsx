@@ -3,7 +3,7 @@ import {
   Shield, Users, Building2, Laptop, FileText, Palmtree, Award,
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
   Eye, Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette,
-  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock, Mail, Menu,
+  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock, Mail, Menu, GraduationCap,
 } from 'lucide-react';
 import { validUsers } from './mockData';
 import UserManagement from './UserManagement';
@@ -23,6 +23,7 @@ import DepartamentosModule from './components/DepartamentosModule';
 import EmailModule from './components/EmailModule';
 import FichajesModule from './components/FichajesModule';
 import RoleTabPermissionsManager from './components/RoleTabPermissionsManager';
+import FormacionPanel from './FormacionPanel';
 import { useSociety } from './context/SocietyContext';
 import { supabase } from './supabaseClient';
 import type { Centro } from './supabaseClient';
@@ -34,7 +35,7 @@ interface Props {
   onImpersonate?: (userId: string, societyId: string | null) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'formacion';
 
 export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -130,6 +131,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     { id: 'css',        label: 'CSS',                 icon: Palette },
     { id: 'incidencias',  label: 'Incidencias',           icon: AlertCircle },
     { id: 'fichajes',     label: 'Fichajes',              icon: Clock },
+    { id: 'formacion',    label: 'Formacion',             icon: GraduationCap },
     { id: 'permissions',  label: 'Permisos de Perfiles',  icon: Lock },
   ];
 
@@ -679,6 +681,10 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
 
         {activeTab === 'permissions' && (
           <RoleTabPermissionsManager />
+        )}
+
+        {activeTab === 'formacion' && (
+          <FormacionPanel email={email} onLogout={onLogout} isAdmin onNavigateAdmin={() => setActiveTab('overview')} />
         )}
       </div>
     </div>

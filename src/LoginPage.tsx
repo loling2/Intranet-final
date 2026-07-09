@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2 } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
@@ -1495,121 +1495,6 @@ function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
   );
 }
 
-// ─── Change PIN Modal ─────────────────────────────────────────────────────────
-
-function ChangePINModal({ currentPin, userId, onClose, onSaved }: {
-  currentPin: string | null;
-  userId: string | null;
-  onClose: () => void;
-  onSaved: (pin: string) => void;
-}) {
-  const [pin, setPin] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [done, setDone] = useState(false);
-
-  const handleSave = async () => {
-    if (pin.length < 4) { setError('El PIN debe tener al menos 4 digitos.'); return; }
-    if (pin !== confirm) { setError('Los PINs no coinciden.'); return; }
-    setSaving(true); setError('');
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-user`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-          Apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({ action: 'set_own_pin', pin }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Error al guardar el PIN');
-      onSaved(pin);
-      setDone(true);
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error'); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-white rounded-2xl w-full max-w-sm mx-4 overflow-hidden shadow-2xl">
-        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0C4A6E, #0369A1)' }}>
-          <div className="flex items-center gap-2.5">
-            <Hash size={18} className="text-white" />
-            <div>
-              <p className="text-white text-sm font-semibold">PIN de Fichaje</p>
-              <p className="text-white/60 text-xs">{currentPin ? 'Cambiar PIN actual' : 'Establecer PIN'}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white cursor-pointer transition-colors"><X size={18} /></button>
-        </div>
-        <div className="p-6 space-y-4">
-          {done ? (
-            <div className="flex flex-col items-center gap-3 py-4">
-              <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: '#F0FDF4' }}>
-                <Hash size={22} style={{ color: '#16A34A' }} />
-              </div>
-              <p className="text-sm font-semibold text-slate-800">PIN actualizado correctamente</p>
-              <button onClick={onClose} className="mt-2 px-6 py-2 rounded-xl text-sm font-medium text-white cursor-pointer" style={{ backgroundColor: '#0369A1' }}>Cerrar</button>
-            </div>
-          ) : (
-            <>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Nuevo PIN (4-6 digitos)</label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={pin}
-                  onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder="••••"
-                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none font-mono tracking-widest text-center"
-                  style={{ border: '1.5px solid #E2E8F0', fontSize: '20px' }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Confirmar PIN</label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={confirm}
-                  onChange={e => setConfirm(e.target.value.replace(/\D/g, ''))}
-                  placeholder="••••"
-                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none font-mono tracking-widest text-center"
-                  style={{ border: `1.5px solid ${confirm && confirm !== pin ? '#FCA5A5' : '#E2E8F0'}`, fontSize: '20px' }}
-                />
-              </div>
-              {error && (
-                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
-                  <AlertCircle size={14} style={{ color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
-                  <p className="text-xs" style={{ color: '#B91C1C' }}>{error}</p>
-                </div>
-              )}
-              <div className="flex gap-3 pt-1">
-                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving || pin.length < 4}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
-                  style={{ backgroundColor: '#0369A1' }}
-                >
-                  {saving && <RefreshCw size={13} className="animate-spin" />}
-                  Guardar PIN
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Employee Nominas View ────────────────────────────────────────────────────
 
 const MES_NOMBRES_EMP = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -1819,19 +1704,6 @@ function Dashboard({
   const [activeDeviceCount, setActiveDeviceCount] = useState<number | null>(null);
   const [assignedVehicle, setAssignedVehicle] = useState<any>(null);
 
-  // ── Notifications ──
-  type NotifItem = { id: string; type: 'nomina' | 'prl'; label: string; sub: string; ts: string };
-  const [notifications, setNotifications] = useState<NotifItem[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [seenIds, setSeenIds] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('notif_seen') ?? '[]')); } catch { return new Set(); }
-  });
-  const notifRef = useRef<HTMLDivElement>(null);
-
-  // ── PIN change ──
-  const [showChangePIN, setShowChangePIN] = useState(false);
-  const [currentPin, setCurrentPin] = useState<string | null>(null);
-
   useEffect(() => {
     if (impersonatingUserId) {
       setCurrentUserId(impersonatingUserId);
@@ -1881,73 +1753,6 @@ useEffect(() => {
   })();
 }, [impersonatingUserId]);
 
-// ── Fetch notifications (last 30 days nominas + PRL docs) ──────────────────
-useEffect(() => {
-  let cancelled = false;
-  (async () => {
-    const resolvedUserId = impersonatingUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
-    if (!resolvedUserId) return;
-
-    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
-    // Get DNI
-    const { data: empData } = await supabase.from('empleados').select('dni').eq('user_id', resolvedUserId).maybeSingle();
-    const dni = empData?.dni ?? (await supabase.from('user_profiles').select('dni').eq('id', resolvedUserId).maybeSingle()).data?.dni;
-
-    const items: NotifItem[] = [];
-
-    // Nominas
-    if (dni) {
-      const { data: nominasData } = await supabase
-        .from('nominas')
-        .select('id, anio, mes, nombre_archivo, created_at, sociedad_nombre')
-        .eq('dni', dni)
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
-        .limit(10);
-      for (const n of nominasData ?? []) {
-        const mes = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][n.mes] ?? n.mes;
-        items.push({ id: `nomina-${n.id}`, type: 'nomina', label: `Nomina disponible: ${mes} ${n.anio}`, sub: n.sociedad_nombre ?? '', ts: n.created_at });
-      }
-    }
-
-    // PRL docs
-    const { data: prlData } = await supabase.rpc('get_my_prl_documents');
-    const since30 = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    for (const d of (prlData ?? []) as { id: string; nombre_archivo: string; created_at: string }[]) {
-      if (new Date(d.created_at).getTime() >= since30) {
-        items.push({ id: `prl-${d.id}`, type: 'prl', label: `Nuevo documento PRL: ${d.nombre_archivo}`, sub: '', ts: d.created_at });
-      }
-    }
-
-    items.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
-    if (!cancelled) setNotifications(items);
-  })();
-  return () => { cancelled = true; };
-}, [impersonatingUserId]);
-
-// ── Load current PIN ────────────────────────────────────────────────────────
-useEffect(() => {
-  (async () => {
-    const resolvedUserId = impersonatingUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
-    if (!resolvedUserId) return;
-    const { data } = await supabase.from('user_profiles').select('pin').eq('id', resolvedUserId).maybeSingle();
-    setCurrentPin(data?.pin ?? null);
-  })();
-}, [impersonatingUserId]);
-
-// ── Close notification panel on outside click ───────────────────────────────
-useEffect(() => {
-  if (!showNotifications) return;
-  const handler = (e: MouseEvent) => {
-    if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-      setShowNotifications(false);
-    }
-  };
-  document.addEventListener('mousedown', handler);
-  return () => document.removeEventListener('mousedown', handler);
-}, [showNotifications]);
-
   
   const certificates = mockCertificates[theme.id] ?? [];
   const exams = mockExams[theme.id] ?? [];
@@ -1964,14 +1769,6 @@ useEffect(() => {
   return (
     <div className="min-h-screen transition-all duration-700" style={{ backgroundColor: theme.bg }}>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
-      {showChangePIN && (
-        <ChangePINModal
-          currentPin={currentPin}
-          userId={currentUserId}
-          onClose={() => setShowChangePIN(false)}
-          onSaved={(p) => setCurrentPin(p)}
-        />
-      )}
       {/* Header */}
       <header
         className="sticky top-0 z-50 transition-all duration-700"
@@ -2028,78 +1825,12 @@ useEffect(() => {
                 <span className="hidden sm:inline">Panel Supervisor</span>
               </button>
             )}
-            {/* Notification bell */}
-            <div className="relative flex-shrink-0" ref={notifRef}>
-              {(() => {
-                const unread = notifications.filter(n => !seenIds.has(n.id));
-                return (
-                  <button
-                    onClick={() => {
-                      setShowNotifications(v => !v);
-                      if (!showNotifications) {
-                        const newSeen = new Set([...seenIds, ...notifications.map(n => n.id)]);
-                        setSeenIds(newSeen);
-                        localStorage.setItem('notif_seen', JSON.stringify([...newSeen]));
-                      }
-                    }}
-                    className="relative p-2 rounded-lg cursor-pointer transition-all duration-200 flex-shrink-0"
-                    style={{ backgroundColor: showNotifications ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)' }}
-                  >
-                    <Bell size={16} className="text-white/80" />
-                    {unread.length > 0 && (
-                      <div className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: theme.accent }}>
-                        {unread.length > 9 ? '9+' : unread.length}
-                      </div>
-                    )}
-                  </button>
-                );
-              })()}
-              {showNotifications && (
-                <div
-                  className="absolute right-0 top-full mt-2 w-80 rounded-xl shadow-2xl z-[200] overflow-hidden"
-                  style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
-                >
-                  <div className="px-4 py-3 flex items-center justify-between" style={{ background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})` }}>
-                    <div className="flex items-center gap-2">
-                      <Bell size={14} className="text-white" />
-                      <span className="text-white text-sm font-semibold">Notificaciones</span>
-                    </div>
-                    <button onClick={() => setShowNotifications(false)} className="text-white/70 hover:text-white cursor-pointer transition-colors"><X size={14} /></button>
-                  </div>
-                  <div className="max-h-72 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-8 gap-2">
-                        <Bell size={24} style={{ color: '#CBD5E1' }} />
-                        <p className="text-sm" style={{ color: '#94A3B8' }}>Sin notificaciones recientes</p>
-                      </div>
-                    ) : (
-                      notifications.map(n => (
-                        <button
-                          key={n.id}
-                          onClick={() => {
-                            setShowNotifications(false);
-                            if (n.type === 'nomina') setActiveTab('nominas');
-                            else if (n.type === 'prl') setActiveTab('prevencion');
-                          }}
-                          className="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer text-left border-b border-slate-100 last:border-b-0"
-                        >
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
-                            style={{ backgroundColor: n.type === 'nomina' ? '#EFF6FF' : '#F0FDF4' }}>
-                            {n.type === 'nomina' ? <Zap size={14} style={{ color: '#2563EB' }} /> : <ShieldCheck size={14} style={{ color: '#16A34A' }} />}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-slate-800 leading-snug">{n.label}</p>
-                            {n.sub && <p className="text-xs text-slate-500 mt-0.5 truncate">{n.sub}</p>}
-                            <p className="text-[10px] text-slate-400 mt-1">{new Date(n.ts).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
-                          </div>
-                          <ArrowRight size={12} className="text-slate-400 mt-1 flex-shrink-0" />
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            <button className="relative p-2 rounded-lg cursor-pointer flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
+              <Bell size={16} className="text-white/80" />
+              <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: theme.accent }}>
+                3
+              </div>
+            </button>
             <div className="text-right hidden md:block">
               <p className="text-white text-xs font-medium truncate max-w-[140px]">{email || 'empleado@empresa.com'}</p>
               <p className="text-white/60 text-xs">Empleado</p>
@@ -2111,14 +1842,6 @@ useEffect(() => {
             >
               <KeyRound size={13} />
               <span className="hidden lg:inline">Cambiar Contrasena</span>
-            </button>
-            <button
-              onClick={() => setShowChangePIN(true)}
-              className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-300 flex-shrink-0"
-              style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}
-            >
-              <Hash size={13} />
-              <span className="hidden lg:inline">Cambiar PIN</span>
             </button>
             <button
               onClick={onLogout}

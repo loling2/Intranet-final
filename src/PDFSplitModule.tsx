@@ -98,25 +98,7 @@ function extractMesAnio(text: string): { mes: number; nombre: string; anio: numb
   return bestNum;
 }
 
-const CIF_EMPRESA_MAP: Record<string, string> = {
-  'G76604842': 'APEDECA',
-  'B76807973': 'GERONTALIA',
-  'B19484344': 'ELEDA',
-  'B38062667': 'SERCA',
-};
-
-function extractEmpresaByCIF(text: string): string | null {
-  const upper = text.toUpperCase().replace(/\s/g, '');
-  for (const [cif, nombre] of Object.entries(CIF_EMPRESA_MAP)) {
-    if (upper.includes(cif)) return nombre;
-  }
-  return null;
-}
-
 function extractEmpresa(text: string): string | null {
-  const byCtif = extractEmpresaByCIF(text);
-  if (byCtif) return byCtif;
-
   const upper = text.toUpperCase();
   const STOP_PATTERN = /DOMICILIO|N[ºO°°]\s*INSCRIPCI[OÓ]N|TRABAJADOR|NIF\/CIF|C\.I\.F\b|CIF\b|CENTRO\b/i;
 

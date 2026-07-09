@@ -813,31 +813,26 @@ export default function LoginPage() {
       let resolvedRole: UserRole = 'employee';
       let resolvedSocietyId: string | null = null;
 
+      // Use the empleado society from the edge function (service-role, bypasses RLS)
+      const empleadoSocietyId = (body.empleado_society_id as string | null) ?? null;
+
       try {
         const profile = body.profile as Record<string, unknown> | undefined;
         if (profile) {
           resolvedEmail = (profile.email as string) ?? resolvedEmail;
           resolvedRole = (profile.role as UserRole) ?? 'employee';
-          const societies = profile.societies as unknown[];
-          resolvedSocietyId = (societies && societies.length > 0) ? String(societies[0]) : null;
+          const profileSocieties = profile.societies as unknown[];
+          resolvedSocietyId = (profileSocieties && profileSocieties.length > 0) ? String(profileSocieties[0]) : null;
         }
       } catch (profileErr) {
         console.error('Profile parsing error:', profileErr);
         console.warn('Proceeding with default employee role');
       }
 
-      // Step 5: For employees, look up their assigned society from the empleados table
-      if (resolvedRole === 'employee') {
-        try {
-          const { data: emp } = await supabase
-            .from('empleados')
-            .select('id_sociedad')
-            .eq('email', resolvedEmail)
-            .maybeSingle();
-          if (emp?.id_sociedad) {
-            resolvedSocietyId = emp.id_sociedad;
-          }
-        } catch { /* fallback to profile society */ }
+      // Step 5: Override with the society from empleados table — this is the source of truth
+      // for which society the employee belongs to, regardless of user_profiles.societies
+      if (empleadoSocietyId) {
+        resolvedSocietyId = empleadoSocietyId;
       }
 
       // Step 6: Determine view

@@ -56,22 +56,30 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Step 2: get profile using service role (bypasses RLS)
+    // Step 2: get profile and empleado record using service role (bypasses RLS)
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { data: profile } = await supabaseAdmin
-      .from("user_profiles")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle();
+    const [{ data: profile }, { data: empleado }] = await Promise.all([
+      supabaseAdmin
+        .from("user_profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("empleados")
+        .select("id_sociedad")
+        .eq("user_id", userId)
+        .maybeSingle(),
+    ]);
 
     return new Response(
       JSON.stringify({
         userId,
         email: email.trim().toLowerCase(),
         profile,
+        empleado_society_id: empleado?.id_sociedad ?? null,
         access_token: signInBody.access_token,
         refresh_token: signInBody.refresh_token,
       }),

@@ -54,6 +54,14 @@ const MESES: Record<string, number> = {
 const MES_NOMBRES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
+// Known CIF/NIF → company name mapping
+const CIF_EMPRESA_MAP: Record<string, string> = {
+  'G76604842': 'APEDECA',
+  'B76807973': 'GERONTALIA',
+  'B19484344': 'ELEDA',
+  'B38062667': 'SERCA',
+};
+
 function extractDNI(text: string): string | null {
   const match = text.match(/\b([XYZxyz]?\d{7,8}[A-Za-z])\b/);
   if (!match) return null;
@@ -99,10 +107,18 @@ function extractMesAnio(text: string): { mes: number; nombre: string; anio: numb
 }
 
 function extractEmpresa(text: string): string | null {
+  // Priority: CIF/NIF lookup — most reliable
+  const cifMatch = text.match(/NIF\/CIF[:\s]*([A-Z]\d{7}[A-Z0-9]|\d{8}[A-Z])/i);
+  if (cifMatch) {
+    const cif = cifMatch[1].toUpperCase().replace(/\s/g, '');
+    const known = CIF_EMPRESA_MAP[cif];
+    if (known) return known;
+  }
+
   const upper = text.toUpperCase();
   const STOP_PATTERN = /DOMICILIO|N[ºO°°]\s*INSCRIPCI[OÓ]N|TRABAJADOR|NIF\/CIF|C\.I\.F\b|CIF\b|CENTRO\b/i;
 
-  // Pattern 1: labeled "EMPRESA" field
+  // Pattern 1: labeled "EMPRESA" field (value follows directly, not a table header)
   const empresaIdx = upper.indexOf('EMPRESA');
   if (empresaIdx !== -1) {
     const after = text.slice(empresaIdx + 7, empresaIdx + 250);
@@ -133,11 +149,25 @@ function extractEmpresa(text: string): string | null {
     if (raw.length > 2 && raw.length < 120) return raw;
   }
 
-  // Pattern 4: find a legal entity suffix (S.L., S.A., S.L.U., etc.) and take surrounding text
+  // Pattern 4: legal entity suffix (S.L., S.A., S.L.U., etc.)
   const legalMatch = text.match(/([A-ZÁÉÍÓÚÑ\u00C0-\u024F][^\n]{3,80}?\s(?:S\.L\.U?\.|S\.A\.U?\.|S\.L\.L\.|S\.COOP\.|S\.C\.|SOCIEDAD LIMITADA|SOCIEDAD AN[OÓ]NIMA))/);
   if (legalMatch) {
     const raw = legalMatch[1].trim().replace(/\s+/g, ' ');
     if (raw.length > 4 && raw.length < 120) return raw;
+  }
+
+  // Pattern 5: Table-header layout — "EMPRESA  DOMICILIO  Nº INSCRIPCIÓN S.S.  [company]  [address]  [SS code]"
+  const ssRegistroMatch = text.match(/\b(\d{2}\/\d{6,7}-\d{2})\b/);
+  if (ssRegistroMatch) {
+    const ssCodeIdx = text.indexOf(ssRegistroMatch[1]);
+    const ssLabelIdx = upper.search(/N[ºO°]\s*INSCRIPCI[OÓ]N\s*S\.?\s*S\.?/);
+    if (ssLabelIdx !== -1 && ssCodeIdx > ssLabelIdx) {
+      const ssLabelSlice = upper.slice(ssLabelIdx).match(/N[ºO°]\s*INSCRIPCI[OÓ]N\s*S\.?\s*S\.?\s*/i);
+      const afterLabel = text.slice(ssLabelIdx + (ssLabelSlice?.[0].length ?? 20), ssCodeIdx).trim();
+      const addrMatch = afterLabel.match(/^(.*?)\s+(?:C[/\\]|C\s+[/\\]|CL\s|C\s+L\s|AV(?:DA)?\s|AVENIDA\s|CALLE\s|PLAZA\s|PZ[AO]?\s|PASEO\s|RONDA\s|URB\s)/i);
+      const candidate = (addrMatch ? addrMatch[1] : afterLabel).trim().replace(/\s+/g, ' ');
+      if (candidate.length > 2 && candidate.length < 120) return candidate;
+    }
   }
 
   return null;
@@ -225,13 +255,11 @@ export default function PDFSplitModule() {
       const bytes = new Uint8Array(arrayBuffer);
       setPdfBytes(bytes);
 
-      // Use a separate copy for pdfjs text extraction (worker may transfer it)
       const bytesForScan = new Uint8Array(arrayBuffer.slice(0));
       const pdf = await pdfjsLib.getDocument({ data: bytesForScan }).promise;
       const total = pdf.numPages;
       const extractedPages: PageInfo[] = [];
 
-      // TEXT-ONLY scan — no canvas rendering, no DOM interaction
       for (let i = 1; i <= total; i++) {
         if (abortRef.current) break;
 
@@ -254,7 +282,6 @@ export default function PDFSplitModule() {
           empresa,
         });
 
-        // Update progress every 5 pages to reduce re-renders
         if (i % 5 === 0 || i === total) {
           setLoadProgress(Math.round((i / total) * 100));
           await yieldToMain();
@@ -298,7 +325,6 @@ export default function PDFSplitModule() {
     setTimeout(() => setSuccess(''), 6000);
   };
 
-  // ── Atomic upload: group pages by employee, merge, then upload ───────────────
   const handleSeparate = async () => {
     if (!pages.length || !pdfFile || !profile || !pdfBytes) return;
     setSeparating(true);
@@ -308,7 +334,6 @@ export default function PDFSplitModule() {
     const skipped = pages.length - validPages.length;
 
     try {
-      // Phase 1: Group pages by (dni, anio, mes) preserving document order
       setUploadProgress({ step: 'Agrupando paginas por empleado...', done: 0, total: validPages.length });
       const groups = new Map<string, { pageInfo: PageInfo; pageIndexes: number[] }>();
 
@@ -325,7 +350,6 @@ export default function PDFSplitModule() {
         if ((i + 1) % 10 === 0) await yieldToMain();
       }
 
-      // Phase 2: Merge pages per group into a single PDF
       setUploadProgress({ step: 'Generando PDFs por empleado...', done: 0, total: groups.size });
       type MergedEntry = { pageInfo: PageInfo; bytes: Uint8Array; wasabiKey: string; nombreArchivo: string; numPaginas: number };
       const merged: MergedEntry[] = [];
@@ -347,7 +371,6 @@ export default function PDFSplitModule() {
         if (gi % 5 === 0) await yieldToMain();
       }
 
-      // Phase 3: Upload merged PDFs to Wasabi
       setUploadProgress({ step: 'Subiendo a Wasabi...', done: 0, total: merged.length });
       for (let i = 0; i < merged.length; i++) {
         const { bytes, wasabiKey } = merged[i];
@@ -356,7 +379,6 @@ export default function PDFSplitModule() {
         if ((i + 1) % 5 === 0) await yieldToMain();
       }
 
-      // Phase 4: Save one DB record per employee-month
       setUploadProgress({ step: 'Guardando en base de datos...', done: 0, total: merged.length });
       const now = new Date().toISOString();
       for (let i = 0; i < merged.length; i++) {
@@ -376,7 +398,7 @@ export default function PDFSplitModule() {
             pdf_origen: pdfFile.name,
             created_at: now,
           },
-          { onConflict: 'society_id,dni,anio,mes,sociedad_nombre' }
+          { onConflict: 'society_id,dni,anio,mes,pdf_origen' }
         );
         if (dbError) throw new Error(dbError.message);
         setUploadProgress({ step: 'Guardando en base de datos...', done: i + 1, total: merged.length });
@@ -629,7 +651,6 @@ export default function PDFSplitModule() {
                   </span>
                 </div>
 
-                {/* Text-based page info (no canvas rendering) */}
                 <div className="p-6 space-y-4" style={{ backgroundColor: '#F8FAFC', minHeight: 200 }}>
                   <div className="grid grid-cols-3 gap-3">
                     <div className="rounded-xl p-4" style={{ backgroundColor: currentPage?.dni ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${currentPage?.dni ? '#BBF7D0' : '#FECACA'}` }}>

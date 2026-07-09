@@ -23,6 +23,7 @@ import DepartamentosModule from './components/DepartamentosModule';
 import EmailModule from './components/EmailModule';
 import FichajesModule from './components/FichajesModule';
 import RoleTabPermissionsManager from './components/RoleTabPermissionsManager';
+import ExamenesModule from './components/ExamenesModule';
 import { useSociety } from './context/SocietyContext';
 import { supabase } from './supabaseClient';
 import type { Centro } from './supabaseClient';
@@ -34,7 +35,7 @@ interface Props {
   onImpersonate?: (userId: string, societyId: string | null) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'examenes';
 
 export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -131,6 +132,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     { id: 'incidencias',  label: 'Incidencias',           icon: AlertCircle },
     { id: 'fichajes',     label: 'Fichajes',              icon: Clock },
     { id: 'permissions',  label: 'Permisos de Perfiles',  icon: Lock },
+    { id: 'examenes',     label: 'Exámenes',              icon: ClipboardCheck },
   ];
 
   const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
@@ -679,6 +681,10 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
 
         {activeTab === 'permissions' && (
           <RoleTabPermissionsManager />
+        )}
+
+        {activeTab === 'examenes' && (
+          <ExamenesModule />
         )}
       </div>
     </div>

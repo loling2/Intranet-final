@@ -1955,7 +1955,7 @@ useEffect(() => {
         )}
 
         {activeTab === 'examenes' && (
-          <ExamsCard exams={exams} theme={theme} />
+          <ExamsCard theme={theme} />
         )}
 
         {activeTab === 'incidencias' && currentUserId && (

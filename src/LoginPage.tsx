@@ -1256,7 +1256,7 @@ interface PrevDoc {
   society_nombre: string;
 }
 
-function PrevencionDocsFullView({ theme, previewUserId }: { theme: SocietyTheme; previewUserId?: string }) {
+function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
   const [allDocs, setAllDocs] = useState<PrevDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -1270,9 +1270,7 @@ function PrevencionDocsFullView({ theme, previewUserId }: { theme: SocietyTheme;
       setLoading(true);
       try {
         const [{ data: docs }, { data: logs }] = await Promise.all([
-          previewUserId
-            ? supabase.rpc('get_prl_documents_for_user', { target_user_id: previewUserId })
-            : supabase.rpc('get_my_prl_documents'),
+          supabase.rpc('get_my_prl_documents'),
           supabase.from('prl_download_logs').select('document_id'),
         ]);
         const d = (docs ?? []) as PrevDoc[];
@@ -1938,7 +1936,7 @@ useEffect(() => {
            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
               <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
               <DevicesCard theme={theme} userId={currentUserId} />
-              <PrevencionDocsCard theme={theme} userEmail={email} previewUserId={impersonatingUserId} />
+              <PrevencionDocsCard theme={theme} userEmail={email} />
              <VehicleCard vehicle={assignedVehicle} />
             </div>
           </>
@@ -1949,7 +1947,7 @@ useEffect(() => {
         )}
 
         {activeTab === 'prevencion' && (
-          <PrevencionDocsFullView theme={theme} previewUserId={impersonatingUserId} />
+          <PrevencionDocsFullView theme={theme} />
         )}
 
         {activeTab === 'certificados' && (

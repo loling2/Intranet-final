@@ -98,34 +98,9 @@ function extractMesAnio(text: string): { mes: number; nombre: string; anio: numb
   return bestNum;
 }
 
-const NIF_CIF_TO_EMPRESA: Record<string, string> = {
-  G76604842: 'APEDECA',
-  B76807973: 'GERONTALIA',
-  B19484344: 'ELEDA',
-  B38062667: 'SERCA',
-};
-
 function extractEmpresa(text: string): string | null {
   const upper = text.toUpperCase();
   const STOP_PATTERN = /DOMICILIO|N[ºO°°]\s*INSCRIPCI[OÓ]N|TRABAJADOR|NIF\/CIF|C\.I\.F\b|CIF\b|CENTRO\b/i;
-
-  // Pattern 0: NIF/CIF lookup table — try multiple formats
-  // Matches: "NIF/CIF: G76604842", "NIF/CIF G76604842", "NIF: G76604842", "CIF: G76604842", bare CIF value, etc.
-  const nifPatterns = [
-    /NIF\s*[\/\\]\s*CIF\s*[:\-\s]\s*([A-Z][A-Z0-9]{7,8})\b/,
-    /NIF\s*[\/\\]\s*CIF\s*[:\-\s]\s*([0-9]{8}[A-Z])\b/,
-    /\bNIF\s*[:\-\s]\s*([A-Z][A-Z0-9]{7,8})\b/,
-    /\bCIF\s*[:\-\s]\s*([A-Z][A-Z0-9]{7,8})\b/,
-    // bare 9-char NIF/CIF value anywhere (letter + 7 digits + letter or 8 digits + letter)
-    /\b([A-HJ-NP-SW][0-9]{7}[0-9A-J])\b/,
-  ];
-  for (const pat of nifPatterns) {
-    const m = upper.match(pat);
-    if (m) {
-      const key = m[1].replace(/\s/g, '').toUpperCase();
-      if (NIF_CIF_TO_EMPRESA[key]) return NIF_CIF_TO_EMPRESA[key];
-    }
-  }
 
   // Pattern 1: labeled "EMPRESA" field
   const empresaIdx = upper.indexOf('EMPRESA');

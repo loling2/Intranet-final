@@ -1737,7 +1737,7 @@ useEffect(() => {
     const { count, error } = await supabase
       .from('dispositivos')
       .select('*', { count: 'exact', head: true })
-      .eq('activo', true)
+      .eq('estado_id', 1)
       .eq('empleado_id', realEmpleadoId);
 
     setActiveDeviceCount(!error && count !== null ? count : 0);

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { FileText, Download, ChevronRight, RefreshCw, File, Image, FileSpreadsheet, Eye, X } from 'lucide-react';
 import { SocietyTheme } from './themes';
 import { supabase, type DocumentRecord } from './supabaseClient';
-import { getWasabiBlobUrl, listWasabiFolder } from './lib/wasabi';
+import { getWasabiBlobUrl } from './lib/wasabi';
 
 interface Props {
   theme: SocietyTheme;
@@ -50,20 +50,14 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId }: P
         return;
       }
 
-      const [dbRes, wasabiObjs] = await Promise.all([
-        supabase
-          .from('documents')
-          .select('*')
-          .eq('folder', 'publico')
-          .or(orParts.join(','))
-          .order('fecha_subida', { ascending: false }),
-        listWasabiFolder('publico').catch(() => [] as { key: string }[]),
-      ]);
+      const { data } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('folder', 'publico')
+        .or(orParts.join(','))
+        .order('fecha_subida', { ascending: false });
 
-      const wasabiKeys = new Set(wasabiObjs.map((w) => w.key));
-      const all = (dbRes.data ?? []) as DocumentRecord[];
-      // Only show docs whose Wasabi file still exists (or legacy entries with no wasabi_key)
-      setDocs(all.filter((d) => !d.wasabi_key || wasabiKeys.has(d.wasabi_key)));
+      setDocs((data ?? []) as DocumentRecord[]);
     } finally {
       setLoading(false);
     }

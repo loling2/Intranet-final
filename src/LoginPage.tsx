@@ -1667,6 +1667,116 @@ function MisNominasView({ theme, userId: propUserId }: { theme: SocietyTheme; us
   );
 }
 
+// ─── Change PIN Modal ─────────────────────────────────────────────────────────
+
+function ChangePinModal({ onClose }: { onClose: () => void }) {
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+
+  const handleSave = async () => {
+    setError('');
+    if (!/^\d{4,8}$/.test(newPin)) { setError('El PIN debe tener entre 4 y 8 digitos numericos.'); return; }
+    if (newPin !== confirmPin) { setError('Los PINs no coinciden.'); return; }
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Sin sesion activa.');
+      const { error: uErr } = await supabase
+        .from('user_profiles')
+        .update({ pin: newPin })
+        .eq('id', user.id);
+      if (uErr) throw uErr;
+      setDone(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al cambiar el PIN.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[400] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden">
+        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }}>
+              <Lock size={15} className="text-white" />
+            </div>
+            <h2 className="text-white font-semibold text-sm">Cambiar PIN</h2>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+            <X size={14} />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          {done ? (
+            <div className="flex flex-col items-center py-4 text-center gap-3">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: '#ECFDF5', border: '2px solid #6EE7B7' }}>
+                <ShieldCheck size={28} style={{ color: '#065F46' }} />
+              </div>
+              <p className="font-semibold text-sm" style={{ color: '#065F46' }}>PIN actualizado</p>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>Tu nuevo PIN esta activo.</p>
+              <button onClick={onClose} className="mt-2 w-full py-2.5 rounded-xl text-sm font-semibold cursor-pointer" style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}>Cerrar</button>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Nuevo PIN (4-8 digitos)</label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={8}
+                  value={newPin}
+                  onChange={(e) => { setNewPin(e.target.value.replace(/\D/g, '')); setError(''); }}
+                  placeholder="••••"
+                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Confirmar PIN</label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={8}
+                  value={confirmPin}
+                  onChange={(e) => { setConfirmPin(e.target.value.replace(/\D/g, '')); setError(''); }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                  placeholder="••••"
+                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ border: `1.5px solid ${confirmPin && confirmPin !== newPin ? '#FECACA' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                />
+                {confirmPin && confirmPin !== newPin && <p className="text-xs mt-1" style={{ color: '#DC2626' }}>Los PINs no coinciden</p>}
+              </div>
+              {error && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                  <AlertCircle size={13} style={{ color: '#DC2626' }} />
+                  <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
+                </div>
+              )}
+              <div className="flex gap-3 pt-1">
+                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving || newPin.length < 4 || newPin !== confirmPin}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: '#0F172A' }}
+                >
+                  {saving ? <RefreshCw size={14} className="animate-spin" /> : <Lock size={14} />}
+                  Guardar
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 function Dashboard({
@@ -1701,8 +1811,11 @@ function Dashboard({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showChangePin, setShowChangePin] = useState(false);
   const [activeDeviceCount, setActiveDeviceCount] = useState<number | null>(null);
   const [assignedVehicle, setAssignedVehicle] = useState<any>(null);
+  const [notifications, setNotifications] = useState<Array<{ id: string; tipo: string; texto: string; fecha: string }>>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
     if (impersonatingUserId) {
@@ -1753,7 +1866,45 @@ useEffect(() => {
   })();
 }, [impersonatingUserId]);
 
-  
+useEffect(() => {
+  (async () => {
+    const resolvedUserId = impersonatingUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
+    if (!resolvedUserId) return;
+
+    const { data: empData } = await supabase
+      .from('empleados')
+      .select('dni')
+      .eq('user_id', resolvedUserId)
+      .maybeSingle();
+
+    const sinceDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const notifs: Array<{ id: string; tipo: string; texto: string; fecha: string }> = [];
+
+    if (empData?.dni) {
+      const { data: newNominas } = await supabase
+        .from('nominas')
+        .select('id, nombre_archivo, created_at')
+        .eq('dni', empData.dni)
+        .gte('created_at', sinceDate)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      for (const n of newNominas ?? []) {
+        notifs.push({ id: `nomina-${n.id}`, tipo: 'nomina', texto: `Nueva nomina: ${n.nombre_archivo}`, fecha: n.created_at });
+      }
+    }
+
+    const { data: prlDocs } = await supabase
+      .rpc('get_my_prl_documents')
+      .gte('created_at', sinceDate);
+    for (const d of prlDocs ?? []) {
+      notifs.push({ id: `prl-${d.id}`, tipo: 'prl', texto: `Doc PRL asignado: ${d.nombre_archivo}`, fecha: d.created_at });
+    }
+
+    notifs.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+    setNotifications(notifs);
+  })();
+}, [impersonatingUserId]);
+
   const certificates = mockCertificates[theme.id] ?? [];
   const exams = mockExams[theme.id] ?? [];
 
@@ -1769,6 +1920,7 @@ useEffect(() => {
   return (
     <div className="min-h-screen transition-all duration-700" style={{ backgroundColor: theme.bg }}>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+      {showChangePin && <ChangePinModal onClose={() => setShowChangePin(false)} />}
       {/* Header */}
       <header
         className="sticky top-0 z-50 transition-all duration-700"
@@ -1825,16 +1977,62 @@ useEffect(() => {
                 <span className="hidden sm:inline">Panel Supervisor</span>
               </button>
             )}
-            <button className="relative p-2 rounded-lg cursor-pointer flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
-              <Bell size={16} className="text-white/80" />
-              <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: theme.accent }}>
-                3
-              </div>
-            </button>
+            <div className="relative flex-shrink-0">
+              <button
+                onClick={() => setShowNotifications((v) => !v)}
+                className="relative p-2 rounded-lg cursor-pointer flex-shrink-0"
+                style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+              >
+                <Bell size={16} className="text-white/80" />
+                {notifications.length > 0 && (
+                  <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: theme.accent }}>
+                    {notifications.length > 9 ? '9+' : notifications.length}
+                  </div>
+                )}
+              </button>
+              {showNotifications && (
+                <div
+                  className="absolute right-0 top-full mt-2 w-80 rounded-xl shadow-2xl overflow-hidden z-50"
+                  style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
+                >
+                  <div className="px-4 py-3 flex items-center justify-between" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                    <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Notificaciones recientes</span>
+                    <button onClick={() => setShowNotifications(false)} className="cursor-pointer" style={{ color: '#94A3B8' }}><X size={14} /></button>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="px-4 py-6 text-center">
+                        <p className="text-sm" style={{ color: '#94A3B8' }}>Sin notificaciones recientes</p>
+                      </div>
+                    ) : notifications.map((n) => (
+                      <div key={n.id} className="px-4 py-3 border-b last:border-b-0 hover:bg-slate-50 transition-colors" style={{ borderColor: '#F1F5F9' }}>
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center mt-0.5" style={{ backgroundColor: n.tipo === 'nomina' ? '#EFF6FF' : '#ECFDF5' }}>
+                            {n.tipo === 'nomina' ? <Zap size={13} style={{ color: '#0369A1' }} /> : <ShieldCheck size={13} style={{ color: '#065F46' }} />}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium truncate" style={{ color: '#1E293B' }}>{n.texto}</p>
+                            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{new Date(n.fecha).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="text-right hidden md:block">
               <p className="text-white text-xs font-medium truncate max-w-[140px]">{email || 'empleado@empresa.com'}</p>
               <p className="text-white/60 text-xs">Empleado</p>
             </div>
+            <button
+              onClick={() => setShowChangePin(true)}
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-300 flex-shrink-0"
+              style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}
+            >
+              <Lock size={13} />
+              <span className="hidden lg:inline">Cambiar PIN</span>
+            </button>
             <button
               onClick={() => setShowChangePassword(true)}
               className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-300 flex-shrink-0"

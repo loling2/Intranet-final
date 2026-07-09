@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { FolderOpen, FolderLock, Upload, Trash2, FileText, Image, FileSpreadsheet, File, RefreshCw, AlertCircle } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { uploadToWasabi } from '../lib/wasabi';
+import { uploadToWasabi, deleteFromWasabi } from '../lib/wasabi';
 import { writeAuditLog } from '../lib/auditLog';
 
 interface EmployeeDoc {
@@ -105,6 +105,8 @@ export default function EmployeeDocumentsSection({ employeeId, employeeNombre, s
     if (!profile) return;
     const { error } = await supabase.from('employee_documents').delete().eq('id', doc.id);
     if (!error) {
+      // Delete the file from Wasabi too
+      try { await deleteFromWasabi(doc.storage_path); } catch { /* file may already be gone */ }
       await writeAuditLog({
         evento: 'employee_doc_delete',
         descripcion: `Documento "${doc.nombre}" eliminado de carpeta ${doc.folder} de ${employeeNombre}`,

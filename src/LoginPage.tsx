@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2 } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
@@ -19,7 +19,6 @@ import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
 import { downloadFromWasabi, uploadToWasabiKey } from './lib/wasabi';
 import ChangePasswordModal from './components/ChangePasswordModal';
-import ChangePinModal from './components/ChangePinModal';
 import IncidenciasModule from './components/IncidenciasModule';
 
 const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> = {
@@ -1702,10 +1701,6 @@ function Dashboard({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [showChangePassword, setShowChangePassword] = useState(false);
-  const [showChangePIN, setShowChangePIN] = useState(false);
-  const [showNotifPanel, setShowNotifPanel] = useState(false);
-  const [notifCount, setNotifCount] = useState(0);
-  const [notifItems, setNotifItems] = useState<{ id: string; title: string; tiempo: string; color: string }[]>([]);
   const [activeDeviceCount, setActiveDeviceCount] = useState<number | null>(null);
   const [assignedVehicle, setAssignedVehicle] = useState<any>(null);
 
@@ -1752,32 +1747,13 @@ useEffect(() => {
 useEffect(() => {
   (async () => {
     const resolvedUserId = impersonatingUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
-    if (!resolvedUserId) return;
-    const { data: empleadoData } = await supabase.from('empleados').select('id').eq('user_id', resolvedUserId).maybeSingle();
-    if (!empleadoData?.id) return;
-    const { data } = await supabase.from('incidencias').select('id,titulo,created_at').eq('empleado_id', empleadoData.id).order('created_at', { ascending: false }).limit(5);
-    if (data && data.length > 0) {
-      const items = data.map((r: any) => {
-        const diff = Math.floor((Date.now() - new Date(r.created_at).getTime()) / 60000);
-        const tiempo = diff < 60 ? `hace ${diff}m` : diff < 1440 ? `hace ${Math.floor(diff / 60)}h` : `hace ${Math.floor(diff / 1440)}d`;
-        return { id: r.id, title: r.titulo, tiempo, color: '#0EA5E9' };
-      });
-      setNotifItems(items);
-      setNotifCount(items.length);
-    }
-  })();
-}, [impersonatingUserId]);
-
-useEffect(() => {
-  (async () => {
-    const resolvedUserId = impersonatingUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
     if (!resolvedUserId) { setAssignedVehicle(null); return; }
     const { data } = await supabase.from('vehicles').select('*').eq('current_user_id', resolvedUserId).maybeSingle();
     setAssignedVehicle(data);
   })();
 }, [impersonatingUserId]);
 
-
+  
   const certificates = mockCertificates[theme.id] ?? [];
   const exams = mockExams[theme.id] ?? [];
 
@@ -1793,7 +1769,6 @@ useEffect(() => {
   return (
     <div className="min-h-screen transition-all duration-700" style={{ backgroundColor: theme.bg }}>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
-      {showChangePIN && currentUserId && <ChangePinModal userId={currentUserId} onClose={() => setShowChangePIN(false)} />}
       {/* Header */}
       <header
         className="sticky top-0 z-50 transition-all duration-700"
@@ -1850,68 +1825,16 @@ useEffect(() => {
                 <span className="hidden sm:inline">Panel Supervisor</span>
               </button>
             )}
-            <div className="relative flex-shrink-0">
-              <button
-                onClick={() => setShowNotifPanel((v) => !v)}
-                className="relative p-2 rounded-lg cursor-pointer flex-shrink-0"
-                style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
-              >
-                <Bell size={16} className="text-white/80" />
-                {notifCount > 0 && (
-                  <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: theme.accent }}>
-                    {notifCount}
-                  </div>
-                )}
-              </button>
-              {showNotifPanel && (
-                <div
-                  className="absolute right-0 top-full mt-2 w-72 rounded-xl shadow-2xl overflow-hidden z-[300]"
-                  style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
-                >
-                  <div className="flex items-center justify-between px-4 py-3" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                    <div className="flex items-center gap-2">
-                      <Bell size={14} style={{ color: theme.primary }} />
-                      <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Notificaciones</span>
-                    </div>
-                    <button onClick={() => setShowNotifPanel(false)} className="w-6 h-6 rounded-lg flex items-center justify-center hover:bg-gray-100">
-                      <X size={12} style={{ color: '#64748B' }} />
-                    </button>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto">
-                    {notifItems.length === 0 ? (
-                      <div className="px-4 py-8 text-center">
-                        <Bell size={24} className="mx-auto mb-2" style={{ color: '#CBD5E1' }} />
-                        <p className="text-xs" style={{ color: '#94A3B8' }}>Sin notificaciones</p>
-                      </div>
-                    ) : (
-                      notifItems.map((n) => (
-                        <div key={n.id} className="px-4 py-3 hover:bg-slate-50 cursor-pointer" style={{ borderBottom: '1px solid #F1F5F9' }}>
-                          <div className="flex items-start gap-2">
-                            <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: n.color }} />
-                            <div className="min-w-0">
-                              <p className="text-xs font-medium truncate" style={{ color: '#0F172A' }}>{n.title}</p>
-                              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{n.tiempo}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            <button className="relative p-2 rounded-lg cursor-pointer flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
+              <Bell size={16} className="text-white/80" />
+              <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: theme.accent }}>
+                3
+              </div>
+            </button>
             <div className="text-right hidden md:block">
               <p className="text-white text-xs font-medium truncate max-w-[140px]">{email || 'empleado@empresa.com'}</p>
               <p className="text-white/60 text-xs">Empleado</p>
             </div>
-            <button
-              onClick={() => setShowChangePIN(true)}
-              className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-300 flex-shrink-0"
-              style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}
-            >
-              <Hash size={13} />
-              <span className="hidden lg:inline">Cambiar PIN</span>
-            </button>
             <button
               onClick={() => setShowChangePassword(true)}
               className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-300 flex-shrink-0"

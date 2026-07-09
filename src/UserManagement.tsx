@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Users, UserPlus, Search, Mail, CheckCircle2,
   CreditCard as Edit2, Key, X, Eye, EyeOff, AlertCircle,
-  RefreshCw, Hash, UserCheck, Send, FileText, Loader2,
+  RefreshCw, Hash, UserCheck,
 } from 'lucide-react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './components/Pagination';
 import { supabase, UserProfile, AppRole, Empleado } from './supabaseClient';
@@ -599,165 +599,6 @@ function CredentialRow({
   );
 }
 
-// ─── Send Template Modal ─────────────────────────────────────────────────────
-
-interface EmailPlantilla {
-  id: string;
-  nombre: string;
-  asunto: string;
-  cuerpo: string;
-  cuenta_id: string | null;
-  activo: boolean;
-}
-
-interface SendTemplateModalProps {
-  user: UserProfile;
-  onClose: () => void;
-}
-
-function SendTemplateModal({ user, onClose }: SendTemplateModalProps) {
-  const [plantillas, setPlantillas] = useState<EmailPlantilla[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [error, setError] = useState('');
-  const [done, setDone] = useState(false);
-
-  useEffect(() => {
-    supabase.from('email_plantillas').select('*').eq('activo', true).order('nombre')
-      .then(({ data }) => { setPlantillas((data ?? []) as EmailPlantilla[]); setLoading(false); });
-  }, []);
-
-  const selected = plantillas.find((p) => p.id === selectedId);
-
-  const handleSend = async () => {
-    if (!selectedId) return;
-    setError('');
-    setSending(true);
-    try {
-      const session = (await supabase.auth.getSession()).data.session;
-      const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-template-email`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-            'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({ plantilla_id: selectedId, destinatario_email: user.email, destinatario_nombre: user.nombre }),
-        }
-      );
-      const body = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(body.error ?? `Error ${resp.status}`);
-      setDone(true);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al enviar el correo.');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-      <div className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden bg-white">
-        <div className="flex items-center justify-between px-6 py-4" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-          <div className="flex items-center gap-2">
-            <Send size={17} style={{ color: '#0EA5E9' }} />
-            <h2 className="font-bold text-base" style={{ color: '#0F172A' }}>Enviar plantilla</h2>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-100">
-            <X size={15} style={{ color: '#64748B' }} />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4">
-          {done ? (
-            <div className="flex flex-col items-center py-4 text-center gap-3">
-              <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: '#ECFDF5', border: '2px solid #6EE7B7' }}>
-                <CheckCircle2 size={28} style={{ color: '#065F46' }} />
-              </div>
-              <p className="font-semibold text-sm" style={{ color: '#065F46' }}>Correo enviado</p>
-              <p className="text-xs" style={{ color: '#94A3B8' }}>El correo fue enviado a {user.email}.</p>
-              <button onClick={onClose} className="mt-2 w-full py-2.5 rounded-xl text-sm font-semibold" style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}>
-                Cerrar
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="px-3 py-2.5 rounded-xl text-sm flex items-center gap-2" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
-                <Mail size={14} />
-                Destinatario: <strong>{user.nombre}</strong> &mdash; {user.email}
-              </div>
-
-              {loading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 size={22} className="animate-spin" style={{ color: '#0EA5E9' }} />
-                </div>
-              ) : plantillas.length === 0 ? (
-                <div className="text-center py-6 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                  <FileText size={28} className="mx-auto mb-2" style={{ color: '#CBD5E1' }} />
-                  <p className="text-sm" style={{ color: '#94A3B8' }}>No hay plantillas activas</p>
-                  <p className="text-xs mt-1" style={{ color: '#CBD5E1' }}>Crea una en Notificaciones por Email → Plantillas</p>
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-56 overflow-y-auto">
-                  {plantillas.map((pl) => (
-                    <button
-                      key={pl.id}
-                      onClick={() => setSelectedId(pl.id)}
-                      className="w-full text-left px-4 py-3 rounded-xl transition-all"
-                      style={{
-                        border: `2px solid ${selectedId === pl.id ? '#0EA5E9' : '#E2E8F0'}`,
-                        backgroundColor: selectedId === pl.id ? '#F0F9FF' : '#F8FAFC',
-                      }}
-                    >
-                      <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>{pl.nombre}</p>
-                      <p className="text-xs mt-0.5 truncate" style={{ color: '#64748B' }}>{pl.asunto}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {selected && (
-                <div className="rounded-xl px-4 py-3" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                  <p className="text-xs font-semibold mb-1 uppercase tracking-wide" style={{ color: '#475569' }}>Vista previa</p>
-                  <pre className="text-xs whitespace-pre-wrap font-sans" style={{ color: '#334155' }}>
-                    {selected.cuerpo.replace(/\{nombre\}/g, user.nombre).replace(/\{email\}/g, user.email)}
-                  </pre>
-                </div>
-              )}
-
-              {error && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
-                  <AlertCircle size={13} style={{ color: '#DC2626' }} />
-                  <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
-                </div>
-              )}
-
-              <div className="flex gap-3 pt-1">
-                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSend}
-                  disabled={sending || !selectedId}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-50"
-                  style={{ backgroundColor: '#0EA5E9' }}
-                >
-                  {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                  Enviar
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 interface Props { currentUserRole: AppRole; onImpersonate?: (userId: string, societyId: string | null) => void; }
@@ -772,7 +613,6 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
-  const [sendingUser, setSendingUser] = useState<UserProfile | null>(null);
   const [page, setPage] = useState(1);
 
   const loadUsers = useCallback(async () => {
@@ -822,7 +662,6 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
     <div>
       {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={loadUsers} currentUserRole={currentUserRole} />}
       {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} currentUserRole={currentUserRole} />}
-      {sendingUser && <SendTemplateModal user={sendingUser} onClose={() => setSendingUser(null)} />}
 
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -931,10 +770,6 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
                         <Eye size={13} style={{ color: '#3B82F6' }} />
                       </button>
                     )}
-                    <button onClick={() => setSendingUser(u)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-sky-50" title="Enviar plantilla">
-                      <Send size={13} style={{ color: '#0EA5E9' }} />
-                    </button>
                     <button onClick={() => setEditingUser(u)}
                       className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-slate-100" title="Editar usuario">
                       <Edit2 size={13} style={{ color: '#64748B' }} />

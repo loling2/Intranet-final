@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2 } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Hash, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2 } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
@@ -19,6 +19,7 @@ import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
 import { downloadFromWasabi, uploadToWasabiKey } from './lib/wasabi';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import ChangePinModal from './components/ChangePinModal';
 import IncidenciasModule from './components/IncidenciasModule';
 
 const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> = {
@@ -1701,14 +1702,52 @@ function Dashboard({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showChangePin, setShowChangePin] = useState(false);
   const [activeDeviceCount, setActiveDeviceCount] = useState<number | null>(null);
   const [assignedVehicle, setAssignedVehicle] = useState<any>(null);
+
+  // ── Notifications ──────────────────────────────────────────────────────────
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<{ id: string; tipo: string; titulo: string; descripcion: string; leida: boolean; created_at: string }[]>([]);
+  const unreadCount = notifications.filter(n => !n.leida).length;
+
+  const loadNotifications = async (uid: string) => {
+    const { data } = await supabase
+      .from('notificaciones_empleado')
+      .select('id, tipo, titulo, descripcion, leida, created_at')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    setNotifications(data ?? []);
+  };
+
+  const markAllRead = async (uid: string) => {
+    await supabase
+      .from('notificaciones_empleado')
+      .update({ leida: true })
+      .eq('user_id', uid)
+      .eq('leida', false);
+    setNotifications(prev => prev.map(n => ({ ...n, leida: true })));
+  };
+
+  const handleBellClick = async () => {
+    const uid = currentUserId;
+    if (!uid) return;
+    setShowNotifications(v => {
+      if (!v) {
+        // opening: mark all as read after a moment
+        setTimeout(() => markAllRead(uid), 800);
+      }
+      return !v;
+    });
+  };
 
   useEffect(() => {
     if (impersonatingUserId) {
       setCurrentUserId(impersonatingUserId);
       supabase.from('user_profiles').select('nombre').eq('id', impersonatingUserId).maybeSingle()
         .then(({ data }) => setCurrentUserNombre(data?.nombre ?? email));
+      loadNotifications(impersonatingUserId);
       return;
     }
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -1717,6 +1756,7 @@ function Dashboard({
       if (uid) {
         supabase.from('user_profiles').select('nombre').eq('id', uid).maybeSingle()
           .then(({ data }) => setCurrentUserNombre(data?.nombre ?? email));
+        loadNotifications(uid);
       }
     });
   }, [email, impersonatingUserId]);
@@ -1769,6 +1809,7 @@ useEffect(() => {
   return (
     <div className="min-h-screen transition-all duration-700" style={{ backgroundColor: theme.bg }}>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+      {showChangePin && <ChangePinModal onClose={() => setShowChangePin(false)} />}
       {/* Header */}
       <header
         className="sticky top-0 z-50 transition-all duration-700"
@@ -1825,16 +1866,83 @@ useEffect(() => {
                 <span className="hidden sm:inline">Panel Supervisor</span>
               </button>
             )}
-            <button className="relative p-2 rounded-lg cursor-pointer flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
+            <button className="relative p-2 rounded-lg cursor-pointer flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }} onClick={handleBellClick}>
               <Bell size={16} className="text-white/80" />
-              <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: theme.accent }}>
-                3
-              </div>
+              {unreadCount > 0 && (
+                <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: theme.accent }}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </div>
+              )}
+              {/* Notification dropdown */}
+              {showNotifications && (
+                <div
+                  className="absolute right-0 top-full mt-2 w-80 rounded-2xl shadow-2xl overflow-hidden z-[500]"
+                  style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #F1F5F9' }}>
+                    <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Notificaciones</span>
+                    <button
+                      onClick={() => setShowNotifications(false)}
+                      className="w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer"
+                      style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="px-4 py-8 text-center">
+                        <Bell size={24} className="mx-auto mb-2" style={{ color: '#CBD5E1' }} />
+                        <p className="text-xs" style={{ color: '#94A3B8' }}>Sin notificaciones</p>
+                      </div>
+                    ) : (
+                      notifications.map(n => (
+                        <button
+                          key={n.id}
+                          className="w-full px-4 py-3 flex items-start gap-3 text-left transition-colors duration-150 cursor-pointer"
+                          style={{ borderBottom: '1px solid #F8FAFC', backgroundColor: n.leida ? '#FFFFFF' : '#F0F9FF' }}
+                          onClick={() => {
+                            setShowNotifications(false);
+                            setActiveTab(n.tipo === 'nomina' ? 'nominas' : 'prevencion');
+                          }}
+                        >
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                            style={{ backgroundColor: n.tipo === 'nomina' ? '#FEF3C7' : '#ECFDF5' }}>
+                            {n.tipo === 'nomina'
+                              ? <Zap size={13} style={{ color: '#D97706' }} />
+                              : <ShieldCheck size={13} style={{ color: '#059669' }} />
+                            }
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold truncate" style={{ color: '#0F172A' }}>{n.titulo}</p>
+                            <p className="text-xs truncate mt-0.5" style={{ color: '#64748B' }}>{n.descripcion}</p>
+                            <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
+                              {new Date(n.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </p>
+                          </div>
+                          {!n.leida && (
+                            <div className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ backgroundColor: theme.accent }} />
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </button>
             <div className="text-right hidden md:block">
               <p className="text-white text-xs font-medium truncate max-w-[140px]">{email || 'empleado@empresa.com'}</p>
               <p className="text-white/60 text-xs">Empleado</p>
             </div>
+            <button
+              onClick={() => setShowChangePin(true)}
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-300 flex-shrink-0"
+              style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}
+            >
+              <Hash size={13} />
+              <span className="hidden lg:inline">Cambiar PIN</span>
+            </button>
             <button
               onClick={() => setShowChangePassword(true)}
               className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-300 flex-shrink-0"

@@ -140,22 +140,6 @@ function extractEmpresa(text: string): string | null {
     if (raw.length > 4 && raw.length < 120) return raw;
   }
 
-  // Pattern 5: Table-header layout — "EMPRESA  DOMICILIO  Nº INSCRIPCIÓN S.S.  [company]  [address]  [SS code]"
-  // The SS registration code (e.g. 38/1159207-35) marks the end of the company+address block.
-  const ssRegistroMatch = text.match(/\b(\d{2}\/\d{6,7}-\d{2})\b/);
-  if (ssRegistroMatch) {
-    const ssCodeIdx = text.indexOf(ssRegistroMatch[1]);
-    const ssLabelIdx = upper.search(/N[ºO°]\s*INSCRIPCI[OÓ]N\s*S\.?\s*S\.?/);
-    if (ssLabelIdx !== -1 && ssCodeIdx > ssLabelIdx) {
-      const ssLabelSlice = upper.slice(ssLabelIdx).match(/N[ºO°]\s*INSCRIPCI[OÓ]N\s*S\.?\s*S\.?\s*/i);
-      const afterLabel = text.slice(ssLabelIdx + (ssLabelSlice?.[0].length ?? 20), ssCodeIdx).trim();
-      // Strip trailing street address (CL, C L, C/, AV, CALLE, PLAZA, PASEO, RONDA, URB...)
-      const addrMatch = afterLabel.match(/^(.*?)\s+(?:C[/\\]|C\s+[/\\]|CL\s|C\s+L\s|AV(?:DA)?\s|AVENIDA\s|CALLE\s|PLAZA\s|PZ[AO]?\s|PASEO\s|RONDA\s|URB\s)/i);
-      const candidate = (addrMatch ? addrMatch[1] : afterLabel).trim().replace(/\s+/g, ' ');
-      if (candidate.length > 2 && candidate.length < 120) return candidate;
-    }
-  }
-
   return null;
 }
 

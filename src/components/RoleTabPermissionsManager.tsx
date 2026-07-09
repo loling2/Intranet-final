@@ -49,7 +49,6 @@ const BUILT_IN_ROLES: RoleDef[] = [
   { id: 'prevencion',     label: 'Prevencion',     color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', isBuiltIn: true },
   { id: 'administracion', label: 'Administracion', color: '#C2410C', bg: '#FFF7ED', border: '#FED7AA', isBuiltIn: true },
   { id: 'employee',       label: 'Empleado',       color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0', isBuiltIn: true },
-  { id: 'formacion',      label: 'Formacion',      color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD', isBuiltIn: true },
 ];
 
 const CUSTOM_PALETTE = [

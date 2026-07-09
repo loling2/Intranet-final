@@ -5,7 +5,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export type AppRole = 'admin' | 'rrhh' | 'employee' | 'prevencion' | 'supervisor' | 'administracion' | 'formacion';
+export type AppRole = 'admin' | 'rrhh' | 'employee' | 'prevencion' | 'supervisor' | 'administracion';
 
 export interface UserProfile {
   id: string;
@@ -184,7 +184,6 @@ export interface Dispositivo {
   fecha_asignacion: string | null;
 
   notas: string;
-  valor_estimado: number | null;
   created_at: string;
   updated_at: string;
 }

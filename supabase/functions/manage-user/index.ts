@@ -258,6 +258,34 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── send_invite ───────────────────────────────────────────────────────────
+    if (action === "send_invite") {
+      // Fetches the user's email from user_profiles and sends a password reset
+      // email via Supabase Auth (the user clicks it to set their password and confirm)
+      const { data: profile } = await supabaseAdmin
+        .from("user_profiles")
+        .select("email")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (!profile?.email) {
+        return new Response(JSON.stringify({ error: "Usuario sin correo registrado" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error: resetErr } = await supabaseAdmin.auth.admin.generateLink({
+        type: "recovery",
+        email: profile.email,
+      });
+
+      if (resetErr) throw resetErr;
+
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     return new Response(JSON.stringify({ error: "Accion desconocida" }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -184,6 +184,7 @@ export interface Dispositivo {
   fecha_asignacion: string | null;
 
   notas: string;
+  valor_estimado: number | null;
   created_at: string;
   updated_at: string;
 }

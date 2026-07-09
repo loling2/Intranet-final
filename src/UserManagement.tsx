@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Users, UserPlus, Search, Mail, CheckCircle2,
   CreditCard as Edit2, Key, X, Eye, EyeOff, AlertCircle,
-  RefreshCw, Hash, UserCheck,
+  RefreshCw, Hash, UserCheck, Send,
 } from 'lucide-react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './components/Pagination';
 import { supabase, UserProfile, AppRole, Empleado } from './supabaseClient';
@@ -615,6 +615,8 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [page, setPage] = useState(1);
+  const [sendingInvite, setSendingInvite] = useState<string | null>(null);
+  const [inviteSent, setInviteSent] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -629,6 +631,19 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
   useEffect(() => { setPage(1); }, [search, filterRole, filterStatus]);
+
+  const handleSendInvite = async (userId: string) => {
+    setSendingInvite(userId);
+    try {
+      await callManageUser('send_invite', userId, {});
+      setInviteSent(userId);
+      setTimeout(() => setInviteSent(null), 3000);
+    } catch {
+      // silently ignore — the user can retry
+    } finally {
+      setSendingInvite(null);
+    }
+  };
 
   const userIds = new Set(users.map((u) => u.id));
   // Empleados that don't have a linked user_profiles entry
@@ -771,6 +786,18 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
                         <Eye size={13} style={{ color: '#3B82F6' }} />
                       </button>
                     )}
+                    <button
+                      onClick={() => handleSendInvite(u.id)}
+                      disabled={sendingInvite === u.id}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-green-50 disabled:opacity-50"
+                      title="Enviar correo de confirmacion y contrasena"
+                    >
+                      {sendingInvite === u.id
+                        ? <RefreshCw size={13} className="animate-spin" style={{ color: '#94A3B8' }} />
+                        : inviteSent === u.id
+                        ? <CheckCircle2 size={13} style={{ color: '#22C55E' }} />
+                        : <Send size={13} style={{ color: '#10B981' }} />}
+                    </button>
                     <button onClick={() => setEditingUser(u)}
                       className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-slate-100" title="Editar usuario">
                       <Edit2 size={13} style={{ color: '#64748B' }} />

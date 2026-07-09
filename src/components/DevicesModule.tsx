@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination';
 import {
-  Laptop, Smartphone, Monitor, Headphones, Tablet, Phone,
+  Laptop, Smartphone, Monitor, Headphones, Tablet,
   Plus, Search, Pencil, Trash2, X, RefreshCw, AlertCircle,
-  CheckCircle2, ChevronDown, Settings, MapPin,
+  CheckCircle2, ChevronDown, Settings, MapPin, FileText,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import type { Dispositivo, Empleado, Centro } from '../supabaseClient';
@@ -27,6 +27,70 @@ function formatDate(d: string | null) {
   return new Date(d).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+// ── PDF Delivery Document ─────────────────────────────────────────────────────
+
+function generateDeliveryPDF(dev: import('../supabaseClient').Dispositivo) {
+  const today = new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+  const assignedTo = dev.usuario_asignado_nombre || 'Sin asignar';
+  const valorStr = dev.valor_estimado != null ? `${dev.valor_estimado.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €` : 'No especificado';
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  body { font-family: 'Georgia', serif; margin: 60px 80px; color: #111; font-size: 13px; line-height: 1.6; }
+  h1 { text-align: center; font-size: 17px; letter-spacing: 1px; border-bottom: 2px solid #111; padding-bottom: 12px; margin-bottom: 24px; text-transform: uppercase; }
+  .date { margin-bottom: 24px; }
+  h2 { font-size: 14px; margin-bottom: 12px; }
+  .field { margin-bottom: 6px; }
+  .field strong { display: inline-block; min-width: 200px; }
+  .body-text { margin: 32px 0; }
+  .body-text p { margin-bottom: 12px; }
+  .signatures { display: flex; justify-content: space-between; margin-top: 80px; }
+  .sig-box { text-align: center; width: 220px; }
+  .sig-line { border-top: 1px solid #111; margin-bottom: 8px; }
+  .sig-label { font-size: 12px; color: #444; }
+</style>
+</head>
+<body>
+  <h1>Acta de Entrega de Equipo Inform&aacute;tico</h1>
+  <div class="date">En Santa Cruz de Tenerife, a ${today}.</div>
+  <h2>Entrega de equipo inform&aacute;tico</h2>
+  <p>Por la presente, se hace entrega del siguiente equipo inform&aacute;tico a la empleada correspondiente, propiedad de la sociedad:</p>
+  <div class="field"><strong>Dispositivo:</strong> ${dev.tipo} marca ${dev.marca_modelo}</div>
+  ${dev.etiquetado ? `<div class="field"><strong>Etiqueta de inventario:</strong> ${dev.etiquetado}</div>` : ''}
+  ${dev.numero_serie ? `<div class="field"><strong>N&uacute;mero de serie:</strong> ${dev.numero_serie}</div>` : ''}
+  <div class="field"><strong>Asignado a:</strong> ${assignedTo}</div>
+  <div class="field"><strong>Valor estimado del equipo:</strong> ${valorStr}</div>
+  <div class="body-text">
+    <p>La persona que recibe el dispositivo se compromete a realizar un uso responsable y diligente del mismo, destinado exclusivamente a fines laborales, as&iacute; como a velar por su integridad f&iacute;sica, seguridad y correcto mantenimiento durante el periodo en que est&eacute; bajo su custodia.</p>
+    <p>Asimismo, se compromete a comunicar cualquier incidencia, aver&iacute;a o p&eacute;rdida a los servicios inform&aacute;ticos de la sociedad de manera inmediata.</p>
+  </div>
+  <div class="signatures">
+    <div class="sig-box">
+      <div class="sig-line"></div>
+      <div class="sig-label">Firma del Empleado/a</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-line"></div>
+      <div class="sig-label">Firma de la Sociedad</div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (win) {
+    win.addEventListener('load', () => {
+      win.print();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    });
+  }
+}
+
 // ── Form Modal ────────────────────────────────────────────────────────────────
 
 interface FormState {
@@ -44,6 +108,7 @@ interface FormState {
   usuario_asignado_nombre: string;
   fecha_asignacion: string;
   notas: string;
+  valor_estimado: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -61,6 +126,7 @@ const EMPTY_FORM: FormState = {
   usuario_asignado_nombre: '',
   fecha_asignacion: '',
   notas: '',
+  valor_estimado: '',
 };
 // ── Searchable Employee Picker ────────────────────────────────────────────────
 
@@ -186,6 +252,7 @@ function DeviceModal({
           usuario_asignado_nombre: existing.usuario_asignado_nombre || '',
           fecha_asignacion: existing.fecha_asignacion ?? '',
           notas: existing.notas || '',
+          valor_estimado: existing.valor_estimado != null ? String(existing.valor_estimado) : '',
         }
       : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
   );
@@ -229,6 +296,7 @@ function DeviceModal({
       usuario_asignado_nombre: form.estado_id === 3 ? '' : form.usuario_asignado_nombre.trim(),
       fecha_asignacion: form.estado_id === 3 ? null : (form.fecha_asignacion || null),
       notas: form.notas.trim(),
+      valor_estimado: form.valor_estimado !== '' ? parseFloat(form.valor_estimado) : null,
     };
 
     try {
@@ -471,6 +539,21 @@ function DeviceModal({
               placeholder="Incidencias, garantia, observaciones..."
               rows={2}
               className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
+              style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+            />
+          </div>
+
+          {/* Valor estimado */}
+          <div>
+            <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Valor estimado (€)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.valor_estimado}
+              onChange={(e) => set('valor_estimado', e.target.value)}
+              placeholder="Ej: 500"
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
               style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
             />
           </div>
@@ -882,6 +965,9 @@ const totalActivos =
 
                   {/* Acciones */}
                   <div className="col-span-1 flex items-center justify-end gap-1">
+                    <button type="button" onClick={() => generateDeliveryPDF(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors" style={{ color: '#CBD5E1' }} title="Acta de entrega">
+                      <FileText size={13} />
+                    </button>
                     <button type="button" onClick={() => setEditing(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#CBD5E1' }}>
                       <Pencil size={13} />
                     </button>

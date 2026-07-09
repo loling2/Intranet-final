@@ -98,9 +98,23 @@ function extractMesAnio(text: string): { mes: number; nombre: string; anio: numb
   return bestNum;
 }
 
+const NIF_CIF_TO_EMPRESA: Record<string, string> = {
+  G76604842: 'APEDECA',
+  B76807973: 'GERONTALIA',
+  B19484344: 'ELEDA',
+  B38062667: 'SERCA',
+};
+
 function extractEmpresa(text: string): string | null {
   const upper = text.toUpperCase();
   const STOP_PATTERN = /DOMICILIO|N[ºO°°]\s*INSCRIPCI[OÓ]N|TRABAJADOR|NIF\/CIF|C\.I\.F\b|CIF\b|CENTRO\b/i;
+
+  // Pattern 0: NIF/CIF lookup table
+  const nifMatch = upper.match(/NIF\/CIF\s*[:\-]?\s*([A-Z0-9]{8,9})\b/);
+  if (nifMatch) {
+    const key = nifMatch[1].toUpperCase();
+    if (NIF_CIF_TO_EMPRESA[key]) return NIF_CIF_TO_EMPRESA[key];
+  }
 
   // Pattern 1: labeled "EMPRESA" field
   const empresaIdx = upper.indexOf('EMPRESA');

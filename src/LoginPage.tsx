@@ -14,6 +14,7 @@ import AdminPanel from './AdminPanel';
 import RRHHPanel from './RRHHPanel';
 import PrevencionPanel from './PrevencionPanel';
 import AdministracionPanel from './AdministracionPanel';
+import FormacionPanel from './FormacionPanel';
 import { supabase } from './supabaseClient';
 import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
@@ -667,7 +668,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 }
 
 
-type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion';
+type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion' | 'formacion';
 
 interface SessionState {
   email: string;
@@ -851,6 +852,8 @@ export default function LoginPage() {
         initialView = 'supervisor';
       } else if (resolvedRole === 'administracion') {
         initialView = 'administracion';
+      } else if (resolvedRole === 'formacion') {
+        initialView = 'formacion';
       } else {
         if (resolvedSocietyId) setSelectedId(resolvedSocietyId);
       }
@@ -993,6 +996,22 @@ export default function LoginPage() {
       );
     }
 
+    if (session.view === 'formacion') {
+      return (
+        <AuthProvider>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+            <FormacionPanel
+              email={session.email}
+              onLogout={handleLogout}
+              onNavigateAdmin={session.role === 'admin' ? () => handleNavigate('admin') : undefined}
+              isAdmin={session.role === 'admin'}
+              onNavigateEmployee={() => handleNavigate('dashboard')}
+            />
+          </SocietyProvider>
+        </AuthProvider>
+      );
+    }
+
     if (session.view === 'dashboard') {
       const theme = societies.find((s) => s.id === session.activeSocietyId) ?? null;
       if (theme) {
@@ -1003,6 +1022,7 @@ export default function LoginPage() {
           session.role === 'supervisor'     ? { label: 'Volver a Supervisor',     view: 'supervisor',     color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
           session.role === 'prevencion'     ? { label: 'Volver a Prevencion',     view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
           session.role === 'administracion' ? { label: 'Volver a Administracion', view: 'administracion', color: '#93C5FD', border: 'rgba(37,99,235,0.3)'   } :
+          session.role === 'formacion'     ? { label: 'Volver a Formacion',     view: 'formacion',     color: '#67E8F9', border: 'rgba(8,145,178,0.3)'   } :
           null;
 
         return (

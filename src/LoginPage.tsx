@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2 } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
@@ -1816,6 +1816,8 @@ function Dashboard({
   const [assignedVehicle, setAssignedVehicle] = useState<any>(null);
   const [notifications, setNotifications] = useState<Array<{ id: string; tipo: string; texto: string; fecha: string }>>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifPos, setNotifPos] = useState<{ top: number; right: number } | null>(null);
+  const bellRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (impersonatingUserId) {
@@ -1921,12 +1923,12 @@ useEffect(() => {
     <div className="min-h-screen transition-all duration-700" style={{ backgroundColor: theme.bg }}>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
       {showChangePin && <ChangePinModal onClose={() => setShowChangePin(false)} />}
-      {showNotifications && (
+      {showNotifications && notifPos && (
         <>
           <div className="fixed inset-0 z-[199]" onClick={() => setShowNotifications(false)} />
           <div
-            className="fixed right-4 top-16 w-80 rounded-xl shadow-2xl overflow-hidden z-[200]"
-            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
+            className="fixed w-80 rounded-xl shadow-2xl overflow-hidden z-[200]"
+            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', top: notifPos.top, right: notifPos.right }}
           >
             <div className="px-4 py-3 flex items-center justify-between" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
               <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Notificaciones recientes</span>
@@ -1938,7 +1940,15 @@ useEffect(() => {
                   <p className="text-sm" style={{ color: '#94A3B8' }}>Sin notificaciones recientes</p>
                 </div>
               ) : notifications.map((n) => (
-                <div key={n.id} className="px-4 py-3 border-b last:border-b-0 hover:bg-slate-50 transition-colors" style={{ borderColor: '#F1F5F9' }}>
+                <button
+                  key={n.id}
+                  onClick={() => {
+                    setActiveTab(n.tipo === 'nomina' ? 'nominas' : 'prevencion');
+                    setShowNotifications(false);
+                  }}
+                  className="w-full px-4 py-3 border-b last:border-b-0 hover:bg-slate-50 transition-colors text-left cursor-pointer"
+                  style={{ borderColor: '#F1F5F9' }}
+                >
                   <div className="flex items-start gap-2.5">
                     <div className="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center mt-0.5" style={{ backgroundColor: n.tipo === 'nomina' ? '#EFF6FF' : '#ECFDF5' }}>
                       {n.tipo === 'nomina' ? <Zap size={13} style={{ color: '#0369A1' }} /> : <ShieldCheck size={13} style={{ color: '#065F46' }} />}
@@ -1948,7 +1958,7 @@ useEffect(() => {
                       <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{new Date(n.fecha).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}</p>
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -2012,7 +2022,14 @@ useEffect(() => {
             )}
             <div className="relative flex-shrink-0">
               <button
-                onClick={() => setShowNotifications((v) => !v)}
+                ref={bellRef}
+                onClick={() => {
+                  if (bellRef.current) {
+                    const rect = bellRef.current.getBoundingClientRect();
+                    setNotifPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+                  }
+                  setShowNotifications((v) => !v);
+                }}
                 className="relative p-2 rounded-lg cursor-pointer flex-shrink-0"
                 style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
               >

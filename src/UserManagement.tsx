@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Users, UserPlus, Search, Mail, CheckCircle2,
   CreditCard as Edit2, Key, X, Eye, EyeOff, AlertCircle,
-  RefreshCw, Hash, UserCheck,
+  RefreshCw, Hash, UserCheck, Send, FileText,
 } from 'lucide-react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './components/Pagination';
 import { supabase, UserProfile, AppRole, Empleado } from './supabaseClient';
@@ -785,6 +785,207 @@ function BulkCreateAccessModal({ employees, onClose, onCreated }: BulkCreateAcce
   );
 }
 
+// ─── Send Email Modal ────────────────────────────────────────────────────────
+
+interface SendEmailModalProps {
+  user: UserProfile;
+  onClose: () => void;
+}
+
+interface EmailPlantilla { id: string; nombre: string; asunto: string; activo: boolean; }
+interface EmailCuenta   { id: string; nombre: string; email: string; activo: boolean; }
+
+function SendEmailModal({ user, onClose }: SendEmailModalProps) {
+  const [plantillas, setPlantillas] = useState<EmailPlantilla[]>([]);
+  const [cuentas, setCuentas]       = useState<EmailCuenta[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [plantillaId, setPlantillaId] = useState('');
+  const [cuentaId, setCuentaId]     = useState('');
+  const [password, setPassword]     = useState('');
+  const [empresa, setEmpresa]       = useState('');
+  const [sending, setSending]       = useState(false);
+  const [error, setError]           = useState('');
+  const [done, setDone]             = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from('email_plantillas').select('id, nombre, asunto, activo').eq('activo', true).order('nombre'),
+      supabase.from('email_cuentas').select('id, nombre, email, activo').eq('activo', true).order('nombre'),
+    ]).then(([{ data: p }, { data: c }]) => {
+      setPlantillas((p ?? []) as EmailPlantilla[]);
+      setCuentas((c ?? []) as EmailCuenta[]);
+      setLoading(false);
+    });
+  }, []);
+
+  const handleSend = async () => {
+    if (!plantillaId) { setError('Selecciona una plantilla'); return; }
+    if (!cuentaId)    { setError('Selecciona una cuenta SMTP'); return; }
+    setSending(true); setError('');
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const token   = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            plantilla_id: plantillaId,
+            cuenta_id: cuentaId,
+            to_email: user.email,
+            variables: {
+              nombre:     user.nombre,
+              email:      user.email,
+              password:   password || '(ver con tu administrador)',
+              url_acceso: window.location.origin,
+              empresa:    empresa || 'la empresa',
+            },
+          }),
+        }
+      );
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(body.error ?? `Error ${resp.status}`);
+      setDone(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al enviar el correo');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
+      <div className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden bg-white">
+        <div className="flex items-center justify-between px-6 py-4" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }}>
+              <Send size={15} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-white font-semibold text-sm">Enviar correo de acceso</h2>
+              <p className="text-white/60 text-xs truncate max-w-[220px]">{user.email}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="p-6">
+          {done ? (
+            <div className="flex flex-col items-center py-4 text-center gap-3">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: '#ECFDF5', border: '2px solid #6EE7B7' }}>
+                <CheckCircle2 size={28} style={{ color: '#065F46' }} />
+              </div>
+              <p className="font-semibold text-sm" style={{ color: '#065F46' }}>Correo enviado correctamente</p>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>El correo ha sido enviado a {user.email}</p>
+              <button onClick={onClose} className="mt-2 w-full py-2.5 rounded-xl text-sm font-semibold cursor-pointer" style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}>
+                Cerrar
+              </button>
+            </div>
+          ) : loading ? (
+            <div className="flex items-center justify-center py-10">
+              <RefreshCw size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Plantilla *</label>
+                {plantillas.length === 0 ? (
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+                    <FileText size={13} />
+                    No hay plantillas activas. Crealas en Email → Plantillas.
+                  </div>
+                ) : (
+                  <select value={plantillaId} onChange={(e) => { setPlantillaId(e.target.value); setError(''); }}
+                    className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer"
+                    style={{ border: `1.5px solid ${!plantillaId && error ? '#FECACA' : '#E2E8F0'}`, backgroundColor: '#F8FAFC', color: plantillaId ? '#1E293B' : '#94A3B8' }}>
+                    <option value="">Selecciona una plantilla...</option>
+                    {plantillas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Cuenta SMTP emisora *</label>
+                {cuentas.length === 0 ? (
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+                    <Mail size={13} />
+                    No hay cuentas SMTP activas. Configuralas en Email → Cuentas SMTP.
+                  </div>
+                ) : (
+                  <select value={cuentaId} onChange={(e) => { setCuentaId(e.target.value); setError(''); }}
+                    className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer"
+                    style={{ border: `1.5px solid ${!cuentaId && error ? '#FECACA' : '#E2E8F0'}`, backgroundColor: '#F8FAFC', color: cuentaId ? '#1E293B' : '#94A3B8' }}>
+                    <option value="">Selecciona una cuenta...</option>
+                    {cuentas.map((c) => <option key={c.id} value={c.id}>{c.nombre} ({c.email})</option>)}
+                  </select>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
+                  Contraseña a incluir <span className="normal-case font-normal" style={{ color: '#94A3B8' }}>(variable {`{{password}}`})</span>
+                </label>
+                <input
+                  type="text"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Contraseña temporal del usuario"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
+                  Nombre de empresa <span className="normal-case font-normal" style={{ color: '#94A3B8' }}>(variable {`{{empresa}}`})</span>
+                </label>
+                <input
+                  type="text"
+                  value={empresa}
+                  onChange={(e) => setEmpresa(e.target.value)}
+                  placeholder="Nombre de la empresa"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }}
+                />
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                  <AlertCircle size={13} style={{ color: '#DC2626' }} />
+                  <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-1">
+                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer"
+                  style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSend}
+                  disabled={sending || !plantillaId || !cuentaId}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: '#0F172A' }}
+                >
+                  {sending ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                  Enviar correo
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 interface Props { currentUserRole: AppRole; onImpersonate?: (userId: string, societyId: string | null) => void; }
@@ -799,6 +1000,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [sendEmailUser, setSendEmailUser] = useState<UserProfile | null>(null);
   const [page, setPage] = useState(1);
   const [selectedEmps, setSelectedEmps] = useState<Set<string>>(new Set());
   const [showBulkModal, setShowBulkModal] = useState(false);
@@ -869,6 +1071,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
     <div>
       {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={loadUsers} currentUserRole={currentUserRole} />}
       {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} currentUserRole={currentUserRole} />}
+      {sendEmailUser && <SendEmailModal user={sendEmailUser} onClose={() => setSendEmailUser(null)} />}
       {showBulkModal && (
         <BulkCreateAccessModal
           employees={filteredEmpleados.filter((e) => selectedEmps.has(e.id))}
@@ -984,6 +1187,10 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
                         <Eye size={13} style={{ color: '#3B82F6' }} />
                       </button>
                     )}
+                    <button onClick={() => setSendEmailUser(u)}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-sky-50" title="Enviar correo de acceso">
+                      <Send size={13} style={{ color: '#0EA5E9' }} />
+                    </button>
                     <button onClick={() => setEditingUser(u)}
                       className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:bg-slate-100" title="Editar usuario">
                       <Edit2 size={13} style={{ color: '#64748B' }} />

@@ -38,6 +38,11 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   titulacion_habilitante: null,
   fecha_pago_tasas: null,
   nass: null,
+  convenio: null,
+  localidad: null,
+  direccion: null,
+  codigo_postal: null,
+  sexo: null,
   observaciones: null,
   activo: true,
   estado_contrato: 'pendiente',
@@ -63,6 +68,11 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     titulacion_habilitante: e.titulacion_habilitante,
     fecha_pago_tasas: e.fecha_pago_tasas,
     nass: e.nass ?? null,
+    convenio: e.convenio ?? null,
+    localidad: e.localidad ?? null,
+    direccion: e.direccion ?? null,
+    codigo_postal: e.codigo_postal ?? null,
+    sexo: e.sexo ?? null,
     observaciones: e.observaciones,
     activo: e.activo,
     estado_contrato: e.estado_contrato ?? 'pendiente',
@@ -1332,6 +1342,30 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                 <input value={form.nass ?? ''} onChange={(e) => f('nass', e.target.value || null)}
                   type="text" className="form-input" placeholder="Nº Afiliación Seg. Social" />
               </FormField>
+              <FormField label="Sexo">
+                <select value={form.sexo ?? ''} onChange={(e) => f('sexo', e.target.value || null)} className="form-input">
+                  <option value="">Seleccionar...</option>
+                  <option value="Hombre">Hombre</option>
+                  <option value="Mujer">Mujer</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </FormField>
+              <FormField label="Convenio">
+                <input value={form.convenio ?? ''} onChange={(e) => f('convenio', e.target.value || null)}
+                  type="text" className="form-input" placeholder="Convenio colectivo..." />
+              </FormField>
+              <FormField label="Localidad">
+                <input value={form.localidad ?? ''} onChange={(e) => f('localidad', e.target.value || null)}
+                  type="text" className="form-input" placeholder="Localidad..." />
+              </FormField>
+              <FormField label="Código Postal">
+                <input value={form.codigo_postal ?? ''} onChange={(e) => f('codigo_postal', e.target.value || null)}
+                  type="text" className="form-input" placeholder="00000" />
+              </FormField>
+              <FormField label="Dirección" className="sm:col-span-2 lg:col-span-3">
+                <input value={form.direccion ?? ''} onChange={(e) => f('direccion', e.target.value || null)}
+                  type="text" className="form-input" placeholder="Calle, número, piso..." />
+              </FormField>
             </div>
 
             {/* Section: Datos contractuales */}
@@ -1658,6 +1692,30 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         <FormField label="NASS">
                           <input value={form.nass ?? ''} onChange={(e) => f('nass', e.target.value || null)}
                             type="text" className="form-input" placeholder="Nº Afiliación Seg. Social" />
+                        </FormField>
+                        <FormField label="Sexo">
+                          <select value={form.sexo ?? ''} onChange={(e) => f('sexo', e.target.value || null)} className="form-input">
+                            <option value="">Seleccionar...</option>
+                            <option value="Hombre">Hombre</option>
+                            <option value="Mujer">Mujer</option>
+                            <option value="Otro">Otro</option>
+                          </select>
+                        </FormField>
+                        <FormField label="Convenio">
+                          <input value={form.convenio ?? ''} onChange={(e) => f('convenio', e.target.value || null)}
+                            type="text" className="form-input" placeholder="Convenio colectivo..." />
+                        </FormField>
+                        <FormField label="Localidad">
+                          <input value={form.localidad ?? ''} onChange={(e) => f('localidad', e.target.value || null)}
+                            type="text" className="form-input" placeholder="Localidad..." />
+                        </FormField>
+                        <FormField label="Código Postal">
+                          <input value={form.codigo_postal ?? ''} onChange={(e) => f('codigo_postal', e.target.value || null)}
+                            type="text" className="form-input" placeholder="00000" />
+                        </FormField>
+                        <FormField label="Dirección" className="sm:col-span-2 lg:col-span-3">
+                          <input value={form.direccion ?? ''} onChange={(e) => f('direccion', e.target.value || null)}
+                            type="text" className="form-input" placeholder="Calle, número, piso..." />
                         </FormField>
                       </div>
 

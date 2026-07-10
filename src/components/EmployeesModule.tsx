@@ -43,6 +43,11 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   direccion: null,
   codigo_postal: null,
   sexo: null,
+  doc_dni: false,
+  doc_nass: false,
+  doc_vitali: false,
+  doc_numero_cuenta: false,
+  doc_titulacion: false,
   observaciones: null,
   activo: true,
   estado_contrato: 'pendiente',
@@ -73,6 +78,11 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     direccion: e.direccion ?? null,
     codigo_postal: e.codigo_postal ?? null,
     sexo: e.sexo ?? null,
+    doc_dni: e.doc_dni ?? false,
+    doc_nass: e.doc_nass ?? false,
+    doc_vitali: e.doc_vitali ?? false,
+    doc_numero_cuenta: e.doc_numero_cuenta ?? false,
+    doc_titulacion: e.doc_titulacion ?? false,
     observaciones: e.observaciones,
     activo: e.activo,
     estado_contrato: e.estado_contrato ?? 'pendiente',
@@ -1504,6 +1514,29 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                   <option value="inactivo">Inactivo</option>
                 </select>
               </FormField>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Documentación recibida</label>
+                <div className="flex flex-wrap gap-x-4 gap-y-2 px-3 py-2.5 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                  {([
+                    { key: 'doc_dni', label: 'DNI' },
+                    { key: 'doc_nass', label: 'NASS' },
+                    { key: 'doc_vitali', label: 'Vitali' },
+                    { key: 'doc_numero_cuenta', label: 'Nº Cuenta' },
+                    { key: 'doc_titulacion', label: 'Titulación' },
+                  ] as const).map(({ key, label }) => (
+                    <label key={key} className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={form[key] as boolean}
+                        onChange={(e) => f(key, e.target.checked)}
+                        className="w-3.5 h-3.5 rounded cursor-pointer"
+                        style={{ accentColor: '#16A34A' }}
+                      />
+                      <span className="text-xs font-medium" style={{ color: form[key] ? '#16A34A' : '#64748B' }}>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Section: Estado del contrato */}
@@ -1855,6 +1888,29 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                             <option value="inactivo">Inactivo</option>
                           </select>
                         </FormField>
+                        <div>
+                          <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Documentación recibida</label>
+                          <div className="flex flex-wrap gap-x-4 gap-y-2 px-3 py-2.5 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                            {([
+                              { key: 'doc_dni', label: 'DNI' },
+                              { key: 'doc_nass', label: 'NASS' },
+                              { key: 'doc_vitali', label: 'Vitali' },
+                              { key: 'doc_numero_cuenta', label: 'Nº Cuenta' },
+                              { key: 'doc_titulacion', label: 'Titulación' },
+                            ] as const).map(({ key, label }) => (
+                              <label key={key} className="flex items-center gap-1.5 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={form[key] as boolean}
+                                  onChange={(e) => f(key, e.target.checked)}
+                                  className="w-3.5 h-3.5 rounded cursor-pointer"
+                                  style={{ accentColor: '#16A34A' }}
+                                />
+                                <span className="text-xs font-medium" style={{ color: form[key] ? '#16A34A' : '#64748B' }}>{label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
                       </div>
 
                       {/* Section: Estado del contrato */}

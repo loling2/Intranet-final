@@ -129,6 +129,11 @@ export interface Empleado {
   direccion: string | null;
   codigo_postal: string | null;
   sexo: string | null;
+  doc_dni: boolean;
+  doc_nass: boolean;
+  doc_vitali: boolean;
+  doc_numero_cuenta: boolean;
+  doc_titulacion: boolean;
   observaciones: string | null;
   activo: boolean;
   estado_contrato: EstadoContrato;

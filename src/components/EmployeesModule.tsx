@@ -1368,6 +1368,43 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               <button onClick={cancelForm} className="cursor-pointer" style={{ color: '#94A3B8' }}><X size={16} /></button>
             </div>
 
+            {/* Section: Documentacion + Estado (top) */}
+            <div className="flex flex-wrap items-center gap-4 mb-5 px-4 py-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>Estado:</span>
+                <button
+                  type="button"
+                  onClick={() => f('activo', !form.activo)}
+                  className="px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-150 cursor-pointer"
+                  style={{
+                    backgroundColor: form.activo ? '#16A34A' : '#DC2626',
+                    color: '#FFFFFF',
+                    border: 'none',
+                  }}
+                >
+                  {form.activo ? 'Activo' : 'Inactivo'}
+                </button>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>Documentacion:</span>
+                {([
+                  { key: 'doc_vitali', label: 'Vitali' },
+                  { key: 'doc_titulacion', label: 'Titulación' },
+                ] as const).map(({ key, label }) => (
+                  <label key={key} className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={form[key] as boolean}
+                      onChange={(e) => f(key, e.target.checked)}
+                      className="w-3.5 h-3.5 rounded cursor-pointer"
+                      style={{ accentColor: '#16A34A' }}
+                    />
+                    <span className="text-xs font-medium" style={{ color: form[key] ? '#16A34A' : '#64748B' }}>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
             {/* Section: Datos personales */}
             <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Datos personales</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
@@ -1502,41 +1539,12 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               </FormField>
             </div>
 
-            {/* Section: Observaciones + estado */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-              <FormField label="Observaciones generales" className="sm:col-span-2">
+            {/* Section: Observaciones */}
+            <div className="grid grid-cols-1 gap-3 mb-5">
+              <FormField label="Observaciones generales">
                 <textarea value={form.observaciones ?? ''} onChange={(e) => f('observaciones', e.target.value)}
                   rows={2} className="form-input resize-none" placeholder="Notas adicionales..." />
               </FormField>
-              <FormField label="Estado">
-                <select value={form.activo ? 'activo' : 'inactivo'} onChange={(e) => f('activo', e.target.value === 'activo')} className="form-input">
-                  <option value="activo">Activo</option>
-                  <option value="inactivo">Inactivo</option>
-                </select>
-              </FormField>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Documentación recibida</label>
-                <div className="flex flex-wrap gap-x-4 gap-y-2 px-3 py-2.5 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                  {([
-                    { key: 'doc_dni', label: 'DNI' },
-                    { key: 'doc_nass', label: 'NASS' },
-                    { key: 'doc_vitali', label: 'Vitali' },
-                    { key: 'doc_numero_cuenta', label: 'Nº Cuenta' },
-                    { key: 'doc_titulacion', label: 'Titulación' },
-                  ] as const).map(({ key, label }) => (
-                    <label key={key} className="flex items-center gap-1.5 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={form[key] as boolean}
-                        onChange={(e) => f(key, e.target.checked)}
-                        className="w-3.5 h-3.5 rounded cursor-pointer"
-                        style={{ accentColor: '#16A34A' }}
-                      />
-                      <span className="text-xs font-medium" style={{ color: form[key] ? '#16A34A' : '#64748B' }}>{label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
             </div>
 
             {/* Section: Estado del contrato */}
@@ -1742,6 +1750,43 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         <button onClick={cancelForm} className="cursor-pointer" style={{ color: '#94A3B8' }}><X size={16} /></button>
                       </div>
 
+                      {/* Section: Documentacion + Estado (top) */}
+                      <div className="flex flex-wrap items-center gap-4 mb-5 px-4 py-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>Estado:</span>
+                          <button
+                            type="button"
+                            onClick={() => f('activo', !form.activo)}
+                            className="px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-150 cursor-pointer"
+                            style={{
+                              backgroundColor: form.activo ? '#16A34A' : '#DC2626',
+                              color: '#FFFFFF',
+                              border: 'none',
+                            }}
+                          >
+                            {form.activo ? 'Activo' : 'Inactivo'}
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>Documentacion:</span>
+                          {([
+                            { key: 'doc_vitali', label: 'Vitali' },
+                            { key: 'doc_titulacion', label: 'Titulación' },
+                          ] as const).map(({ key, label }) => (
+                            <label key={key} className="flex items-center gap-1.5 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={form[key] as boolean}
+                                onChange={(e) => f(key, e.target.checked)}
+                                className="w-3.5 h-3.5 rounded cursor-pointer"
+                                style={{ accentColor: '#16A34A' }}
+                              />
+                              <span className="text-xs font-medium" style={{ color: form[key] ? '#16A34A' : '#64748B' }}>{label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
                       {/* Section: Datos personales */}
                       <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Datos personales</p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
@@ -1876,41 +1921,12 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         </FormField>
                       </div>
 
-                      {/* Section: Observaciones + estado */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-                        <FormField label="Observaciones generales" className="sm:col-span-2">
+                      {/* Section: Observaciones */}
+                      <div className="grid grid-cols-1 gap-3 mb-5">
+                        <FormField label="Observaciones generales">
                           <textarea value={form.observaciones ?? ''} onChange={(e) => f('observaciones', e.target.value)}
                             rows={2} className="form-input resize-none" placeholder="Notas adicionales..." />
                         </FormField>
-                        <FormField label="Estado">
-                          <select value={form.activo ? 'activo' : 'inactivo'} onChange={(e) => f('activo', e.target.value === 'activo')} className="form-input">
-                            <option value="activo">Activo</option>
-                            <option value="inactivo">Inactivo</option>
-                          </select>
-                        </FormField>
-                        <div>
-                          <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Documentación recibida</label>
-                          <div className="flex flex-wrap gap-x-4 gap-y-2 px-3 py-2.5 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                            {([
-                              { key: 'doc_dni', label: 'DNI' },
-                              { key: 'doc_nass', label: 'NASS' },
-                              { key: 'doc_vitali', label: 'Vitali' },
-                              { key: 'doc_numero_cuenta', label: 'Nº Cuenta' },
-                              { key: 'doc_titulacion', label: 'Titulación' },
-                            ] as const).map(({ key, label }) => (
-                              <label key={key} className="flex items-center gap-1.5 cursor-pointer select-none">
-                                <input
-                                  type="checkbox"
-                                  checked={form[key] as boolean}
-                                  onChange={(e) => f(key, e.target.checked)}
-                                  className="w-3.5 h-3.5 rounded cursor-pointer"
-                                  style={{ accentColor: '#16A34A' }}
-                                />
-                                <span className="text-xs font-medium" style={{ color: form[key] ? '#16A34A' : '#64748B' }}>{label}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
                       </div>
 
                       {/* Section: Estado del contrato */}

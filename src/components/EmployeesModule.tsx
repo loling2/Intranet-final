@@ -795,7 +795,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSociedad, setFilterSociedad] = useState('');
-  const [filterActivo, setFilterActivo] = useState('');
+  const [filterActivo, setFilterActivo] = useState('activo');
   const [page, setPage] = useState(1);
 
   const [showForm, setShowForm] = useState(false);
@@ -1298,6 +1298,27 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         </div>
       )}
 
+      {/* Active/Inactive tabs */}
+      <div className="flex gap-2 mb-1">
+        {[
+          { value: 'activo', label: 'Trabajadores en Activo' },
+          { value: 'inactivo', label: 'Inactivos' },
+        ].map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setFilterActivo(tab.value)}
+            className="px-5 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-150"
+            style={
+              filterActivo === tab.value
+                ? { backgroundColor: '#0369A1', color: '#FFFFFF', border: '1px solid #0369A1' }
+                : { backgroundColor: '#FFFFFF', color: '#64748B', border: '1px solid #E2E8F0' }
+            }
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {/* Header + filters */}
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
         <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3" style={{ borderBottom: '1px solid #E2E8F0' }}>
@@ -1328,16 +1349,6 @@ export default function EmployeesModule({ currentUserRole }: Props) {
             >
               <option value="">Todas las sociedades</option>
               {sociedades.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-            </select>
-            <select
-              value={filterActivo}
-              onChange={(e) => setFilterActivo(e.target.value)}
-              className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
-              style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
-            >
-              <option value="">Todos</option>
-              <option value="activo">Activos</option>
-              <option value="inactivo">Inactivos</option>
             </select>
             <button
               onClick={() => setShowImport(true)}

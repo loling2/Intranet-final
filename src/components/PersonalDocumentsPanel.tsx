@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search, User, FolderOpen, FileText, Upload, Download, Eye,
   ChevronRight, X, Loader2, AlertCircle, Lock, Globe, Plus,
-  UserX, CheckCircle2, UploadCloud, Trash2,
+  UserX, CheckCircle2, UploadCloud, Trash2, Folder, FolderPlus, ChevronLeft,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import {
@@ -66,6 +66,29 @@ async function listPrefix(prefix: string): Promise<RrhhFile[]> {
     }));
 }
 
+interface ListResult {
+  files: RrhhFile[];
+  subfolders: string[];
+}
+
+async function listPrefixWithFolders(prefix: string): Promise<ListResult> {
+  const resp = await wasabiClient.send(
+    new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix, Delimiter: '/' })
+  );
+  const files: RrhhFile[] = (resp.Contents ?? [])
+    .filter(o => o.Key && !o.Key.endsWith('/') && !o.Key.endsWith('.keep'))
+    .map(o => ({
+      key: o.Key!,
+      name: o.Key!.replace(prefix, ''),
+      size: o.Size ?? 0,
+      lastModified: o.LastModified ?? new Date(),
+    }));
+  const subfolders: string[] = (resp.CommonPrefixes ?? [])
+    .map(cp => cp.Prefix!)
+    .filter(Boolean);
+  return { files, subfolders };
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 interface Props {
@@ -81,7 +104,12 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Employee | null>(null);
   const [activeFolder, setActiveFolder] = useState<FolderType>('privado');
+  const [currentSubfolder, setCurrentSubfolder] = useState<string>('');
+  const [subfolders, setSubfolders] = useState<string[]>([]);
   const [files, setFiles] = useState<RrhhFile[]>([]);
+  const [showCreateFolder, setShowCreateFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [creatingFolder, setCreatingFolder] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState('');
@@ -120,8 +148,9 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
 
   // Load files when selection changes
   useEffect(() => {
-    if (!selected?.dni) { setFiles([]); return; }
-    loadFiles(selected, activeFolder);
+    if (!selected?.dni) { setFiles([]); setSubfolders([]); return; }
+    setCurrentSubfolder('');
+    loadFiles(selected, activeFolder, '');
   }, [selected, activeFolder]);
 
   function sanitizeName(nombre: string) {
@@ -140,10 +169,11 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     return soc ? slugify(soc.nombre) : 'sin_sociedad';
   }
 
-  async function loadFiles(emp: Employee, folder: FolderType) {
-    if (!emp.dni) { setFiles([]); return; }
+  async function loadFiles(emp: Employee, folder: FolderType, subfolder: string) {
+    if (!emp.dni) { setFiles([]); setSubfolders([]); return; }
     setLoadingFiles(true);
     setFiles([]);
+    setSubfolders([]);
     try {
       if (!emp.activo) {
         // Baja employee — files come from rrhh/bajas/<sociedad>/<dni>-<nombre>/
@@ -151,10 +181,12 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
         const result = await listBajasEmployeeFiles(slug, emp.dni, sanitizeName(emp.nombre));
         setFiles(result);
       } else if (folder === 'privado') {
-        const folderKey = `rrhh/privado/${emp.dni}-${sanitizeName(emp.nombre)}/`;
-        await ensureRrhhFolder(folderKey);
-        const result = await listRrhhEmployeeFiles(folderKey);
-        setFiles(result);
+        const rootKey = `rrhh/privado/${emp.dni}-${sanitizeName(emp.nombre)}/`;
+        await ensureRrhhFolder(rootKey);
+        const prefix = rootKey + subfolder;
+        const { files: f, subfolders: sf } = await listPrefixWithFolders(prefix);
+        setFiles(f);
+        setSubfolders(sf);
       } else {
         const result = await listNominasForDni(emp.dni);
         setFiles(result);
@@ -185,7 +217,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     try {
       await deleteFromWasabi(file.key);
       setConfirmDelete(null);
-      await loadFiles(selected, activeFolder);
+      await loadFiles(selected, activeFolder, currentSubfolder);
     } catch (e) {
       console.error(e);
     } finally {
@@ -234,7 +266,8 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
 
     let folderKey = '';
     if (uploadModal.folder === 'privado') {
-      folderKey = `rrhh/privado/${selected.dni}-${sanitizeName(selected.nombre)}/`;
+      const rootKey = `rrhh/privado/${selected.dni}-${sanitizeName(selected.nombre)}/`;
+      folderKey = rootKey + currentSubfolder;
       await ensureRrhhFolder(folderKey);
     } else {
       const y = uploadModal.anio ?? anio;
@@ -296,7 +329,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
       setUploadProgress({});
     }
     setUploading(false);
-    await loadFiles(selected, activeFolder);
+    await loadFiles(selected, activeFolder, currentSubfolder);
   }
 
   function closeUploadModal() {
@@ -304,6 +337,39 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     setUploadQueue([]);
     setUploadProgress({});
     setUploadError('');
+  }
+
+  async function handleCreateFolder() {
+    if (!selected?.dni || !newFolderName.trim()) return;
+    setCreatingFolder(true);
+    try {
+      const rootKey = `rrhh/privado/${selected.dni}-${sanitizeName(selected.nombre)}/`;
+      const folderSlug = slugify(newFolderName.trim());
+      const newKey = rootKey + currentSubfolder + folderSlug + '/';
+      await ensureRrhhFolder(newKey);
+      setShowCreateFolder(false);
+      setNewFolderName('');
+      await loadFiles(selected, activeFolder, currentSubfolder);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCreatingFolder(false);
+    }
+  }
+
+  function navigateInto(subfolder: string) {
+    const rootKey = `rrhh/privado/${selected!.dni}-${sanitizeName(selected!.nombre)}/`;
+    const relative = subfolder.replace(rootKey, '');
+    setCurrentSubfolder(relative);
+    loadFiles(selected!, activeFolder, relative);
+  }
+
+  function navigateUp() {
+    const parts = currentSubfolder.replace(/\/$/, '').split('/');
+    parts.pop();
+    const parent = parts.length > 0 ? parts.join('/') + '/' : '';
+    setCurrentSubfolder(parent);
+    loadFiles(selected!, activeFolder, parent);
   }
 
   // Filter employees based on view mode, society, and search
@@ -473,15 +539,28 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                 </div>
               </div>
               {isRrhh && !isBaja && (
-                <button
-                  onClick={() => setUploadModal({ folder: activeFolder, anio, mes })}
-                  disabled={!selected.dni}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer disabled:opacity-50"
-                  style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
-                >
-                  <Upload size={14} />
-                  Subir documento
-                </button>
+                <div className="flex items-center gap-2">
+                  {activeFolder === 'privado' && (
+                    <button
+                      onClick={() => { setNewFolderName(''); setShowCreateFolder(true); }}
+                      disabled={!selected.dni}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer disabled:opacity-50"
+                      style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
+                    >
+                      <FolderPlus size={14} />
+                      Crear carpeta
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setUploadModal({ folder: activeFolder, anio, mes })}
+                    disabled={!selected.dni}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer disabled:opacity-50"
+                    style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
+                  >
+                    <Upload size={14} />
+                    Subir documento
+                  </button>
+                </div>
               )}
             </div>
 
@@ -517,11 +596,27 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
 
             {/* Files list */}
             <div className="flex-1 overflow-y-auto px-6 pb-6">
+              {/* Breadcrumb for subfolder navigation */}
+              {activeFolder === 'privado' && currentSubfolder && (
+                <div className="flex items-center gap-2 pt-3 pb-1">
+                  <button
+                    onClick={navigateUp}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors"
+                    style={{ backgroundColor: '#F1F5F9', color: '#475569' }}
+                  >
+                    <ChevronLeft size={13} />
+                    Atrás
+                  </button>
+                  <span className="text-xs" style={{ color: '#94A3B8' }}>
+                    / {currentSubfolder.replace(/\//g, ' / ').replace(/^ \/ /, '').replace(/ \/ $/, '')}
+                  </span>
+                </div>
+              )}
               {loadingFiles ? (
                 <div className="flex items-center justify-center py-16 gap-2" style={{ color: '#94A3B8' }}>
                   <Loader2 size={18} className="animate-spin" /> Cargando...
                 </div>
-              ) : files.length === 0 ? (
+              ) : files.length === 0 && subfolders.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3">
                   <FolderOpen size={32} style={{ color: '#CBD5E1' }} />
                   <p className="text-sm" style={{ color: '#94A3B8' }}>
@@ -540,6 +635,30 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                 </div>
               ) : (
                 <div className="space-y-2 pt-2">
+                  {/* Subfolders */}
+                  {subfolders.map(sf => {
+                    const rootKey = `rrhh/privado/${selected.dni}-${sanitizeName(selected.nombre)}/`;
+                    const relative = sf.replace(rootKey, '');
+                    const folderDisplayName = relative.replace(currentSubfolder, '').replace(/\/$/, '');
+                    return (
+                      <button
+                        key={sf}
+                        onClick={() => navigateInto(sf)}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors cursor-pointer text-left"
+                        style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}
+                      >
+                        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: '#FEF9C3' }}>
+                          <Folder size={16} style={{ color: '#CA8A04' }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{folderDisplayName}</p>
+                          <p className="text-xs" style={{ color: '#94A3B8' }}>Carpeta</p>
+                        </div>
+                        <ChevronRight size={14} style={{ color: '#CA8A04' }} />
+                      </button>
+                    );
+                  })}
                   {files.map(file => (
                     <div
                       key={file.key}
@@ -799,6 +918,57 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
               title={previewName}
             />
           )}
+        </div>
+      )}
+
+      {/* ── Create folder modal ── */}
+      {showCreateFolder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
+          <div className="w-full max-w-sm mx-4 rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
+            <div className="px-6 py-4 flex items-center gap-3 border-b" style={{ borderColor: '#E2E8F0' }}>
+              <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEF9C3' }}>
+                <FolderPlus size={16} style={{ color: '#CA8A04' }} />
+              </div>
+              <div>
+                <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Nueva carpeta</h3>
+                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Escribe el nombre de la carpeta</p>
+              </div>
+              <button onClick={() => setShowCreateFolder(false)} className="ml-auto cursor-pointer" style={{ color: '#94A3B8' }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={e => setNewFolderName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); }}
+                placeholder="Ej: Contratos, Formacion, Certificados..."
+                autoFocus
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
+              />
+              <div className="flex gap-2 mt-4 justify-end">
+                <button
+                  onClick={() => setShowCreateFolder(false)}
+                  disabled={creatingFolder}
+                  className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                  style={{ backgroundColor: '#F1F5F9', color: '#475569' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCreateFolder}
+                  disabled={!newFolderName.trim() || creatingFolder}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                  style={{ backgroundColor: '#16A34A', color: '#FFFFFF' }}
+                >
+                  {creatingFolder ? <Loader2 size={14} className="animate-spin" /> : <FolderPlus size={14} />}
+                  {creatingFolder ? 'Creando...' : 'Crear carpeta'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </>

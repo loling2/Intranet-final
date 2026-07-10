@@ -110,6 +110,8 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<string | null>(null);
+  const [deletingFolder, setDeletingFolder] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState('');
@@ -354,6 +356,24 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
       console.error(e);
     } finally {
       setCreatingFolder(false);
+    }
+  }
+
+  async function handleDeleteFolder(folderPrefix: string) {
+    setDeletingFolder(true);
+    try {
+      // List all objects under this prefix (recursive, no delimiter)
+      const resp = await wasabiClient.send(
+        new ListObjectsV2Command({ Bucket: BUCKET, Prefix: folderPrefix })
+      );
+      const keys = (resp.Contents ?? []).map(o => o.Key).filter(Boolean) as string[];
+      await Promise.all(keys.map(key => deleteFromWasabi(key)));
+      setConfirmDeleteFolder(null);
+      await loadFiles(selected!, activeFolder, currentSubfolder);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDeletingFolder(false);
     }
   }
 
@@ -641,22 +661,43 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                     const relative = sf.replace(rootKey, '');
                     const folderDisplayName = relative.replace(currentSubfolder, '').replace(/\/$/, '');
                     return (
-                      <button
+                      <div
                         key={sf}
-                        onClick={() => navigateInto(sf)}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors cursor-pointer text-left"
+                        className="flex items-center gap-3 px-4 py-3 rounded-xl"
                         style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}
                       >
                         <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
                           style={{ backgroundColor: '#FEF9C3' }}>
                           <Folder size={16} style={{ color: '#CA8A04' }} />
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <button
+                          onClick={() => navigateInto(sf)}
+                          className="flex-1 min-w-0 text-left cursor-pointer"
+                        >
                           <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{folderDisplayName}</p>
                           <p className="text-xs" style={{ color: '#94A3B8' }}>Carpeta</p>
+                        </button>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => navigateInto(sf)}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:bg-yellow-100"
+                            title="Abrir carpeta"
+                            style={{ color: '#CA8A04' }}
+                          >
+                            <ChevronRight size={14} />
+                          </button>
+                          {isRrhh && (
+                            <button
+                              onClick={() => setConfirmDeleteFolder(sf)}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:bg-red-50"
+                              title="Eliminar carpeta"
+                              style={{ color: '#DC2626' }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </div>
-                        <ChevronRight size={14} style={{ color: '#CA8A04' }} />
-                      </button>
+                      </div>
                     );
                   })}
                   {files.map(file => (
@@ -965,6 +1006,49 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                 >
                   {creatingFolder ? <Loader2 size={14} className="animate-spin" /> : <FolderPlus size={14} />}
                   {creatingFolder ? 'Creando...' : 'Crear carpeta'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete folder confirmation modal ── */}
+      {confirmDeleteFolder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
+          <div className="w-full max-w-sm mx-4 rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
+            <div className="px-6 py-4 flex items-center gap-3 border-b" style={{ borderColor: '#FEE2E2', backgroundColor: '#FEF2F2' }}>
+              <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEE2E2' }}>
+                <Trash2 size={16} style={{ color: '#DC2626' }} />
+              </div>
+              <div>
+                <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Eliminar carpeta</h3>
+                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Esta accion no se puede deshacer</p>
+              </div>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-sm" style={{ color: '#475569' }}>
+                Se eliminará la carpeta <span className="font-semibold" style={{ color: '#0F172A' }}>
+                  {confirmDeleteFolder.replace(/\/$/, '').split('/').pop()}
+                </span> y todos sus documentos de forma permanente.
+              </p>
+              <div className="flex gap-2 mt-5 justify-end">
+                <button
+                  onClick={() => setConfirmDeleteFolder(null)}
+                  disabled={deletingFolder}
+                  className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                  style={{ backgroundColor: '#F1F5F9', color: '#475569' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => handleDeleteFolder(confirmDeleteFolder)}
+                  disabled={deletingFolder}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                  style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
+                >
+                  {deletingFolder ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  {deletingFolder ? 'Eliminando...' : 'Eliminar carpeta'}
                 </button>
               </div>
             </div>

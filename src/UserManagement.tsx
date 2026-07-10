@@ -599,6 +599,192 @@ function CredentialRow({
   );
 }
 
+// ─── Bulk Create Access Modal ────────────────────────────────────────────────
+
+interface BulkCreateAccessModalProps {
+  employees: Empleado[];
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+function BulkCreateAccessModal({ employees, onClose, onCreated }: BulkCreateAccessModalProps) {
+  const { profile } = useAuth();
+  const [role, setRole] = useState<AppRole>('employee');
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<{ id: string; nombre: string; ok: boolean; error?: string }[]>([]);
+  const [done, setDone] = useState(false);
+
+  const withEmail = employees.filter((e) => e.email?.trim());
+  const withoutEmail = employees.filter((e) => !e.email?.trim());
+
+  const handleCreate = async () => {
+    setLoading(true);
+    const created: typeof results = [];
+    for (const emp of withEmail) {
+      try {
+        const session = (await supabase.auth.getSession()).data.session;
+        const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-user`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            action: 'create_user',
+            email: emp.email.trim().toLowerCase(),
+            nombre: emp.nombre,
+            role,
+            societies: emp.id_sociedad ? [emp.id_sociedad] : [],
+          }),
+        });
+        const result = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(result.error ?? `Error ${resp.status}`);
+        if (profile) {
+          await writeAuditLog({
+            evento: 'user_invited',
+            descripcion: `Acceso web creado para empleado: ${emp.email} con rol ${role}`,
+            autor: profile,
+            entidad: 'user',
+            entidad_id: result.userId,
+            metadata: { email: emp.email, role, empleado_id: emp.id },
+          });
+        }
+        created.push({ id: emp.id, nombre: emp.nombre, ok: true });
+      } catch (err) {
+        created.push({ id: emp.id, nombre: emp.nombre, ok: false, error: err instanceof Error ? err.message : 'Error' });
+      }
+    }
+    setResults(created);
+    setDone(true);
+    setLoading(false);
+  };
+
+  const successCount = results.filter((r) => r.ok).length;
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl max-w-lg w-full mx-4 overflow-hidden shadow-2xl" style={{ maxHeight: '92vh' }}>
+        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #065F46, #047857)' }}>
+          <div className="flex items-center gap-2">
+            <UserCheck size={18} className="text-white" />
+            <h2 className="text-white font-semibold">Crear acceso web</h2>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+            <X size={15} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 overflow-y-auto" style={{ maxHeight: 'calc(92vh - 72px)' }}>
+          {!done ? (
+            <>
+              <p className="text-sm" style={{ color: '#475569' }}>
+                Se creará acceso web para <strong>{withEmail.length}</strong> empleado{withEmail.length !== 1 ? 's' : ''}.
+              </p>
+
+              <div>
+                <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: '#64748B' }}>Rol asignado</label>
+                <div className="flex gap-2 flex-wrap">
+                  {(['employee', 'rrhh', 'prevencion', 'supervisor', 'administracion'] as AppRole[]).map((r) => {
+                    const rc = ROLE_COLORS[r];
+                    return (
+                      <button key={r} onClick={() => setRole(r)}
+                        className="flex-1 py-2 rounded-xl text-xs font-semibold border transition-all duration-200 cursor-pointer min-w-[70px]"
+                        style={{ backgroundColor: role === r ? rc.bg : 'transparent', color: role === r ? rc.text : '#94A3B8', borderColor: role === r ? rc.border : '#E2E8F0' }}>
+                        {rc.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
+                <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider" style={{ backgroundColor: '#F8FAFC', color: '#94A3B8' }}>
+                  Empleados seleccionados ({employees.length})
+                </div>
+                <div className="divide-y overflow-y-auto" style={{ borderColor: '#F1F5F9', maxHeight: '200px' }}>
+                  {employees.map((emp) => (
+                    <div key={emp.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0"
+                        style={{ backgroundColor: emp.email ? '#F0FDF4' : '#FEF2F2', color: emp.email ? '#16A34A' : '#DC2626' }}>
+                        {emp.nombre.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{emp.nombre}</p>
+                        <p className="text-xs truncate" style={{ color: emp.email ? '#94A3B8' : '#EF4444' }}>
+                          {emp.email || 'Sin correo — no se puede crear acceso'}
+                        </p>
+                      </div>
+                      {!emp.email && <AlertCircle size={14} style={{ color: '#EF4444', flexShrink: 0 }} />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {withoutEmail.length > 0 && (
+                <div className="flex items-start gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                  <AlertCircle size={14} style={{ color: '#D97706', marginTop: '1px', flexShrink: 0 }} />
+                  <p className="text-xs" style={{ color: '#D97706' }}>
+                    {withoutEmail.length} empleado{withoutEmail.length !== 1 ? 's' : ''} sin correo no recibirán acceso.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer"
+                  style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+                <button onClick={handleCreate} disabled={loading || withEmail.length === 0}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: '#065F46' }}>
+                  {loading ? <><RefreshCw size={14} className="animate-spin" /> Creando...</> : <><UserCheck size={14} /> Crear acceso</>}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-col items-center py-4 text-center">
+                <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3"
+                  style={{ backgroundColor: successCount === withEmail.length ? '#F0FDF4' : '#FFFBEB', border: `2px solid ${successCount === withEmail.length ? '#22C55E' : '#F59E0B'}` }}>
+                  <CheckCircle2 size={32} style={{ color: successCount === withEmail.length ? '#22C55E' : '#F59E0B' }} />
+                </div>
+                <h3 className="font-semibold text-base" style={{ color: '#1E293B' }}>
+                  {successCount} de {withEmail.length} accesos creados
+                </h3>
+                <p className="text-xs mt-1" style={{ color: '#64748B' }}>
+                  Puedes asignar contrasenas desde la seccion de usuarios.
+                </p>
+              </div>
+              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
+                <div className="divide-y overflow-y-auto" style={{ borderColor: '#F1F5F9', maxHeight: '200px' }}>
+                  {results.map((r) => (
+                    <div key={r.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: r.ok ? '#F0FDF4' : '#FEF2F2' }}>
+                        {r.ok
+                          ? <CheckCircle2 size={12} style={{ color: '#22C55E' }} />
+                          : <X size={12} style={{ color: '#DC2626' }} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{r.nombre}</p>
+                        {!r.ok && <p className="text-xs" style={{ color: '#DC2626' }}>{r.error}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <button onClick={() => { onCreated(); onClose(); }}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer"
+                style={{ backgroundColor: '#065F46' }}>
+                Cerrar y actualizar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 interface Props { currentUserRole: AppRole; onImpersonate?: (userId: string, societyId: string | null) => void; }
@@ -614,6 +800,8 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [page, setPage] = useState(1);
+  const [selectedEmps, setSelectedEmps] = useState<Set<string>>(new Set());
+  const [showBulkModal, setShowBulkModal] = useState(false);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -658,10 +846,36 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   const pageEmps = pageRows.filter(r => r.type === 'emp').map(r => r.data as Empleado);
   const totalVisible = allRows.length;
 
+  const toggleEmpSelection = (id: string) =>
+    setSelectedEmps((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const toggleSelectAllPage = () => {
+    const ids = pageEmps.map((e) => e.id);
+    const allSel = ids.length > 0 && ids.every((id) => selectedEmps.has(id));
+    setSelectedEmps((prev) => {
+      const next = new Set(prev);
+      if (allSel) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
   return (
     <div>
       {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={loadUsers} currentUserRole={currentUserRole} />}
       {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} currentUserRole={currentUserRole} />}
+      {showBulkModal && (
+        <BulkCreateAccessModal
+          employees={filteredEmpleados.filter((e) => selectedEmps.has(e.id))}
+          onClose={() => setShowBulkModal(false)}
+          onCreated={() => { setSelectedEmps(new Set()); loadUsers(); }}
+        />
+      )}
 
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -782,11 +996,25 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
             {/* Employees without accounts */}
             {pageEmps.length > 0 && (
               <>
-                <div className="px-6 py-2 flex items-center gap-2" style={{ backgroundColor: '#FFFBEB', borderTop: '1px solid #FDE68A' }}>
-                  <UserCheck size={13} style={{ color: '#D97706' }} />
-                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#D97706' }}>
-                    Empleados sin cuenta de acceso ({filteredEmpleados.length})
-                  </span>
+                <div className="px-6 py-2 flex items-center gap-3 justify-between" style={{ backgroundColor: '#FFFBEB', borderTop: '1px solid #FDE68A' }}>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={pageEmps.length > 0 && pageEmps.every((e) => selectedEmps.has(e.id))}
+                      onChange={toggleSelectAllPage}
+                      className="w-4 h-4 cursor-pointer rounded"
+                      style={{ accentColor: '#065F46' }}
+                    />
+                    <UserCheck size={13} style={{ color: '#D97706' }} />
+                    <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#D97706' }}>
+                      Empleados sin cuenta de acceso ({filteredEmpleados.length})
+                    </span>
+                  </div>
+                  {selectedEmps.size > 0 && (
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: '#D97706' }}>
+                      {selectedEmps.size} sel.
+                    </span>
+                  )}
                 </div>
                 {pageEmps.map((e) => (
                   <div key={e.id} className="px-6 py-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-center hover:bg-amber-50 transition-colors duration-150" style={{ opacity: 0.85 }}>
@@ -817,13 +1045,44 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
                         <span className="text-xs" style={{ color: e.activo ? '#16A34A' : '#DC2626' }}>{e.activo ? 'Activo' : 'Inactivo'}</span>
                       </div>
                     </div>
-                    <div className="sm:col-span-1">
-                      <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>
+                    <div className="sm:col-span-1 flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedEmps.has(e.id)}
+                        onChange={() => toggleEmpSelection(e.id)}
+                        onClick={(ev) => ev.stopPropagation()}
+                        className="w-4 h-4 cursor-pointer rounded"
+                        style={{ accentColor: '#065F46' }}
+                      />
                     </div>
                   </div>
                 ))}
               </>
             )}
+          </div>
+        )}
+        {selectedEmps.size > 0 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t" style={{ backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }}>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={14} style={{ color: '#16A34A' }} />
+              <span className="text-xs font-medium" style={{ color: '#16A34A' }}>
+                {selectedEmps.size} empleado{selectedEmps.size !== 1 ? 's' : ''} seleccionado{selectedEmps.size !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedEmps(new Set())}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:bg-green-100"
+                style={{ color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                Deseleccionar
+              </button>
+              <button
+                onClick={() => setShowBulkModal(true)}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white cursor-pointer transition-all duration-200 hover:opacity-90"
+                style={{ backgroundColor: '#065F46' }}>
+                <UserCheck size={12} /> Crear acceso web
+              </button>
+            </div>
           </div>
         )}
         <Pagination page={safePage} totalPages={tp} totalItems={totalVisible} pageSize={PAGE_SIZE} onPage={setPage} />

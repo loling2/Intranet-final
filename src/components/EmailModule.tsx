@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import {
   Mail, Plus, X, Loader2, Pencil, Trash2, Eye, EyeOff,
-  Server, Shield, Bell, ChevronDown, Check, AlertCircle, ToggleLeft, ToggleRight,
+  Server, Shield, Bell, Check, AlertCircle, ToggleLeft, ToggleRight,
+  FileText, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -32,6 +33,16 @@ interface EmailNotificacion {
   created_at: string;
 }
 
+export interface EmailPlantilla {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  asunto: string;
+  cuerpo: string;
+  activo: boolean;
+  created_at: string;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SEGURIDAD_OPTIONS: { value: Seguridad; label: string; port: number }[] = [
@@ -53,6 +64,14 @@ const EVENTOS_PREDEFINIDOS = [
   { value: 'certificado_expira',       label: 'Certificado próximo a vencer' },
   { value: 'dispositivo_asignado',     label: 'Dispositivo asignado a empleado' },
   { value: 'personalizado',            label: 'Evento personalizado' },
+];
+
+export const PLANTILLA_VARIABLES = [
+  { var: '{{nombre}}',     desc: 'Nombre completo del usuario' },
+  { var: '{{email}}',      desc: 'Correo electronico del usuario' },
+  { var: '{{password}}',   desc: 'Contraseña temporal asignada' },
+  { var: '{{url_acceso}}', desc: 'URL de acceso al portal' },
+  { var: '{{empresa}}',    desc: 'Nombre de la empresa/sociedad' },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -452,6 +471,180 @@ function NotifModal({ initial, cuentas, onClose, onSaved }: NotifModalProps) {
   );
 }
 
+// ─── Plantilla Modal ──────────────────────────────────────────────────────────
+
+const BLANK_PLANTILLA = (): Omit<EmailPlantilla, 'id' | 'created_at'> => ({
+  nombre: '', descripcion: '', asunto: '', cuerpo: '', activo: true,
+});
+
+interface PlantillaModalProps {
+  initial?: EmailPlantilla | null;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function PlantillaModal({ initial, onClose, onSaved }: PlantillaModalProps) {
+  const [form, setForm] = useState<Omit<EmailPlantilla, 'id' | 'created_at'>>(
+    initial
+      ? { nombre: initial.nombre, descripcion: initial.descripcion, asunto: initial.asunto, cuerpo: initial.cuerpo, activo: initial.activo }
+      : BLANK_PLANTILLA()
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [showVars, setShowVars] = useState(false);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  const set = (k: keyof typeof form, v: unknown) => setForm((p) => ({ ...p, [k]: v }));
+
+  const insertVar = (v: string) => {
+    const el = bodyRef.current;
+    if (!el) { setForm((p) => ({ ...p, cuerpo: p.cuerpo + v })); return; }
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const next = el.value.slice(0, start) + v + el.value.slice(end);
+    setForm((p) => ({ ...p, cuerpo: next }));
+    requestAnimationFrame(() => {
+      el.focus();
+      el.selectionStart = start + v.length;
+      el.selectionEnd = start + v.length;
+    });
+  };
+
+  const handleSave = async () => {
+    if (!form.nombre.trim()) { setError('El nombre es obligatorio'); return; }
+    if (!form.asunto.trim()) { setError('El asunto es obligatorio'); return; }
+    if (!form.cuerpo.trim()) { setError('El cuerpo del mensaje es obligatorio'); return; }
+    setSaving(true); setError('');
+    const payload = { ...form, updated_at: new Date().toISOString() };
+    const { error: dbErr } = initial
+      ? await supabase.from('email_plantillas').update(payload).eq('id', initial.id)
+      : await supabase.from('email_plantillas').insert(payload);
+    setSaving(false);
+    if (dbErr) { setError(dbErr.message); return; }
+    onSaved(); onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      <div className="w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden bg-white">
+        <div className="flex items-center justify-between px-6 py-4" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+          <div className="flex items-center gap-2">
+            <FileText size={17} style={{ color: '#0EA5E9' }} />
+            <h2 className="font-bold text-base" style={{ color: '#0F172A' }}>
+              {initial ? 'Editar plantilla' : 'Nueva plantilla'}
+            </h2>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-100">
+            <X size={15} style={{ color: '#64748B' }} />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4 overflow-y-auto" style={{ maxHeight: '75vh' }}>
+          {error && (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm" style={{ backgroundColor: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}>
+              <AlertCircle size={14} /> {error}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Nombre de la plantilla *</label>
+              <input value={form.nombre} onChange={(e) => set('nombre', e.target.value)}
+                placeholder="Ej: Bienvenida al portal"
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Descripcion</label>
+              <input value={form.descripcion} onChange={(e) => set('descripcion', e.target.value)}
+                placeholder="Uso previsto de esta plantilla"
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Asunto del correo *</label>
+              <input value={form.asunto} onChange={(e) => set('asunto', e.target.value)}
+                placeholder="Ej: Bienvenido a {{empresa}} — tus credenciales de acceso"
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
+            </div>
+          </div>
+
+          {/* Variable picker */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowVars((v) => !v)}
+              className="flex items-center gap-1.5 text-xs font-semibold mb-2 cursor-pointer"
+              style={{ color: '#0EA5E9' }}
+            >
+              {showVars ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              Variables disponibles — haz clic para insertar en el cuerpo
+            </button>
+            {showVars && (
+              <div className="flex flex-wrap gap-2 p-3 rounded-xl mb-2" style={{ backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD' }}>
+                {PLANTILLA_VARIABLES.map((pv) => (
+                  <button
+                    key={pv.var}
+                    type="button"
+                    onClick={() => insertVar(pv.var)}
+                    title={pv.desc}
+                    className="px-2.5 py-1 rounded-lg text-xs font-mono font-semibold cursor-pointer transition-all hover:opacity-80"
+                    style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}
+                  >
+                    {pv.var}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Cuerpo del mensaje *</label>
+            <textarea
+              ref={bodyRef}
+              value={form.cuerpo}
+              onChange={(e) => set('cuerpo', e.target.value)}
+              placeholder={`Hola {{nombre}},\n\nTu cuenta en el portal ha sido creada.\n\nEmail: {{email}}\nContraseña: {{password}}\n\nAccede en: {{url_acceso}}\n\nSaludos,\nEl equipo de {{empresa}}`}
+              rows={10}
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-y font-mono"
+              style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B', lineHeight: '1.6' }}
+            />
+            <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
+              Texto plano con variables entre llaves dobles. El salto de linea se respeta al enviar.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => set('activo', !form.activo)}>
+              {form.activo
+                ? <ToggleRight size={28} style={{ color: '#0EA5E9' }} />
+                : <ToggleLeft size={28} style={{ color: '#94A3B8' }} />}
+            </button>
+            <span className="text-sm font-medium" style={{ color: '#475569' }}>
+              Plantilla {form.activo ? 'activa' : 'inactiva'}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 px-6 py-4" style={{ borderTop: '1px solid #E2E8F0' }}>
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
+            Cancelar
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold disabled:opacity-60"
+            style={{ backgroundColor: '#0EA5E9', color: '#FFFFFF' }}>
+            {saving && <Loader2 size={14} className="animate-spin" />}
+            {initial ? 'Guardar cambios' : 'Crear plantilla'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── SMTP Accounts Section ────────────────────────────────────────────────────
 
 function CuentasSection() {
@@ -556,7 +749,6 @@ function CuentasSection() {
                 </div>
               </div>
 
-              {/* Details row */}
               <div className="mt-3 pt-3 flex items-center gap-4 flex-wrap" style={{ borderTop: '1px solid #F1F5F9' }}>
                 <div className="flex items-center gap-1.5 text-xs" style={{ color: '#64748B' }}>
                   <Server size={12} />
@@ -700,7 +892,6 @@ function NotificacionesSection() {
                   </div>
                 </div>
 
-                {/* Details */}
                 <div className="mt-3 pt-3 space-y-2" style={{ borderTop: '1px solid #F1F5F9' }}>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-semibold" style={{ color: '#475569' }}>Evento:</span>
@@ -753,29 +944,167 @@ function NotificacionesSection() {
   );
 }
 
+// ─── Plantillas Section ───────────────────────────────────────────────────────
+
+function PlantillasSection() {
+  const [plantillas, setPlantillas] = useState<EmailPlantilla[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<EmailPlantilla | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('email_plantillas').select('*').order('nombre');
+    setPlantillas((data ?? []) as EmailPlantilla[]);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id);
+    await supabase.from('email_plantillas').delete().eq('id', id);
+    setDeleting(null);
+    load();
+  };
+
+  const handleToggleActivo = async (p: EmailPlantilla) => {
+    await supabase.from('email_plantillas').update({ activo: !p.activo }).eq('id', p.id);
+    load();
+  };
+
+  return (
+    <>
+      <div className="flex items-center justify-between mb-5">
+        <p className="text-sm" style={{ color: '#64748B' }}>
+          Crea plantillas de correo reutilizables con variables dinamicas para enviar credenciales y comunicaciones a usuarios.
+        </p>
+        <button
+          onClick={() => { setEditing(null); setShowModal(true); }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 flex-shrink-0"
+          style={{ backgroundColor: '#0EA5E9', color: '#FFFFFF' }}
+        >
+          <Plus size={15} /> Nueva Plantilla
+        </button>
+      </div>
+
+      <div className="rounded-xl px-4 py-3 mb-5 text-xs" style={{ backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD', color: '#0369A1' }}>
+        <strong>Variables disponibles:</strong>{' '}
+        {PLANTILLA_VARIABLES.map((v) => (
+          <code key={v.var} className="mx-1 px-1.5 py-0.5 rounded font-mono" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>{v.var}</code>
+        ))}
+        — se sustituyen al enviar el correo.
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 size={26} className="animate-spin" style={{ color: '#0EA5E9' }} />
+        </div>
+      ) : plantillas.length === 0 ? (
+        <div className="text-center py-16 rounded-2xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+          <FileText size={36} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
+          <p className="text-sm font-medium" style={{ color: '#94A3B8' }}>Sin plantillas creadas</p>
+          <p className="text-xs mt-1" style={{ color: '#CBD5E1' }}>Crea la primera con el botón de arriba</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {plantillas.map((p) => (
+            <div key={p.id} className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+              <div className="flex items-start justify-between gap-3 p-5">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+                    style={{ backgroundColor: p.activo ? '#EFF6FF' : '#F1F5F9', border: `1px solid ${p.activo ? '#BFDBFE' : '#E2E8F0'}` }}>
+                    <FileText size={17} style={{ color: p.activo ? '#2563EB' : '#94A3B8' }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{p.nombre}</p>
+                      {!p.activo && (
+                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F1F5F9', color: '#94A3B8' }}>Inactiva</span>
+                      )}
+                    </div>
+                    {p.descripcion && <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{p.descripcion}</p>}
+                    <p className="text-xs mt-1 font-medium truncate" style={{ color: '#475569' }}>
+                      Asunto: {p.asunto}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={() => setExpanded(expanded === p.id ? null : p.id)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-50"
+                    title="Ver cuerpo"
+                  >
+                    {expanded === p.id
+                      ? <ChevronUp size={14} style={{ color: '#64748B' }} />
+                      : <ChevronDown size={14} style={{ color: '#64748B' }} />}
+                  </button>
+                  <button onClick={() => handleToggleActivo(p)} title={p.activo ? 'Desactivar' : 'Activar'}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-50">
+                    {p.activo
+                      ? <ToggleRight size={20} style={{ color: '#0EA5E9' }} />
+                      : <ToggleLeft size={20} style={{ color: '#94A3B8' }} />}
+                  </button>
+                  <button onClick={() => { setEditing(p); setShowModal(true); }}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-50">
+                    <Pencil size={14} style={{ color: '#64748B' }} />
+                  </button>
+                  <button onClick={() => handleDelete(p.id)} disabled={deleting === p.id}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-50 disabled:opacity-50">
+                    {deleting === p.id
+                      ? <Loader2 size={14} className="animate-spin" style={{ color: '#EF4444' }} />
+                      : <Trash2 size={14} style={{ color: '#EF4444' }} />}
+                  </button>
+                </div>
+              </div>
+              {expanded === p.id && (
+                <div className="px-5 pb-5 pt-0">
+                  <pre className="text-xs whitespace-pre-wrap rounded-xl px-4 py-3 font-mono leading-relaxed"
+                    style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#334155' }}>
+                    {p.cuerpo}
+                  </pre>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showModal && (
+        <PlantillaModal
+          initial={editing}
+          onClose={() => { setShowModal(false); setEditing(null); }}
+          onSaved={load}
+        />
+      )}
+    </>
+  );
+}
+
 // ─── Main Module ──────────────────────────────────────────────────────────────
 
-type Section = 'cuentas' | 'notificaciones';
+type Section = 'cuentas' | 'notificaciones' | 'plantillas';
 
 export default function EmailModule() {
   const [section, setSection] = useState<Section>('cuentas');
 
   const tabs: { id: Section; label: string; icon: React.FC<{ size?: number }> }[] = [
-    { id: 'cuentas',         label: 'Cuentas SMTP',    icon: Server },
-    { id: 'notificaciones',  label: 'Notificaciones',  icon: Bell   },
+    { id: 'cuentas',        label: 'Cuentas SMTP',   icon: Server   },
+    { id: 'notificaciones', label: 'Notificaciones', icon: Bell     },
+    { id: 'plantillas',     label: 'Plantillas',     icon: FileText },
   ];
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h2 className="text-xl font-bold" style={{ color: '#0F172A' }}>Notificaciones por Email</h2>
         <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>
-          Configura cuentas SMTP emisoras y los eventos del sistema que disparan correos automaticos.
+          Configura cuentas SMTP emisoras, eventos del sistema y plantillas de correo.
         </p>
       </div>
 
-      {/* Inner tab switcher */}
       <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: '#F1F5F9' }}>
         {tabs.map((t) => {
           const Icon = t.icon;
@@ -798,9 +1127,9 @@ export default function EmailModule() {
         })}
       </div>
 
-      {/* Section content */}
       {section === 'cuentas' && <CuentasSection />}
       {section === 'notificaciones' && <NotificacionesSection />}
+      {section === 'plantillas' && <PlantillasSection />}
     </div>
   );
 }

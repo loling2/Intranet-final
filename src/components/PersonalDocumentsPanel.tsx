@@ -267,6 +267,30 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     if (anyError) {
       setUploadError('Algunos archivos no se pudieron subir');
     } else {
+      // Send notification to employee for public (nomina) uploads
+      if (uploadModal.folder !== 'privado' && selected.dni) {
+        const y = uploadModal.anio ?? anio;
+        const m = uploadModal.mes ?? mes;
+        const monthNames: Record<string, string> = {
+          '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril',
+          '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto',
+          '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre',
+        };
+        const { data: emp } = await supabase
+          .from('empleados')
+          .select('user_id')
+          .eq('dni', selected.dni)
+          .maybeSingle();
+        if (emp?.user_id) {
+          await supabase.from('notificaciones_empleado').insert({
+            user_id: emp.user_id,
+            tipo: 'nomina',
+            titulo: 'Nomina disponible',
+            descripcion: `Tu nomina de ${monthNames[m] ?? m} ${y} ya esta disponible.`,
+            leida: false,
+          });
+        }
+      }
       setUploadModal(null);
       setUploadQueue([]);
       setUploadProgress({});

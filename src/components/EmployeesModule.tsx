@@ -37,6 +37,7 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   centro_trabajo: null,
   titulacion_habilitante: null,
   fecha_pago_tasas: null,
+  nass: null,
   observaciones: null,
   activo: true,
   estado_contrato: 'pendiente',
@@ -61,6 +62,7 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     centro_trabajo: e.centro_trabajo,
     titulacion_habilitante: e.titulacion_habilitante,
     fecha_pago_tasas: e.fecha_pago_tasas,
+    nass: e.nass ?? null,
     observaciones: e.observaciones,
     activo: e.activo,
     estado_contrato: e.estado_contrato ?? 'pendiente',
@@ -843,6 +845,9 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     setForm(formFromEmpleado(emp));
     setShowForm(true);
     setExpandedId(null);
+    setTimeout(() => {
+      document.getElementById(`edit-form-${emp.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   };
 
   const cancelForm = () => {
@@ -1278,8 +1283,8 @@ export default function EmployeesModule({ currentUserRole }: Props) {
           </div>
         </div>
 
-        {/* Employee form (inline) */}
-        {showForm && (
+        {/* Employee form (new employee only) */}
+        {showForm && !editingId && (
           <div className="px-6 py-5" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-semibold text-sm" style={{ color: '#0F172A' }}>
@@ -1322,6 +1327,10 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                   <option value="">Ninguna</option>
                   {sociedades.filter((s) => s.id !== form.id_sociedad).map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                 </select>
+              </FormField>
+              <FormField label="NASS">
+                <input value={form.nass ?? ''} onChange={(e) => f('nass', e.target.value || null)}
+                  type="text" className="form-input" placeholder="Nº Afiliación Seg. Social" />
               </FormField>
             </div>
 
@@ -1602,6 +1611,223 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                       )}
                     </div>
                   </div>
+
+                  {/* Inline edit form for this employee */}
+                  {showForm && editingId === emp.id && (
+                    <div id={`edit-form-${emp.id}`} className="px-6 py-5" style={{ backgroundColor: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Editar empleado</h4>
+                        <button onClick={cancelForm} className="cursor-pointer" style={{ color: '#94A3B8' }}><X size={16} /></button>
+                      </div>
+
+                      {/* Section: Datos personales */}
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Datos personales</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                        <FormField label="Nombre *">
+                          <input value={form.nombre} onChange={(e) => f('nombre', e.target.value)}
+                            className="form-input" placeholder="Nombre completo" />
+                        </FormField>
+                        <FormField label="Email">
+                          <input value={form.email ?? ''} onChange={(e) => f('email', e.target.value)}
+                            type="email" className="form-input" placeholder="correo@empresa.com" />
+                        </FormField>
+                        <FormField label="DNI / NIE">
+                          <input value={form.dni ?? ''} onChange={(e) => f('dni', e.target.value)}
+                            className="form-input" placeholder="12345678A o X1234567A" />
+                        </FormField>
+                        <FormField label="Telefono">
+                          <input value={form.telefono ?? ''} onChange={(e) => f('telefono', e.target.value)}
+                            className="form-input" placeholder="+34 600 000 000" />
+                        </FormField>
+                        <FormField label="Fecha de nacimiento">
+                          <input value={form.fecha_nacimiento ?? ''} onChange={(e) => f('fecha_nacimiento', e.target.value)}
+                            type="date" className="form-input" />
+                        </FormField>
+                        <FormField label="Sociedad *">
+                          <select value={form.id_sociedad} onChange={(e) => f('id_sociedad', e.target.value)} className="form-input">
+                            <option value="">Seleccionar...</option>
+                            {sociedades.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                          </select>
+                        </FormField>
+                        <FormField label="Segunda sociedad (opcional)">
+                          <select value={form.id_sociedad_secundaria ?? ''} onChange={(e) => f('id_sociedad_secundaria', e.target.value || null)} className="form-input">
+                            <option value="">Ninguna</option>
+                            {sociedades.filter((s) => s.id !== form.id_sociedad).map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                          </select>
+                        </FormField>
+                        <FormField label="NASS">
+                          <input value={form.nass ?? ''} onChange={(e) => f('nass', e.target.value || null)}
+                            type="text" className="form-input" placeholder="Nº Afiliación Seg. Social" />
+                        </FormField>
+                      </div>
+
+                      {/* Section: Datos contractuales */}
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Datos contractuales</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                        <FormField label="Tipo de contrato">
+                          <select value={form.tipo_contrato ?? ''} onChange={(e) => f('tipo_contrato', e.target.value)} className="form-input">
+                            <option value="">Seleccionar...</option>
+                            {TIPOS_CONTRATO.map((t) => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </FormField>
+                        <FormField label="Fecha de alta">
+                          <input value={form.fecha_alta ?? ''} onChange={(e) => f('fecha_alta', e.target.value)}
+                            type="date" className="form-input" />
+                        </FormField>
+                        <FormField label="Fin periodo de prueba">
+                          <input value={form.fin_periodo_prueba ?? ''} onChange={(e) => f('fin_periodo_prueba', e.target.value)}
+                            type="date" className="form-input" />
+                        </FormField>
+                        <FormField label="Observaciones contrato" className="sm:col-span-2 lg:col-span-3">
+                          <textarea value={form.observaciones_contrato ?? ''} onChange={(e) => f('observaciones_contrato', e.target.value)}
+                            rows={2} className="form-input resize-none" placeholder="Condiciones especiales, anexos..." />
+                        </FormField>
+                      </div>
+
+                      {/* Section: Datos operativos */}
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Datos operativos</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                        <FormField label="Turno">
+                          <select value={form.turno ?? ''} onChange={(e) => f('turno', e.target.value)} className="form-input">
+                            <option value="">Seleccionar...</option>
+                            {TURNOS.map((t) => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </FormField>
+                        <FormField label="Puesto">
+                          <input value={form.puesto ?? ''} onChange={(e) => f('puesto', e.target.value)}
+                            className="form-input" placeholder="Tecnico, Operario..." />
+                        </FormField>
+                        <FormField label="Centro de trabajo">
+                          <div className="flex gap-1.5">
+                            <select
+                              value={form.centro_trabajo ?? ''}
+                              onChange={(e) => f('centro_trabajo', e.target.value)}
+                              className="form-input flex-1"
+                            >
+                              <option value="">Seleccionar...</option>
+                              {centros
+                                .filter((c) => !form.id_sociedad || c.id_sociedad === form.id_sociedad)
+                                .map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => setShowCreateCentro(true)}
+                              title="Crear nuevo centro"
+                              className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80"
+                              style={{ backgroundColor: '#0369A1', color: '#FFFFFF', marginTop: '0px' }}
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                        </FormField>
+                        <FormField label="Titulacion habilitante" className="sm:col-span-2">
+                          <input value={form.titulacion_habilitante ?? ''} onChange={(e) => f('titulacion_habilitante', e.target.value)}
+                            className="form-input" placeholder="Grado, Master, Certificacion..." />
+                        </FormField>
+                        <FormField label="Fecha pago tasas">
+                          <input value={form.fecha_pago_tasas ?? ''} onChange={(e) => f('fecha_pago_tasas', e.target.value)}
+                            type="date" className="form-input" />
+                        </FormField>
+                      </div>
+
+                      {/* Section: Observaciones + estado */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+                        <FormField label="Observaciones generales" className="sm:col-span-2">
+                          <textarea value={form.observaciones ?? ''} onChange={(e) => f('observaciones', e.target.value)}
+                            rows={2} className="form-input resize-none" placeholder="Notas adicionales..." />
+                        </FormField>
+                        <FormField label="Estado">
+                          <select value={form.activo ? 'activo' : 'inactivo'} onChange={(e) => f('activo', e.target.value === 'activo')} className="form-input">
+                            <option value="activo">Activo</option>
+                            <option value="inactivo">Inactivo</option>
+                          </select>
+                        </FormField>
+                      </div>
+
+                      {/* Section: Estado del contrato */}
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Estado del contrato</p>
+                      <div className="rounded-xl p-4 mb-5" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                        <div className="flex gap-2 flex-wrap mb-3">
+                          {ESTADOS_CONTRATO.map(({ value, label, color, bg, border, Icon }) => {
+                            const isActive = (form.estado_contrato ?? 'pendiente') === value;
+                            return (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => {
+                                  const current = (form.estado_contrato ?? 'pendiente') as EstadoContrato;
+                                  if (value === current) return;
+                                  openContratoModal(editingId!, current, value);
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                                style={{
+                                  backgroundColor: isActive ? bg : '#FFFFFF',
+                                  color: isActive ? color : '#94A3B8',
+                                  border: `1.5px solid ${isActive ? border : '#E2E8F0'}`,
+                                }}
+                              >
+                                <Icon size={13} />
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => loadHistorialContrato(editingId!)}
+                          className="text-xs font-medium cursor-pointer transition-opacity hover:opacity-70"
+                          style={{ color: '#0369A1' }}
+                        >
+                          {loadingHistorial ? 'Cargando...' : 'Ver historial de cambios'}
+                        </button>
+                        {historialContrato.length > 0 && (
+                          <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
+                            {historialContrato.map((h) => {
+                              const estadoNew = ESTADOS_CONTRATO.find((e) => e.value === h.estado_nuevo);
+                              return (
+                                <div key={h.id} className="flex items-start gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #F1F5F9' }}>
+                                  <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: estadoNew?.bg ?? '#F8FAFC' }}>
+                                    {estadoNew && <estadoNew.Icon size={10} style={{ color: estadoNew.color }} />}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium" style={{ color: '#1E293B' }}>
+                                      {h.estado_anterior} → {h.estado_nuevo}
+                                    </p>
+                                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{h.justificacion}</p>
+                                    <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>
+                                      {h.cambiado_por_nombre} · {new Date(h.created_at).toLocaleString('es-ES')}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 justify-end flex-wrap">
+                        {!form.user_id && (
+                          <button onClick={handleCreateAccess} disabled={creatingAccess}
+                            title="Crear usuario de login para este empleado"
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 hover:opacity-90 disabled:opacity-60"
+                            style={{ backgroundColor: '#059669', color: '#FFFFFF' }}>
+                            <UserPlus size={13} />
+                            {creatingAccess ? 'Creando acceso...' : 'Crear acceso de usuario'}
+                          </button>
+                        )}
+                        <button onClick={cancelForm} className="px-4 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200"
+                          style={{ backgroundColor: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}>
+                          Cancelar
+                        </button>
+                        <button onClick={handleSave} disabled={saving}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 hover:opacity-90 disabled:opacity-60"
+                          style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
+                          <Save size={13} />
+                          {saving ? 'Guardando...' : 'Guardar'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Expanded detail: asignaciones + tags */}
                   {isExpanded && (

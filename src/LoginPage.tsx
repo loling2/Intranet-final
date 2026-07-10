@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2 } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2 } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
@@ -19,6 +19,7 @@ import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
 import { downloadFromWasabi, uploadToWasabiKey } from './lib/wasabi';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import ChangePinModal from './components/ChangePinModal';
 import IncidenciasModule from './components/IncidenciasModule';
 
 const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> = {
@@ -1614,14 +1615,16 @@ function MisNominasView({ theme, userId: propUserId }: { theme: SocietyTheme; us
               if (!byYear.has(n.anio)) byYear.set(n.anio, []);
               byYear.get(n.anio)!.push(n);
             }
-            return Array.from(byYear.entries()).map(([anio, rows]) => (
+            return Array.from(byYear.entries())
+              .sort(([a], [b]) => b - a)
+              .map(([anio, rows]) => (
               <div key={anio}>
                 <div className="px-5 py-2.5 flex items-center gap-2" style={{ backgroundColor: theme.primaryLight, borderBottom: `1px solid ${theme.border}` }}>
                   <span className="text-xs font-bold uppercase tracking-wider" style={{ color: theme.primary }}>{anio}</span>
                   <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: theme.bg, color: theme.textSecondary }}>{rows.length}</span>
                 </div>
                 <div className="divide-y" style={{ borderColor: theme.border }}>
-                  {rows.map((n) => {
+                  {[...rows].sort((a, b) => b.mes - a.mes).map((n) => {
                     const isInProgress = downloading.has(n.id);
                     return (
                       <div key={n.id} className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors">
@@ -1701,8 +1704,11 @@ function Dashboard({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showChangePin, setShowChangePin] = useState(false);
   const [activeDeviceCount, setActiveDeviceCount] = useState<number | null>(null);
   const [assignedVehicle, setAssignedVehicle] = useState<any>(null);
+  const [notifications, setNotifications] = useState<{ id: string; tipo: string; titulo: string; descripcion: string; leida: boolean; created_at: string }[]>([]);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
   useEffect(() => {
     if (impersonatingUserId) {
@@ -1753,6 +1759,20 @@ useEffect(() => {
   })();
 }, [impersonatingUserId]);
 
+useEffect(() => {
+  (async () => {
+    const resolvedUserId = impersonatingUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
+    if (!resolvedUserId) return;
+    const { data } = await supabase
+      .from('notificaciones_empleado')
+      .select('id, tipo, titulo, descripcion, leida, created_at')
+      .eq('user_id', resolvedUserId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    setNotifications(data ?? []);
+  })();
+}, [impersonatingUserId]);
+
   
   const certificates = mockCertificates[theme.id] ?? [];
   const exams = mockExams[theme.id] ?? [];
@@ -1769,6 +1789,7 @@ useEffect(() => {
   return (
     <div className="min-h-screen transition-all duration-700" style={{ backgroundColor: theme.bg }}>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+      {showChangePin && <ChangePinModal onClose={() => setShowChangePin(false)} />}
       {/* Header */}
       <header
         className="sticky top-0 z-50 transition-all duration-700"
@@ -1825,12 +1846,87 @@ useEffect(() => {
                 <span className="hidden sm:inline">Panel Supervisor</span>
               </button>
             )}
-            <button className="relative p-2 rounded-lg cursor-pointer flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
-              <Bell size={16} className="text-white/80" />
-              <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: theme.accent }}>
-                3
-              </div>
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowNotifDropdown((v) => !v);
+                  if (!showNotifDropdown && notifications.some(n => !n.leida)) {
+                    const unreadIds = notifications.filter(n => !n.leida).map(n => n.id);
+                    supabase.from('notificaciones_empleado').update({ leida: true }).in('id', unreadIds).then(() => {
+                      setNotifications(prev => prev.map(n => ({ ...n, leida: true })));
+                    });
+                  }
+                }}
+                className="relative p-2 rounded-lg cursor-pointer flex-shrink-0"
+                style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+              >
+                <Bell size={16} className="text-white/80" />
+                {notifications.filter(n => !n.leida).length > 0 && (
+                  <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: theme.accent }}>
+                    {notifications.filter(n => !n.leida).length}
+                  </div>
+                )}
+              </button>
+
+              {showNotifDropdown && (
+                <>
+                  <div className="fixed inset-0 z-[90]" onClick={() => setShowNotifDropdown(false)} />
+                  <div
+                    className="absolute right-0 top-full mt-2 w-80 rounded-2xl shadow-2xl z-[100] overflow-hidden"
+                    style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
+                  >
+                    <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #E2E8F0' }}>
+                      <div className="flex items-center gap-2">
+                        <Bell size={14} style={{ color: '#0F172A' }} />
+                        <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Notificaciones</span>
+                      </div>
+                      <button onClick={() => setShowNotifDropdown(false)} className="cursor-pointer" style={{ color: '#94A3B8' }}>
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <div className="py-10 text-center">
+                          <CheckCircle2 size={28} className="mx-auto mb-2" style={{ color: '#CBD5E1' }} />
+                          <p className="text-xs" style={{ color: '#94A3B8' }}>Sin notificaciones</p>
+                        </div>
+                      ) : (
+                        notifications.map((n) => (
+                          <div
+                            key={n.id}
+                            className="px-4 py-3 flex gap-3 items-start"
+                            style={{
+                              borderBottom: '1px solid #F1F5F9',
+                              backgroundColor: n.leida ? '#FFFFFF' : '#F0F9FF',
+                            }}
+                          >
+                            <div
+                              className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                              style={{ backgroundColor: n.tipo === 'nomina' ? '#DBEAFE' : '#D1FAE5' }}
+                            >
+                              {n.tipo === 'nomina'
+                                ? <Zap size={12} style={{ color: '#1D4ED8' }} />
+                                : <ShieldCheck size={12} style={{ color: '#065F46' }} />
+                              }
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold truncate" style={{ color: '#0F172A' }}>{n.titulo}</p>
+                              <p className="text-xs mt-0.5 line-clamp-2" style={{ color: '#64748B' }}>{n.descripcion}</p>
+                              <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
+                                {new Date(n.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </p>
+                            </div>
+                            {!n.leida && (
+                              <div className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ backgroundColor: theme.accent }} />
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
             <div className="text-right hidden md:block">
               <p className="text-white text-xs font-medium truncate max-w-[140px]">{email || 'empleado@empresa.com'}</p>
               <p className="text-white/60 text-xs">Empleado</p>
@@ -1842,6 +1938,14 @@ useEffect(() => {
             >
               <KeyRound size={13} />
               <span className="hidden lg:inline">Cambiar Contrasena</span>
+            </button>
+            <button
+              onClick={() => setShowChangePin(true)}
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-300 flex-shrink-0"
+              style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}
+            >
+              <Hash size={13} />
+              <span className="hidden lg:inline">Cambiar PIN</span>
             </button>
             <button
               onClick={onLogout}

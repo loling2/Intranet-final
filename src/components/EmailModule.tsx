@@ -1,806 +1,438 @@
-import { useState, useEffect, useRef, KeyboardEvent } from 'react';
-import {
-  Mail, Plus, X, Loader2, Pencil, Trash2, Eye, EyeOff,
-  Server, Shield, Bell, ChevronDown, Check, AlertCircle, ToggleLeft, ToggleRight,
-} from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import { Server, Bell, FileText, Plus, Pencil, Trash2, X, Loader2, AlertCircle, Check, ChevronDown, Eye, EyeOff } from 'lucide-react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type Seguridad = 'SSL' | 'TLS' | 'STARTTLS' | 'NONE';
-
-interface EmailCuenta {
+/* ─── Types ─── */
+interface Cuenta {
   id: string;
   nombre: string;
   email: string;
-  password: string;
   smtp_host: string;
   smtp_port: number;
-  seguridad: Seguridad;
+  seguridad: string;
   activo: boolean;
-  created_at: string;
 }
 
-interface EmailNotificacion {
+interface Notificacion {
+  id: string;
+  evento: string;
+  plantilla_id: string | null;
+  activo: boolean;
+  email_cuentas?: { nombre: string } | null;
+  email_plantillas?: { nombre: string } | null;
+}
+
+interface Plantilla {
   id: string;
   nombre: string;
-  descripcion: string;
-  evento: string;
+  asunto: string;
+  cuerpo: string;
   cuenta_id: string | null;
-  destinatarios: string[];
   activo: boolean;
-  created_at: string;
+  email_cuentas?: { nombre: string } | null;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+/* ─── Shared styles ─── */
+const inp = 'w-full px-3 py-2.5 rounded-xl text-sm outline-none';
+const inpS: React.CSSProperties = { border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' };
+const labelS = 'block text-xs font-semibold mb-1.5 uppercase tracking-wide';
+const btnPrimary: React.CSSProperties = { backgroundColor: '#0F172A', color: '#FFFFFF' };
+const btnDanger: React.CSSProperties = { backgroundColor: '#FEF2F2', color: '#B91C1C' };
 
-const SEGURIDAD_OPTIONS: { value: Seguridad; label: string; port: number }[] = [
-  { value: 'STARTTLS', label: 'STARTTLS (recomendado)', port: 587 },
-  { value: 'SSL',      label: 'SSL',                   port: 465 },
-  { value: 'TLS',      label: 'TLS',                   port: 587 },
-  { value: 'NONE',     label: 'Sin cifrado',            port: 25  },
-];
-
-const EVENTOS_PREDEFINIDOS = [
-  { value: 'incidencia_nueva',         label: 'Nueva incidencia creada' },
-  { value: 'incidencia_estado_cambio', label: 'Cambio de estado en incidencia' },
-  { value: 'incidencia_finalizada',    label: 'Incidencia finalizada' },
-  { value: 'vacacion_solicitud',       label: 'Nueva solicitud de vacaciones' },
-  { value: 'vacacion_aprobada',        label: 'Vacaciones aprobadas' },
-  { value: 'vacacion_rechazada',       label: 'Vacaciones rechazadas' },
-  { value: 'contrato_pendiente',       label: 'Contrato pendiente de firma' },
-  { value: 'usuario_nuevo',            label: 'Nuevo usuario creado' },
-  { value: 'certificado_expira',       label: 'Certificado próximo a vencer' },
-  { value: 'dispositivo_asignado',     label: 'Dispositivo asignado a empleado' },
-  { value: 'personalizado',            label: 'Evento personalizado' },
-];
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const SEGURIDAD_COLORS: Record<Seguridad, { color: string; bg: string }> = {
-  SSL:      { color: '#059669', bg: '#ECFDF5' },
-  TLS:      { color: '#2563EB', bg: '#EFF6FF' },
-  STARTTLS: { color: '#D97706', bg: '#FEF3C7' },
-  NONE:     { color: '#64748B', bg: '#F1F5F9' },
-};
-
-function SeguridadBadge({ s }: { s: Seguridad }) {
-  const c = SEGURIDAD_COLORS[s];
-  return (
-    <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ color: c.color, backgroundColor: c.bg }}>
-      {s}
-    </span>
-  );
-}
-
-// ─── Tag Input for recipients ─────────────────────────────────────────────────
-
-function TagInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
-  const [input, setInput] = useState('');
-  const [error, setError] = useState('');
-
-  const addTag = () => {
-    const val = input.trim().toLowerCase();
-    if (!val) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { setError('Email no válido'); return; }
-    if (tags.includes(val)) { setError('Ya añadido'); return; }
-    onChange([...tags, val]);
-    setInput('');
-    setError('');
-  };
-
-  const handleKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); }
-    if (e.key === 'Backspace' && !input && tags.length) onChange(tags.slice(0, -1));
-  };
-
-  return (
-    <div>
-      <div
-        className="w-full min-h-[44px] px-2 py-1.5 rounded-xl flex flex-wrap gap-1.5 cursor-text"
-        style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC' }}
-        onClick={() => document.getElementById('tag-input-field')?.focus()}
-      >
-        {tags.map((t) => (
-          <span key={t} className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8' }}>
-            {t}
-            <button type="button" onClick={() => onChange(tags.filter((x) => x !== t))}>
-              <X size={10} />
-            </button>
-          </span>
-        ))}
-        <input
-          id="tag-input-field"
-          value={input}
-          onChange={(e) => { setInput(e.target.value); setError(''); }}
-          onKeyDown={handleKey}
-          onBlur={addTag}
-          placeholder={tags.length === 0 ? 'correo@ejemplo.com — Enter para añadir' : ''}
-          className="flex-1 min-w-[160px] text-sm outline-none bg-transparent py-0.5"
-          style={{ color: '#1E293B' }}
-        />
-      </div>
-      {error && <p className="text-xs mt-1" style={{ color: '#EF4444' }}>{error}</p>}
-    </div>
-  );
-}
-
-// ─── SMTP Account Modal ───────────────────────────────────────────────────────
-
-const BLANK_CUENTA = (): Omit<EmailCuenta, 'id' | 'created_at'> => ({
-  nombre: '', email: '', password: '', smtp_host: '',
-  smtp_port: 587, seguridad: 'STARTTLS', activo: true,
-});
-
-interface CuentaModalProps {
-  initial?: EmailCuenta | null;
-  onClose: () => void;
-  onSaved: () => void;
-}
-
-function CuentaModal({ initial, onClose, onSaved }: CuentaModalProps) {
-  const [form, setForm] = useState<Omit<EmailCuenta, 'id' | 'created_at'>>(
-    initial ? { nombre: initial.nombre, email: initial.email, password: initial.password,
-      smtp_host: initial.smtp_host, smtp_port: initial.smtp_port, seguridad: initial.seguridad, activo: initial.activo }
-      : BLANK_CUENTA()
-  );
-  const [showPass, setShowPass] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const set = (k: keyof typeof form, v: unknown) => setForm((p) => ({ ...p, [k]: v }));
-
-  const handleSecurity = (s: Seguridad) => {
-    const opt = SEGURIDAD_OPTIONS.find((o) => o.value === s)!;
-    setForm((p) => ({ ...p, seguridad: s, smtp_port: opt.port }));
-  };
-
-  const validate = () => {
-    if (!form.nombre.trim()) return 'El nombre es obligatorio';
-    if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return 'Email no válido';
-    if (!form.password.trim()) return 'La contraseña es obligatoria';
-    if (!form.smtp_host.trim()) return 'El servidor SMTP es obligatorio';
-    if (!form.smtp_port || form.smtp_port < 1) return 'Puerto no válido';
-    return '';
-  };
-
-  const handleSave = async () => {
-    const err = validate();
-    if (err) { setError(err); return; }
-    setSaving(true); setError('');
-    const payload = { ...form, updated_at: new Date().toISOString() };
-    const { error: dbErr } = initial
-      ? await supabase.from('email_cuentas').update(payload).eq('id', initial.id)
-      : await supabase.from('email_cuentas').insert(payload);
-    setSaving(false);
-    if (dbErr) { setError(dbErr.message); return; }
-    onSaved(); onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-      <div className="w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden bg-white">
-        <div className="flex items-center justify-between px-6 py-4" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-          <div className="flex items-center gap-2">
-            <Server size={17} style={{ color: '#0EA5E9' }} />
-            <h2 className="font-bold text-base" style={{ color: '#0F172A' }}>
-              {initial ? 'Editar cuenta SMTP' : 'Nueva cuenta SMTP'}
-            </h2>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-100">
-            <X size={15} style={{ color: '#64748B' }} />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4 overflow-y-auto" style={{ maxHeight: '70vh' }}>
-          {error && (
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm" style={{ backgroundColor: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}>
-              <AlertCircle size={14} /> {error}
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Nombre de la cuenta *</label>
-              <input value={form.nombre} onChange={(e) => set('nombre', e.target.value)}
-                placeholder="Ej: Notificaciones RRHH"
-                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Email emisor *</label>
-              <input value={form.email} onChange={(e) => set('email', e.target.value)}
-                type="email" placeholder="notif@empresa.com"
-                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Contraseña *</label>
-              <div className="relative">
-                <input value={form.password} onChange={(e) => set('password', e.target.value)}
-                  type={showPass ? 'text' : 'password'} placeholder="Contraseña de aplicacion"
-                  className="w-full px-3 py-2.5 pr-10 rounded-xl text-sm outline-none"
-                  style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
-                <button type="button" onClick={() => setShowPass((p) => !p)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2">
-                  {showPass ? <EyeOff size={15} style={{ color: '#94A3B8' }} /> : <Eye size={15} style={{ color: '#94A3B8' }} />}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Servidor SMTP *</label>
-              <input value={form.smtp_host} onChange={(e) => set('smtp_host', e.target.value)}
-                placeholder="smtp.gmail.com"
-                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Puerto *</label>
-              <input value={form.smtp_port} onChange={(e) => set('smtp_port', parseInt(e.target.value) || 587)}
-                type="number" min={1} max={65535}
-                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Tipo de seguridad *</label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {SEGURIDAD_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => handleSecurity(opt.value)}
-                    className="px-3 py-2.5 rounded-xl text-xs font-semibold border-2 transition-all flex flex-col items-center gap-0.5"
-                    style={{
-                      borderColor: form.seguridad === opt.value ? SEGURIDAD_COLORS[opt.value].color : '#E2E8F0',
-                      backgroundColor: form.seguridad === opt.value ? SEGURIDAD_COLORS[opt.value].bg : '#F8FAFC',
-                      color: form.seguridad === opt.value ? SEGURIDAD_COLORS[opt.value].color : '#64748B',
-                    }}
-                  >
-                    <span>{opt.value}</span>
-                    <span className="text-xs opacity-70 font-normal">:{opt.port}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="sm:col-span-2 flex items-center gap-3">
-              <button type="button" onClick={() => set('activo', !form.activo)}>
-                {form.activo
-                  ? <ToggleRight size={28} style={{ color: '#0EA5E9' }} />
-                  : <ToggleLeft size={28} style={{ color: '#94A3B8' }} />}
-              </button>
-              <span className="text-sm font-medium" style={{ color: '#475569' }}>
-                Cuenta {form.activo ? 'activa' : 'inactiva'}
-              </span>
-            </div>
-          </div>
-
-          <div className="rounded-xl px-4 py-3 text-xs" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
-            <strong>Nota de seguridad:</strong> Usa una contraseña de aplicacion (no la contraseña principal de tu cuenta de correo). En Gmail/Outlook puedes generarla en Configuracion de seguridad.
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3 px-6 py-4" style={{ borderTop: '1px solid #E2E8F0' }}>
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
-            Cancelar
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold disabled:opacity-60"
-            style={{ backgroundColor: '#0EA5E9', color: '#FFFFFF' }}>
-            {saving && <Loader2 size={14} className="animate-spin" />}
-            {initial ? 'Guardar cambios' : 'Crear cuenta'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Notification Modal ───────────────────────────────────────────────────────
-
-const BLANK_NOTIF = (): Omit<EmailNotificacion, 'id' | 'created_at'> => ({
-  nombre: '', descripcion: '', evento: '', cuenta_id: null, destinatarios: [], activo: true,
-});
-
-interface NotifModalProps {
-  initial?: EmailNotificacion | null;
-  cuentas: EmailCuenta[];
-  onClose: () => void;
-  onSaved: () => void;
-}
-
-function NotifModal({ initial, cuentas, onClose, onSaved }: NotifModalProps) {
-  const [form, setForm] = useState<Omit<EmailNotificacion, 'id' | 'created_at'>>(
-    initial
-      ? { nombre: initial.nombre, descripcion: initial.descripcion, evento: initial.evento,
-          cuenta_id: initial.cuenta_id, destinatarios: initial.destinatarios, activo: initial.activo }
-      : BLANK_NOTIF()
-  );
-  const [eventoCustom, setEventoCustom] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const set = (k: keyof typeof form, v: unknown) => setForm((p) => ({ ...p, [k]: v }));
-
-  const eventoFinal = form.evento === 'personalizado' ? eventoCustom.trim() : form.evento;
-
-  const handleSave = async () => {
-    if (!form.nombre.trim()) { setError('El nombre es obligatorio'); return; }
-    if (!eventoFinal) { setError('Selecciona o define un evento'); return; }
-    setSaving(true); setError('');
-    const payload = { ...form, evento: eventoFinal, updated_at: new Date().toISOString() };
-    const { error: dbErr } = initial
-      ? await supabase.from('email_notificaciones').update(payload).eq('id', initial.id)
-      : await supabase.from('email_notificaciones').insert(payload);
-    setSaving(false);
-    if (dbErr) { setError(dbErr.message); return; }
-    onSaved(); onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-      <div className="w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden bg-white">
-        <div className="flex items-center justify-between px-6 py-4" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-          <div className="flex items-center gap-2">
-            <Bell size={17} style={{ color: '#0EA5E9' }} />
-            <h2 className="font-bold text-base" style={{ color: '#0F172A' }}>
-              {initial ? 'Editar notificacion' : 'Nueva notificacion'}
-            </h2>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-100">
-            <X size={15} style={{ color: '#64748B' }} />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4 overflow-y-auto" style={{ maxHeight: '72vh' }}>
-          {error && (
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm" style={{ backgroundColor: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}>
-              <AlertCircle size={14} /> {error}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Nombre *</label>
-            <input value={form.nombre} onChange={(e) => set('nombre', e.target.value)}
-              placeholder="Ej: Aviso nueva incidencia"
-              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-              style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Descripcion</label>
-            <textarea value={form.descripcion} onChange={(e) => set('descripcion', e.target.value)}
-              placeholder="Descripcion opcional del uso de esta notificacion"
-              rows={2} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
-              style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Evento que la dispara *</label>
-            <select value={form.evento} onChange={(e) => set('evento', e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-              style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: form.evento ? '#1E293B' : '#94A3B8' }}>
-              <option value="">Selecciona un evento...</option>
-              {EVENTOS_PREDEFINIDOS.map((ev) => (
-                <option key={ev.value} value={ev.value}>{ev.label}</option>
-              ))}
-            </select>
-            {form.evento === 'personalizado' && (
-              <input value={eventoCustom} onChange={(e) => setEventoCustom(e.target.value)}
-                placeholder="Nombre del evento personalizado (ej: factura_emitida)"
-                className="w-full mt-2 px-3 py-2.5 rounded-xl text-sm outline-none"
-                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Cuenta emisora</label>
-            {cuentas.length === 0 ? (
-              <div className="px-3 py-2.5 rounded-xl text-sm" style={{ backgroundColor: '#FEF3C7', border: '1px solid #FDE68A', color: '#92400E' }}>
-                No hay cuentas SMTP configuradas. Crea una primero en la seccion "Cuentas SMTP".
-              </div>
-            ) : (
-              <select value={form.cuenta_id ?? ''} onChange={(e) => set('cuenta_id', e.target.value || null)}
-                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: form.cuenta_id ? '#1E293B' : '#94A3B8' }}>
-                <option value="">Sin cuenta asignada</option>
-                {cuentas.filter((c) => c.activo).map((c) => (
-                  <option key={c.id} value={c.id}>{c.nombre} ({c.email})</option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>
-              Destinatarios
-              <span className="ml-1 normal-case font-normal text-slate-400">(Enter para añadir)</span>
-            </label>
-            <TagInput tags={form.destinatarios} onChange={(t) => set('destinatarios', t)} />
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={() => set('activo', !form.activo)}>
-              {form.activo
-                ? <ToggleRight size={28} style={{ color: '#0EA5E9' }} />
-                : <ToggleLeft size={28} style={{ color: '#94A3B8' }} />}
-            </button>
-            <span className="text-sm font-medium" style={{ color: '#475569' }}>
-              Notificacion {form.activo ? 'activa' : 'inactiva'}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3 px-6 py-4" style={{ borderTop: '1px solid #E2E8F0' }}>
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
-            Cancelar
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold disabled:opacity-60"
-            style={{ backgroundColor: '#0EA5E9', color: '#FFFFFF' }}>
-            {saving && <Loader2 size={14} className="animate-spin" />}
-            {initial ? 'Guardar cambios' : 'Crear notificacion'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── SMTP Accounts Section ────────────────────────────────────────────────────
-
+/* ─── Cuentas SMTP ─── */
 function CuentasSection() {
-  const [cuentas, setCuentas] = useState<EmailCuenta[]>([]);
+  const [cuentas, setCuentas] = useState<Cuenta[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState<EmailCuenta | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [revealedPasswords, setRevealedPasswords] = useState<Set<string>>(new Set());
+  const [modal, setModal] = useState<Cuenta | 'new' | null>(null);
+  const [showPass, setShowPass] = useState(false);
+  const [form, setForm] = useState({ nombre: '', email: '', password: '', smtp_host: '', smtp_port: 587, seguridad: 'TLS', activo: true });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const load = async () => {
     setLoading(true);
     const { data } = await supabase.from('email_cuentas').select('*').order('nombre');
-    setCuentas((data ?? []) as EmailCuenta[]);
+    if (data) setCuentas(data);
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
-  const handleDelete = async (id: string) => {
-    setDeleting(id);
-    await supabase.from('email_cuentas').delete().eq('id', id);
-    setDeleting(null);
+  const openNew = () => {
+    setForm({ nombre: '', email: '', password: '', smtp_host: '', smtp_port: 587, seguridad: 'TLS', activo: true });
+    setError('');
+    setModal('new');
+  };
+
+  const openEdit = (c: Cuenta) => {
+    setForm({ nombre: c.nombre, email: c.email, password: '', smtp_host: c.smtp_host, smtp_port: c.smtp_port, seguridad: c.seguridad, activo: c.activo });
+    setError('');
+    setModal(c);
+  };
+
+  const handleSave = async () => {
+    setError('');
+    if (!form.nombre || !form.email || !form.smtp_host) { setError('Nombre, email y host SMTP son obligatorios'); return; }
+    setSaving(true);
+    if (modal === 'new') {
+      const { error: e } = await supabase.from('email_cuentas').insert({ ...form });
+      if (e) { setError(e.message); setSaving(false); return; }
+    } else {
+      const updates: Record<string, unknown> = { nombre: form.nombre, email: form.email, smtp_host: form.smtp_host, smtp_port: form.smtp_port, seguridad: form.seguridad, activo: form.activo };
+      if (form.password) updates.password = form.password;
+      const { error: e } = await supabase.from('email_cuentas').update(updates).eq('id', (modal as Cuenta).id);
+      if (e) { setError(e.message); setSaving(false); return; }
+    }
+    setSaving(false);
+    setModal(null);
     load();
   };
 
-  const toggleReveal = (id: string) =>
-    setRevealedPasswords((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-
-  const handleToggleActivo = async (c: EmailCuenta) => {
-    await supabase.from('email_cuentas').update({ activo: !c.activo }).eq('id', c.id);
+  const handleDelete = async (id: string) => {
+    await supabase.from('email_cuentas').delete().eq('id', id);
     load();
   };
 
   return (
-    <>
-      <div className="flex items-center justify-between mb-5">
-        <p className="text-sm" style={{ color: '#64748B' }}>
-          Configura las cuentas de correo que enviarán las notificaciones del sistema.
-        </p>
-        <button
-          onClick={() => { setEditing(null); setShowModal(true); }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 flex-shrink-0"
-          style={{ backgroundColor: '#0EA5E9', color: '#FFFFFF' }}
-        >
-          <Plus size={15} /> Nueva Cuenta
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-bold text-base" style={{ color: '#0F172A' }}>Cuentas SMTP</h2>
+        <button onClick={openNew} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold" style={btnPrimary}>
+          <Plus size={14} /> Nueva Cuenta
         </button>
       </div>
-
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 size={26} className="animate-spin" style={{ color: '#0EA5E9' }} />
-        </div>
+        <div className="flex items-center justify-center py-12 gap-2" style={{ color: '#94A3B8' }}><Loader2 size={16} className="animate-spin" /> Cargando...</div>
       ) : cuentas.length === 0 ? (
-        <div className="text-center py-16 rounded-2xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-          <Server size={36} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
-          <p className="text-sm font-medium" style={{ color: '#94A3B8' }}>Sin cuentas SMTP configuradas</p>
-          <p className="text-xs mt-1" style={{ color: '#CBD5E1' }}>Añade la primera con el botón de arriba</p>
-        </div>
+        <div className="text-center py-12 text-sm rounded-2xl" style={{ color: '#94A3B8', border: '1px dashed #E2E8F0' }}>No hay cuentas configuradas</div>
       ) : (
         <div className="space-y-3">
           {cuentas.map((c) => (
-            <div key={c.id} className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: c.activo ? '#EFF6FF' : '#F1F5F9', border: `1px solid ${c.activo ? '#BFDBFE' : '#E2E8F0'}` }}>
-                    <Mail size={17} style={{ color: c.activo ? '#2563EB' : '#94A3B8' }} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{c.nombre}</p>
-                      <SeguridadBadge s={c.seguridad} />
-                      {!c.activo && (
-                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F1F5F9', color: '#94A3B8' }}>Inactiva</span>
-                      )}
-                    </div>
-                    <p className="text-xs mt-0.5 truncate" style={{ color: '#64748B' }}>{c.email}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <button onClick={() => handleToggleActivo(c)} title={c.activo ? 'Desactivar' : 'Activar'}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-50">
-                    {c.activo
-                      ? <ToggleRight size={20} style={{ color: '#0EA5E9' }} />
-                      : <ToggleLeft size={20} style={{ color: '#94A3B8' }} />}
-                  </button>
-                  <button onClick={() => { setEditing(c); setShowModal(true); }}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-50">
-                    <Pencil size={14} style={{ color: '#64748B' }} />
-                  </button>
-                  <button onClick={() => handleDelete(c.id)} disabled={deleting === c.id}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-50 disabled:opacity-50">
-                    {deleting === c.id
-                      ? <Loader2 size={14} className="animate-spin" style={{ color: '#EF4444' }} />
-                      : <Trash2 size={14} style={{ color: '#EF4444' }} />}
-                  </button>
-                </div>
+            <div key={c.id} className="flex items-center justify-between px-5 py-4 rounded-2xl" style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF' }}>
+              <div>
+                <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{c.nombre}</p>
+                <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{c.email} · {c.smtp_host}:{c.smtp_port} · {c.seguridad}</p>
               </div>
-
-              {/* Details row */}
-              <div className="mt-3 pt-3 flex items-center gap-4 flex-wrap" style={{ borderTop: '1px solid #F1F5F9' }}>
-                <div className="flex items-center gap-1.5 text-xs" style={{ color: '#64748B' }}>
-                  <Server size={12} />
-                  <span>{c.smtp_host}:{c.smtp_port}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs" style={{ color: '#64748B' }}>
-                  <Shield size={12} />
-                  <span>{c.seguridad}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs ml-auto">
-                  <span style={{ color: '#94A3B8' }}>
-                    {revealedPasswords.has(c.id) ? c.password : '••••••••'}
-                  </span>
-                  <button onClick={() => toggleReveal(c.id)} className="opacity-60 hover:opacity-100">
-                    {revealedPasswords.has(c.id)
-                      ? <EyeOff size={12} style={{ color: '#64748B' }} />
-                      : <Eye size={12} style={{ color: '#64748B' }} />}
-                  </button>
-                </div>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ backgroundColor: c.activo ? '#D1FAE5' : '#FEE2E2', color: c.activo ? '#065F46' : '#991B1B' }}>{c.activo ? 'Activa' : 'Inactiva'}</span>
+                <button onClick={() => openEdit(c)} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#FFFBEB' }}><Pencil size={13} style={{ color: '#F59E0B' }} /></button>
+                <button onClick={() => handleDelete(c.id)} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#FEF2F2' }}><Trash2 size={13} style={{ color: '#EF4444' }} /></button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {showModal && (
-        <CuentaModal
-          initial={editing}
-          onClose={() => { setShowModal(false); setEditing(null); }}
-          onSaved={load}
-        />
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="w-full max-w-md rounded-2xl shadow-2xl bg-white overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+              <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>{modal === 'new' ? 'Nueva Cuenta SMTP' : 'Editar Cuenta SMTP'}</h3>
+              <button onClick={() => setModal(null)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-100"><X size={15} style={{ color: '#64748B' }} /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              {error && <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm" style={{ backgroundColor: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}><AlertCircle size={14} />{error}</div>}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelS} style={{ color: '#475569' }}>Nombre</label>
+                  <input value={form.nombre} onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))} className={inp} style={inpS} />
+                </div>
+                <div>
+                  <label className={labelS} style={{ color: '#475569' }}>Email remitente</label>
+                  <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className={inp} style={inpS} />
+                </div>
+              </div>
+              <div>
+                <label className={labelS} style={{ color: '#475569' }}>{modal === 'new' ? 'Contraseña' : 'Nueva contraseña (dejar vacío para no cambiar)'}</label>
+                <div className="relative">
+                  <input type={showPass ? 'text' : 'password'} value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} className={`${inp} pr-10`} style={inpS} />
+                  <button type="button" onClick={() => setShowPass((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {showPass ? <EyeOff size={14} style={{ color: '#94A3B8' }} /> : <Eye size={14} style={{ color: '#94A3B8' }} />}
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-2">
+                  <label className={labelS} style={{ color: '#475569' }}>Host SMTP</label>
+                  <input value={form.smtp_host} onChange={(e) => setForm((f) => ({ ...f, smtp_host: e.target.value }))} className={inp} style={inpS} placeholder="smtp.gmail.com" />
+                </div>
+                <div>
+                  <label className={labelS} style={{ color: '#475569' }}>Puerto</label>
+                  <input type="number" value={form.smtp_port} onChange={(e) => setForm((f) => ({ ...f, smtp_port: parseInt(e.target.value) || 587 }))} className={inp} style={inpS} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelS} style={{ color: '#475569' }}>Seguridad</label>
+                  <div className="relative">
+                    <select value={form.seguridad} onChange={(e) => setForm((f) => ({ ...f, seguridad: e.target.value }))} className={`${inp} appearance-none pr-8`} style={inpS}>
+                      <option value="TLS">TLS</option>
+                      <option value="SSL">SSL</option>
+                      <option value="NONE">Sin seguridad</option>
+                    </select>
+                    <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
+                  </div>
+                </div>
+                <div className="flex items-end pb-1">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={form.activo} onChange={(e) => setForm((f) => ({ ...f, activo: e.target.checked }))} className="w-4 h-4 rounded" />
+                    <span className="text-sm font-medium" style={{ color: '#374151' }}>Cuenta activa</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4" style={{ borderTop: '1px solid #E2E8F0' }}>
+              <button onClick={() => setModal(null)} className="px-4 py-2 rounded-xl text-sm font-medium" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>Cancelar</button>
+              <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold disabled:opacity-50" style={btnPrimary}>
+                {saving && <Loader2 size={14} className="animate-spin" />} Guardar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
-// ─── Notifications Section ────────────────────────────────────────────────────
-
+/* ─── Notificaciones ─── */
 function NotificacionesSection() {
-  const [notifs, setNotifs] = useState<EmailNotificacion[]>([]);
-  const [cuentas, setCuentas] = useState<EmailCuenta[]>([]);
+  const [notifs, setNotifs] = useState<Notificacion[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState<EmailNotificacion | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    supabase.from('email_notificaciones').select('*, email_cuentas(nombre), email_plantillas(nombre)').order('evento').then(({ data }) => {
+      if (data) setNotifs(data);
+      setLoading(false);
+    });
+  }, []);
+
+  const toggle = async (id: string, activo: boolean) => {
+    await supabase.from('email_notificaciones').update({ activo: !activo }).eq('id', id);
+    setNotifs((prev) => prev.map((n) => n.id === id ? { ...n, activo: !activo } : n));
+  };
+
+  return (
+    <div>
+      <h2 className="font-bold text-base mb-4" style={{ color: '#0F172A' }}>Notificaciones automáticas</h2>
+      {loading ? (
+        <div className="flex items-center justify-center py-12 gap-2" style={{ color: '#94A3B8' }}><Loader2 size={16} className="animate-spin" /> Cargando...</div>
+      ) : notifs.length === 0 ? (
+        <div className="text-center py-12 text-sm rounded-2xl" style={{ color: '#94A3B8', border: '1px dashed #E2E8F0' }}>No hay notificaciones configuradas</div>
+      ) : (
+        <div className="space-y-3">
+          {notifs.map((n) => (
+            <div key={n.id} className="flex items-center justify-between px-5 py-4 rounded-2xl" style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF' }}>
+              <div>
+                <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{n.evento}</p>
+                <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
+                  {n.email_plantillas?.nombre ?? 'Sin plantilla'} · {n.email_cuentas?.nombre ?? 'Sin cuenta'}
+                </p>
+              </div>
+              <button onClick={() => toggle(n.id, n.activo)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: n.activo ? '#D1FAE5' : '#F1F5F9', color: n.activo ? '#065F46' : '#64748B' }}>
+                {n.activo ? <Check size={12} /> : null}
+                {n.activo ? 'Activa' : 'Inactiva'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Plantillas ─── */
+function PlantillasSection() {
+  const [plantillas, setPlantillas] = useState<Plantilla[]>([]);
+  const [cuentas, setCuentas] = useState<{ id: string; nombre: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState<Plantilla | 'new' | null>(null);
+  const [form, setForm] = useState({ nombre: '', asunto: '', cuerpo: '', cuenta_id: '', activo: true });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const load = async () => {
     setLoading(true);
-    const [{ data: n }, { data: c }] = await Promise.all([
-      supabase.from('email_notificaciones').select('*').order('nombre'),
-      supabase.from('email_cuentas').select('*').order('nombre'),
+    const [{ data: p }, { data: c }] = await Promise.all([
+      supabase.from('email_plantillas').select('*, email_cuentas(nombre)').order('nombre'),
+      supabase.from('email_cuentas').select('id, nombre').eq('activo', true),
     ]);
-    setNotifs((n ?? []) as EmailNotificacion[]);
-    setCuentas((c ?? []) as EmailCuenta[]);
+    if (p) setPlantillas(p);
+    if (c) setCuentas(c);
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
+  const openNew = () => {
+    setForm({ nombre: '', asunto: '', cuerpo: '', cuenta_id: cuentas[0]?.id ?? '', activo: true });
+    setError('');
+    setModal('new');
+  };
+
+  const openEdit = (p: Plantilla) => {
+    setForm({ nombre: p.nombre, asunto: p.asunto, cuerpo: p.cuerpo, cuenta_id: p.cuenta_id ?? '', activo: p.activo });
+    setError('');
+    setModal(p);
+  };
+
+  const handleSave = async () => {
+    setError('');
+    if (!form.nombre || !form.asunto || !form.cuerpo) { setError('Nombre, asunto y cuerpo son obligatorios'); return; }
+    setSaving(true);
+    const payload = { nombre: form.nombre, asunto: form.asunto, cuerpo: form.cuerpo, cuenta_id: form.cuenta_id || null, activo: form.activo };
+    if (modal === 'new') {
+      const { error: e } = await supabase.from('email_plantillas').insert(payload);
+      if (e) { setError(e.message); setSaving(false); return; }
+    } else {
+      const { error: e } = await supabase.from('email_plantillas').update(payload).eq('id', (modal as Plantilla).id);
+      if (e) { setError(e.message); setSaving(false); return; }
+    }
+    setSaving(false);
+    setModal(null);
+    load();
+  };
+
   const handleDelete = async (id: string) => {
-    setDeleting(id);
-    await supabase.from('email_notificaciones').delete().eq('id', id);
-    setDeleting(null);
+    await supabase.from('email_plantillas').delete().eq('id', id);
     load();
   };
-
-  const handleToggleActivo = async (n: EmailNotificacion) => {
-    await supabase.from('email_notificaciones').update({ activo: !n.activo }).eq('id', n.id);
-    load();
-  };
-
-  const getCuenta = (id: string | null) => cuentas.find((c) => c.id === id);
-  const getEventoLabel = (ev: string) => EVENTOS_PREDEFINIDOS.find((e) => e.value === ev)?.label ?? ev;
 
   return (
-    <>
-      <div className="flex items-center justify-between mb-5">
-        <p className="text-sm" style={{ color: '#64748B' }}>
-          Define qué eventos del sistema disparan un correo y a qué destinatarios.
-        </p>
-        <button
-          onClick={() => { setEditing(null); setShowModal(true); }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 flex-shrink-0"
-          style={{ backgroundColor: '#0EA5E9', color: '#FFFFFF' }}
-        >
-          <Plus size={15} /> Nueva Notificacion
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-bold text-base" style={{ color: '#0F172A' }}>Plantillas de correo</h2>
+        <button onClick={openNew} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold" style={btnPrimary}>
+          <Plus size={14} /> Nueva Plantilla
         </button>
       </div>
-
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 size={26} className="animate-spin" style={{ color: '#0EA5E9' }} />
-        </div>
-      ) : notifs.length === 0 ? (
-        <div className="text-center py-16 rounded-2xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-          <Bell size={36} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
-          <p className="text-sm font-medium" style={{ color: '#94A3B8' }}>Sin notificaciones configuradas</p>
-          <p className="text-xs mt-1" style={{ color: '#CBD5E1' }}>Añade la primera con el botón de arriba</p>
-        </div>
+        <div className="flex items-center justify-center py-12 gap-2" style={{ color: '#94A3B8' }}><Loader2 size={16} className="animate-spin" /> Cargando...</div>
+      ) : plantillas.length === 0 ? (
+        <div className="text-center py-12 text-sm rounded-2xl" style={{ color: '#94A3B8', border: '1px dashed #E2E8F0' }}>No hay plantillas configuradas</div>
       ) : (
         <div className="space-y-3">
-          {notifs.map((n) => {
-            const cuenta = getCuenta(n.cuenta_id);
-            return (
-              <div key={n.id} className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
-                      style={{ backgroundColor: n.activo ? '#F0FDF4' : '#F1F5F9', border: `1px solid ${n.activo ? '#BBF7D0' : '#E2E8F0'}` }}>
-                      <Bell size={17} style={{ color: n.activo ? '#059669' : '#94A3B8' }} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{n.nombre}</p>
-                        {!n.activo && (
-                          <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F1F5F9', color: '#94A3B8' }}>Inactiva</span>
-                        )}
-                      </div>
-                      {n.descripcion && (
-                        <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{n.descripcion}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <button onClick={() => handleToggleActivo(n)} title={n.activo ? 'Desactivar' : 'Activar'}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-50">
-                      {n.activo
-                        ? <ToggleRight size={20} style={{ color: '#0EA5E9' }} />
-                        : <ToggleLeft size={20} style={{ color: '#94A3B8' }} />}
-                    </button>
-                    <button onClick={() => { setEditing(n); setShowModal(true); }}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-50">
-                      <Pencil size={14} style={{ color: '#64748B' }} />
-                    </button>
-                    <button onClick={() => handleDelete(n.id)} disabled={deleting === n.id}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-50 disabled:opacity-50">
-                      {deleting === n.id
-                        ? <Loader2 size={14} className="animate-spin" style={{ color: '#EF4444' }} />
-                        : <Trash2 size={14} style={{ color: '#EF4444' }} />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Details */}
-                <div className="mt-3 pt-3 space-y-2" style={{ borderTop: '1px solid #F1F5F9' }}>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-semibold" style={{ color: '#475569' }}>Evento:</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                      style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
-                      {getEventoLabel(n.evento)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-semibold" style={{ color: '#475569' }}>Emisor:</span>
-                    {cuenta ? (
-                      <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
-                        style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8' }}>
-                        <Mail size={10} />
-                        {cuenta.nombre} — {cuenta.email}
-                      </span>
-                    ) : (
-                      <span className="text-xs" style={{ color: '#CBD5E1' }}>Sin cuenta asignada</span>
-                    )}
-                  </div>
-                  {n.destinatarios.length > 0 && (
-                    <div className="flex items-start gap-2 flex-wrap">
-                      <span className="text-xs font-semibold flex-shrink-0 mt-0.5" style={{ color: '#475569' }}>Para:</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {n.destinatarios.map((d) => (
-                          <span key={d} className="text-xs px-2 py-0.5 rounded-lg"
-                            style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}>
-                            {d}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+          {plantillas.map((p) => (
+            <div key={p.id} className="flex items-center justify-between px-5 py-4 rounded-2xl" style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF' }}>
+              <div className="min-w-0 mr-4">
+                <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{p.nombre}</p>
+                <p className="text-xs mt-0.5 truncate" style={{ color: '#64748B' }}>{p.asunto}</p>
+                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{p.email_cuentas?.nombre ?? 'Sin cuenta'}</p>
               </div>
-            );
-          })}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ backgroundColor: p.activo ? '#D1FAE5' : '#FEE2E2', color: p.activo ? '#065F46' : '#991B1B' }}>{p.activo ? 'Activa' : 'Inactiva'}</span>
+                <button onClick={() => openEdit(p)} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#FFFBEB' }}><Pencil size={13} style={{ color: '#F59E0B' }} /></button>
+                <button onClick={() => handleDelete(p.id)} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#FEF2F2' }}><Trash2 size={13} style={{ color: '#EF4444' }} /></button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {showModal && (
-        <NotifModal
-          initial={editing}
-          cuentas={cuentas}
-          onClose={() => { setShowModal(false); setEditing(null); }}
-          onSaved={load}
-        />
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="w-full max-w-lg rounded-2xl shadow-2xl bg-white overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+              <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>{modal === 'new' ? 'Nueva Plantilla' : 'Editar Plantilla'}</h3>
+              <button onClick={() => setModal(null)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-100"><X size={15} style={{ color: '#64748B' }} /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              {error && <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm" style={{ backgroundColor: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}><AlertCircle size={14} />{error}</div>}
+              <div>
+                <label className={labelS} style={{ color: '#475569' }}>Nombre de la plantilla</label>
+                <input value={form.nombre} onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))} className={inp} style={inpS} placeholder="Ej: Bienvenida al portal" />
+              </div>
+              <div>
+                <label className={labelS} style={{ color: '#475569' }}>Cuenta SMTP</label>
+                <div className="relative">
+                  <select value={form.cuenta_id} onChange={(e) => setForm((f) => ({ ...f, cuenta_id: e.target.value }))} className={`${inp} appearance-none pr-8`} style={inpS}>
+                    <option value="">Sin cuenta asignada</option>
+                    {cuentas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                  <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
+                </div>
+              </div>
+              <div>
+                <label className={labelS} style={{ color: '#475569' }}>Asunto</label>
+                <input value={form.asunto} onChange={(e) => setForm((f) => ({ ...f, asunto: e.target.value }))} className={inp} style={inpS} placeholder="Ej: Bienvenido, {{nombre}}" />
+              </div>
+              <div>
+                <label className={labelS} style={{ color: '#475569' }}>Cuerpo del mensaje</label>
+                <textarea
+                  value={form.cuerpo}
+                  onChange={(e) => setForm((f) => ({ ...f, cuerpo: e.target.value }))}
+                  rows={6}
+                  className={`${inp} resize-none`}
+                  style={inpS}
+                  placeholder="Variables disponibles: {{nombre}}, {{empresa}}, {{fecha}}, {{link}}"
+                />
+                <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Variables: {'{{nombre}}'}, {'{{empresa}}'}, {'{{fecha}}'}, {'{{link}}'}</p>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.activo} onChange={(e) => setForm((f) => ({ ...f, activo: e.target.checked }))} className="w-4 h-4 rounded" />
+                <span className="text-sm font-medium" style={{ color: '#374151' }}>Plantilla activa</span>
+              </label>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4" style={{ borderTop: '1px solid #E2E8F0' }}>
+              <button onClick={() => setModal(null)} className="px-4 py-2 rounded-xl text-sm font-medium" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>Cancelar</button>
+              <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold disabled:opacity-50" style={btnPrimary}>
+                {saving && <Loader2 size={14} className="animate-spin" />} Guardar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
-// ─── Main Module ──────────────────────────────────────────────────────────────
-
-type Section = 'cuentas' | 'notificaciones';
-
+/* ─── Main ─── */
 export default function EmailModule() {
-  const [section, setSection] = useState<Section>('cuentas');
+  const [tab, setTab] = useState<'smtp' | 'notificaciones' | 'plantillas'>('smtp');
 
-  const tabs: { id: Section; label: string; icon: React.FC<{ size?: number }> }[] = [
-    { id: 'cuentas',         label: 'Cuentas SMTP',    icon: Server },
-    { id: 'notificaciones',  label: 'Notificaciones',  icon: Bell   },
-  ];
+  const tabStyle = (id: string): React.CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '10px 18px',
+    fontSize: 13,
+    fontWeight: tab === id ? 600 : 500,
+    borderBottom: `2px solid ${tab === id ? '#0EA5E9' : 'transparent'}`,
+    color: tab === id ? '#0EA5E9' : '#64748B',
+    background: 'none',
+    border: 'none',
+    borderBottom: `2px solid ${tab === id ? '#0EA5E9' : 'transparent'}`,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  });
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-xl font-bold" style={{ color: '#0F172A' }}>Notificaciones por Email</h2>
-        <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>
-          Configura cuentas SMTP emisoras y los eventos del sistema que disparan correos automaticos.
-        </p>
+    <div style={{ padding: '24px', fontFamily: 'Inter, sans-serif' }}>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold" style={{ color: '#0F172A' }}>Email</h1>
+        <p className="text-sm mt-1" style={{ color: '#64748B' }}>Configura cuentas SMTP, notificaciones y plantillas de correo</p>
       </div>
 
-      {/* Inner tab switcher */}
-      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: '#F1F5F9' }}>
-        {tabs.map((t) => {
-          const Icon = t.icon;
-          const isActive = section === t.id;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setSection(t.id)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all"
-              style={{
-                backgroundColor: isActive ? '#FFFFFF' : 'transparent',
-                color: isActive ? '#0F172A' : '#64748B',
-                boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}
-            >
-              <Icon size={14} />
-              {t.label}
-            </button>
-          );
-        })}
+      <div className="mb-6" style={{ borderBottom: '1px solid #E2E8F0' }}>
+        <div style={{ display: 'flex', gap: 0 }}>
+          <button onClick={() => setTab('smtp')} style={tabStyle('smtp')}>
+            <Server size={14} />
+            <span>Cuentas SMTP</span>
+          </button>
+          <button onClick={() => setTab('notificaciones')} style={tabStyle('notificaciones')}>
+            <Bell size={14} />
+            <span>Notificaciones</span>
+          </button>
+          <button onClick={() => setTab('plantillas')} style={tabStyle('plantillas')}>
+            <FileText size={14} />
+            <span>Plantillas</span>
+          </button>
+        </div>
       </div>
 
-      {/* Section content */}
-      {section === 'cuentas' && <CuentasSection />}
-      {section === 'notificaciones' && <NotificacionesSection />}
+      {tab === 'smtp' && <CuentasSection />}
+      {tab === 'notificaciones' && <NotificacionesSection />}
+      {tab === 'plantillas' && <PlantillasSection />}
     </div>
   );
 }

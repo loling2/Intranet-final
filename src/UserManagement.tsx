@@ -17,6 +17,7 @@ const ROLE_COLORS: Record<AppRole, { bg: string; text: string; border: string; l
   prevencion:     { bg: '#FFFBEB', text: '#D97706', border: '#FDE68A', label: 'Prevencion' },
   supervisor:     { bg: '#F5F3FF', text: '#7C3AED', border: '#DDD6FE', label: 'Supervisor' },
   administracion: { bg: '#FFF7ED', text: '#C2410C', border: '#FED7AA', label: 'Administracion' },
+  formacion:      { bg: '#F0FDFA', text: '#0D9488', border: '#99F6E4', label: 'Formacion' },
 };
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -61,8 +62,8 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
   const [success, setSuccess] = useState(false);
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'employee']
-    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'employee'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'employee']
+    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'employee'];
 
   const toggleSociety = (id: string) =>
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
@@ -311,8 +312,8 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'employee']
-    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'employee'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'employee']
+    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'employee'];
 
   const rc = ROLE_COLORS[user.role];
 
@@ -685,7 +686,7 @@ function BulkCreateAccessModal({ employees, onClose, onCreated }: BulkCreateAcce
               <div>
                 <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: '#64748B' }}>Rol asignado</label>
                 <div className="flex gap-2 flex-wrap">
-                  {(['employee', 'rrhh', 'prevencion', 'supervisor', 'administracion'] as AppRole[]).map((r) => {
+                  {(['employee', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion'] as AppRole[]).map((r) => {
                     const rc = ROLE_COLORS[r];
                     return (
                       <button key={r} onClick={() => setRole(r)}
@@ -1108,6 +1109,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
           <option value="prevencion">Prevencion</option>
           <option value="supervisor">Supervisor</option>
           <option value="administracion">Administracion</option>
+          <option value="formacion">Formacion</option>
           <option value="employee">Empleado</option>
         </select>
         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}

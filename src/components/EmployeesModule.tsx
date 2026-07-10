@@ -37,6 +37,7 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   centro_trabajo: null,
   titulacion_habilitante: null,
   fecha_pago_tasas: null,
+  nass: null,
   observaciones: null,
   activo: true,
   estado_contrato: 'pendiente',
@@ -61,6 +62,7 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     centro_trabajo: e.centro_trabajo,
     titulacion_habilitante: e.titulacion_habilitante,
     fecha_pago_tasas: e.fecha_pago_tasas,
+    nass: e.nass ?? null,
     observaciones: e.observaciones,
     activo: e.activo,
     estado_contrato: e.estado_contrato ?? 'pendiente',
@@ -1322,6 +1324,10 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                   <option value="">Ninguna</option>
                   {sociedades.filter((s) => s.id !== form.id_sociedad).map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                 </select>
+              </FormField>
+              <FormField label="NASS">
+                <input value={form.nass ?? ''} onChange={(e) => f('nass', e.target.value || null)}
+                  type="text" className="form-input" placeholder="Nº Afiliación Seg. Social" />
               </FormField>
             </div>
 

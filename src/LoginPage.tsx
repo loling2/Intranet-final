@@ -1615,14 +1615,16 @@ function MisNominasView({ theme, userId: propUserId }: { theme: SocietyTheme; us
               if (!byYear.has(n.anio)) byYear.set(n.anio, []);
               byYear.get(n.anio)!.push(n);
             }
-            return Array.from(byYear.entries()).map(([anio, rows]) => (
+            return Array.from(byYear.entries())
+              .sort(([a], [b]) => b - a)
+              .map(([anio, rows]) => (
               <div key={anio}>
                 <div className="px-5 py-2.5 flex items-center gap-2" style={{ backgroundColor: theme.primaryLight, borderBottom: `1px solid ${theme.border}` }}>
                   <span className="text-xs font-bold uppercase tracking-wider" style={{ color: theme.primary }}>{anio}</span>
                   <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: theme.bg, color: theme.textSecondary }}>{rows.length}</span>
                 </div>
                 <div className="divide-y" style={{ borderColor: theme.border }}>
-                  {rows.map((n) => {
+                  {[...rows].sort((a, b) => b.mes - a.mes).map((n) => {
                     const isInProgress = downloading.has(n.id);
                     return (
                       <div key={n.id} className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors">

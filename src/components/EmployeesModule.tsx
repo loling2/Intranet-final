@@ -38,6 +38,11 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   titulacion_habilitante: null,
   fecha_pago_tasas: null,
   nass: null,
+  convenio: null,
+  localidad: null,
+  direccion: null,
+  codigo_postal: null,
+  sexo: null,
   observaciones: null,
   activo: true,
   estado_contrato: 'pendiente',
@@ -63,6 +68,11 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     titulacion_habilitante: e.titulacion_habilitante,
     fecha_pago_tasas: e.fecha_pago_tasas,
     nass: e.nass ?? null,
+    convenio: e.convenio ?? null,
+    localidad: e.localidad ?? null,
+    direccion: e.direccion ?? null,
+    codigo_postal: e.codigo_postal ?? null,
+    sexo: e.sexo ?? null,
     observaciones: e.observaciones,
     activo: e.activo,
     estado_contrato: e.estado_contrato ?? 'pendiente',
@@ -79,10 +89,10 @@ const CSV_AUTH_EXAMPLE = [
 ];
 
 // Template B: HR data (apellidos + nombre → creates empleado record, no login)
-const CSV_HR_HEADERS = ['apellidos', 'nombre', 'dni', 'telefono', 'fecha_alta', 'fecha_nacimiento', 'tipo_contrato', 'turno', 'puesto', 'centro_trabajo', 'emails'];
+const CSV_HR_HEADERS = ['apellidos', 'nombre', 'dni', 'telefono', 'fecha_alta', 'fecha_nacimiento', 'tipo_contrato', 'turno', 'puesto', 'centro_trabajo', 'nass', 'sexo', 'convenio', 'localidad', 'codigo_postal', 'direccion', 'emails'];
 const CSV_HR_EXAMPLE = [
-  ['Garcia Lopez', 'Juan', '12345678A', '600000001', '2024-01-15', '1990-05-20', 'Indefinido', 'Manana', 'Tecnico', 'Sede Central', 'juan@empresa.com'],
-  ['Perez Ruiz', 'Maria', '87654321B', '600000002', '2024-03-01', '1985-11-08', 'Temporal', 'Tarde', 'Administrativo', 'Oficina Norte', 'maria@empresa.com'],
+  ['Garcia Lopez', 'Juan', '12345678A', '600000001', '2024-01-15', '1990-05-20', 'Indefinido', 'Manana', 'Tecnico', 'Sede Central', '28/123456789', 'Hombre', 'Convenio General', 'Madrid', '28001', 'Calle Mayor 1', 'juan@empresa.com'],
+  ['Perez Ruiz', 'Maria', '87654321B', '600000002', '2024-03-01', '1985-11-08', 'Temporal', 'Tarde', 'Administrativo', 'Oficina Norte', '08/987654321', 'Mujer', 'Convenio Comercio', 'Barcelona', '08001', 'Paseo Gracia 10', 'maria@empresa.com'],
 ];
 
 function downloadTemplateCsv(type: 'auth' | 'hr') {
@@ -154,6 +164,12 @@ function hrRowToEmpleado(r: Record<string, string>, societyId: string): Partial<
     turno: r['turno'] ?? null,
     puesto: r['puesto'] ?? null,
     centro_trabajo: r['centro_trabajo'] ?? r['centrotrabajo'] ?? r['centro_de_trabajo'] ?? null,
+    nass: r['nass'] ?? null,
+    sexo: r['sexo'] ?? null,
+    convenio: r['convenio'] ?? null,
+    localidad: r['localidad'] ?? null,
+    codigo_postal: r['codigo_postal'] ?? r['codigopostal'] ?? r['cp'] ?? null,
+    direccion: r['direccion'] ?? null,
     id_sociedad: societyId,
     activo: true,
     estado_contrato: 'pendiente' as const,
@@ -166,7 +182,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
   onClose: () => void;
   onImported: () => void;
 }) {
-  const [step, setStep] = useState<'upload' | 'preview' | 'result'>('upload');
+  const [step, setStep] = useState<'upload' | 'society' | 'preview' | 'result'>('upload');
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [mode, setMode] = useState<'auth' | 'hr'>('auth');
   const [selectedSociety, setSelectedSociety] = useState(sociedades[0]?.id ?? '');
@@ -186,7 +202,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
       if (!parsed.rows.length) { setError('El archivo no contiene datos válidos o el formato es incorrecto.'); return; }
       setRows(parsed.rows);
       setMode(parsed.mode);
-      setStep('preview');
+      setStep(parsed.mode === 'hr' ? 'society' : 'preview');
     };
     reader.readAsText(file, 'UTF-8');
   }
@@ -196,16 +212,26 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
     setError('');
     try {
       if (mode === 'hr') {
-        // Direct insert into empleados table
         if (!selectedSociety) throw new Error('Selecciona una sociedad antes de importar');
+
+        // Fetch existing DNIs to skip duplicates
+        const dniList = rows.map(r => (r['dni'] ?? r['dni_nie'] ?? '').trim().toUpperCase()).filter(Boolean);
+        const { data: existingRows } = await supabase.from('empleados').select('dni').in('dni', dniList);
+        const existingDnis = new Set((existingRows ?? []).map((e: { dni: string | null }) => (e.dni ?? '').toUpperCase()));
+
         const res: Array<{ label: string; ok: boolean; error?: string }> = [];
         for (const r of rows) {
           const payload = hrRowToEmpleado(r, selectedSociety);
+          const dniNorm = (payload.dni ?? '').toUpperCase();
           if (!payload.nombre?.trim()) { res.push({ label: r['emails'] || r['nombre'] || '?', ok: false, error: 'Nombre vacío' }); continue; }
+          if (dniNorm && existingDnis.has(dniNorm)) {
+            res.push({ label: payload.email || payload.nombre || '?', ok: false, error: `DNI ${payload.dni} ya existe` });
+            continue;
+          }
           const { error: err } = await supabase.from('empleados').insert(payload);
           const label = payload.email || payload.nombre || '?';
           if (err) { res.push({ label, ok: false, error: err.message }); }
-          else { res.push({ label, ok: true }); }
+          else { res.push({ label, ok: true }); if (dniNorm) existingDnis.add(dniNorm); }
         }
         setResults(res);
       } else {
@@ -261,6 +287,8 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
               <p className="text-xs" style={{ color: '#64748B' }}>
                 {step === 'upload'
                   ? 'Sube un CSV con los datos'
+                  : step === 'society'
+                  ? `${rows.length} registro(s) · elige la empresa de destino`
                   : step === 'preview'
                   ? `${rows.length} registro(s) detectados · formato ${mode === 'hr' ? 'RRHH' : 'acceso'}`
                   : 'Resultado de la importación'}
@@ -316,24 +344,6 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                 </div>
               </div>
 
-              {/* Society selector (required for HR mode) */}
-              {sociedades.length > 0 && (
-                <div className="p-3 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: '#374151' }}>
-                    Sociedad por defecto (se aplica a todos los registros del CSV)
-                  </label>
-                  <select
-                    value={selectedSociety}
-                    onChange={(e) => setSelectedSociety(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
-                    style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}
-                  >
-                    <option value="">Seleccionar sociedad...</option>
-                    {sociedades.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-                  </select>
-                </div>
-              )}
-
               {/* File upload */}
               <div>
                 <p className="text-sm font-semibold mb-2" style={{ color: '#374151' }}>Sube el CSV relleno</p>
@@ -356,6 +366,41 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                 </div>
               )}
             </>
+          )}
+
+          {/* Step: society selector (HR mode only) */}
+          {step === 'society' && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-4 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                <FileSpreadsheet size={16} style={{ color: '#16A34A' }} />
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: '#14532D' }}>{rows.length} empleado(s) detectados en el CSV</p>
+                  <p className="text-xs" style={{ color: '#166534' }}>Elige la empresa a la que se asociarán todos los registros</p>
+                </div>
+              </div>
+              <div className="p-4 rounded-xl space-y-2" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                <label className="block text-sm font-semibold" style={{ color: '#374151' }}>
+                  Empresa destino <span style={{ color: '#DC2626' }}>*</span>
+                </label>
+                <select
+                  value={selectedSociety}
+                  onChange={(e) => setSelectedSociety(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-lg text-sm outline-none cursor-pointer"
+                  style={{ backgroundColor: '#FFFFFF', border: '1px solid #CBD5E1', color: '#1E293B' }}
+                >
+                  <option value="">Seleccionar empresa...</option>
+                  {sociedades.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                </select>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>
+                  Si tienes empleados de varias empresas, importa cada empresa por separado.
+                </p>
+              </div>
+              {error && (
+                <div className="flex items-center gap-2 p-3 rounded-xl text-sm" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
+                  <AlertCircle size={14} /> {error}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Step: preview */}
@@ -467,9 +512,29 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
               Cancelar
             </button>
           )}
-          {step === 'preview' && (
+          {step === 'society' && (
             <>
               <button onClick={() => { setStep('upload'); setRows([]); if (fileRef.current) fileRef.current.value = ''; }}
+                className="px-4 py-2 rounded-lg text-sm cursor-pointer" style={{ color: '#475569', backgroundColor: '#F1F5F9' }}>
+                Atras
+              </button>
+              <button
+                onClick={() => {
+                  if (!selectedSociety) { setError('Debes seleccionar una empresa'); return; }
+                  setError('');
+                  setStep('preview');
+                }}
+                disabled={!selectedSociety}
+                className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-60"
+                style={{ backgroundColor: '#16A34A', color: '#FFFFFF' }}
+              >
+                Continuar — ver previa
+              </button>
+            </>
+          )}
+          {step === 'preview' && (
+            <>
+              <button onClick={() => setStep(mode === 'hr' ? 'society' : 'upload')}
                 className="px-4 py-2 rounded-lg text-sm cursor-pointer" style={{ color: '#475569', backgroundColor: '#F1F5F9' }}>
                 Atras
               </button>
@@ -1332,6 +1397,30 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                 <input value={form.nass ?? ''} onChange={(e) => f('nass', e.target.value || null)}
                   type="text" className="form-input" placeholder="Nº Afiliación Seg. Social" />
               </FormField>
+              <FormField label="Sexo">
+                <select value={form.sexo ?? ''} onChange={(e) => f('sexo', e.target.value || null)} className="form-input">
+                  <option value="">Seleccionar...</option>
+                  <option value="Hombre">Hombre</option>
+                  <option value="Mujer">Mujer</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </FormField>
+              <FormField label="Convenio">
+                <input value={form.convenio ?? ''} onChange={(e) => f('convenio', e.target.value || null)}
+                  type="text" className="form-input" placeholder="Convenio colectivo..." />
+              </FormField>
+              <FormField label="Localidad">
+                <input value={form.localidad ?? ''} onChange={(e) => f('localidad', e.target.value || null)}
+                  type="text" className="form-input" placeholder="Localidad..." />
+              </FormField>
+              <FormField label="Código Postal">
+                <input value={form.codigo_postal ?? ''} onChange={(e) => f('codigo_postal', e.target.value || null)}
+                  type="text" className="form-input" placeholder="00000" />
+              </FormField>
+              <FormField label="Dirección" className="sm:col-span-2 lg:col-span-3">
+                <input value={form.direccion ?? ''} onChange={(e) => f('direccion', e.target.value || null)}
+                  type="text" className="form-input" placeholder="Calle, número, piso..." />
+              </FormField>
             </div>
 
             {/* Section: Datos contractuales */}
@@ -1658,6 +1747,30 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         <FormField label="NASS">
                           <input value={form.nass ?? ''} onChange={(e) => f('nass', e.target.value || null)}
                             type="text" className="form-input" placeholder="Nº Afiliación Seg. Social" />
+                        </FormField>
+                        <FormField label="Sexo">
+                          <select value={form.sexo ?? ''} onChange={(e) => f('sexo', e.target.value || null)} className="form-input">
+                            <option value="">Seleccionar...</option>
+                            <option value="Hombre">Hombre</option>
+                            <option value="Mujer">Mujer</option>
+                            <option value="Otro">Otro</option>
+                          </select>
+                        </FormField>
+                        <FormField label="Convenio">
+                          <input value={form.convenio ?? ''} onChange={(e) => f('convenio', e.target.value || null)}
+                            type="text" className="form-input" placeholder="Convenio colectivo..." />
+                        </FormField>
+                        <FormField label="Localidad">
+                          <input value={form.localidad ?? ''} onChange={(e) => f('localidad', e.target.value || null)}
+                            type="text" className="form-input" placeholder="Localidad..." />
+                        </FormField>
+                        <FormField label="Código Postal">
+                          <input value={form.codigo_postal ?? ''} onChange={(e) => f('codigo_postal', e.target.value || null)}
+                            type="text" className="form-input" placeholder="00000" />
+                        </FormField>
+                        <FormField label="Dirección" className="sm:col-span-2 lg:col-span-3">
+                          <input value={form.direccion ?? ''} onChange={(e) => f('direccion', e.target.value || null)}
+                            type="text" className="form-input" placeholder="Calle, número, piso..." />
                         </FormField>
                       </div>
 

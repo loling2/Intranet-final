@@ -48,6 +48,11 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   doc_vitali: false,
   doc_numero_cuenta: false,
   doc_titulacion: false,
+  reconocimiento_medico: null,
+  reconocimiento_medico_realizado: false,
+  reconocimiento_medico_fecha: null,
+  entrega_doc_prl: null,
+  entrega_doc_prl_observaciones: null,
   observaciones: null,
   activo: true,
   estado_contrato: 'pendiente',
@@ -83,6 +88,11 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     doc_vitali: e.doc_vitali ?? false,
     doc_numero_cuenta: e.doc_numero_cuenta ?? false,
     doc_titulacion: e.doc_titulacion ?? false,
+    reconocimiento_medico: e.reconocimiento_medico ?? null,
+    reconocimiento_medico_realizado: e.reconocimiento_medico_realizado ?? false,
+    reconocimiento_medico_fecha: e.reconocimiento_medico_fecha ?? null,
+    entrega_doc_prl: e.entrega_doc_prl ?? null,
+    entrega_doc_prl_observaciones: e.entrega_doc_prl_observaciones ?? null,
     observaciones: e.observaciones,
     activo: e.activo,
     estado_contrato: e.estado_contrato ?? 'pendiente',
@@ -1558,6 +1568,62 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               </FormField>
             </div>
 
+            {/* Section: PRL */}
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Prevención de Riesgos Laborales</p>
+            <div className="rounded-xl p-4 mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+              {/* Reconocimiento médico */}
+              <div>
+                <p className="text-xs font-semibold mb-2" style={{ color: '#15803D' }}>Reconocimiento médico</p>
+                <div className="flex gap-2">
+                  {(['acepta', 'renuncia'] as const).map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => f('reconocimiento_medico', form.reconocimiento_medico === val ? null : val)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                      style={
+                        form.reconocimiento_medico === val
+                          ? { backgroundColor: val === 'acepta' ? '#16A34A' : '#DC2626', color: '#FFFFFF', border: `1.5px solid ${val === 'acepta' ? '#16A34A' : '#DC2626'}` }
+                          : { backgroundColor: '#FFFFFF', color: '#64748B', border: '1.5px solid #E2E8F0' }
+                      }
+                    >
+                      {val === 'acepta' ? 'Acepta' : 'Renuncia'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Entrega documentación PRL */}
+              <div>
+                <p className="text-xs font-semibold mb-2" style={{ color: '#15803D' }}>Entrega documentación PRL</p>
+                <div className="flex gap-2 mb-2">
+                  {(['recibida', 'observaciones'] as const).map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => f('entrega_doc_prl', form.entrega_doc_prl === val ? null : val)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                      style={
+                        form.entrega_doc_prl === val
+                          ? { backgroundColor: val === 'recibida' ? '#16A34A' : '#D97706', color: '#FFFFFF', border: `1.5px solid ${val === 'recibida' ? '#16A34A' : '#D97706'}` }
+                          : { backgroundColor: '#FFFFFF', color: '#64748B', border: '1.5px solid #E2E8F0' }
+                      }
+                    >
+                      {val === 'recibida' ? 'Recibida' : 'Observaciones'}
+                    </button>
+                  ))}
+                </div>
+                {form.entrega_doc_prl === 'observaciones' && (
+                  <textarea
+                    value={form.entrega_doc_prl_observaciones ?? ''}
+                    onChange={(e) => f('entrega_doc_prl_observaciones', e.target.value || null)}
+                    rows={2}
+                    className="form-input resize-none w-full"
+                    placeholder="Comentario sobre la documentación PRL..."
+                  />
+                )}
+              </div>
+            </div>
+
             {/* Section: Estado del contrato */}
             <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Estado del contrato</p>
             <div className="rounded-xl p-4 mb-5" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
@@ -1938,6 +2004,60 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                           <textarea value={form.observaciones ?? ''} onChange={(e) => f('observaciones', e.target.value)}
                             rows={2} className="form-input resize-none" placeholder="Notas adicionales..." />
                         </FormField>
+                      </div>
+
+                      {/* Section: PRL */}
+                      <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Prevención de Riesgos Laborales</p>
+                      <div className="rounded-xl p-4 mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                        <div>
+                          <p className="text-xs font-semibold mb-2" style={{ color: '#15803D' }}>Reconocimiento médico</p>
+                          <div className="flex gap-2">
+                            {(['acepta', 'renuncia'] as const).map((val) => (
+                              <button
+                                key={val}
+                                type="button"
+                                onClick={() => f('reconocimiento_medico', form.reconocimiento_medico === val ? null : val)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                                style={
+                                  form.reconocimiento_medico === val
+                                    ? { backgroundColor: val === 'acepta' ? '#16A34A' : '#DC2626', color: '#FFFFFF', border: `1.5px solid ${val === 'acepta' ? '#16A34A' : '#DC2626'}` }
+                                    : { backgroundColor: '#FFFFFF', color: '#64748B', border: '1.5px solid #E2E8F0' }
+                                }
+                              >
+                                {val === 'acepta' ? 'Acepta' : 'Renuncia'}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold mb-2" style={{ color: '#15803D' }}>Entrega documentación PRL</p>
+                          <div className="flex gap-2 mb-2">
+                            {(['recibida', 'observaciones'] as const).map((val) => (
+                              <button
+                                key={val}
+                                type="button"
+                                onClick={() => f('entrega_doc_prl', form.entrega_doc_prl === val ? null : val)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                                style={
+                                  form.entrega_doc_prl === val
+                                    ? { backgroundColor: val === 'recibida' ? '#16A34A' : '#D97706', color: '#FFFFFF', border: `1.5px solid ${val === 'recibida' ? '#16A34A' : '#D97706'}` }
+                                    : { backgroundColor: '#FFFFFF', color: '#64748B', border: '1.5px solid #E2E8F0' }
+                                }
+                              >
+                                {val === 'recibida' ? 'Recibida' : 'Observaciones'}
+                              </button>
+                            ))}
+                          </div>
+                          {form.entrega_doc_prl === 'observaciones' && (
+                            <textarea
+                              value={form.entrega_doc_prl_observaciones ?? ''}
+                              onChange={(e) => f('entrega_doc_prl_observaciones', e.target.value || null)}
+                              rows={2}
+                              className="form-input resize-none w-full"
+                              placeholder="Comentario sobre la documentación PRL..."
+                            />
+                          )}
+                        </div>
                       </div>
 
                       {/* Section: Estado del contrato */}

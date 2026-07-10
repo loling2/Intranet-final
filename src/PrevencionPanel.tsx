@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2 } from 'lucide-react';
+import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2, Stethoscope } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
 import SocietySwitcher from './SocietySwitcher';
 import PrlDocsModule from './components/PrlDocsModule';
 import TrazabilidadModule from './components/TrazabilidadModule';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import { useSociety } from './context/SocietyContext';
 
 interface Props {
   email: string;
@@ -12,7 +13,7 @@ interface Props {
   onNavigateEmployee?: () => void;
 }
 
-type PrevTab = 'empleados' | 'documentos' | 'trazabilidad' | 'departamentos';
+type PrevTab = 'empleados' | 'documentos' | 'trazabilidad' | 'departamentos' | 'reconocimiento';
 
 // Colors per prevention tag category
 const TAG_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -37,10 +38,11 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
   const [showChangePassword, setShowChangePassword] = useState(false);
 
   const tabs: { id: PrevTab; label: string; icon: React.FC<{ size?: number }> }[] = [
-    { id: 'empleados',     label: 'Empleados y Tags',   icon: Users },
-    { id: 'documentos',    label: 'Documentos PRL',      icon: FileText },
-    { id: 'trazabilidad',  label: 'Trazabilidad',        icon: CheckCircle2 },
-    { id: 'departamentos', label: 'Departamentos PRL',   icon: Building2 },
+    { id: 'empleados',       label: 'Empleados y Tags',       icon: Users },
+    { id: 'documentos',      label: 'Documentos PRL',          icon: FileText },
+    { id: 'trazabilidad',    label: 'Trazabilidad',            icon: CheckCircle2 },
+    { id: 'departamentos',   label: 'Departamentos PRL',       icon: Building2 },
+    { id: 'reconocimiento',  label: 'Reconocimiento Médico',   icon: Stethoscope },
   ];
 
   return (
@@ -137,6 +139,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
         {activeTab === 'documentos' && <PrlDocsModule />}
         {activeTab === 'trazabilidad' && <TrazabilidadModule />}
         {activeTab === 'departamentos' && <DepartamentosPrlTab />}
+        {activeTab === 'reconocimiento' && <ReconocimientoMedicoTab />}
       </div>
     </div>
   );
@@ -981,6 +984,213 @@ function DepartamentosPrlTab() {
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Reconocimiento Médico tab ────────────────────────────────────────────────
+
+interface RecoEmpleado {
+  id: string;
+  nombre: string;
+  email: string;
+  id_sociedad: string;
+  reconocimiento_medico: 'acepta' | 'renuncia' | null;
+  reconocimiento_medico_realizado: boolean;
+  reconocimiento_medico_fecha: string | null;
+}
+
+function ReconocimientoMedicoTab() {
+  const { currentSociety } = useSociety();
+  const [empleados, setEmpleados] = useState<RecoEmpleado[]>([]);
+  const [sociedades, setSociedades] = useState<Sociedad[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [filterEstado, setFilterEstado] = useState<'pendiente' | 'realizado' | 'renuncia' | 'todos'>('pendiente');
+  const [fechas, setFechas] = useState<Record<string, string>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const q = supabase
+      .from('empleados')
+      .select('id, nombre, email, id_sociedad, reconocimiento_medico, reconocimiento_medico_realizado, reconocimiento_medico_fecha')
+      .not('reconocimiento_medico', 'is', null)
+      .order('nombre');
+    if (currentSociety) q.eq('id_sociedad', currentSociety);
+    const { data, error: err } = await q;
+    if (err) { setError(err.message); setLoading(false); return; }
+    setEmpleados((data ?? []) as RecoEmpleado[]);
+    setLoading(false);
+  }, [currentSociety]);
+
+  useEffect(() => {
+    load();
+    supabase.from('sociedades').select('*').then(({ data }) => setSociedades(data ?? []));
+  }, [load]);
+
+  const sociedadNombre = (id: string) => sociedades.find((s) => s.id === id)?.nombre ?? id;
+
+  const handleMarcarRealizado = async (emp: RecoEmpleado) => {
+    setSavingId(emp.id);
+    const fecha = fechas[emp.id] || null;
+    const { error: err } = await supabase
+      .from('empleados')
+      .update({ reconocimiento_medico_realizado: true, reconocimiento_medico_fecha: fecha })
+      .eq('id', emp.id);
+    setSavingId(null);
+    if (err) { setError(err.message); return; }
+    setEmpleados((prev) => prev.map((e) => e.id === emp.id ? { ...e, reconocimiento_medico_realizado: true, reconocimiento_medico_fecha: fecha } : e));
+  };
+
+  const handleDesmarcarRealizado = async (emp: RecoEmpleado) => {
+    setSavingId(emp.id);
+    const { error: err } = await supabase
+      .from('empleados')
+      .update({ reconocimiento_medico_realizado: false, reconocimiento_medico_fecha: null })
+      .eq('id', emp.id);
+    setSavingId(null);
+    if (err) { setError(err.message); return; }
+    setEmpleados((prev) => prev.map((e) => e.id === emp.id ? { ...e, reconocimiento_medico_realizado: false, reconocimiento_medico_fecha: null } : e));
+  };
+
+  const filtered = empleados.filter((e) => {
+    if (filterEstado === 'pendiente') return e.reconocimiento_medico === 'acepta' && !e.reconocimiento_medico_realizado;
+    if (filterEstado === 'realizado') return e.reconocimiento_medico === 'acepta' && e.reconocimiento_medico_realizado;
+    if (filterEstado === 'renuncia') return e.reconocimiento_medico === 'renuncia';
+    return true;
+  });
+
+  const countPendiente = empleados.filter((e) => e.reconocimiento_medico === 'acepta' && !e.reconocimiento_medico_realizado).length;
+  const countRealizado = empleados.filter((e) => e.reconocimiento_medico === 'acepta' && e.reconocimiento_medico_realizado).length;
+  const countRenuncia = empleados.filter((e) => e.reconocimiento_medico === 'renuncia').length;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#ECFDF5', border: '1px solid #6EE7B7' }}>
+            <Stethoscope size={18} style={{ color: '#065F46' }} />
+          </div>
+          <div>
+            <h2 className="text-base font-bold" style={{ color: '#0F172A' }}>Reconocimiento Médico</h2>
+            <p className="text-xs" style={{ color: '#64748B' }}>Seguimiento de aceptaciones y realización</p>
+          </div>
+        </div>
+        <button onClick={load} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          Actualizar
+        </button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        {[
+          { label: 'Pendientes', count: countPendiente, color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', id: 'pendiente' as const },
+          { label: 'Realizados', count: countRealizado, color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0', id: 'realizado' as const },
+          { label: 'Renuncia', count: countRenuncia, color: '#DC2626', bg: '#FEF2F2', border: '#FECACA', id: 'renuncia' as const },
+        ].map((stat) => (
+          <button
+            key={stat.id}
+            onClick={() => setFilterEstado(filterEstado === stat.id ? 'todos' : stat.id)}
+            className="p-4 rounded-xl text-left transition-all duration-150 cursor-pointer"
+            style={{
+              backgroundColor: filterEstado === stat.id ? stat.bg : '#FFFFFF',
+              border: `1px solid ${filterEstado === stat.id ? stat.border : '#E2E8F0'}`,
+            }}
+          >
+            <p className="text-2xl font-bold mb-1" style={{ color: stat.color }}>{stat.count}</p>
+            <p className="text-xs font-medium" style={{ color: '#64748B' }}>{stat.label}</p>
+          </button>
+        ))}
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl mb-4 text-sm" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
+          <AlertCircle size={15} />{error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16 gap-3" style={{ color: '#94A3B8' }}>
+          <RefreshCw size={20} className="animate-spin" />
+          <span className="text-sm">Cargando...</span>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <Stethoscope size={32} style={{ color: '#CBD5E1' }} />
+          <p className="text-sm font-medium" style={{ color: '#94A3B8' }}>No hay empleados en esta categoría</p>
+        </div>
+      ) : (
+        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+          <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
+            {filtered.map((emp) => (
+              <div key={emp.id} className="px-5 py-4 flex flex-wrap items-center gap-4">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                  style={{ backgroundColor: '#ECFDF5', color: '#065F46' }}>
+                  {emp.nombre.charAt(0)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>{emp.nombre}</p>
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>{emp.email} &middot; {sociedadNombre(emp.id_sociedad)}</p>
+                  {emp.reconocimiento_medico_fecha && (
+                    <p className="text-xs mt-0.5" style={{ color: '#16A34A' }}>
+                      Realizado: {new Date(emp.reconocimiento_medico_fecha).toLocaleDateString('es-ES')}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {emp.reconocimiento_medico === 'acepta' && !emp.reconocimiento_medico_realizado && (
+                    <>
+                      <input
+                        type="date"
+                        value={fechas[emp.id] ?? ''}
+                        onChange={(e) => setFechas((prev) => ({ ...prev, [emp.id]: e.target.value }))}
+                        className="px-2 py-1.5 rounded-lg text-xs outline-none"
+                        style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
+                        title="Fecha del reconocimiento"
+                      />
+                      <button
+                        onClick={() => handleMarcarRealizado(emp)}
+                        disabled={savingId === emp.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 disabled:opacity-60"
+                        style={{ backgroundColor: '#16A34A', color: '#FFFFFF' }}
+                      >
+                        {savingId === emp.id ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                        Marcar realizado
+                      </button>
+                    </>
+                  )}
+                  {emp.reconocimiento_medico === 'acepta' && emp.reconocimiento_medico_realizado && (
+                    <button
+                      onClick={() => handleDesmarcarRealizado(emp)}
+                      disabled={savingId === emp.id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 disabled:opacity-60"
+                      style={{ backgroundColor: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}
+                    >
+                      {savingId === emp.id ? <RefreshCw size={12} className="animate-spin" /> : <X size={12} />}
+                      Deshacer
+                    </button>
+                  )}
+                  <span
+                    className="px-2.5 py-1 rounded-full text-xs font-semibold"
+                    style={
+                      emp.reconocimiento_medico === 'renuncia'
+                        ? { backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }
+                        : emp.reconocimiento_medico_realizado
+                          ? { backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }
+                          : { backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' }
+                    }
+                  >
+                    {emp.reconocimiento_medico === 'renuncia' ? 'Renuncia' : emp.reconocimiento_medico_realizado ? 'Realizado' : 'Pendiente'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

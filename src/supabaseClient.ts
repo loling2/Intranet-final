@@ -134,6 +134,11 @@ export interface Empleado {
   doc_vitali: boolean;
   doc_numero_cuenta: boolean;
   doc_titulacion: boolean;
+  reconocimiento_medico: 'acepta' | 'renuncia' | null;
+  reconocimiento_medico_realizado: boolean;
+  reconocimiento_medico_fecha: string | null;
+  entrega_doc_prl: 'recibida' | 'observaciones' | null;
+  entrega_doc_prl_observaciones: string | null;
   observaciones: string | null;
   activo: boolean;
   estado_contrato: EstadoContrato;

@@ -703,32 +703,7 @@ export default function PrlDocsModule() {
     setUploadingFolder(null);
     await loadDocs(folderId);
     await loadFolders();
-    if (uploaded > 0) {
-      flash(`${uploaded} archivo${uploaded > 1 ? 's' : ''} subido${uploaded > 1 ? 's' : ''} correctamente`);
-      // Notify employees in the folder's society
-      const uploadedFolderObj = folders.find((f) => f.id === folderId);
-      const societyId = uploadedFolderObj?.society_id ?? activeSocietyId;
-      if (societyId) {
-        const { data: emps } = await supabase
-          .from('empleados')
-          .select('user_id')
-          .eq('id_sociedad', societyId)
-          .eq('activo', true)
-          .not('user_id', 'is', null);
-        if (emps && emps.length > 0) {
-          const folderName = uploadedFolderObj?.nombre ?? 'Documentos PRL';
-          await supabase.from('notificaciones_empleado').insert(
-            emps.map((e: { user_id: string }) => ({
-              user_id: e.user_id,
-              tipo: 'prl',
-              titulo: 'Nuevo documento PRL',
-              descripcion: `Se ha publicado un nuevo documento en la carpeta "${folderName}".`,
-              leida: false,
-            }))
-          );
-        }
-      }
-    }
+    if (uploaded > 0) flash(`${uploaded} archivo${uploaded > 1 ? 's' : ''} subido${uploaded > 1 ? 's' : ''} correctamente`);
   };
 
   const handleConfirmDelete = async () => {

@@ -156,8 +156,6 @@ function EmpleadosTagsTab() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSociedad, setFilterSociedad] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 25;
 
   // expandedId → the employee panel currently open
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -281,9 +279,6 @@ function EmpleadosTagsTab() {
     return true;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
   return (
     <div className="space-y-4">
       {error && (
@@ -315,14 +310,14 @@ function EmpleadosTagsTab() {
                 type="text"
                 placeholder="Buscar empleado..."
                 value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-8 pr-3 py-2 rounded-lg text-xs outline-none"
                 style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B', width: '200px' }}
               />
             </div>
             <select
               value={filterSociedad}
-              onChange={(e) => { setFilterSociedad(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => setFilterSociedad(e.target.value)}
               className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
               style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
             >
@@ -344,9 +339,8 @@ function EmpleadosTagsTab() {
             <p className="text-sm" style={{ color: '#94A3B8' }}>No se encontraron empleados</p>
           </div>
         ) : (
-          <>
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-            {paginated.map((emp) => {
+            {filtered.map((emp) => {
               const soc = getSociedad(emp.id_sociedad);
               const isExpanded = expandedId === emp.id;
               const assignedTags = tagCache[emp.id] ?? [];
@@ -492,58 +486,6 @@ function EmpleadosTagsTab() {
               );
             })}
           </div>
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="px-6 py-4 flex items-center justify-between gap-3 flex-wrap" style={{ borderTop: '1px solid #E2E8F0' }}>
-              <p className="text-xs" style={{ color: '#94A3B8' }}>
-                Mostrando {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} de {filtered.length} empleados
-              </p>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-40 transition-all"
-                  style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}
-                >
-                  Anterior
-                </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
-                  .reduce<(number | '...')[]>((acc, p, idx, arr) => {
-                    if (idx > 0 && (arr[idx - 1] as number) < p - 1) acc.push('...');
-                    acc.push(p);
-                    return acc;
-                  }, [])
-                  .map((p, i) =>
-                    p === '...' ? (
-                      <span key={`ellipsis-${i}`} className="px-2 text-xs" style={{ color: '#94A3B8' }}>…</span>
-                    ) : (
-                      <button
-                        key={p}
-                        onClick={() => setCurrentPage(p as number)}
-                        className="w-8 h-8 rounded-lg text-xs font-semibold cursor-pointer transition-all"
-                        style={{
-                          backgroundColor: currentPage === p ? '#065F46' : '#F8FAFC',
-                          color: currentPage === p ? '#FFFFFF' : '#64748B',
-                          border: `1px solid ${currentPage === p ? '#065F46' : '#E2E8F0'}`,
-                        }}
-                      >
-                        {p}
-                      </button>
-                    )
-                  )}
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-40 transition-all"
-                  style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}
-                >
-                  Siguiente
-                </button>
-              </div>
-            </div>
-          )}
-          </>
         )}
       </div>
 

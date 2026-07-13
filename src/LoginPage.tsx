@@ -23,6 +23,7 @@ import ChangePinModal from './components/ChangePinModal';
 import IncidenciasModule from './components/IncidenciasModule';
 import CalidadPanel from './components/CalidadPanel';
 import CalidadDocsView from './components/CalidadDocsView';
+import CalidadDocsCard from './components/CalidadDocsCard';
 
 const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> = {
   'building-2': Building2,
@@ -2058,11 +2059,12 @@ useEffect(() => {
             </div>
 
             {/* Main Cards */}
-           <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
               <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
               <DevicesCard theme={theme} userId={currentUserId} />
               <PrevencionDocsCard theme={theme} userEmail={email} />
              <VehicleCard vehicle={assignedVehicle} />
+             <CalidadDocsCard theme={theme} />
             </div>
           </>
         )}

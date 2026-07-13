@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, FolderOpen, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, BadgeCheck } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2 } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
@@ -21,9 +21,6 @@ import { downloadFromWasabi, uploadToWasabiKey } from './lib/wasabi';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import ChangePinModal from './components/ChangePinModal';
 import IncidenciasModule from './components/IncidenciasModule';
-import CalidadPanel from './components/CalidadPanel';
-import CalidadDocsView from './components/CalidadDocsView';
-import CalidadDocsCard from './components/CalidadDocsCard';
 
 const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> = {
   'building-2': Building2,
@@ -671,7 +668,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 }
 
 
-type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion' | 'calidad';
+type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion';
 
 interface SessionState {
   email: string;
@@ -855,8 +852,6 @@ export default function LoginPage() {
         initialView = 'supervisor';
       } else if (resolvedRole === 'administracion') {
         initialView = 'administracion';
-      } else if (resolvedRole === 'calidad') {
-        initialView = 'calidad';
       } else {
         if (resolvedSocietyId) setSelectedId(resolvedSocietyId);
       }
@@ -999,20 +994,6 @@ export default function LoginPage() {
       );
     }
 
-    if (session.view === 'calidad') {
-      return (
-        <AuthProvider>
-          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
-            <CalidadPanel
-              email={session.email}
-              onLogout={handleLogout}
-              onNavigateEmployee={() => handleNavigate('dashboard')}
-            />
-          </SocietyProvider>
-        </AuthProvider>
-      );
-    }
-
     if (session.view === 'dashboard') {
       const theme = societies.find((s) => s.id === session.activeSocietyId) ?? null;
       if (theme) {
@@ -1023,7 +1004,6 @@ export default function LoginPage() {
           session.role === 'supervisor'     ? { label: 'Volver a Supervisor',     view: 'supervisor',     color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
           session.role === 'prevencion'     ? { label: 'Volver a Prevencion',     view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
           session.role === 'administracion' ? { label: 'Volver a Administracion', view: 'administracion', color: '#93C5FD', border: 'rgba(37,99,235,0.3)'   } :
-          session.role === 'calidad'         ? { label: 'Volver a Calidad',         view: 'calidad',         color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
           null;
 
         return (
@@ -1799,8 +1779,6 @@ useEffect(() => {
 
   const tabs = [
     { id: 'resumen', label: 'Resumen', icon: FileText },
-    { id: 'misdocumentos', label: 'Mis Documentos', icon: FolderOpen },
-    { id: 'calidad', label: 'Calidad', icon: BadgeCheck },
     { id: 'nominas', label: 'Mis Nominas', icon: Zap },
     { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
     { id: 'certificados', label: 'Mis Certificados', icon: Award },
@@ -2059,24 +2037,13 @@ useEffect(() => {
             </div>
 
             {/* Main Cards */}
-           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+           <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
               <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
               <DevicesCard theme={theme} userId={currentUserId} />
               <PrevencionDocsCard theme={theme} userEmail={email} />
              <VehicleCard vehicle={assignedVehicle} />
-             <CalidadDocsCard theme={theme} />
             </div>
           </>
-        )}
-
-        {activeTab === 'misdocumentos' && (
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-            <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
-          </div>
-        )}
-
-        {activeTab === 'calidad' && (
-          <CalidadDocsView theme={theme} />
         )}
 
         {activeTab === 'nominas' && (

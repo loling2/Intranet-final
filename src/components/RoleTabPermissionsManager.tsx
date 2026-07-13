@@ -28,6 +28,8 @@ const ALL_TABS: TabDef[] = [
   { id: 'audit',          label: 'Auditoria',             icon: ScrollText },
   { id: 'contratos',      label: 'Contratos',             icon: FileSignature },
   { id: 'prevencion',     label: 'Prevencion/Calidad',    icon: ShieldCheck },
+  { id: 'misdocumentos',  label: 'Mis Documentos',         icon: FileText },
+  { id: 'calidad',        label: 'Calidad',                icon: ShieldCheck },
   { id: 'facturas',       label: 'Facturas',              icon: Receipt },
   { id: 'incidencias',    label: 'Incidencias',           icon: AlertCircle },
   { id: 'fichajes',       label: 'Fichajes',              icon: Clock },
@@ -47,6 +49,7 @@ const BUILT_IN_ROLES: RoleDef[] = [
   { id: 'rrhh',           label: 'RRHH',           color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE', isBuiltIn: true },
   { id: 'supervisor',     label: 'Supervisor',     color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', isBuiltIn: true },
   { id: 'prevencion',     label: 'Prevencion',     color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', isBuiltIn: true },
+  { id: 'calidad',        label: 'Calidad',         color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE', isBuiltIn: true },
   { id: 'administracion', label: 'Administracion', color: '#C2410C', bg: '#FFF7ED', border: '#FED7AA', isBuiltIn: true },
   { id: 'employee',       label: 'Empleado',       color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0', isBuiltIn: true },
 ];

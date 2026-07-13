@@ -330,3 +330,20 @@ export async function downloadFromWasabi(key: string, filename: string): Promise
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
+
+// ─── Calidad helpers ────────────────────────────────────────────────────────
+
+export async function ensureCalidadFolder(folderKey: string): Promise<void> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const keepKey = `${folderKey}.keep`;
+  const resp = await wasabiClient.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: folderKey, MaxKeys: 1 }));
+  if (!resp.Contents?.length) {
+    await wasabiClient.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: keepKey,
+      Body: new Uint8Array(0),
+      ContentType: 'application/octet-stream',
+      ContentLength: 0,
+    }));
+  }
+}

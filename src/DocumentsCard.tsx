@@ -122,7 +122,7 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId }: P
           </div>
           <div>
             <h3 className="font-semibold text-sm" style={{ color: theme.textPrimary }}>
-              Mis Documentos
+              Calidad
             </h3>
             <p className="text-xs" style={{ color: theme.textSecondary }}>
               {loading ? 'Cargando...' : `${docs.length} documentos disponibles`}

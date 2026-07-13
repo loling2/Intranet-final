@@ -1799,8 +1799,8 @@ useEffect(() => {
   const tabs = [
     { id: 'resumen', label: 'Resumen', icon: FileText },
     { id: 'nominas', label: 'Mis Nominas', icon: Zap },
-    { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
     { id: 'calidad', label: 'Calidad', icon: ShieldCheck },
+    { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
     { id: 'certificados', label: 'Mis Certificados', icon: Award },
     { id: 'examenes', label: 'Mis Examenes', icon: ClipboardCheck },
     { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },

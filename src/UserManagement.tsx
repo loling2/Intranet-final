@@ -62,8 +62,8 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
   const [success, setSuccess] = useState(false);
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'employee']
-    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'employee'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee']
+    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee'];
 
   const toggleSociety = (id: string) =>
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
@@ -312,8 +312,8 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'employee']
-    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'employee'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee']
+    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee'];
 
   const rc = ROLE_COLORS[user.role];
 
@@ -686,7 +686,7 @@ function BulkCreateAccessModal({ employees, onClose, onCreated }: BulkCreateAcce
               <div>
                 <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: '#64748B' }}>Rol asignado</label>
                 <div className="flex gap-2 flex-wrap">
-                  {(['employee', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion'] as AppRole[]).map((r) => {
+                  {(['employee', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad'] as AppRole[]).map((r) => {
                     const rc = ROLE_COLORS[r];
                     return (
                       <button key={r} onClick={() => setRole(r)}

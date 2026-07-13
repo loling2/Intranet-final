@@ -14,6 +14,8 @@ import AdminPanel from './AdminPanel';
 import RRHHPanel from './RRHHPanel';
 import PrevencionPanel from './PrevencionPanel';
 import AdministracionPanel from './AdministracionPanel';
+import CalidadPanel from './CalidadPanel';
+import CalidadDocsCard from './components/CalidadDocsCard';
 import { supabase } from './supabaseClient';
 import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
@@ -668,7 +670,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 }
 
 
-type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion';
+type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion' | 'calidad';
 
 interface SessionState {
   email: string;
@@ -852,6 +854,8 @@ export default function LoginPage() {
         initialView = 'supervisor';
       } else if (resolvedRole === 'administracion') {
         initialView = 'administracion';
+      } else if (resolvedRole === 'calidad') {
+        initialView = 'calidad';
       } else {
         if (resolvedSocietyId) setSelectedId(resolvedSocietyId);
       }
@@ -994,6 +998,20 @@ export default function LoginPage() {
       );
     }
 
+    if (session.view === 'calidad') {
+      return (
+        <AuthProvider>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+            <CalidadPanel
+              email={session.email}
+              onLogout={handleLogout}
+              onNavigateEmployee={() => handleNavigate('dashboard')}
+            />
+          </SocietyProvider>
+        </AuthProvider>
+      );
+    }
+
     if (session.view === 'dashboard') {
       const theme = societies.find((s) => s.id === session.activeSocietyId) ?? null;
       if (theme) {
@@ -1004,6 +1022,7 @@ export default function LoginPage() {
           session.role === 'supervisor'     ? { label: 'Volver a Supervisor',     view: 'supervisor',     color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
           session.role === 'prevencion'     ? { label: 'Volver a Prevencion',     view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
           session.role === 'administracion' ? { label: 'Volver a Administracion', view: 'administracion', color: '#93C5FD', border: 'rgba(37,99,235,0.3)'   } :
+          session.role === 'calidad'        ? { label: 'Volver a Calidad',        view: 'calidad',        color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
           null;
 
         return (
@@ -1781,6 +1800,7 @@ useEffect(() => {
     { id: 'resumen', label: 'Resumen', icon: FileText },
     { id: 'nominas', label: 'Mis Nominas', icon: Zap },
     { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
+    { id: 'calidad', label: 'Calidad', icon: ShieldCheck },
     { id: 'certificados', label: 'Mis Certificados', icon: Award },
     { id: 'examenes', label: 'Mis Examenes', icon: ClipboardCheck },
     { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },
@@ -2052,6 +2072,12 @@ useEffect(() => {
 
         {activeTab === 'prevencion' && (
           <PrevencionDocsFullView theme={theme} />
+        )}
+
+        {activeTab === 'calidad' && (
+          <div className="grid gap-6">
+            <CalidadDocsCard theme={theme} />
+          </div>
         )}
 
         {activeTab === 'certificados' && (

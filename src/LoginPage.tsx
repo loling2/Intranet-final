@@ -2076,7 +2076,7 @@ useEffect(() => {
 
         {activeTab === 'calidad' && (
           <div className="grid gap-6">
-            <CalidadDocsCard theme={theme} societyId={session?.societyId ?? theme.id} />
+            <CalidadDocsCard theme={theme} societyId={theme.id} />
           </div>
         )}
 

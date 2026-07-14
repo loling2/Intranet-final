@@ -26,6 +26,7 @@ interface CalidadDoc {
 interface Props {
   theme: SocietyTheme;
   societyId?: string | null;
+  mini?: boolean;
 }
 
 const monthNames: Record<string, string> = {
@@ -60,7 +61,7 @@ function formatSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export default function CalidadDocsCard({ theme, societyId }: Props) {
+export default function CalidadDocsCard({ theme, societyId, mini }: Props) {
   const [docs, setDocs] = useState<CalidadDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -223,6 +224,65 @@ export default function CalidadDocsCard({ theme, societyId }: Props) {
             )}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (mini) {
+    const recentDocs = [...docs].sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    ).slice(0, 3);
+    return (
+      <div className="rounded-2xl overflow-hidden flex flex-col h-full transition-all duration-200 hover:shadow-lg"
+        style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+        <div className="px-5 py-4 flex items-center gap-2.5" style={{ borderBottom: `1px solid ${theme.border}` }}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}>
+            <ShieldCheck size={18} style={{ color: '#0369A1' }} />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold" style={{ color: theme.textPrimary }}>Calidad</h3>
+            <p className="text-xs" style={{ color: theme.textSecondary }}>
+              {docs.length} documento{docs.length !== 1 ? 's' : ''} disponible{docs.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+        </div>
+        <div className="flex-1 p-4 space-y-2">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw size={16} className="animate-spin" style={{ color: '#94A3B8' }} />
+            </div>
+          ) : recentDocs.length === 0 ? (
+            <div className="flex flex-col items-center py-8 text-center">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-2" style={{ backgroundColor: '#EFF6FF' }}>
+                <ShieldCheck size={18} style={{ color: '#7DD3FC' }} />
+              </div>
+              <p className="text-xs" style={{ color: theme.textSecondary }}>Sin documentos</p>
+            </div>
+          ) : (
+            recentDocs.map(doc => {
+              const { Icon, color } = getFileIcon(doc.tipo ?? '');
+              return (
+                <div key={doc.id} className="flex items-center gap-2.5 p-2 rounded-lg transition-colors hover:bg-gray-50">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${color}0A` }}>
+                    <Icon size={14} style={{ color }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium truncate" style={{ color: theme.textPrimary }}>{doc.nombre_archivo}</p>
+                    <p className="text-xs" style={{ color: theme.textSecondary }}>
+                      {monthNames[doc.mes] ?? doc.mes} {doc.anio}
+                    </p>
+                  </div>
+                  <button onClick={() => handleDownload(doc)} title="Descargar"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:opacity-70 flex-shrink-0"
+                    style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
+                    <Download size={12} />
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
     );
   }

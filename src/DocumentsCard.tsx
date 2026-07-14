@@ -9,6 +9,7 @@ interface Props {
   userEmail: string;
   userId?: string | null;
   societyId: string;
+  fullView?: boolean;
 }
 
 function getFileIcon(tipo: string) {
@@ -27,7 +28,7 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-export default function DocumentsCard({ theme, userEmail, userId, societyId }: Props) {
+export default function DocumentsCard({ theme, userEmail, userId, societyId, fullView }: Props) {
   const [docs, setDocs] = useState<DocumentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -151,7 +152,7 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId }: P
             <p className="text-xs" style={{ color: theme.textSecondary }}>Sin documentos disponibles</p>
           </div>
         ) : (
-          docs.slice(0, 5).map((doc) => {
+          (fullView ? docs : docs.slice(0, 5)).map((doc) => {
             const { Icon, color } = getFileIcon(doc.tipo);
             return (
               <div
@@ -215,7 +216,7 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId }: P
       </div>
 
       {/* Footer */}
-      {docs.length > 0 && (
+      {docs.length > 0 && !fullView && (
         <div
           className="px-6 py-3 flex items-center justify-center gap-1 text-xs font-medium cursor-pointer transition-colors duration-200 hover:opacity-80"
           style={{

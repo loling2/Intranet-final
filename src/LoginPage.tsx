@@ -1799,6 +1799,7 @@ useEffect(() => {
   const tabs = [
     { id: 'resumen', label: 'Resumen', icon: FileText },
     { id: 'nominas', label: 'Mis Nominas', icon: Zap },
+    { id: 'misdocumentos', label: 'Mis Documentos', icon: FileText },
     { id: 'calidad', label: 'Calidad', icon: ShieldCheck },
     { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
     { id: 'certificados', label: 'Mis Certificados', icon: Award },
@@ -2057,7 +2058,8 @@ useEffect(() => {
             </div>
 
             {/* Main Cards */}
-           <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+           <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+              <CalidadDocsCard theme={theme} societyId={theme.id} mini />
               <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
               <DevicesCard theme={theme} userId={currentUserId} />
               <PrevencionDocsCard theme={theme} userEmail={email} />
@@ -2072,6 +2074,12 @@ useEffect(() => {
 
         {activeTab === 'prevencion' && (
           <PrevencionDocsFullView theme={theme} />
+        )}
+
+        {activeTab === 'misdocumentos' && (
+          <div className="grid gap-6">
+            <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} fullView />
+          </div>
         )}
 
         {activeTab === 'calidad' && (

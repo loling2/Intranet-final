@@ -670,7 +670,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 }
 
 
-type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion' | 'calidad';
+type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion' | 'calidad' | 'formacion';
 
 interface SessionState {
   email: string;
@@ -856,6 +856,8 @@ export default function LoginPage() {
         initialView = 'administracion';
       } else if (resolvedRole === 'calidad') {
         initialView = 'calidad';
+      } else if (resolvedRole === 'formacion') {
+        initialView = 'formacion';
       } else {
         if (resolvedSocietyId) setSelectedId(resolvedSocietyId);
       }
@@ -1012,6 +1014,21 @@ export default function LoginPage() {
       );
     }
 
+    if (session.view === 'formacion') {
+      return (
+        <AuthProvider>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+            <RRHHPanel
+              email={session.email}
+              onLogout={handleLogout}
+              role="formacion"
+              onNavigateEmployee={() => handleNavigate('dashboard')}
+            />
+          </SocietyProvider>
+        </AuthProvider>
+      );
+    }
+
     if (session.view === 'dashboard') {
       const theme = societies.find((s) => s.id === session.activeSocietyId) ?? null;
       if (theme) {
@@ -1023,6 +1040,7 @@ export default function LoginPage() {
           session.role === 'prevencion'     ? { label: 'Volver a Prevencion',     view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
           session.role === 'administracion' ? { label: 'Volver a Administracion', view: 'administracion', color: '#93C5FD', border: 'rgba(37,99,235,0.3)'   } :
           session.role === 'calidad'        ? { label: 'Volver a Calidad',        view: 'calidad',        color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
+          session.role === 'formacion'      ? { label: 'Volver a Formacion',      view: 'formacion',      color: '#5EEAD4', border: 'rgba(13,148,136,0.3)'  } :
           null;
 
         return (

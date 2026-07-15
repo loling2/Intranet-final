@@ -15,6 +15,7 @@ import RRHHPanel from './RRHHPanel';
 import PrevencionPanel from './PrevencionPanel';
 import AdministracionPanel from './AdministracionPanel';
 import CalidadPanel from './CalidadPanel';
+import FormacionPanel from './FormacionPanel';
 import CalidadDocsCard from './components/CalidadDocsCard';
 import { supabase } from './supabaseClient';
 import { AuthProvider } from './context/AuthContext';
@@ -1018,10 +1019,9 @@ export default function LoginPage() {
       return (
         <AuthProvider>
           <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
-            <RRHHPanel
+            <FormacionPanel
               email={session.email}
               onLogout={handleLogout}
-              role="formacion"
               onNavigateEmployee={() => handleNavigate('dashboard')}
             />
           </SocietyProvider>

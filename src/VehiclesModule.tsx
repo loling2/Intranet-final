@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Car, Search, Plus, QrCode, CheckCircle2, AlertTriangle,
   Clock, RefreshCw, X, Activity, Unlock, Lock,
-  Calendar, Gauge, AlertCircle, History, ToggleLeft, ToggleRight, Filter
+  Calendar, Gauge, AlertCircle, History, ToggleLeft, ToggleRight, Filter,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { supabase, Vehicle, VehicleLog, UserProfile } from './supabaseClient';
 import { useAuth } from './context/AuthContext';
@@ -540,6 +541,77 @@ function ScanModal({ onFound, onClose }: ScanModalProps) {
   );
 }
 
+function VehicleLogRow({ log, matricula, kmUsado }: { log: VehicleLog; matricula: string; kmUsado: number | null }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="px-6 py-3.5">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full flex items-center gap-4 text-left cursor-pointer"
+      >
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: log.tipo === 'incidencia' ? '#FEF2F2' : '#F0FDF4' }}>
+          <Car size={14} style={{ color: log.tipo === 'incidencia' ? '#DC2626' : '#16A34A' }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold" style={{ color: '#1E293B' }}>
+            {matricula} &middot; {log.user_nombre}
+          </p>
+          <p className="text-xs" style={{ color: '#94A3B8' }}>
+            {new Date(log.fecha_inicio).toLocaleString('es-ES')}
+            {log.fecha_fin ? ` → ${new Date(log.fecha_fin).toLocaleTimeString('es-ES')}` : ' (en curso)'}
+            {log.duracion_minutos ? ` · ${formatDuration(log.duracion_minutos)}` : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {kmUsado !== null && (
+            <span className="text-xs px-2 py-0.5 rounded font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+              +{kmUsado.toLocaleString()} km
+            </span>
+          )}
+          {log.tipo === 'incidencia' && (
+            <span className="text-xs font-medium px-2 py-0.5 rounded" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
+              Incidencia
+            </span>
+          )}
+          <div className="flex items-center gap-0.5 ml-1 text-xs font-semibold" style={{ color: '#475569' }}>
+            <span>{expanded ? 'Ocultar' : 'Detalle'}</span>
+            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </div>
+        </div>
+      </button>
+      {expanded && (
+        <div className="mt-3 ml-12 grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+          <div>
+            <p className="text-xs font-medium mb-0.5" style={{ color: '#94A3B8' }}>KM Inicial</p>
+            <p className="text-sm font-mono font-bold" style={{ color: '#1E293B' }}>{log.km_inicio !== null ? log.km_inicio.toLocaleString() : '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium mb-0.5" style={{ color: '#94A3B8' }}>KM Final</p>
+            <p className="text-sm font-mono font-bold" style={{ color: '#1E293B' }}>{log.km_fin !== null ? log.km_fin.toLocaleString() : '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium mb-0.5" style={{ color: '#94A3B8' }}>KM Usados</p>
+            <p className="text-sm font-mono font-bold" style={{ color: kmUsado !== null ? '#0369A1' : '#CBD5E1' }}>
+              {kmUsado !== null ? `${kmUsado.toLocaleString()} km` : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-medium mb-0.5" style={{ color: '#94A3B8' }}>Duración</p>
+            <p className="text-sm font-mono font-bold" style={{ color: '#1E293B' }}>{log.duracion_minutos ? formatDuration(log.duracion_minutos) : '—'}</p>
+          </div>
+          {log.nota && (
+            <div className="col-span-2 sm:col-span-4">
+              <p className="text-xs font-medium mb-0.5" style={{ color: '#94A3B8' }}>Nota</p>
+              <p className="text-sm" style={{ color: '#475569' }}>{log.nota}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface Props {
   currentUserRole: AppRole;
   userEmail?: string;
@@ -947,34 +1019,9 @@ export default function VehiclesModule({ currentUserRole, userEmail }: Props) {
               ) : (
                 filteredLogs.slice(0, 20).map((log) => {
                   const v = vehicles.find((vv) => vv.id === log.vehicle_id);
+                  const kmUsado = (log.km_inicio !== null && log.km_fin !== null) ? log.km_fin - log.km_inicio : null;
                   return (
-                    <div key={log.id} className="px-6 py-3.5 flex items-center gap-4">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: log.tipo === 'incidencia' ? '#FEF2F2' : '#F0FDF4' }}>
-                        <Car size={14} style={{ color: log.tipo === 'incidencia' ? '#DC2626' : '#16A34A' }} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold" style={{ color: '#1E293B' }}>
-                          {v?.matricula ?? '—'} &middot; {log.user_nombre}
-                        </p>
-                        <p className="text-xs" style={{ color: '#94A3B8' }}>
-                          {new Date(log.fecha_inicio).toLocaleString('es-ES')}
-                          {log.fecha_fin ? ` → ${new Date(log.fecha_fin).toLocaleTimeString('es-ES')}` : ' (en curso)'}
-                          {log.duracion_minutos ? ` · ${formatDuration(log.duracion_minutos)}` : ''}
-                        </p>
-                      </div>
-                      <div className="flex gap-1.5 flex-shrink-0">
-                        {log.km_inicio !== null && log.km_fin !== null && (
-                          <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
-                            +{(log.km_fin - log.km_inicio).toLocaleString()} km
-                          </span>
-                        )}
-                        {log.tipo === 'incidencia' && (
-                          <span className="text-xs font-medium px-2 py-0.5 rounded" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
-                            Incidencia
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    <VehicleLogRow key={log.id} log={log} matricula={v?.matricula ?? '—'} kmUsado={kmUsado} />
                   );
                 })
               )}

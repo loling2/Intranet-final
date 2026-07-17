@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { BedSingle, Plus, X, Trash2, CreditCard as Edit2, Search, RefreshCw, Download, Calendar, UserCheck, AlertCircle, CheckCircle2, Clock, CalendarOff, ArrowRight } from 'lucide-react';
+import {
+  BedSingle, Plus, X, Trash2, Search, RefreshCw, Download, Calendar,
+  AlertTriangle, UserCheck, CheckCircle2, Clock, ArrowRight,
+  Sun, Moon, Sunset, Banknote, RotateCcw, MoreHorizontal, Star,
+} from 'lucide-react';
 import { supabase } from '../supabaseClient';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Empleado {
   id: string;
@@ -21,6 +27,8 @@ interface Baja {
   estado: string;
   created_by: string | null;
   created_at: string;
+  larga_duracion: boolean;
+  dias_no_cubiertos: number;
 }
 
 interface Sustitucion {
@@ -31,11 +39,17 @@ interface Sustitucion {
   fecha_inicio: string;
   num_dias: number;
   notas: string | null;
+  tipo_cobertura: string | null;
+  turno: string | null;
+  es_festivo: boolean;
+  unidad: string;
+  num_horas: number;
 }
 
 interface BajaWithSustituciones extends Baja {
   sustituciones: Sustitucion[];
   dias_asignados: number;
+  horas_asignadas: number;
 }
 
 interface SustitucionForm {
@@ -44,7 +58,22 @@ interface SustitucionForm {
   fecha_inicio: string;
   num_dias: number;
   notas: string;
+  tipo_cobertura: 'pagar' | 'compensar' | 'otro' | '';
+  turno: 'mañana' | 'tarde' | 'noche' | '';
+  es_festivo: boolean;
+  unidad: 'dias' | 'horas';
+  num_horas: number;
 }
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const HORAS_POR_TURNO: Record<string, number> = {
+  mañana: 8,
+  tarde: 8,
+  noche: 8,
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—';
@@ -56,6 +85,300 @@ function daysBetween(start: string, end: string): number {
   const e = new Date(end);
   return Math.max(1, Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1);
 }
+
+interface CoverageStats {
+  totalDias: number;
+  totalHoras: number;
+  horasNocturnas: number;
+  diasFestivos: number;
+  horasFestivas: number;
+}
+
+function computeStats(susts: SustitucionForm[]): CoverageStats {
+  let totalDias = 0, totalHoras = 0, horasNocturnas = 0, diasFestivos = 0, horasFestivas = 0;
+  for (const s of susts) {
+    const horasBase = HORAS_POR_TURNO[s.turno] ?? 8;
+    if (s.unidad === 'dias') {
+      totalDias += s.num_dias;
+      if (s.es_festivo) diasFestivos += s.num_dias;
+      if (s.turno === 'noche') horasNocturnas += s.num_dias * horasBase;
+      if (s.es_festivo) horasFestivas += s.num_dias * horasBase;
+    } else {
+      totalHoras += s.num_horas;
+      if (s.turno === 'noche') horasNocturnas += s.num_horas;
+      if (s.es_festivo) horasFestivas += s.num_horas;
+    }
+  }
+  return { totalDias, totalHoras, horasNocturnas, diasFestivos, horasFestivas };
+}
+
+function computeStatsFromDB(susts: Sustitucion[]): CoverageStats {
+  let totalDias = 0, totalHoras = 0, horasNocturnas = 0, diasFestivos = 0, horasFestivas = 0;
+  for (const s of susts) {
+    const horasBase = HORAS_POR_TURNO[s.turno ?? ''] ?? 8;
+    const unidad = s.unidad ?? 'dias';
+    if (unidad === 'dias') {
+      totalDias += s.num_dias;
+      if (s.es_festivo) diasFestivos += s.num_dias;
+      if (s.turno === 'noche') horasNocturnas += s.num_dias * horasBase;
+      if (s.es_festivo) horasFestivas += s.num_dias * horasBase;
+    } else {
+      totalHoras += s.num_horas ?? 0;
+      if (s.turno === 'noche') horasNocturnas += s.num_horas ?? 0;
+      if (s.es_festivo) horasFestivas += s.num_horas ?? 0;
+    }
+  }
+  return { totalDias, totalHoras, horasNocturnas, diasFestivos, horasFestivas };
+}
+
+function exportCSV(bajas: BajaWithSustituciones[]) {
+  const headers = ['Trabajador', 'Fecha Inicio', 'Fecha Fin', 'Total Días', 'Días No Cubiertos', 'Días Asignados', 'Horas Asignadas', 'H. Nocturnas', 'Días Festivos', 'Motivo', 'Estado', 'Larga Duración', 'Sustitutos'];
+  const rows = bajas.map((b) => {
+    const stats = computeStatsFromDB(b.sustituciones);
+    return [
+      b.empleado_nombre,
+      b.fecha_inicio,
+      b.fecha_fin ?? (b.larga_duracion ? 'Indefinida' : ''),
+      b.larga_duracion ? 'Indefinido' : b.total_dias,
+      b.dias_no_cubiertos,
+      stats.totalDias,
+      stats.totalHoras,
+      stats.horasNocturnas,
+      stats.diasFestivos,
+      b.motivo ?? '',
+      b.estado,
+      b.larga_duracion ? 'Sí' : 'No',
+      b.sustituciones.map((s) => `${s.sustituto_nombre} (${s.unidad === 'horas' ? s.num_horas + 'h' : s.num_dias + 'd'}${s.turno ? ' ' + s.turno : ''}${s.tipo_cobertura ? ' - ' + s.tipo_cobertura : ''})`).join('; '),
+    ];
+  });
+  const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `bajas_ausencias_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Sustitucion Block ─────────────────────────────────────────────────────────
+
+interface SustitucionBlockProps {
+  s: SustitucionForm;
+  idx: number;
+  bajaFechaInicio: string;
+  onUpdate: (idx: number, field: keyof SustitucionForm, value: string | number | boolean) => void;
+  onRemove: (idx: number) => void;
+}
+
+function SustitucionBlock({ s, idx, bajaFechaInicio, onUpdate, onRemove }: SustitucionBlockProps) {
+  const tipoColors = {
+    pagar: { active: '#16A34A', activeBg: '#F0FDF4', activeBorder: '#BBF7D0', icon: Banknote },
+    compensar: { active: '#0369A1', activeBg: '#EFF6FF', activeBorder: '#BFDBFE', icon: RotateCcw },
+    otro: { active: '#D97706', activeBg: '#FFFBEB', activeBorder: '#FDE68A', icon: MoreHorizontal },
+  };
+
+  const turnoConfig = {
+    mañana: { label: 'Mañana', Icon: Sun, color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+    tarde: { label: 'Tarde', Icon: Sunset, color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' },
+    noche: { label: 'Noche', Icon: Moon, color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
+  };
+
+  const horasBase = HORAS_POR_TURNO[s.turno] ?? 8;
+  const horasAuto = s.unidad === 'dias' ? s.num_dias * horasBase : s.num_horas;
+
+  function handleTurnoChange(turno: string) {
+    onUpdate(idx, 'turno', turno === s.turno ? '' : turno);
+    if (s.unidad === 'dias' && turno !== s.turno) {
+      onUpdate(idx, 'num_horas', s.num_dias * (HORAS_POR_TURNO[turno] ?? 8));
+    }
+  }
+
+  function handleDiasChange(val: string) {
+    const num = parseFloat(val) || 0;
+    onUpdate(idx, 'num_dias', num);
+    if (s.turno) {
+      onUpdate(idx, 'num_horas', num * horasBase);
+    }
+  }
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E2E8F0', backgroundColor: '#FAFBFC' }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5" style={{ backgroundColor: '#F1F5F9', borderBottom: '1px solid #E2E8F0' }}>
+        <div className="flex items-center gap-2">
+          <UserCheck size={13} style={{ color: '#0369A1' }} />
+          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#1E293B' }}>
+            {s.sustituto_nombre}
+          </span>
+        </div>
+        <button onClick={() => onRemove(idx)} className="w-5 h-5 rounded flex items-center justify-center cursor-pointer hover:bg-red-100 transition-colors" style={{ color: '#DC2626' }}>
+          <X size={12} />
+        </button>
+      </div>
+
+      <div className="p-3 space-y-3">
+        {/* Fecha + Cantidad */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Fecha inicio</label>
+            <input
+              type="date"
+              value={s.fecha_inicio}
+              min={bajaFechaInicio}
+              onChange={(e) => onUpdate(idx, 'fecha_inicio', e.target.value)}
+              className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none"
+              style={{ borderColor: '#E2E8F0', color: '#1E293B', backgroundColor: '#FFFFFF' }}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>
+              {s.unidad === 'horas' ? 'Num. horas' : 'Num. días'}
+            </label>
+            <input
+              type="number"
+              min={0}
+              step={s.unidad === 'horas' ? 0.5 : 1}
+              value={s.unidad === 'horas' ? s.num_horas : s.num_dias}
+              onChange={(e) => {
+                if (s.unidad === 'horas') {
+                  onUpdate(idx, 'num_horas', parseFloat(e.target.value) || 0);
+                } else {
+                  handleDiasChange(e.target.value);
+                }
+              }}
+              className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none"
+              style={{
+                borderColor: '#BFDBFE',
+                color: '#0369A1',
+                backgroundColor: '#EFF6FF',
+                fontWeight: 700,
+                fontSize: '14px',
+                MozAppearance: 'textfield',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Unidad */}
+        <div>
+          <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1.5" style={{ color: '#64748B' }}>Unidad de cobertura</label>
+          <div className="flex gap-1.5">
+            {(['dias', 'horas'] as const).map((u) => (
+              <button
+                key={u}
+                onClick={() => onUpdate(idx, 'unidad', u)}
+                className="flex-1 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                style={{
+                  backgroundColor: s.unidad === u ? '#0F172A' : '#F1F5F9',
+                  color: s.unidad === u ? '#FFFFFF' : '#64748B',
+                }}
+              >
+                {u === 'dias' ? 'Días' : 'Horas'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tipo cobertura */}
+        <div>
+          <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1.5" style={{ color: '#64748B' }}>Tipo de retribución</label>
+          <div className="flex gap-1.5">
+            {(Object.entries(tipoColors) as [string, typeof tipoColors.pagar][]).map(([key, cfg]) => {
+              const Icon = cfg.icon;
+              const isActive = s.tipo_cobertura === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => onUpdate(idx, 'tipo_cobertura', isActive ? '' : key)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all capitalize"
+                  style={{
+                    backgroundColor: isActive ? cfg.activeBg : '#F8FAFC',
+                    color: isActive ? cfg.active : '#94A3B8',
+                    border: `1.5px solid ${isActive ? cfg.activeBorder : '#E2E8F0'}`,
+                  }}
+                >
+                  <Icon size={11} />
+                  {key.charAt(0).toUpperCase() + key.slice(1)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Turno + Festivo */}
+        <div>
+          <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1.5" style={{ color: '#64748B' }}>Turno</label>
+          <div className="flex gap-1.5 items-center">
+            {(Object.entries(turnoConfig) as [string, typeof turnoConfig.mañana][]).map(([key, cfg]) => {
+              const Icon = cfg.Icon;
+              const isActive = s.turno === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => handleTurnoChange(key)}
+                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                  style={{
+                    backgroundColor: isActive ? cfg.bg : '#F8FAFC',
+                    color: isActive ? cfg.color : '#94A3B8',
+                    border: `1.5px solid ${isActive ? cfg.border : '#E2E8F0'}`,
+                  }}
+                >
+                  <Icon size={11} />
+                  {cfg.label}
+                </button>
+              );
+            })}
+            {/* Festivo */}
+            <button
+              onClick={() => onUpdate(idx, 'es_festivo', !s.es_festivo)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all flex-shrink-0"
+              style={{
+                backgroundColor: s.es_festivo ? '#FEF9C3' : '#F8FAFC',
+                color: s.es_festivo ? '#854D0E' : '#94A3B8',
+                border: `1.5px solid ${s.es_festivo ? '#FDE047' : '#E2E8F0'}`,
+              }}
+            >
+              <Star size={11} />
+              Festivo
+            </button>
+          </div>
+        </div>
+
+        {/* Hours summary (when turno is set) */}
+        {s.turno && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: s.turno === 'noche' ? '#F5F3FF' : '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            {s.turno === 'noche' ? <Moon size={12} style={{ color: '#7C3AED' }} /> : s.turno === 'tarde' ? <Sunset size={12} style={{ color: '#EA580C' }} /> : <Sun size={12} style={{ color: '#D97706' }} />}
+            <span className="text-xs" style={{ color: '#475569' }}>
+              {s.unidad === 'dias'
+                ? `${s.num_dias} día${s.num_dias !== 1 ? 's' : ''} × ${horasBase}h = `
+                : ''}
+              <strong style={{ color: s.turno === 'noche' ? '#7C3AED' : '#0369A1' }}>
+                {horasAuto}h {s.turno === 'noche' ? 'nocturnas' : s.turno === 'tarde' ? 'tarde' : 'mañana'}
+              </strong>
+              {s.es_festivo && <span style={{ color: '#854D0E' }}> · festivo</span>}
+            </span>
+          </div>
+        )}
+
+        {/* Notas */}
+        <div>
+          <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Notas (opcional)</label>
+          <input
+            type="text"
+            value={s.notas}
+            onChange={(e) => onUpdate(idx, 'notas', e.target.value)}
+            placeholder="Observaciones..."
+            className="w-full px-2.5 py-1.5 rounded-lg text-xs border outline-none"
+            style={{ borderColor: '#E2E8F0', color: '#1E293B', backgroundColor: '#FFFFFF' }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 
 export default function BajasModule() {
   const [bajas, setBajas] = useState<BajaWithSustituciones[]>([]);
@@ -77,66 +400,60 @@ export default function BajasModule() {
     fecha_fin: '',
     motivo: '',
   });
+  const [largaDuracion, setLargaDuracion] = useState(false);
+  const [diasNoCubiertos, setDiasNoCubiertos] = useState(0);
 
-  // Sustituciones form (within baja modal)
+  // Sustituciones
   const [sustitucionesForm, setSustitucionesForm] = useState<SustitucionForm[]>([]);
   const [sustitutoSearch, setSustitutoSearch] = useState('');
   const [showSustitutoDropdown, setShowSustitutoDropdown] = useState(false);
 
-  // Report view
+  // Report
   const [reporteView, setReporteView] = useState<'bajas' | 'balance'>('bajas');
   const [reporteFechaInicio, setReporteFechaInicio] = useState('');
   const [reporteFechaFin, setReporteFechaFin] = useState('');
 
   const loadEmpleados = useCallback(async () => {
-    const { data, error: err } = await supabase
-      .from('empleados')
-      .select('id, nombre, dni, id_sociedad, activo')
-      .order('nombre', { ascending: true });
-    if (err) { setError(err.message); return; }
+    const { data } = await supabase.from('empleados').select('id, nombre, dni, id_sociedad, activo').order('nombre', { ascending: true });
     setEmpleados(data ?? []);
   }, []);
 
   const loadBajas = useCallback(async () => {
     setLoading(true);
-    const { data: bajasData, error: err } = await supabase
-      .from('bajas_temporales')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (err) { setError(err.message); setLoading(false); return; }
-
-    const { data: sustData, error: sustErr } = await supabase
-      .from('sustituciones')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (sustErr) { setError(sustErr.message); setLoading(false); return; }
+    const { data: bajasData } = await supabase.from('bajas_temporales').select('*').order('created_at', { ascending: false });
+    const { data: sustData } = await supabase.from('sustituciones').select('*').order('created_at', { ascending: false });
 
     const enriched: BajaWithSustituciones[] = (bajasData ?? []).map((b) => {
-      const susts = (sustData ?? []).filter((s) => s.baja_id === b.id);
+      const susts = (sustData ?? []).filter((s) => s.baja_id === b.id) as Sustitucion[];
+      const stats = computeStatsFromDB(susts);
       return {
         ...b,
+        larga_duracion: b.larga_duracion ?? false,
+        dias_no_cubiertos: b.dias_no_cubiertos ?? 0,
         sustituciones: susts,
-        dias_asignados: susts.reduce((sum, s) => sum + s.num_dias, 0),
+        dias_asignados: stats.totalDias,
+        horas_asignadas: stats.totalHoras,
       };
     });
     setBajas(enriched);
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    loadEmpleados();
-    loadBajas();
-  }, [loadEmpleados, loadBajas]);
+  useEffect(() => { loadEmpleados(); loadBajas(); }, [loadEmpleados, loadBajas]);
 
-  const totalDiasBaja = bajaForm.fecha_inicio && bajaForm.fecha_fin
+  const totalDiasBaja = !largaDuracion && bajaForm.fecha_inicio && bajaForm.fecha_fin
     ? daysBetween(bajaForm.fecha_inicio, bajaForm.fecha_fin)
     : 0;
+  const diasACubrir = Math.max(0, totalDiasBaja - diasNoCubiertos);
 
-  const totalDiasAsignados = sustitucionesForm.reduce((sum, s) => sum + s.num_dias, 0);
+  const stats = computeStats(sustitucionesForm);
+  const totalCubierto = stats.totalDias + Math.ceil(stats.totalHoras / 8);
 
   const openNewBaja = () => {
     setEditingBaja(null);
     setBajaForm({ empleado_id: '', empleado_nombre: '', fecha_inicio: '', fecha_fin: '', motivo: '' });
+    setLargaDuracion(false);
+    setDiasNoCubiertos(0);
     setSustitucionesForm([]);
     setShowBajaModal(true);
     setError('');
@@ -151,6 +468,8 @@ export default function BajasModule() {
       fecha_fin: baja.fecha_fin ?? '',
       motivo: baja.motivo ?? '',
     });
+    setLargaDuracion(baja.larga_duracion ?? false);
+    setDiasNoCubiertos(baja.dias_no_cubiertos ?? 0);
     setSustitucionesForm(
       baja.sustituciones.map((s) => ({
         sustituto_id: s.sustituto_id,
@@ -158,6 +477,11 @@ export default function BajasModule() {
         fecha_inicio: s.fecha_inicio,
         num_dias: s.num_dias,
         notas: s.notas ?? '',
+        tipo_cobertura: (s.tipo_cobertura as SustitucionForm['tipo_cobertura']) ?? '',
+        turno: (s.turno as SustitucionForm['turno']) ?? '',
+        es_festivo: s.es_festivo ?? false,
+        unidad: (s.unidad as SustitucionForm['unidad']) ?? 'dias',
+        num_horas: s.num_horas ?? 0,
       }))
     );
     setShowBajaModal(true);
@@ -166,33 +490,33 @@ export default function BajasModule() {
 
   const handleSelectEmpleado = (emp: Empleado) => {
     setBajaForm({ ...bajaForm, empleado_id: emp.id, empleado_nombre: emp.nombre });
+    setSearch('');
   };
 
   const addSustitucionBlock = (emp: Empleado) => {
-    const existing = sustitucionesForm.find((s) => s.sustituto_id === emp.id);
-    if (existing) {
-      setError(`${emp.nombre} ya esta asignado como sustituto en esta baja.`);
+    if (sustitucionesForm.find((s) => s.sustituto_id === emp.id)) {
+      setError(`${emp.nombre} ya está asignado.`);
       return;
     }
-    setSustitucionesForm([
-      ...sustitucionesForm,
-      {
-        sustituto_id: emp.id,
-        sustituto_nombre: emp.nombre,
-        fecha_inicio: bajaForm.fecha_inicio || '',
-        num_dias: 1,
-        notas: '',
-      },
-    ]);
+    setSustitucionesForm([...sustitucionesForm, {
+      sustituto_id: emp.id,
+      sustituto_nombre: emp.nombre,
+      fecha_inicio: bajaForm.fecha_inicio || '',
+      num_dias: 1,
+      notas: '',
+      tipo_cobertura: '',
+      turno: '',
+      es_festivo: false,
+      unidad: 'dias',
+      num_horas: 8,
+    }]);
     setShowSustitutoDropdown(false);
     setSustitutoSearch('');
     setError('');
   };
 
-  const updateSustitucion = (idx: number, field: keyof SustitucionForm, value: string | number) => {
-    setSustitucionesForm((prev) =>
-      prev.map((s, i) => (i === idx ? { ...s, [field]: value } : s))
-    );
+  const updateSustitucion = (idx: number, field: keyof SustitucionForm, value: string | number | boolean) => {
+    setSustitucionesForm((prev) => prev.map((s, i) => (i === idx ? { ...s, [field]: value } : s)));
   };
 
   const removeSustitucion = (idx: number) => {
@@ -202,15 +526,7 @@ export default function BajasModule() {
   const handleSaveBaja = async () => {
     if (!bajaForm.empleado_id) { setError('Selecciona un trabajador.'); return; }
     if (!bajaForm.fecha_inicio) { setError('La fecha de inicio es obligatoria.'); return; }
-    if (!bajaForm.fecha_fin) { setError('La fecha de fin es obligatoria.'); return; }
-    if (totalDiasBaja <= 0) { setError('Las fechas no son validas.'); return; }
-
-    if (sustitucionesForm.length > 0 && totalDiasAsignados !== totalDiasBaja) {
-      setError(
-        `La suma de dias de los sustitutos (${totalDiasAsignados}) no coincide con el total de la baja (${totalDiasBaja}).`
-      );
-      return;
-    }
+    if (!largaDuracion && !bajaForm.fecha_fin) { setError('La fecha de fin es obligatoria (o marca Larga duración).'); return; }
 
     setSavingBaja(true);
     setError('');
@@ -222,45 +538,41 @@ export default function BajasModule() {
         empleado_id: bajaForm.empleado_id,
         empleado_nombre: bajaForm.empleado_nombre,
         fecha_inicio: bajaForm.fecha_inicio,
-        fecha_fin: bajaForm.fecha_fin || null,
-        total_dias: totalDiasBaja,
+        fecha_fin: largaDuracion ? null : (bajaForm.fecha_fin || null),
+        total_dias: largaDuracion ? 0 : totalDiasBaja,
         motivo: bajaForm.motivo.trim() || null,
         estado: 'activa',
         created_by: userId,
         updated_at: new Date().toISOString(),
+        larga_duracion: largaDuracion,
+        dias_no_cubiertos: diasNoCubiertos,
       };
 
       let bajaId: string;
-
       if (editingBaja) {
-        const { error: updErr } = await supabase
-          .from('bajas_temporales')
-          .update(bajaPayload)
-          .eq('id', editingBaja.id);
+        const { error: updErr } = await supabase.from('bajas_temporales').update(bajaPayload).eq('id', editingBaja.id);
         if (updErr) throw updErr;
         bajaId = editingBaja.id;
-
-        // Delete existing sustituciones and re-insert
         await supabase.from('sustituciones').delete().eq('baja_id', bajaId);
       } else {
-        const { data: newBaja, error: insErr } = await supabase
-          .from('bajas_temporales')
-          .insert(bajaPayload)
-          .select('id')
-          .single();
+        const { data: newBaja, error: insErr } = await supabase.from('bajas_temporales').insert(bajaPayload).select('id').single();
         if (insErr) throw insErr;
         bajaId = newBaja.id;
       }
 
-      // Insert sustituciones
       if (sustitucionesForm.length > 0) {
         const sustRows = sustitucionesForm.map((s) => ({
           baja_id: bajaId,
           sustituto_id: s.sustituto_id,
           sustituto_nombre: s.sustituto_nombre,
           fecha_inicio: s.fecha_inicio,
-          num_dias: s.num_dias,
+          num_dias: s.unidad === 'dias' ? s.num_dias : 0,
           notas: s.notas.trim() || null,
+          tipo_cobertura: s.tipo_cobertura || null,
+          turno: s.turno || null,
+          es_festivo: s.es_festivo,
+          unidad: s.unidad,
+          num_horas: s.unidad === 'horas' ? s.num_horas : (s.turno ? s.num_dias * (HORAS_POR_TURNO[s.turno] ?? 8) : 0),
         }));
         const { error: sustErr } = await supabase.from('sustituciones').insert(sustRows);
         if (sustErr) throw sustErr;
@@ -278,10 +590,9 @@ export default function BajasModule() {
   };
 
   const handleDeleteBaja = async (baja: BajaWithSustituciones) => {
-    if (!confirm(`Eliminar la baja de ${baja.empleado_nombre}? Se borraran tambien sus sustituciones.`)) return;
+    if (!confirm(`Eliminar la baja de ${baja.empleado_nombre}?`)) return;
     try {
-      const { error: delErr } = await supabase.from('bajas_temporales').delete().eq('id', baja.id);
-      if (delErr) throw delErr;
+      await supabase.from('bajas_temporales').delete().eq('id', baja.id);
       await loadBajas();
       setSuccessMsg('Baja eliminada.');
       setTimeout(() => setSuccessMsg(''), 2500);
@@ -292,11 +603,7 @@ export default function BajasModule() {
 
   const handleFinalizarBaja = async (baja: BajaWithSustituciones) => {
     try {
-      const { error: updErr } = await supabase
-        .from('bajas_temporales')
-        .update({ estado: 'finalizada', updated_at: new Date().toISOString() })
-        .eq('id', baja.id);
-      if (updErr) throw updErr;
+      await supabase.from('bajas_temporales').update({ estado: 'finalizada', updated_at: new Date().toISOString() }).eq('id', baja.id);
       await loadBajas();
       setSuccessMsg('Baja finalizada.');
       setTimeout(() => setSuccessMsg(''), 2500);
@@ -324,59 +631,38 @@ export default function BajasModule() {
     return true;
   });
 
-  // Balance data: aggregate days per sustituto
-  const balanceData: { sustituto_id: string; sustituto_nombre: string; total_dias: number; num_sustituciones: number }[] = [];
-  const balanceMap = new Map<string, { nombre: string; dias: number; count: number }>();
+  // Balance data
+  const balanceMap = new Map<string, { nombre: string; dias: number; horas: number; horasNocturnas: number; diasFestivos: number; count: number }>();
   for (const b of bajas) {
     for (const s of b.sustituciones) {
       if (reporteFechaInicio && s.fecha_inicio < reporteFechaInicio) continue;
       if (reporteFechaFin && s.fecha_inicio > reporteFechaFin) continue;
       const existing = balanceMap.get(s.sustituto_id);
+      const horasBase = HORAS_POR_TURNO[s.turno ?? ''] ?? 8;
+      const horasVal = s.unidad === 'horas' ? (s.num_horas ?? 0) : s.num_dias * horasBase;
+      const horasNoc = s.turno === 'noche' ? horasVal : 0;
+      const diasFest = s.es_festivo ? s.num_dias : 0;
       if (existing) {
         existing.dias += s.num_dias;
+        existing.horas += s.unidad === 'horas' ? (s.num_horas ?? 0) : 0;
+        existing.horasNocturnas += horasNoc;
+        existing.diasFestivos += diasFest;
         existing.count += 1;
       } else {
-        balanceMap.set(s.sustituto_id, { nombre: s.sustituto_nombre, dias: s.num_dias, count: 1 });
+        balanceMap.set(s.sustituto_id, {
+          nombre: s.sustituto_nombre,
+          dias: s.num_dias,
+          horas: s.unidad === 'horas' ? (s.num_horas ?? 0) : 0,
+          horasNocturnas: horasNoc,
+          diasFestivos: diasFest,
+          count: 1,
+        });
       }
     }
   }
-  for (const [id, val] of balanceMap) {
-    balanceData.push({ sustituto_id: id, sustituto_nombre: val.nombre, total_dias: val.dias, num_sustituciones: val.count });
-  }
-  balanceData.sort((a, b) => b.total_dias - a.total_dias);
-
-  const exportCSV = () => {
-    if (reporteView === 'bajas') {
-      const headers = ['Trabajador', 'Fecha Inicio', 'Fecha Fin', 'Total Dias', 'Dias Asignados', 'Motivo', 'Estado', 'Sustitutos'];
-      const rows = filteredBajas.map((b) => [
-        b.empleado_nombre,
-        b.fecha_inicio,
-        b.fecha_fin ?? '',
-        b.total_dias,
-        b.dias_asignados,
-        b.motivo ?? '',
-        b.estado,
-        b.sustituciones.map((s) => `${s.sustituto_nombre} (${s.num_dias}d)`).join('; '),
-      ]);
-      const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-      downloadCSV(csv, 'bajas_ausencias');
-    } else {
-      const headers = ['Sustituto', 'Total Dias Cubiertos', 'Num Sustituciones'];
-      const rows = balanceData.map((b) => [b.sustituto_nombre, b.total_dias, b.num_sustituciones]);
-      const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-      downloadCSV(csv, 'balance_sustituciones');
-    }
-  };
-
-  const downloadCSV = (csv: string, filename: string) => {
-    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const balanceData = Array.from(balanceMap.entries())
+    .map(([id, val]) => ({ sustituto_id: id, ...val }))
+    .sort((a, b) => (b.dias + Math.ceil(b.horas / 8)) - (a.dias + Math.ceil(a.horas / 8)));
 
   const estadoConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
     activa: { label: 'Activa', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
@@ -387,7 +673,7 @@ export default function BajasModule() {
     <div className="space-y-4">
       {error && (
         <div className="rounded-xl p-3 flex items-center gap-2" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
-          <AlertCircle size={16} style={{ color: '#DC2626' }} />
+          <AlertTriangle size={16} style={{ color: '#DC2626' }} />
           <p className="text-xs font-medium" style={{ color: '#DC2626' }}>{error}</p>
         </div>
       )}
@@ -401,79 +687,48 @@ export default function BajasModule() {
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap">
-          {/* View toggle */}
           <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
-            <button
-              onClick={() => setReporteView('bajas')}
-              className="px-3 py-2 text-xs font-semibold transition-all cursor-pointer"
-              style={{
-                backgroundColor: reporteView === 'bajas' ? '#0369A1' : '#FFFFFF',
-                color: reporteView === 'bajas' ? '#FFFFFF' : '#64748B',
-              }}
-            >
+            <button onClick={() => setReporteView('bajas')} className="px-3 py-2 text-xs font-semibold transition-all cursor-pointer"
+              style={{ backgroundColor: reporteView === 'bajas' ? '#0369A1' : '#FFFFFF', color: reporteView === 'bajas' ? '#FFFFFF' : '#64748B' }}>
               Bajas
             </button>
-            <button
-              onClick={() => setReporteView('balance')}
-              className="px-3 py-2 text-xs font-semibold transition-all cursor-pointer"
-              style={{
-                backgroundColor: reporteView === 'balance' ? '#0369A1' : '#FFFFFF',
-                color: reporteView === 'balance' ? '#FFFFFF' : '#64748B',
-              }}
-            >
+            <button onClick={() => setReporteView('balance')} className="px-3 py-2 text-xs font-semibold transition-all cursor-pointer"
+              style={{ backgroundColor: reporteView === 'balance' ? '#0369A1' : '#FFFFFF', color: reporteView === 'balance' ? '#FFFFFF' : '#64748B' }}>
               Balance Sustitutos
             </button>
           </div>
 
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar trabajador..."
               className="pl-8 pr-3 py-2 rounded-lg text-xs border outline-none"
-              style={{ borderColor: '#E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B', width: '180px' }}
-            />
+              style={{ borderColor: '#E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B', width: '180px' }} />
           </div>
 
           {reporteView === 'bajas' && (
-            <select
-              value={filterEstado}
-              onChange={(e) => setFilterEstado(e.target.value)}
+            <select value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)}
               className="px-3 py-2 rounded-lg text-xs border outline-none cursor-pointer"
-              style={{ borderColor: '#E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}
-            >
+              style={{ borderColor: '#E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}>
               <option value="">Todos los estados</option>
               <option value="activa">Activas</option>
               <option value="finalizada">Finalizadas</option>
             </select>
           )}
 
-          {/* Date range filter */}
           <div className="flex items-center gap-1.5">
             <Calendar size={14} style={{ color: '#94A3B8' }} />
-            <input
-              type="date"
-              value={reporteFechaInicio}
-              onChange={(e) => setReporteFechaInicio(e.target.value)}
+            <input type="date" value={reporteFechaInicio} onChange={(e) => setReporteFechaInicio(e.target.value)}
               className="px-2 py-1.5 rounded-lg text-xs border outline-none"
-              style={{ borderColor: '#E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}
-            />
+              style={{ borderColor: '#E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }} />
             <span className="text-xs" style={{ color: '#94A3B8' }}>—</span>
-            <input
-              type="date"
-              value={reporteFechaFin}
-              onChange={(e) => setReporteFechaFin(e.target.value)}
+            <input type="date" value={reporteFechaFin} onChange={(e) => setReporteFechaFin(e.target.value)}
               className="px-2 py-1.5 rounded-lg text-xs border outline-none"
-              style={{ borderColor: '#E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}
-            />
+              style={{ borderColor: '#E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }} />
             {(reporteFechaInicio || reporteFechaFin) && (
-              <button
-                onClick={() => { setReporteFechaInicio(''); setReporteFechaFin(''); }}
-                className="px-2 py-1.5 rounded-lg text-xs cursor-pointer transition-all"
-                style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}
-              >
+              <button onClick={() => { setReporteFechaInicio(''); setReporteFechaFin(''); }}
+                className="px-2 py-1.5 rounded-lg text-xs cursor-pointer"
+                style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
                 Limpiar
               </button>
             )}
@@ -481,21 +736,15 @@ export default function BajasModule() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={exportCSV}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
-            style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}
-          >
-            <Download size={14} />
-            Exportar CSV
+          <button onClick={() => exportCSV(filteredBajas)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer"
+            style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}>
+            <Download size={14} /> Exportar CSV
           </button>
-          <button
-            onClick={openNewBaja}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white transition-all cursor-pointer"
-            style={{ backgroundColor: '#0369A1' }}
-          >
-            <Plus size={14} />
-            Nueva Baja
+          <button onClick={openNewBaja}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer"
+            style={{ backgroundColor: '#0369A1' }}>
+            <Plus size={14} /> Nueva Baja
           </button>
         </div>
       </div>
@@ -503,58 +752,30 @@ export default function BajasModule() {
       {/* KPIs */}
       {reporteView === 'bajas' ? (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="rounded-xl p-4" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-            <div className="flex items-center gap-2 mb-1">
-              <Clock size={14} style={{ color: '#D97706' }} />
-              <p className="text-xs font-semibold" style={{ color: '#D97706' }}>Bajas Activas</p>
+          {[
+            { label: 'Bajas Activas', value: bajas.filter((b) => b.estado === 'activa').length, color: '#D97706', bg: '#FFFBEB' },
+            { label: 'Total Bajas', value: bajas.length, color: '#64748B', bg: '#F8FAFC' },
+            { label: 'Larga Duración', value: bajas.filter((b) => b.larga_duracion).length, color: '#7C3AED', bg: '#F5F3FF' },
+            { label: 'Sustituciones', value: bajas.reduce((s, b) => s + b.sustituciones.length, 0), color: '#16A34A', bg: '#F0FDF4' },
+          ].map((kpi, i) => (
+            <div key={i} className="rounded-xl p-4" style={{ backgroundColor: kpi.bg }}>
+              <p className="text-2xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
+              <p className="text-xs font-medium mt-0.5" style={{ color: kpi.color + 'AA' }}>{kpi.label}</p>
             </div>
-            <p className="text-2xl font-bold" style={{ color: '#D97706' }}>{bajas.filter((b) => b.estado === 'activa').length}</p>
-          </div>
-          <div className="rounded-xl p-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-            <div className="flex items-center gap-2 mb-1">
-              <CalendarOff size={14} style={{ color: '#64748B' }} />
-              <p className="text-xs font-semibold" style={{ color: '#64748B' }}>Total Bajas</p>
-            </div>
-            <p className="text-2xl font-bold" style={{ color: '#64748B' }}>{bajas.length}</p>
-          </div>
-          <div className="rounded-xl p-4" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-            <div className="flex items-center gap-2 mb-1">
-              <BedSingle size={14} style={{ color: '#0369A1' }} />
-              <p className="text-xs font-semibold" style={{ color: '#0369A1' }}>Dias de Baja</p>
-            </div>
-            <p className="text-2xl font-bold" style={{ color: '#0369A1' }}>{bajas.reduce((s, b) => s + b.total_dias, 0)}</p>
-          </div>
-          <div className="rounded-xl p-4" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-            <div className="flex items-center gap-2 mb-1">
-              <UserCheck size={14} style={{ color: '#16A34A' }} />
-              <p className="text-xs font-semibold" style={{ color: '#16A34A' }}>Sustituciones</p>
-            </div>
-            <p className="text-2xl font-bold" style={{ color: '#16A34A' }}>{bajas.reduce((s, b) => s + b.sustituciones.length, 0)}</p>
-          </div>
+          ))}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div className="rounded-xl p-4" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-            <div className="flex items-center gap-2 mb-1">
-              <UserCheck size={14} style={{ color: '#16A34A' }} />
-              <p className="text-xs font-semibold" style={{ color: '#16A34A' }}>Total Sustitutos</p>
+          {[
+            { label: 'Total Sustitutos', value: balanceData.length, color: '#16A34A', bg: '#F0FDF4' },
+            { label: 'Días Cubiertos', value: balanceData.reduce((s, b) => s + b.dias, 0), color: '#0369A1', bg: '#EFF6FF' },
+            { label: 'Horas Nocturnas', value: balanceData.reduce((s, b) => s + b.horasNocturnas, 0) + 'h', color: '#7C3AED', bg: '#F5F3FF' },
+          ].map((kpi, i) => (
+            <div key={i} className="rounded-xl p-4" style={{ backgroundColor: kpi.bg }}>
+              <p className="text-2xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
+              <p className="text-xs font-medium mt-0.5" style={{ color: kpi.color + 'AA' }}>{kpi.label}</p>
             </div>
-            <p className="text-2xl font-bold" style={{ color: '#16A34A' }}>{balanceData.length}</p>
-          </div>
-          <div className="rounded-xl p-4" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-            <div className="flex items-center gap-2 mb-1">
-              <Calendar size={14} style={{ color: '#0369A1' }} />
-              <p className="text-xs font-semibold" style={{ color: '#0369A1' }}>Dias Totales Cubiertos</p>
-            </div>
-            <p className="text-2xl font-bold" style={{ color: '#0369A1' }}>{balanceData.reduce((s, b) => s + b.total_dias, 0)}</p>
-          </div>
-          <div className="rounded-xl p-4" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-            <div className="flex items-center gap-2 mb-1">
-              <RefreshCw size={14} style={{ color: '#D97706' }} />
-              <p className="text-xs font-semibold" style={{ color: '#D97706' }}>Total Asignaciones</p>
-            </div>
-            <p className="text-2xl font-bold" style={{ color: '#D97706' }}>{balanceData.reduce((s, b) => s + b.num_sustituciones, 0)}</p>
-          </div>
+          ))}
         </div>
       )}
 
@@ -568,13 +789,14 @@ export default function BajasModule() {
           <div className="rounded-xl p-8 text-center" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
             <BedSingle size={32} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
             <p className="text-sm font-medium" style={{ color: '#64748B' }}>No hay bajas registradas</p>
-            <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Crea una nueva baja con el boton de arriba</p>
           </div>
         ) : (
           <div className="space-y-3">
             {filteredBajas.map((baja) => {
               const cfg = estadoConfig[baja.estado] ?? estadoConfig.activa;
-              const diasPendientes = baja.total_dias - baja.dias_asignados;
+              const dbStats = computeStatsFromDB(baja.sustituciones);
+              const diasACubrir = baja.larga_duracion ? null : Math.max(0, baja.total_dias - (baja.dias_no_cubiertos ?? 0));
+
               return (
                 <div key={baja.id} className="rounded-xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                   <div className="p-4">
@@ -588,74 +810,115 @@ export default function BajasModule() {
                           <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
                             {cfg.label}
                           </span>
+                          {baja.larga_duracion && (
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ backgroundColor: '#F5F3FF', color: '#7C3AED', border: '1px solid #DDD6FE' }}>
+                              Larga duración
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 mt-1 flex-wrap text-xs" style={{ color: '#94A3B8' }}>
-                          <span className="flex items-center gap-1">
-                            <Calendar size={11} /> {formatDate(baja.fecha_inicio)}
-                          </span>
+                          <span className="flex items-center gap-1"><Calendar size={11} /> {formatDate(baja.fecha_inicio)}</span>
                           <ArrowRight size={11} />
-                          <span className="flex items-center gap-1">
-                            <Calendar size={11} /> {formatDate(baja.fecha_fin)}
-                          </span>
-                          <span style={{ color: '#0369A1', fontWeight: 600 }}>{baja.total_dias} dias</span>
+                          <span>{baja.larga_duracion ? 'Indefinido' : formatDate(baja.fecha_fin)}</span>
+                          {!baja.larga_duracion && <span style={{ color: '#0369A1', fontWeight: 600 }}>{baja.total_dias} días totales</span>}
+                          {(baja.dias_no_cubiertos ?? 0) > 0 && <span style={{ color: '#D97706' }}>{baja.dias_no_cubiertos} sin cubrir</span>}
                           {baja.motivo && <span>· {baja.motivo}</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         {baja.estado === 'activa' && (
-                          <button
-                            onClick={() => handleFinalizarBaja(baja)}
-                            className="px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all"
-                            style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
-                            title="Finalizar baja"
-                          >
+                          <button onClick={() => handleFinalizarBaja(baja)}
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+                            style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
                             Finalizar
                           </button>
                         )}
-                        <button
-                          onClick={() => openEditBaja(baja)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all"
-                          style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}
-                          title="Editar"
-                        >
-                          <Edit2 size={13} />
+                        <button onClick={() => openEditBaja(baja)}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+                          style={{ backgroundColor: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}>
+                          Editar
                         </button>
-                        <button
-                          onClick={() => handleDeleteBaja(baja)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all"
-                          style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}
-                          title="Eliminar"
-                        >
+                        <button onClick={() => handleDeleteBaja(baja)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer"
+                          style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
                           <Trash2 size={13} />
                         </button>
                       </div>
                     </div>
 
-                    {/* Sustituciones summary */}
-                    {baja.sustituciones.length > 0 ? (
+                    {baja.sustituciones.length > 0 && (
                       <div className="mt-3 pt-3 border-t" style={{ borderColor: '#F1F5F9' }}>
-                        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>
-                          Sustituciones ({baja.sustituciones.length}) — {baja.dias_asignados}/{baja.total_dias} dias asignados
-                        </p>
-                        <div className="space-y-1.5">
-                          {baja.sustituciones.map((s) => (
-                            <div key={s.id} className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                              <UserCheck size={12} style={{ color: '#16A34A' }} />
-                              <span className="text-xs font-medium" style={{ color: '#1E293B' }}>{s.sustituto_nombre}</span>
-                              <span className="text-xs" style={{ color: '#94A3B8' }}>· {formatDate(s.fecha_inicio)} · {s.num_dias} dia(s)</span>
-                              {s.notas && <span className="text-xs" style={{ color: '#94A3B8' }}>· {s.notas}</span>}
-                            </div>
-                          ))}
+                        {/* Coverage summary */}
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {dbStats.totalDias > 0 && (
+                            <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg font-medium"
+                              style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
+                              <UserCheck size={11} /> {dbStats.totalDias} días cubiertos
+                            </span>
+                          )}
+                          {dbStats.totalHoras > 0 && (
+                            <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg font-medium"
+                              style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                              {dbStats.totalHoras}h cubiertas
+                            </span>
+                          )}
+                          {dbStats.horasNocturnas > 0 && (
+                            <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg font-medium"
+                              style={{ backgroundColor: '#F5F3FF', color: '#7C3AED', border: '1px solid #DDD6FE' }}>
+                              <Moon size={11} /> {dbStats.horasNocturnas}h nocturnas
+                            </span>
+                          )}
+                          {dbStats.diasFestivos > 0 && (
+                            <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg font-medium"
+                              style={{ backgroundColor: '#FEF9C3', color: '#854D0E', border: '1px solid #FDE047' }}>
+                              <Star size={11} /> {dbStats.diasFestivos} días festivos
+                            </span>
+                          )}
+                          {diasACubrir !== null && (
+                            <span className="ml-auto text-xs font-semibold" style={{ color: dbStats.totalDias === diasACubrir ? '#16A34A' : '#D97706' }}>
+                              {dbStats.totalDias}/{diasACubrir}
+                            </span>
+                          )}
                         </div>
-                        {diasPendientes > 0 && (
-                          <p className="text-xs mt-2" style={{ color: '#D97706' }}>
-            Faltan {diasPendientes} dia(s) por asignar a sustitutos.
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="mt-3 pt-3 border-t" style={{ borderColor: '#F1F5F9' }}>
-                        <p className="text-xs" style={{ color: '#94A3B8' }}>Sin sustituciones asignadas. Edita la baja para anadir sustitutos.</p>
+
+                        <div className="space-y-1.5">
+                          {baja.sustituciones.map((s) => {
+                            const turnoColors: Record<string, { color: string; bg: string }> = {
+                              mañana: { color: '#D97706', bg: '#FFFBEB' },
+                              tarde: { color: '#EA580C', bg: '#FFF7ED' },
+                              noche: { color: '#7C3AED', bg: '#F5F3FF' },
+                            };
+                            const tc = s.turno ? turnoColors[s.turno] : null;
+                            return (
+                              <div key={s.id} className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                                <UserCheck size={12} style={{ color: '#16A34A' }} />
+                                <span className="text-xs font-medium" style={{ color: '#1E293B' }}>{s.sustituto_nombre}</span>
+                                <span className="text-xs" style={{ color: '#94A3B8' }}>
+                                  {s.unidad === 'horas' ? `${s.num_horas}h` : `${s.num_dias}d`}
+                                </span>
+                                {s.tipo_cobertura && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded font-semibold capitalize"
+                                    style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
+                                    {s.tipo_cobertura}
+                                  </span>
+                                )}
+                                {tc && s.turno && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded font-semibold capitalize"
+                                    style={{ backgroundColor: tc.bg, color: tc.color }}>
+                                    {s.turno}
+                                  </span>
+                                )}
+                                {s.es_festivo && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded font-semibold"
+                                    style={{ backgroundColor: '#FEF9C3', color: '#854D0E' }}>
+                                    Festivo
+                                  </span>
+                                )}
+                                {s.notas && <span className="text-xs ml-1" style={{ color: '#94A3B8' }}>· {s.notas}</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -665,19 +928,15 @@ export default function BajasModule() {
           </div>
         )
       ) : (
-        /* Balance view */
         balanceData.length === 0 ? (
           <div className="rounded-xl p-8 text-center" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
             <UserCheck size={32} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
             <p className="text-sm font-medium" style={{ color: '#64748B' }}>No hay sustituciones registradas</p>
-            <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Las asignaciones de sustitutos apareceran aqui</p>
           </div>
         ) : (
           <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
             <div className="px-5 py-3" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
-              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>
-                Balance de Dias por Sustituto
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>Balance de Cobertura por Sustituto</p>
             </div>
             <div className="divide-y" style={{ borderColor: '#F8FAFC' }}>
               {balanceData.map((b) => (
@@ -686,12 +945,30 @@ export default function BajasModule() {
                     <UserCheck size={14} style={{ color: '#16A34A' }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{b.sustituto_nombre}</p>
-                    <p className="text-xs" style={{ color: '#94A3B8' }}>{b.num_sustituciones} sustitucion(es)</p>
+                    <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{b.nombre}</p>
+                    <p className="text-xs" style={{ color: '#94A3B8' }}>{b.count} sustitucion(es)</p>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-lg font-bold" style={{ color: '#0369A1' }}>{b.total_dias}</p>
-                    <p className="text-xs" style={{ color: '#94A3B8' }}>dias</p>
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    {b.dias > 0 && (
+                      <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>
+                        {b.dias}d
+                      </span>
+                    )}
+                    {b.horas > 0 && (
+                      <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A' }}>
+                        {b.horas}h
+                      </span>
+                    )}
+                    {b.horasNocturnas > 0 && (
+                      <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#F5F3FF', color: '#7C3AED' }}>
+                        <Moon size={10} className="inline mr-0.5" />{b.horasNocturnas}h noct.
+                      </span>
+                    )}
+                    {b.diasFestivos > 0 && (
+                      <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#FEF9C3', color: '#854D0E' }}>
+                        <Star size={10} className="inline mr-0.5" />{b.diasFestivos}d fest.
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -712,6 +989,26 @@ export default function BajasModule() {
             </div>
 
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
+
+              {/* Larga duración checkbox */}
+              <button
+                onClick={() => { setLargaDuracion(!largaDuracion); if (!largaDuracion) setBajaForm({ ...bajaForm, fecha_fin: '' }); }}
+                className="flex items-center gap-2.5 w-full px-4 py-3 rounded-xl cursor-pointer transition-all"
+                style={{
+                  backgroundColor: largaDuracion ? '#F5F3FF' : '#F8FAFC',
+                  border: `1.5px solid ${largaDuracion ? '#DDD6FE' : '#E2E8F0'}`,
+                }}
+              >
+                <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
+                  style={{ backgroundColor: largaDuracion ? '#7C3AED' : '#FFFFFF', border: `1.5px solid ${largaDuracion ? '#7C3AED' : '#CBD5E1'}` }}>
+                  {largaDuracion && <CheckCircle2 size={12} style={{ color: '#FFFFFF' }} />}
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-semibold" style={{ color: largaDuracion ? '#6D28D9' : '#1E293B' }}>Larga duración</p>
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>Sin fecha de fin definida — se finaliza manualmente</p>
+                </div>
+              </button>
+
               {/* Trabajador selector */}
               <div>
                 <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Trabajador *</label>
@@ -722,44 +1019,31 @@ export default function BajasModule() {
                     </div>
                     <span className="text-sm font-medium flex-1" style={{ color: '#1E293B' }}>{bajaForm.empleado_nombre}</span>
                     {!editingBaja && (
-                      <button onClick={() => setBajaForm({ ...bajaForm, empleado_id: '', empleado_nombre: '' })} className="text-xs cursor-pointer" style={{ color: '#64748B' }}>
-                        Cambiar
-                      </button>
+                      <button onClick={() => setBajaForm({ ...bajaForm, empleado_id: '', empleado_nombre: '' })} className="text-xs cursor-pointer" style={{ color: '#64748B' }}>Cambiar</button>
                     )}
                   </div>
                 ) : (
                   <div>
                     <div className="relative">
                       <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
-                      <input
-                        type="text"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                      <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
                         placeholder="Buscar trabajador..."
                         className="w-full pl-8 pr-3 py-2 rounded-lg text-sm border outline-none"
-                        style={{ borderColor: '#E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }}
-                      />
+                        style={{ borderColor: '#E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
                     </div>
                     {search && (
                       <div className="mt-1.5 max-h-48 overflow-y-auto rounded-lg" style={{ border: '1px solid #E2E8F0' }}>
-                        {filteredEmpleados.length === 0 ? (
-                          <p className="text-xs text-center py-3" style={{ color: '#94A3B8' }}>No se encontraron trabajadores</p>
-                        ) : (
-                          filteredEmpleados.slice(0, 8).map((emp) => (
-                            <button
-                              key={emp.id}
-                              onClick={() => { handleSelectEmpleado(emp); setSearch(''); }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 transition-all cursor-pointer"
-                              style={{ borderBottom: '1px solid #F1F5F9' }}
-                            >
-                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
-                                {emp.nombre.charAt(0).toUpperCase()}
-                              </div>
-                              <span className="text-xs font-medium" style={{ color: '#1E293B' }}>{emp.nombre}</span>
-                              {emp.dni && <span className="text-xs" style={{ color: '#94A3B8' }}>{emp.dni}</span>}
-                            </button>
-                          ))
-                        )}
+                        {filteredEmpleados.slice(0, 8).map((emp) => (
+                          <button key={emp.id} onClick={() => handleSelectEmpleado(emp)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 cursor-pointer"
+                            style={{ borderBottom: '1px solid #F1F5F9' }}>
+                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
+                              {emp.nombre.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="text-xs font-medium" style={{ color: '#1E293B' }}>{emp.nombre}</span>
+                            {emp.dni && <span className="text-xs" style={{ color: '#94A3B8' }}>{emp.dni}</span>}
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -770,45 +1054,60 @@ export default function BajasModule() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Fecha Inicio *</label>
-                  <input
-                    type="date"
-                    value={bajaForm.fecha_inicio}
+                  <input type="date" value={bajaForm.fecha_inicio}
                     onChange={(e) => setBajaForm({ ...bajaForm, fecha_inicio: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                    style={{ borderColor: '#E2E8F0', color: '#1E293B' }}
-                  />
+                    style={{ borderColor: '#E2E8F0', color: '#1E293B' }} />
                 </div>
-                <div>
-                  <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Fecha Fin *</label>
-                  <input
-                    type="date"
-                    value={bajaForm.fecha_fin}
-                    onChange={(e) => setBajaForm({ ...bajaForm, fecha_fin: e.target.value })}
-                    min={bajaForm.fecha_inicio}
-                    className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                    style={{ borderColor: '#E2E8F0', color: '#1E293B' }}
-                  />
-                </div>
+                {!largaDuracion && (
+                  <div>
+                    <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Fecha Fin *</label>
+                    <input type="date" value={bajaForm.fecha_fin} min={bajaForm.fecha_inicio}
+                      onChange={(e) => setBajaForm({ ...bajaForm, fecha_fin: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                      style={{ borderColor: '#E2E8F0', color: '#1E293B' }} />
+                  </div>
+                )}
               </div>
 
-              {totalDiasBaja > 0 && (
-                <div className="rounded-lg p-2.5 flex items-center gap-2" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-                  <Calendar size={14} style={{ color: '#0369A1' }} />
-                  <span className="text-xs font-semibold" style={{ color: '#0369A1' }}>Total dias de baja: {totalDiasBaja}</span>
+              {/* Días summary + Días no cubiertos */}
+              {!largaDuracion && totalDiasBaja > 0 && (
+                <div className="space-y-2">
+                  <div className="rounded-lg px-3 py-2.5 flex items-center gap-2" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                    <Calendar size={14} style={{ color: '#0369A1' }} />
+                    <span className="text-xs font-semibold" style={{ color: '#0369A1' }}>Total días de baja: {totalDiasBaja}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-medium mb-1 block" style={{ color: '#64748B' }}>Días no cubiertos</label>
+                      <input type="number" min={0} max={totalDiasBaja}
+                        value={diasNoCubiertos}
+                        onChange={(e) => setDiasNoCubiertos(Math.max(0, parseInt(e.target.value) || 0))}
+                        className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                        style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB', color: '#92400E' }}
+                        placeholder="0" />
+                      <p className="text-[10px] mt-0.5" style={{ color: '#94A3B8' }}>Días libres del trabajador que no se cubren</p>
+                    </div>
+                    <div className="flex flex-col justify-center">
+                      <p className="text-xs font-medium mb-1" style={{ color: '#64748B' }}>Días a cubrir</p>
+                      <div className="px-3 py-2 rounded-lg text-center" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                        <span className="text-xl font-bold" style={{ color: '#16A34A' }}>{diasACubrir}</span>
+                        <p className="text-[10px]" style={{ color: '#16A34A' }}>días</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {/* Motivo */}
               <div>
                 <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Motivo (opcional)</label>
-                <input
-                  type="text"
-                  value={bajaForm.motivo}
+                <input type="text" value={bajaForm.motivo}
                   onChange={(e) => setBajaForm({ ...bajaForm, motivo: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
                   style={{ borderColor: '#E2E8F0', color: '#1E293B' }}
-                  placeholder="Ej. Baja medica, accidente, permiso..."
-                />
+                  placeholder="Ej. Baja médica, accidente, permiso..." />
               </div>
 
               {/* Sustituciones */}
@@ -817,116 +1116,97 @@ export default function BajasModule() {
                   <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>
                     Sustituciones ({sustitucionesForm.length})
                   </p>
-                  <span className="text-xs font-semibold" style={{ color: totalDiasAsignados === totalDiasBaja && totalDiasBaja > 0 ? '#16A34A' : '#D97706' }}>
-                    {totalDiasAsignados}/{totalDiasBaja} dias
-                  </span>
+                  {!largaDuracion && diasACubrir > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold" style={{ color: stats.totalDias === diasACubrir ? '#16A34A' : '#D97706' }}>
+                        {stats.totalDias + Math.ceil(stats.totalHoras / 8)}/{diasACubrir} días
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Add sustituto */}
-                <div className="relative mb-2">
+                {/* Add sustituto search */}
+                <div className="relative mb-3">
                   <div className="relative">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
-                    <input
-                      type="text"
-                      value={sustitutoSearch}
+                    <input type="text" value={sustitutoSearch}
                       onChange={(e) => { setSustitutoSearch(e.target.value); setShowSustitutoDropdown(true); }}
                       onFocus={() => setShowSustitutoDropdown(true)}
                       placeholder="Buscar sustituto..."
                       className="w-full pl-8 pr-3 py-2 rounded-lg text-xs border outline-none"
-                      style={{ borderColor: '#E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }}
-                    />
+                      style={{ borderColor: '#E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
                   </div>
                   {showSustitutoDropdown && sustitutoSearch && (
-                    <div className="absolute z-10 top-full mt-1 w-full max-h-40 overflow-y-auto rounded-lg bg-white" style={{ border: '1px solid #E2E8F0', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                    <div className="absolute z-10 top-full mt-1 w-full max-h-40 overflow-y-auto rounded-lg bg-white"
+                      style={{ border: '1px solid #E2E8F0', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
                       {filteredSustitutos.length === 0 ? (
                         <p className="text-xs text-center py-2" style={{ color: '#94A3B8' }}>No hay candidatos</p>
-                      ) : (
-                        filteredSustitutos.slice(0, 6).map((emp) => (
-                          <button
-                            key={emp.id}
-                            onClick={() => addSustitucionBlock(emp)}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 transition-all cursor-pointer"
-                            style={{ borderBottom: '1px solid #F1F5F9' }}
-                          >
-                            <Plus size={12} style={{ color: '#0369A1' }} />
-                            <span className="text-xs font-medium" style={{ color: '#1E293B' }}>{emp.nombre}</span>
-                          </button>
-                        ))
-                      )}
+                      ) : filteredSustitutos.slice(0, 6).map((emp) => (
+                        <button key={emp.id} onClick={() => addSustitucionBlock(emp)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 cursor-pointer"
+                          style={{ borderBottom: '1px solid #F1F5F9' }}>
+                          <Plus size={12} style={{ color: '#0369A1' }} />
+                          <span className="text-xs font-medium" style={{ color: '#1E293B' }}>{emp.nombre}</span>
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
 
                 {/* Sustitucion blocks */}
                 {sustitucionesForm.length === 0 ? (
-                  <p className="text-xs text-center py-3" style={{ color: '#94A3B8' }}>
-                    Anade sustitutos buscando arriba. Cada bloque representa dias asignados a un sustituto.
-                  </p>
+                  <p className="text-xs text-center py-3" style={{ color: '#94A3B8' }}>Busca y añade sustitutos arriba</p>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {sustitucionesForm.map((s, idx) => (
-                      <div key={idx} className="rounded-lg p-3" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <UserCheck size={12} style={{ color: '#16A34A' }} />
-                          <span className="text-xs font-semibold flex-1" style={{ color: '#1E293B' }}>{s.sustituto_nombre}</span>
-                          <button
-                            onClick={() => removeSustitucion(idx)}
-                            className="w-6 h-6 rounded flex items-center justify-center cursor-pointer"
-                            style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}
-                          >
-                            <X size={11} />
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-[10px] font-medium block mb-0.5" style={{ color: '#94A3B8' }}>Fecha inicio</label>
-                            <input
-                              type="date"
-                              value={s.fecha_inicio}
-                              onChange={(e) => updateSustitucion(idx, 'fecha_inicio', e.target.value)}
-                              className="w-full px-2 py-1.5 rounded text-xs border outline-none"
-                              style={{ borderColor: '#E2E8F0', color: '#1E293B' }}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-medium block mb-0.5" style={{ color: '#94A3B8' }}>Num. dias</label>
-                            <input
-                              type="number"
-                              min={1}
-                              value={s.num_dias}
-                              onChange={(e) => updateSustitucion(idx, 'num_dias', parseInt(e.target.value) || 1)}
-                              className="w-full px-2 py-1.5 rounded text-xs border outline-none"
-                              style={{ borderColor: '#E2E8F0', color: '#1E293B' }}
-                            />
-                          </div>
-                        </div>
-                        <div className="mt-2">
-                          <input
-                            type="text"
-                            value={s.notas}
-                            onChange={(e) => updateSustitucion(idx, 'notas', e.target.value)}
-                            placeholder="Notas (opcional)..."
-                            className="w-full px-2 py-1.5 rounded text-xs border outline-none"
-                            style={{ borderColor: '#E2E8F0', color: '#1E293B' }}
-                          />
-                        </div>
-                      </div>
+                      <SustitucionBlock
+                        key={s.sustituto_id}
+                        s={s}
+                        idx={idx}
+                        bajaFechaInicio={bajaForm.fecha_inicio}
+                        onUpdate={updateSustitucion}
+                        onRemove={removeSustitucion}
+                      />
                     ))}
-                  </div>
-                )}
 
-                {/* Validation indicator */}
-                {totalDiasBaja > 0 && sustitucionesForm.length > 0 && (
-                  <div className="mt-2 flex items-center gap-2">
-                    {totalDiasAsignados === totalDiasBaja ? (
-                      <div className="flex items-center gap-1.5 text-xs" style={{ color: '#16A34A' }}>
-                        <CheckCircle2 size={14} />
-                        <span>Dias asignados correctamente ({totalDiasAsignados}/{totalDiasBaja})</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 text-xs" style={{ color: '#D97706' }}>
-                        <AlertCircle size={14} />
-                        <span>La suma de dias ({totalDiasAsignados}) debe coincidir con el total ({totalDiasBaja})</span>
+                    {/* Coverage summary */}
+                    {sustitucionesForm.length > 0 && (
+                      <div className="rounded-xl px-4 py-3 flex flex-wrap gap-2 items-center"
+                        style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                        <span className="text-xs font-semibold" style={{ color: '#64748B' }}>Resumen cobertura:</span>
+                        {stats.totalDias > 0 && (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>
+                            {stats.totalDias} días
+                          </span>
+                        )}
+                        {stats.totalHoras > 0 && (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#F0FDF4', color: '#16A34A' }}>
+                            {stats.totalHoras}h
+                          </span>
+                        )}
+                        {stats.horasNocturnas > 0 && (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded flex items-center gap-1" style={{ backgroundColor: '#F5F3FF', color: '#7C3AED' }}>
+                            <Moon size={10} />{stats.horasNocturnas}h noc.
+                          </span>
+                        )}
+                        {stats.diasFestivos > 0 && (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded flex items-center gap-1" style={{ backgroundColor: '#FEF9C3', color: '#854D0E' }}>
+                            <Star size={10} />{stats.diasFestivos}d fest.
+                          </span>
+                        )}
+                        {!largaDuracion && diasACubrir > 0 && (
+                          <span className="ml-auto">
+                            {stats.totalDias + Math.ceil(stats.totalHoras / 8) === diasACubrir ? (
+                              <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: '#16A34A' }}>
+                                <CheckCircle2 size={13} /> Correcto ({stats.totalDias + Math.ceil(stats.totalHoras / 8)}/{diasACubrir})
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: '#D97706' }}>
+                                <AlertTriangle size={13} /> {stats.totalDias + Math.ceil(stats.totalHoras / 8)}/{diasACubrir}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -937,12 +1217,9 @@ export default function BajasModule() {
             </div>
 
             <div className="p-4 flex-shrink-0" style={{ borderTop: '1px solid #E2E8F0' }}>
-              <button
-                onClick={handleSaveBaja}
-                disabled={savingBaja}
-                className="w-full py-2.5 rounded-lg text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2 transition-all"
-                style={{ backgroundColor: '#0369A1' }}
-              >
+              <button onClick={handleSaveBaja} disabled={savingBaja}
+                className="w-full py-2.5 rounded-lg text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#0369A1' }}>
                 {savingBaja ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                 {savingBaja ? 'Guardando...' : editingBaja ? 'Actualizar Baja' : 'Registrar Baja'}
               </button>

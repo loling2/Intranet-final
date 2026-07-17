@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2 } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
@@ -1820,10 +1820,11 @@ useEffect(() => {
     { id: 'misdocumentos', label: 'Mis Documentos', icon: FileText },
     { id: 'calidad', label: 'Calidad', icon: ShieldCheck },
     { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
-    { id: 'certificados', label: 'Mis Certificados', icon: Award },
-    { id: 'examenes', label: 'Mis Examenes', icon: ClipboardCheck },
+    { id: 'formacion', label: 'Formacion', icon: GraduationCap },
     { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },
   ];
+
+  const [formacionSubTab, setFormacionSubTab] = useState<'examenes' | 'certificados'>('examenes');
 
   return (
     <div className="min-h-screen transition-all duration-700" style={{ backgroundColor: theme.bg }}>
@@ -2106,12 +2107,50 @@ useEffect(() => {
           </div>
         )}
 
-        {activeTab === 'certificados' && (
-          <CertificatesCard certificates={certificates} theme={theme} />
-        )}
+        {activeTab === 'formacion' && (
+          <div>
+            {/* Sub-tab navigation */}
+            <div
+              className="flex gap-1 p-1 rounded-xl mb-6"
+              style={{
+                backgroundColor: theme.bgCard,
+                border: `1px solid ${theme.border}`,
+              }}
+            >
+              <button
+                onClick={() => setFormacionSubTab('examenes')}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 cursor-pointer whitespace-nowrap"
+                style={{
+                  backgroundColor: formacionSubTab === 'examenes' ? theme.primary : 'transparent',
+                  color: formacionSubTab === 'examenes' ? '#FFFFFF' : theme.textSecondary,
+                  boxShadow: formacionSubTab === 'examenes' ? `0 2px 8px ${theme.primary}30` : 'none',
+                }}
+              >
+                <ClipboardCheck size={15} />
+                <span>Mis Examenes</span>
+              </button>
+              <button
+                onClick={() => setFormacionSubTab('certificados')}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 cursor-pointer whitespace-nowrap"
+                style={{
+                  backgroundColor: formacionSubTab === 'certificados' ? theme.primary : 'transparent',
+                  color: formacionSubTab === 'certificados' ? '#FFFFFF' : theme.textSecondary,
+                  boxShadow: formacionSubTab === 'certificados' ? `0 2px 8px ${theme.primary}30` : 'none',
+                }}
+              >
+                <Award size={15} />
+                <span>Mis Certificados</span>
+              </button>
+            </div>
 
-        {activeTab === 'examenes' && (
-          <ExamsCard exams={exams} theme={theme} />
+            {/* Sub-tab content */}
+            {formacionSubTab === 'examenes' && (
+              <ExamsCard exams={exams} theme={theme} />
+            )}
+            {formacionSubTab === 'certificados' && (
+              <CertificatesCard certificates={certificates} theme={theme} />
+            )}
+          </div>
         )}
 
         {activeTab === 'incidencias' && currentUserId && (

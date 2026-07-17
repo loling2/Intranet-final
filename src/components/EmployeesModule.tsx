@@ -41,6 +41,9 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   observaciones: null,
   activo: true,
   estado_contrato: 'pendiente',
+  reconocimiento_medico: 'pendiente',
+  reconocimiento_medico_estado: null,
+  reconocimiento_medico_fecha: null,
 };
 
 function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
@@ -66,6 +69,9 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     observaciones: e.observaciones,
     activo: e.activo,
     estado_contrato: e.estado_contrato ?? 'pendiente',
+    reconocimiento_medico: e.reconocimiento_medico ?? 'pendiente',
+    reconocimiento_medico_estado: e.reconocimiento_medico_estado ?? null,
+    reconocimiento_medico_fecha: e.reconocimiento_medico_fecha ?? null,
   };
 }
 
@@ -1410,11 +1416,69 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                   rows={2} className="form-input resize-none" placeholder="Notas adicionales..." />
               </FormField>
               <FormField label="Estado">
-                <select value={form.activo ? 'activo' : 'inactivo'} onChange={(e) => f('activo', e.target.value === 'activo')} className="form-input">
-                  <option value="activo">Activo</option>
-                  <option value="inactivo">Inactivo</option>
-                </select>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => f('activo', true)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                    style={{
+                      backgroundColor: form.activo ? '#DCFCE7' : '#FFFFFF',
+                      color: form.activo ? '#15803D' : '#94A3B8',
+                      border: `1.5px solid ${form.activo ? '#22C55E' : '#E2E8F0'}`,
+                    }}
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: form.activo ? '#22C55E' : '#CBD5E1' }} />
+                    Activo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => f('activo', false)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                    style={{
+                      backgroundColor: !form.activo ? '#FEE2E2' : '#FFFFFF',
+                      color: !form.activo ? '#B91C1C' : '#94A3B8',
+                      border: `1.5px solid ${!form.activo ? '#EF4444' : '#E2E8F0'}`,
+                    }}
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: !form.activo ? '#EF4444' : '#CBD5E1' }} />
+                    Inactivo
+                  </button>
+                </div>
               </FormField>
+
+              {/* Section: Reconocimiento medico */}
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Reconocimiento medico</p>
+                <div className="flex gap-2 flex-wrap">
+                  {([
+                    { value: 'pendiente', label: 'Pendiente', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' },
+                    { value: 'acepta', label: 'Acepta', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' },
+                    { value: 'renuncia', label: 'Renuncia', color: '#B91C1C', bg: '#FEE2E2', border: '#EF4444' },
+                  ] as const).map(({ value, label, color, bg, border }) => {
+                    const isActive = (form.reconocimiento_medico ?? 'pendiente') === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => f('reconocimiento_medico', value)}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                        style={{
+                          backgroundColor: isActive ? bg : '#FFFFFF',
+                          color: isActive ? color : '#94A3B8',
+                          border: `1.5px solid ${isActive ? border : '#E2E8F0'}`,
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {form.reconocimiento_medico === 'acepta' && (
+                  <p className="text-xs mt-2" style={{ color: '#15803D' }}>
+                    Este empleado aparecera en el panel de prevencion para gestionar el reconocimiento medico.
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Section: Estado del contrato */}
@@ -1737,11 +1801,69 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                             rows={2} className="form-input resize-none" placeholder="Notas adicionales..." />
                         </FormField>
                         <FormField label="Estado">
-                          <select value={form.activo ? 'activo' : 'inactivo'} onChange={(e) => f('activo', e.target.value === 'activo')} className="form-input">
-                            <option value="activo">Activo</option>
-                            <option value="inactivo">Inactivo</option>
-                          </select>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => f('activo', true)}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                              style={{
+                                backgroundColor: form.activo ? '#DCFCE7' : '#FFFFFF',
+                                color: form.activo ? '#15803D' : '#94A3B8',
+                                border: `1.5px solid ${form.activo ? '#22C55E' : '#E2E8F0'}`,
+                              }}
+                            >
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: form.activo ? '#22C55E' : '#CBD5E1' }} />
+                              Activo
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => f('activo', false)}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                              style={{
+                                backgroundColor: !form.activo ? '#FEE2E2' : '#FFFFFF',
+                                color: !form.activo ? '#B91C1C' : '#94A3B8',
+                                border: `1.5px solid ${!form.activo ? '#EF4444' : '#E2E8F0'}`,
+                              }}
+                            >
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: !form.activo ? '#EF4444' : '#CBD5E1' }} />
+                              Inactivo
+                            </button>
+                          </div>
                         </FormField>
+
+                        {/* Section: Reconocimiento medico */}
+                        <div className="mt-4">
+                          <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Reconocimiento medico</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {([
+                              { value: 'pendiente', label: 'Pendiente', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' },
+                              { value: 'acepta', label: 'Acepta', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' },
+                              { value: 'renuncia', label: 'Renuncia', color: '#B91C1C', bg: '#FEE2E2', border: '#EF4444' },
+                            ] as const).map(({ value, label, color, bg, border }) => {
+                              const isActive = (form.reconocimiento_medico ?? 'pendiente') === value;
+                              return (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  onClick={() => f('reconocimiento_medico', value)}
+                                  className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                                  style={{
+                                    backgroundColor: isActive ? bg : '#FFFFFF',
+                                    color: isActive ? color : '#94A3B8',
+                                    border: `1.5px solid ${isActive ? border : '#E2E8F0'}`,
+                                  }}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {form.reconocimiento_medico === 'acepta' && (
+                            <p className="text-xs mt-2" style={{ color: '#15803D' }}>
+                              Este empleado aparecera en el panel de prevencion para gestionar el reconocimiento medico.
+                            </p>
+                          )}
+                        </div>
                       </div>
 
                       {/* Section: Estado del contrato */}

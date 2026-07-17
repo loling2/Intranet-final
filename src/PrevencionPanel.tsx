@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2 } from 'lucide-react';
+import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2, HeartPulse } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
 import SocietySwitcher from './SocietySwitcher';
 import PrlDocsModule from './components/PrlDocsModule';
@@ -12,7 +12,7 @@ interface Props {
   onNavigateEmployee?: () => void;
 }
 
-type PrevTab = 'empleados' | 'documentos' | 'trazabilidad' | 'departamentos';
+type PrevTab = 'empleados' | 'documentos' | 'trazabilidad' | 'departamentos' | 'reconocimiento';
 
 // Colors per prevention tag category
 const TAG_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -41,6 +41,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
     { id: 'documentos',    label: 'Documentos PRL',      icon: FileText },
     { id: 'trazabilidad',  label: 'Trazabilidad',        icon: CheckCircle2 },
     { id: 'departamentos', label: 'Departamentos PRL',   icon: Building2 },
+    { id: 'reconocimiento', label: 'Reconocimiento Medico', icon: HeartPulse },
   ];
 
   return (
@@ -137,6 +138,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
         {activeTab === 'documentos' && <PrlDocsModule />}
         {activeTab === 'trazabilidad' && <TrazabilidadModule />}
         {activeTab === 'departamentos' && <DepartamentosPrlTab />}
+        {activeTab === 'reconocimiento' && <ReconocimientoMedicoTab />}
       </div>
     </div>
   );
@@ -977,6 +979,190 @@ function DepartamentosPrlTab() {
                       </div>
                     )}
                   </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReconocimientoMedicoTab() {
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editEstado, setEditEstado] = useState<'en_proceso' | 'finalizado' | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('empleados')
+      .select('*')
+      .eq('reconocimiento_medico', 'acepta')
+      .order('nombre', { ascending: true });
+    if (error) {
+      console.error('Error loading reconocimientos:', error);
+    } else {
+      setEmpleados((data as Empleado[]) || []);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = empleados.filter((e) => {
+    const q = search.toLowerCase();
+    return !q || e.nombre?.toLowerCase().includes(q) || e.dni?.toLowerCase().includes(q);
+  });
+
+  const handleEdit = (emp: Empleado) => {
+    setEditingId(emp.id);
+    setEditEstado(emp.reconocimiento_medico_estado ?? null);
+  };
+
+  const handleSave = async (empId: string) => {
+    setSaving(true);
+    const update: Record<string, unknown> = { reconocimiento_medico_estado: editEstado };
+    if (editEstado === 'finalizado') {
+      update.reconocimiento_medico_fecha = new Date().toISOString();
+    }
+    const { error } = await supabase
+      .from('empleados')
+      .update(update)
+      .eq('id', empId);
+    if (error) {
+      console.error('Error updating estado:', error);
+    } else {
+      setEmpleados((prev) => prev.map((e) =>
+        e.id === empId
+          ? { ...e, reconocimiento_medico_estado: editEstado, reconocimiento_medico_fecha: editEstado === 'finalizado' ? new Date().toISOString() : e.reconocimiento_medico_fecha }
+          : e
+      ));
+      setEditingId(null);
+    }
+    setSaving(false);
+  };
+
+  const estadoBadge = (estado: string | null) => {
+    if (estado === 'en_proceso') return { label: 'En proceso', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' };
+    if (estado === 'finalizado') return { label: 'Finalizado', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' };
+    return { label: 'Pendiente', color: '#475569', bg: '#F1F5F9', border: '#CBD5E1' };
+  };
+
+  return (
+    <div className="p-4">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-bold" style={{ color: '#064E3B' }}>Reconocimiento Medico</h2>
+          <p className="text-sm" style={{ color: '#64748B' }}>Empleados que han aceptado el reconocimiento medico</p>
+        </div>
+        <button onClick={load} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all" style={{ backgroundColor: '#ECFDF5', color: '#065F46', border: '1px solid #A7F3D0' }}>
+          <RefreshCw size={14} /> Actualizar
+        </button>
+      </div>
+
+      <div className="mb-4 relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nombre o DNI..."
+          className="w-full pl-9 pr-4 py-2 rounded-lg text-sm border outline-none"
+          style={{ borderColor: '#D1D5DB', color: '#1E293B' }}
+        />
+      </div>
+
+      {loading ? (
+        <div className="text-center py-8" style={{ color: '#64748B' }}>Cargando...</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-8" style={{ color: '#64748B' }}>
+          <HeartPulse size={40} className="mx-auto mb-2 opacity-40" />
+          <p>No hay empleados pendientes de reconocimiento medico</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((emp) => {
+            const badge = estadoBadge(emp.reconocimiento_medico_estado);
+            const isEditing = editingId === emp.id;
+            return (
+              <div key={emp.id} className="rounded-xl p-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: '#ECFDF5', color: '#065F46' }}>
+                      {emp.nombre?.charAt(0)?.toUpperCase() || '?'}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm" style={{ color: '#1E293B' }}>{emp.nombre} {emp.apellidos}</p>
+                      <p className="text-xs" style={{ color: '#64748B' }}>{emp.dni || 'Sin DNI'}</p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}>
+                    {badge.label}
+                  </span>
+                </div>
+
+                {isEditing ? (
+                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid #F1F5F9' }}>
+                    <p className="text-xs font-semibold mb-2" style={{ color: '#64748B' }}>Actualizar estado:</p>
+                    <div className="flex gap-2 flex-wrap items-center">
+                      {([
+                        { value: 'en_proceso', label: 'En proceso', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' },
+                        { value: 'finalizado', label: 'Finalizado', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' },
+                      ] as const).map(({ value, label, color, bg, border }) => {
+                        const isActive = editEstado === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setEditEstado(value as 'en_proceso' | 'finalizado')}
+                            className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                            style={{
+                              backgroundColor: isActive ? bg : '#FFFFFF',
+                              color: isActive ? color : '#94A3B8',
+                              border: `1.5px solid ${isActive ? border : '#E2E8F0'}`,
+                            }}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                      <button
+                        onClick={() => handleSave(emp.id)}
+                        disabled={saving}
+                        className="ml-auto px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all disabled:opacity-50"
+                        style={{ backgroundColor: '#065F46', color: '#FFFFFF' }}
+                      >
+                        {saving ? 'Guardando...' : 'Guardar'}
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                        style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      onClick={() => handleEdit(emp)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                      style={{ backgroundColor: '#ECFDF5', color: '#065F46', border: '1px solid #A7F3D0' }}
+                    >
+                      <Edit2 size={13} /> Editar
+                    </button>
+                  </div>
+                )}
+                {emp.reconocimiento_medico_fecha && (
+                  <p className="text-xs mt-2" style={{ color: '#64748B' }}>
+                    Fecha: {new Date(emp.reconocimiento_medico_fecha).toLocaleDateString('es-ES')}
+                  </p>
                 )}
               </div>
             );

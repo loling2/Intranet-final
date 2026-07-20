@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   BedSingle, Plus, X, Trash2, Search, RefreshCw, Download, Calendar,
   AlertTriangle, UserCheck, CheckCircle2, Clock, ArrowRight,
   Sun, Moon, Sunset, Banknote, RotateCcw, MoreHorizontal, Star,
-  FileCheck, CreditCard, Hash,
+  FileCheck, CreditCard, Hash, FileSpreadsheet, FileText, ChevronDown,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { supabase } from '../supabaseClient';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -140,39 +141,116 @@ function computeStatsFromDB(susts: Sustitucion[]): CoverageStats {
   return { totalDias, totalHoras, horasNocturnas, diasFestivos, horasFestivas };
 }
 
-function exportCSV(bajas: BajaWithSustituciones[], empleados: Empleado[]) {
+type ReporteRow = { sustituido: string; fecha: string; centro: string; horas: number; horasNoc: number };
+
+function buildReporteGroups(bajas: BajaWithSustituciones[], empleados: Empleado[]) {
   const empMap = new Map(empleados.map((e) => [e.id, e]));
-  // Group sustituciones by sustituto, with detail rows
-  const groups = new Map<string, { nombre: string; rows: string[][] }>();
+  const groups = new Map<string, { nombre: string; rows: ReporteRow[] }>();
   for (const b of bajas) {
     for (const s of b.sustituciones) {
       const horasBase = HORAS_POR_TURNO[s.turno ?? ''] ?? 8;
       const horas = s.unidad === 'horas' ? (s.num_horas ?? 0) : s.num_dias * horasBase;
       const horasNoc = s.turno === 'noche' ? horas : 0;
       const centro = empMap.get(b.empleado_id)?.centro_trabajo ?? '';
-      const row = [b.empleado_nombre, s.fecha_inicio, centro, String(horas), String(horasNoc)];
+      const row: ReporteRow = { sustituido: b.empleado_nombre, fecha: s.fecha_inicio, centro, horas, horasNoc };
       const g = groups.get(s.sustituto_id);
       if (g) g.rows.push(row);
       else groups.set(s.sustituto_id, { nombre: s.sustituto_nombre, rows: [row] });
     }
   }
-  const lines: string[] = [];
+  return groups;
+}
+
+function exportExcel(bajas: BajaWithSustituciones[], empleados: Empleado[]) {
+  const groups = buildReporteGroups(bajas, empleados);
+  const wb = XLSX.utils.book_new();
+  let hasData = false;
   for (const [, g] of groups) {
-    const totHoras = g.rows.reduce((sum, r) => sum + parseFloat(r[3]), 0);
-    const totNoc = g.rows.reduce((sum, r) => sum + parseFloat(r[4]), 0);
-    lines.push(`"${g.nombre} - TOTAL: ${totHoras}h${totNoc > 0 ? ' / ' + totNoc + 'h nocturnas' : ''}"`);
-    lines.push(['Persona sustituida', 'Fecha', 'Centro', 'Horas', 'H. Nocturnas'].map((c) => `"${c}"`).join(','));
-    for (const r of g.rows) lines.push(r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','));
-    lines.push('');
+    const totHoras = g.rows.reduce((sum, r) => sum + r.horas, 0);
+    const totNoc = g.rows.reduce((sum, r) => sum + r.horasNoc, 0);
+    const aoa: (string | number)[][] = [
+      [`BALANCE DE SUSTITUCIONES - ${g.nombre}`],
+      [`TOTAL: ${totHoras}h${totNoc > 0 ? ' / ' + totNoc + 'h nocturnas' : ''}`],
+      [],
+      ['Persona sustituida', 'Fecha', 'Centro', 'Horas', 'H. Nocturnas'],
+      ...g.rows.map((r) => [r.sustituido, r.fecha, r.centro, r.horas, r.horasNoc]),
+      [],
+      ['TOTAL HORAS', '', '', totHoras, totNoc],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 10 }, { wch: 14 }];
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } },
+    ];
+    const safeName = g.nombre.replace(/[\\/?*[\]:]/g, '_').slice(0, 28) || 'Hoja';
+    XLSX.utils.book_append_sheet(wb, ws, safeName);
+    hasData = true;
   }
-  const csv = lines.join('\n');
-  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `bajas_balance_${new Date().toISOString().split('T')[0]}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  if (!hasData) {
+    const ws = XLSX.utils.aoa_to_sheet([['Sin datos para exportar']]);
+    XLSX.utils.book_append_sheet(wb, ws, 'Sin datos');
+  }
+  XLSX.writeFile(wb, `bajas_balance_${new Date().toISOString().split('T')[0]}.xlsx`);
+}
+
+function exportPDF(bajas: BajaWithSustituciones[], empleados: Empleado[]) {
+  const groups = buildReporteGroups(bajas, empleados);
+  const fechaGen = new Date().toLocaleString('es-ES');
+  const groupsArr = Array.from(groups.values());
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<title>Balance de Sustituciones</title>
+<style>
+  @page { size: A4; margin: 14mm 12mm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; }
+  .header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 14px; }
+  .header h1 { font-size: 18px; margin: 0; letter-spacing: -0.2px; }
+  .header .meta { font-size: 11px; color: #64748b; text-align: right; }
+  .group { margin-bottom: 18px; page-break-inside: avoid; }
+  .group-title { font-size: 13px; font-weight: 700; background: #f1f5f9; padding: 6px 10px; border-left: 4px solid #0369a1; border-radius: 4px; margin-bottom: 6px; }
+  .group-title .tot { color: #0369a1; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #0f172a; color: #fff; text-align: left; padding: 6px 8px; font-weight: 600; }
+  th.num { text-align: right; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  tr.tot td { font-weight: 700; background: #ecfdf5 !important; border-top: 2px solid #16a34a; }
+  tr.tot td.num { color: #16a34a; }
+  .empty { padding: 20px; text-align: center; color: #94a3b8; font-style: italic; }
+  .footer { margin-top: 18px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 6px; }
+</style></head><body>
+<div class="header">
+  <h1>Balance de Sustituciones</h1>
+  <div class="meta">Generado el ${fechaGen}</div>
+</div>
+${groupsArr.length === 0 ? '<div class="empty">Sin datos para mostrar.</div>' : groupsArr.map((g) => {
+  const totHoras = g.rows.reduce((s, r) => s + r.horas, 0);
+  const totNoc = g.rows.reduce((s, r) => s + r.horasNoc, 0);
+  return `<div class="group">
+    <div class="group-title">${g.nombre} <span class="tot">· TOTAL: ${totHoras}h${totNoc > 0 ? ' / ' + totNoc + 'h nocturnas' : ''}</span></div>
+    <table>
+      <thead><tr><th>Persona sustituida</th><th>Fecha</th><th>Centro</th><th class="num">Horas</th><th class="num">H. Nocturnas</th></tr></thead>
+      <tbody>
+        ${g.rows.map((r) => `<tr><td>${escapeHtml(r.sustituido)}</td><td>${r.fecha}</td><td>${escapeHtml(r.centro)}</td><td class="num">${r.horas}</td><td class="num">${r.horasNoc}</td></tr>`).join('')}
+        <tr class="tot"><td>TOTAL</td><td></td><td></td><td class="num">${totHoras}</td><td class="num">${totNoc}</td></tr>
+      </tbody>
+    </table>
+  </div>`;
+}).join('')}
+<div class="footer">Documento generado automáticamente · ${fechaGen}</div>
+<script>window.onload=function(){setTimeout(function(){window.print();},250);}</script>
+</body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Por favor, permite las ventanas emergentes para exportar el PDF.'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
+function escapeHtml(s: string) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 }
 
 // ── Sustitucion Block (form) ──────────────────────────────────────────────────
@@ -367,6 +445,7 @@ export default function BajasModule() {
 
   // View tabs: bajas | finalizadas | balance
   const [reporteView, setReporteView] = useState<'bajas' | 'finalizadas' | 'balance'>('bajas');
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
   // Finalizar modal
   const [finalizarTarget, setFinalizarTarget] = useState<BajaWithSustituciones | null>(null);
@@ -705,11 +784,31 @@ export default function BajasModule() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={() => exportCSV(reporteView === 'finalizadas' ? finalizadasBajas : activeBajas, empleados)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer"
-            style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}>
-            <Download size={14} /> Exportar CSV
-          </button>
+          <div className="relative">
+            <button onClick={() => setExportMenuOpen((v) => !v)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer"
+              style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}>
+              <Download size={14} /> Exportar <ChevronDown size={12} />
+            </button>
+            {exportMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setExportMenuOpen(false)} />
+                <div className="absolute right-0 mt-1 rounded-lg shadow-lg z-20 overflow-hidden min-w-[180px]"
+                  style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                  <button onClick={() => { exportExcel(reporteView === 'finalizadas' ? finalizadasBajas : activeBajas, empleados); setExportMenuOpen(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium cursor-pointer hover:bg-slate-50"
+                    style={{ color: '#16A34A' }}>
+                    <FileSpreadsheet size={14} /> Excel (.xlsx)
+                  </button>
+                  <button onClick={() => { exportPDF(reporteView === 'finalizadas' ? finalizadasBajas : activeBajas, empleados); setExportMenuOpen(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium cursor-pointer hover:bg-slate-50"
+                    style={{ color: '#DC2626' }}>
+                    <FileText size={14} /> PDF (imprimir)
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
           <button onClick={openNewBaja}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer"
             style={{ backgroundColor: '#0369A1' }}>

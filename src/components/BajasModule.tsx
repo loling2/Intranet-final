@@ -15,6 +15,8 @@ interface Empleado {
   dni: string | null;
   id_sociedad: string | null;
   activo: boolean;
+  tipo_contrato: string | null;
+  centro_trabajo: string | null;
 }
 
 interface Baja {
@@ -132,33 +134,37 @@ function computeStatsFromDB(susts: Sustitucion[]): CoverageStats {
   return { totalDias, totalHoras, horasNocturnas, diasFestivos, horasFestivas };
 }
 
-function exportCSV(bajas: BajaWithSustituciones[]) {
-  const headers = ['Trabajador', 'Fecha Inicio', 'Fecha Fin', 'Total Días', 'Días No Cubiertos', 'Días Asignados', 'Horas Asignadas', 'H. Nocturnas', 'Días Festivos', 'Motivo', 'Estado', 'Larga Duración', 'Modo Finalización', 'Sustitutos'];
-  const rows = bajas.map((b) => {
-    const stats = computeStatsFromDB(b.sustituciones);
-    return [
-      b.empleado_nombre,
-      b.fecha_inicio,
-      b.fecha_fin ?? (b.larga_duracion ? 'Indefinida' : ''),
-      b.larga_duracion ? 'Indefinido' : b.total_dias,
-      b.dias_no_cubiertos,
-      stats.totalDias,
-      stats.totalHoras,
-      stats.horasNocturnas,
-      stats.diasFestivos,
-      b.motivo ?? '',
-      b.estado,
-      b.larga_duracion ? 'Sí' : 'No',
-      b.modo_finalizacion ?? '',
-      b.sustituciones.map((s) => `${s.sustituto_nombre} (${s.unidad === 'horas' ? s.num_horas + 'h' : s.num_dias + 'd'}${s.turno ? ' ' + s.turno : ''}${s.tipo_cobertura ? ' - ' + s.tipo_cobertura : ''})`).join('; '),
-    ];
-  });
-  const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+function exportCSV(bajas: BajaWithSustituciones[], empleados: Empleado[]) {
+  const empMap = new Map(empleados.map((e) => [e.id, e]));
+  // Group sustituciones by sustituto, with detail rows
+  const groups = new Map<string, { nombre: string; rows: string[][] }>();
+  for (const b of bajas) {
+    for (const s of b.sustituciones) {
+      const horasBase = HORAS_POR_TURNO[s.turno ?? ''] ?? 8;
+      const horas = s.unidad === 'horas' ? (s.num_horas ?? 0) : s.num_dias * horasBase;
+      const horasNoc = s.turno === 'noche' ? horas : 0;
+      const centro = empMap.get(b.empleado_id)?.centro_trabajo ?? '';
+      const row = [b.empleado_nombre, s.fecha_inicio, centro, String(horas), String(horasNoc)];
+      const g = groups.get(s.sustituto_id);
+      if (g) g.rows.push(row);
+      else groups.set(s.sustituto_id, { nombre: s.sustituto_nombre, rows: [row] });
+    }
+  }
+  const lines: string[] = [];
+  for (const [, g] of groups) {
+    const totHoras = g.rows.reduce((sum, r) => sum + parseFloat(r[3]), 0);
+    const totNoc = g.rows.reduce((sum, r) => sum + parseFloat(r[4]), 0);
+    lines.push(`"${g.nombre} - TOTAL: ${totHoras}h${totNoc > 0 ? ' / ' + totNoc + 'h nocturnas' : ''}"`);
+    lines.push(['Persona sustituida', 'Fecha', 'Centro', 'Horas', 'H. Nocturnas'].map((c) => `"${c}"`).join(','));
+    for (const r of g.rows) lines.push(r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','));
+    lines.push('');
+  }
+  const csv = lines.join('\n');
   const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `bajas_ausencias_${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `bajas_balance_${new Date().toISOString().split('T')[0]}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -169,11 +175,12 @@ interface SustitucionBlockProps {
   s: SustitucionForm;
   idx: number;
   bajaFechaInicio: string;
+  tipoContrato: string | null;
   onUpdate: (idx: number, field: keyof SustitucionForm, value: string | number | boolean) => void;
   onRemove: (idx: number) => void;
 }
 
-function SustitucionBlock({ s, idx, bajaFechaInicio, onUpdate, onRemove }: SustitucionBlockProps) {
+function SustitucionBlock({ s, idx, bajaFechaInicio, tipoContrato, onUpdate, onRemove }: SustitucionBlockProps) {
   const tipoColors = {
     pagar: { active: '#16A34A', activeBg: '#F0FDF4', activeBorder: '#BBF7D0', icon: Banknote },
     compensar: { active: '#0369A1', activeBg: '#EFF6FF', activeBorder: '#BFDBFE', icon: RotateCcw },
@@ -206,6 +213,9 @@ function SustitucionBlock({ s, idx, bajaFechaInicio, onUpdate, onRemove }: Susti
         <div className="flex items-center gap-2">
           <UserCheck size={13} style={{ color: '#0369A1' }} />
           <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#1E293B' }}>{s.sustituto_nombre}</span>
+          {tipoContrato && (
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>{tipoContrato}</span>
+          )}
         </div>
         <button onClick={() => onRemove(idx)} className="w-5 h-5 rounded flex items-center justify-center cursor-pointer hover:bg-red-100 transition-colors" style={{ color: '#DC2626' }}>
           <X size={12} />
@@ -346,7 +356,7 @@ export default function BajasModule() {
   const [reporteFechaFin, setReporteFechaFin] = useState('');
 
   const loadEmpleados = useCallback(async () => {
-    const { data } = await supabase.from('empleados').select('id, nombre, dni, id_sociedad, activo').order('nombre', { ascending: true });
+    const { data } = await supabase.from('empleados').select('id, nombre, dni, id_sociedad, activo, tipo_contrato, centro_trabajo').order('nombre', { ascending: true });
     setEmpleados(data ?? []);
   }, []);
 
@@ -540,9 +550,11 @@ export default function BajasModule() {
     return true;
   });
 
-  // Balance data
+  // Balance data — only active (non-finalized) bajas count toward the balance.
+  // Finalizing a baja resets the sustitute's hour counter to 0.
   const balanceMap = new Map<string, { nombre: string; dias: number; horas: number; horasNocturnas: number; diasFestivos: number; count: number }>();
   for (const b of bajas) {
+    if (b.estado !== 'activa') continue;
     for (const s of b.sustituciones) {
       if (reporteFechaInicio && s.fecha_inicio < reporteFechaInicio) continue;
       if (reporteFechaFin && s.fecha_inicio > reporteFechaFin) continue;
@@ -654,7 +666,7 @@ export default function BajasModule() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={() => exportCSV(reporteView === 'finalizadas' ? finalizadasBajas : activeBajas)}
+          <button onClick={() => exportCSV(reporteView === 'finalizadas' ? finalizadasBajas : activeBajas, empleados)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer"
             style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}>
             <Download size={14} /> Exportar CSV
@@ -901,13 +913,6 @@ export default function BajasModule() {
                           </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <button onClick={() => handleDeleteBaja(baja)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer"
-                          style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
                     </div>
 
                     {baja.sustituciones.length > 0 && (
@@ -1133,11 +1138,19 @@ export default function BajasModule() {
                   <input type="date" value={bajaForm.fecha_inicio} onChange={(e) => setBajaForm({ ...bajaForm, fecha_inicio: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg text-sm border outline-none" style={{ borderColor: '#E2E8F0', color: '#1E293B' }} />
                 </div>
-                {!largaDuracion && (
+                {!largaDuracion ? (
                   <div>
                     <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Fecha Fin *</label>
                     <input type="date" value={bajaForm.fecha_fin} min={bajaForm.fecha_inicio} onChange={(e) => setBajaForm({ ...bajaForm, fecha_fin: e.target.value })}
                       className="w-full px-3 py-2 rounded-lg text-sm border outline-none" style={{ borderColor: '#E2E8F0', color: '#1E293B' }} />
+                  </div>
+                ) : (
+                  <div className="flex flex-col justify-end">
+                    <button type="button" onClick={() => { setShowSustitutoDropdown(true); setTimeout(() => (document.querySelector('input[placeholder="Buscar sustituto..."]') as HTMLInputElement | null)?.focus(), 50); }}
+                      className="px-3 py-2 rounded-lg text-sm font-semibold text-white cursor-pointer flex items-center justify-center gap-1.5"
+                      style={{ backgroundColor: '#7C3AED' }}>
+                      <UserCheck size={14} /> Asignar persona
+                    </button>
                   </div>
                 )}
               </div>
@@ -1219,7 +1232,7 @@ export default function BajasModule() {
                 ) : (
                   <div className="space-y-3">
                     {sustitucionesForm.map((s, idx) => (
-                      <SustitucionBlock key={s.sustituto_id} s={s} idx={idx} bajaFechaInicio={bajaForm.fecha_inicio} onUpdate={updateSustitucion} onRemove={removeSustitucion} />
+                      <SustitucionBlock key={s.sustituto_id} s={s} idx={idx} bajaFechaInicio={bajaForm.fecha_inicio} tipoContrato={empleados.find((e) => e.id === s.sustituto_id)?.tipo_contrato ?? null} onUpdate={updateSustitucion} onRemove={removeSustitucion} />
                     ))}
                     {/* Coverage summary */}
                     <div className="rounded-xl px-4 py-3 flex flex-wrap gap-2 items-center" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>

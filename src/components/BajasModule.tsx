@@ -49,6 +49,9 @@ interface Sustitucion {
   es_festivo: boolean;
   unidad: string;
   num_horas: number;
+  horas_nocturnas: number | null;
+  motivo_otro: string | null;
+  num_dias_festivos: number | null;
 }
 
 interface BajaWithSustituciones extends Baja {
@@ -68,6 +71,9 @@ interface SustitucionForm {
   es_festivo: boolean;
   unidad: 'dias' | 'horas';
   num_horas: number;
+  horas_nocturnas: number;
+  motivo_otro: string;
+  num_dias_festivos: number;
 }
 
 type ModoFinalizacion = 'nomina' | 'solicitud' | 'otro';
@@ -122,12 +128,12 @@ function computeStatsFromDB(susts: Sustitucion[]): CoverageStats {
     const unidad = s.unidad ?? 'dias';
     if (unidad === 'dias') {
       totalDias += s.num_dias;
-      if (s.es_festivo) diasFestivos += s.num_dias;
-      if (s.turno === 'noche') horasNocturnas += s.num_dias * horasBase;
+      if (s.es_festivo) diasFestivos += s.num_dias_festivos ?? s.num_dias;
+      if (s.turno === 'noche') horasNocturnas += s.horas_nocturnas ?? (s.num_dias * horasBase);
       if (s.es_festivo) horasFestivas += s.num_dias * horasBase;
     } else {
       totalHoras += s.num_horas ?? 0;
-      if (s.turno === 'noche') horasNocturnas += s.num_horas ?? 0;
+      if (s.turno === 'noche') horasNocturnas += s.horas_nocturnas ?? (s.num_horas ?? 0);
       if (s.es_festivo) horasFestivas += s.num_horas ?? 0;
     }
   }
@@ -294,6 +300,33 @@ function SustitucionBlock({ s, idx, bajaFechaInicio, tipoContrato, onUpdate, onR
             </button>
           </div>
         </div>
+        {s.tipo_cobertura === 'otro' && (
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Motivo (otro)</label>
+            <input type="text" value={s.motivo_otro} onChange={(e) => onUpdate(idx, 'motivo_otro', e.target.value)}
+              placeholder="Describe el motivo..."
+              className="w-full px-2.5 py-1.5 rounded-lg text-xs border outline-none"
+              style={{ borderColor: '#FDE047', color: '#1E293B', backgroundColor: '#FEF9C3' }} />
+          </div>
+        )}
+        {s.turno === 'noche' && (
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#7C3AED' }}>Horas nocturnas</label>
+            <input type="number" min={0} step={0.5} value={s.horas_nocturnas}
+              onChange={(e) => onUpdate(idx, 'horas_nocturnas', parseFloat(e.target.value) || 0)}
+              className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none"
+              style={{ borderColor: '#DDD6FE', color: '#7C3AED', backgroundColor: '#F5F3FF', fontWeight: 700, fontSize: '14px' }} />
+          </div>
+        )}
+        {s.es_festivo && (
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#854D0E' }}>Nº días festivos</label>
+            <input type="number" min={0} step={1} value={s.num_dias_festivos}
+              onChange={(e) => onUpdate(idx, 'num_dias_festivos', parseInt(e.target.value) || 0)}
+              className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none"
+              style={{ borderColor: '#FDE047', color: '#854D0E', backgroundColor: '#FEF9C3', fontWeight: 700, fontSize: '14px' }} />
+          </div>
+        )}
         {s.turno && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: s.turno === 'noche' ? '#F5F3FF' : '#F8FAFC', border: '1px solid #E2E8F0' }}>
             {s.turno === 'noche' ? <Moon size={12} style={{ color: '#7C3AED' }} /> : s.turno === 'tarde' ? <Sunset size={12} style={{ color: '#EA580C' }} /> : <Sun size={12} style={{ color: '#D97706' }} />}
@@ -302,7 +335,7 @@ function SustitucionBlock({ s, idx, bajaFechaInicio, tipoContrato, onUpdate, onR
               <strong style={{ color: s.turno === 'noche' ? '#7C3AED' : '#0369A1' }}>
                 {horasAuto}h {s.turno === 'noche' ? 'nocturnas' : s.turno === 'tarde' ? 'tarde' : 'mañana'}
               </strong>
-              {s.es_festivo && <span style={{ color: '#854D0E' }}> · festivo</span>}
+              {s.es_festivo && <span style={{ color: '#854D0E' }}> · festivo ({s.num_dias_festivos}d)</span>}
             </span>
           </div>
         )}
@@ -413,6 +446,9 @@ export default function BajasModule() {
       es_festivo: s.es_festivo ?? false,
       unidad: (s.unidad as SustitucionForm['unidad']) ?? 'dias',
       num_horas: s.num_horas ?? 0,
+      horas_nocturnas: s.horas_nocturnas ?? 0,
+      motivo_otro: s.motivo_otro ?? '',
+      num_dias_festivos: s.num_dias_festivos ?? 0,
     })));
     setShowBajaModal(true);
     setError('');
@@ -425,7 +461,7 @@ export default function BajasModule() {
 
   const addSustitucionBlock = (emp: Empleado) => {
     if (sustitucionesForm.find((s) => s.sustituto_id === emp.id)) { setError(`${emp.nombre} ya está asignado.`); return; }
-    setSustitucionesForm([...sustitucionesForm, { sustituto_id: emp.id, sustituto_nombre: emp.nombre, fecha_inicio: bajaForm.fecha_inicio || '', num_dias: 1, notas: '', tipo_cobertura: '', turno: '', es_festivo: false, unidad: 'dias', num_horas: 8 }]);
+    setSustitucionesForm([...sustitucionesForm, { sustituto_id: emp.id, sustituto_nombre: emp.nombre, fecha_inicio: bajaForm.fecha_inicio || '', num_dias: 1, notas: '', tipo_cobertura: '', turno: '', es_festivo: false, unidad: 'dias', num_horas: 8, horas_nocturnas: 0, motivo_otro: '', num_dias_festivos: 0 }]);
     setShowSustitutoDropdown(false);
     setSustitutoSearch('');
     setError('');
@@ -470,6 +506,9 @@ export default function BajasModule() {
           notas: s.notas.trim() || null, tipo_cobertura: s.tipo_cobertura || null,
           turno: s.turno || null, es_festivo: s.es_festivo, unidad: s.unidad,
           num_horas: s.unidad === 'horas' ? s.num_horas : (s.turno ? s.num_dias * (HORAS_POR_TURNO[s.turno] ?? 8) : 0),
+          horas_nocturnas: s.turno === 'noche' ? s.horas_nocturnas : 0,
+          motivo_otro: s.tipo_cobertura === 'otro' ? (s.motivo_otro.trim() || null) : null,
+          num_dias_festivos: s.es_festivo ? s.num_dias_festivos : 0,
         }));
         const { error: sustErr } = await supabase.from('sustituciones').insert(sustRows);
         if (sustErr) throw sustErr;
@@ -561,8 +600,8 @@ export default function BajasModule() {
       const existing = balanceMap.get(s.sustituto_id);
       const horasBase = HORAS_POR_TURNO[s.turno ?? ''] ?? 8;
       const horasVal = s.unidad === 'horas' ? (s.num_horas ?? 0) : s.num_dias * horasBase;
-      const horasNoc = s.turno === 'noche' ? horasVal : 0;
-      const diasFest = s.es_festivo ? s.num_dias : 0;
+      const horasNoc = s.turno === 'noche' ? (s.horas_nocturnas ?? horasVal) : 0;
+      const diasFest = s.es_festivo ? (s.num_dias_festivos ?? s.num_dias) : 0;
       if (existing) {
         existing.dias += s.num_dias; existing.horas += s.unidad === 'horas' ? (s.num_horas ?? 0) : 0;
         existing.horasNocturnas += horasNoc; existing.diasFestivos += diasFest; existing.count += 1;

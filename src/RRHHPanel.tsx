@@ -16,6 +16,7 @@ import PersonalDocumentsPanel from './components/PersonalDocumentsPanel';
 import FacturasModule from './components/FacturasModule';
 import IncidenciasModule from './components/IncidenciasModule';
 import FichajesModule from './components/FichajesModule';
+import CorreccionesFichajesModule from './components/CorreccionesFichajesModule';
 import BajasModule from './components/BajasModule';
 import { supabase } from './supabaseClient';
 
@@ -660,7 +661,10 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
 
         {/* Fichajes Tab */}
         {activeTab === 'fichajes' && (
-          <FichajesModule />
+          <div className="space-y-6">
+            <CorreccionesFichajesModule />
+            <FichajesModule />
+          </div>
         )}
 
         {/* Bajas/Ausencias Tab */}

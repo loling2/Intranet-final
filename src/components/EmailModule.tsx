@@ -40,7 +40,20 @@ export interface EmailPlantilla {
   asunto: string;
   cuerpo: string;
   activo: boolean;
+  tipo: string | null;
   created_at: string;
+}
+
+const TIPO_OPTIONS: { value: string; label: string; color: string; bg: string; border: string }[] = [
+  { value: 'password_reset', label: 'Recuperacion de contrasena', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+  { value: 'usuario_nuevo',  label: 'Nuevo usuario',              color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' },
+  { value: 'notificacion',   label: 'Notificacion general',       color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+  { value: 'generico',       label: 'Generica',                    color: '#475569', bg: '#F1F5F9', border: '#E2E8F0' },
+];
+
+function getTipoBadge(tipo: string | null): { label: string; color: string; bg: string; border: string } | null {
+  if (!tipo) return null;
+  return TIPO_OPTIONS.find((t) => t.value === tipo) ?? { label: tipo, color: '#475569', bg: '#F1F5F9', border: '#E2E8F0' };
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -474,7 +487,7 @@ function NotifModal({ initial, cuentas, onClose, onSaved }: NotifModalProps) {
 // ─── Plantilla Modal ──────────────────────────────────────────────────────────
 
 const BLANK_PLANTILLA = (): Omit<EmailPlantilla, 'id' | 'created_at'> => ({
-  nombre: '', descripcion: '', asunto: '', cuerpo: '', activo: true,
+  nombre: '', descripcion: '', asunto: '', cuerpo: '', activo: true, tipo: null,
 });
 
 interface PlantillaModalProps {
@@ -486,7 +499,7 @@ interface PlantillaModalProps {
 function PlantillaModal({ initial, onClose, onSaved }: PlantillaModalProps) {
   const [form, setForm] = useState<Omit<EmailPlantilla, 'id' | 'created_at'>>(
     initial
-      ? { nombre: initial.nombre, descripcion: initial.descripcion, asunto: initial.asunto, cuerpo: initial.cuerpo, activo: initial.activo }
+      ? { nombre: initial.nombre, descripcion: initial.descripcion, asunto: initial.asunto, cuerpo: initial.cuerpo, activo: initial.activo, tipo: initial.tipo }
       : BLANK_PLANTILLA()
   );
   const [saving, setSaving] = useState(false);
@@ -569,6 +582,45 @@ function PlantillaModal({ initial, onClose, onSaved }: PlantillaModalProps) {
                 placeholder="Ej: Bienvenido a {{empresa}} — tus credenciales de acceso"
                 className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
                 style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>
+                Tipo de plantilla
+                <span className="ml-1 normal-case font-normal text-slate-400">(asignala a un flujo del sistema, ej: recuperacion de contrasena)</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => set('tipo', null)}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold border-2 transition-all"
+                  style={{
+                    borderColor: form.tipo === null ? '#475569' : '#E2E8F0',
+                    backgroundColor: form.tipo === null ? '#F1F5F9' : '#F8FAFC',
+                    color: form.tipo === null ? '#475569' : '#94A3B8',
+                  }}
+                >
+                  Sin asignar
+                </button>
+                {TIPO_OPTIONS.map((opt) => {
+                  const isActive = form.tipo === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => set('tipo', opt.value)}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold border-2 transition-all"
+                      style={{
+                        borderColor: isActive ? opt.color : '#E2E8F0',
+                        backgroundColor: isActive ? opt.bg : '#F8FAFC',
+                        color: isActive ? opt.color : '#94A3B8',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -1021,6 +1073,14 @@ function PlantillasSection() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{p.nombre}</p>
+                      {(() => {
+                        const badge = getTipoBadge(p.tipo);
+                        return badge ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}>
+                            {badge.label}
+                          </span>
+                        ) : null;
+                      })()}
                       {!p.activo && (
                         <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F1F5F9', color: '#94A3B8' }}>Inactiva</span>
                       )}

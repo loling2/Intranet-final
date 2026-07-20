@@ -24,6 +24,7 @@ import { downloadFromWasabi, uploadToWasabiKey } from './lib/wasabi';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import ChangePinModal from './components/ChangePinModal';
 import IncidenciasModule from './components/IncidenciasModule';
+import MisFichajesView from './components/MisFichajesView';
 
 const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> = {
   'building-2': Building2,
@@ -691,6 +692,9 @@ export default function LoginPage() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [session, setSession] = useState<SessionState | null>(null);
   const [showVehicleModal, setShowVehicleModal] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [resetEmail, setResetEmail] = useState<string>('');
   const [bgImage, setBgImage] = useState<string>('/foto1_(2).png');
   const [societies, setSocieties] = useState<SocietyTheme[]>(staticSocieties);
   const [impersonating, setImpersonating] = useState<{ nombre: string; email: string; userId: string } | null>(null);
@@ -720,6 +724,22 @@ export default function LoginPage() {
           }));
         }
       });
+  }, []);
+
+  // Detect password reset token in URL (?reset_token=...&email=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('reset_token');
+    const emailParam = params.get('email');
+    if (token && emailParam) {
+      setResetToken(token);
+      setResetEmail(emailParam);
+      // Clean the URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('reset_token');
+      url.searchParams.delete('email');
+      window.history.replaceState({}, document.title, url.toString());
+    }
   }, []);
 
   const selected = societies.find((s) => s.id === selectedId) ?? null;
@@ -1228,15 +1248,13 @@ export default function LoginPage() {
             <p className="text-xs text-red-500 mb-3 mt-2 pl-1">{loginError}</p>
           )}
 
-          {/* Remember + Forgot */}
-          <div className="flex items-center justify-between mb-6 mt-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <div className="w-4 h-4 rounded border flex items-center justify-center" style={{ borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' }}>
-                <input type="checkbox" className="sr-only" />
-              </div>
-              <span className="text-xs" style={{ color: '#64748B' }}>Recordarme</span>
-            </label>
-            <button className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>
+          {/* Forgot password */}
+          <div className="flex items-center justify-end mb-6 mt-4">
+            <button
+              onClick={() => setShowForgotPassword(true)}
+              className="text-xs font-medium cursor-pointer transition-opacity hover:opacity-70"
+              style={{ color: '#0369A1' }}
+            >
               Olvidaste tu contrasena?
             </button>
           </div>
@@ -1276,6 +1294,310 @@ export default function LoginPage() {
       </div>
 
       {showVehicleModal && <JornadaModal onClose={() => setShowVehicleModal(false)} />}
+      {showForgotPassword && <ForgotPasswordModal onClose={() => setShowForgotPassword(false)} />}
+      {resetToken && (
+        <ResetPasswordModal
+          token={resetToken}
+          email={resetEmail}
+          onClose={() => { setResetToken(null); setResetEmail(''); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Forgot Password Modal ───────────────────────────────────────────────────
+
+function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState<'request' | 'sent'>('request');
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    setError('');
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError('Introduce un correo válido.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const resp = await fetch(`${supabaseUrl}/functions/v1/password-reset`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${anonKey}`,
+          'Apikey': anonKey,
+        },
+        body: JSON.stringify({ action: 'request', email: email.trim().toLowerCase() }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(typeof body.error === 'string' ? body.error : 'Error al procesar la solicitud');
+      }
+      setStep('sent');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al procesar la solicitud');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[400] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+    >
+      <div className="bg-white rounded-2xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden">
+        <div
+          className="px-6 py-4 flex items-center justify-between"
+          style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }}>
+              <KeyRound size={15} className="text-white" />
+            </div>
+            <h2 className="text-white font-semibold text-sm">Recuperar Contrasena</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer"
+            style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {step === 'request' ? (
+            <>
+              <p className="text-sm" style={{ color: '#475569' }}>
+                Introduce tu correo electronico y te enviaremos un enlace para restablecer tu contrasena.
+              </p>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
+                  Correo electronico
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+                  placeholder="tu@empresa.com"
+                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                />
+              </div>
+              {error && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                  <AlertCircle size={13} style={{ color: '#DC2626' }} />
+                  <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
+                </div>
+              )}
+              <button
+                onClick={handleSubmit}
+                disabled={loading || !email.trim()}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#0F172A' }}
+              >
+                {loading ? <RefreshCw size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+                Enviar enlace
+              </button>
+            </>
+          ) : (
+            <div className="flex flex-col items-center py-4 text-center gap-3">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: '#ECFDF5', border: '2px solid #6EE7B7' }}>
+                <CheckCircle2 size={28} style={{ color: '#065F46' }} />
+              </div>
+              <p className="font-semibold text-sm" style={{ color: '#065F46' }}>Correo enviado correctamente</p>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>
+                Si el correo existe en nuestra base de datos, recibiras un mensaje con instrucciones para restablecer tu contrasena. Revisa tu bandeja de entrada y la carpeta de spam.
+              </p>
+              <button
+                onClick={onClose}
+                className="mt-2 w-full py-2.5 rounded-xl text-sm font-semibold cursor-pointer"
+                style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}
+              >
+                Cerrar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Reset Password Modal ────────────────────────────────────────────────────
+
+function ResetPasswordModal({ token, email, onClose }: { token: string; email: string; onClose: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+
+  const rules = [
+    { label: 'Minimo 8 caracteres', ok: password.length >= 8 },
+    { label: '1 mayuscula', ok: /[A-Z]/.test(password) },
+    { label: '1 minuscula', ok: /[a-z]/.test(password) },
+    { label: '1 numero', ok: /[0-9]/.test(password) },
+    { label: '1 simbolo', ok: /[^A-Za-z0-9]/.test(password) },
+  ];
+  const allRulesOk = rules.every((r) => r.ok);
+  const canSubmit = allRulesOk && password === confirm && password.length > 0;
+
+  const handleSubmit = async () => {
+    setError('');
+    if (!allRulesOk) { setError('La contrasena no cumple los requisitos.'); return; }
+    if (password !== confirm) { setError('Las contrasenas no coinciden.'); return; }
+    setLoading(true);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const resp = await fetch(`${supabaseUrl}/functions/v1/password-reset`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${anonKey}`,
+          'Apikey': anonKey,
+        },
+        body: JSON.stringify({ action: 'reset', token, email, password }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(typeof body.error === 'string' ? body.error : 'Error al restablecer la contrasena');
+      }
+      setDone(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al restablecer la contrasena');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[400] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+    >
+      <div className="bg-white rounded-2xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden">
+        <div
+          className="px-6 py-4 flex items-center justify-between"
+          style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }}>
+              <KeyRound size={15} className="text-white" />
+            </div>
+            <h2 className="text-white font-semibold text-sm">Nueva Contrasena</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer"
+            style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {done ? (
+            <div className="flex flex-col items-center py-4 text-center gap-3">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: '#ECFDF5', border: '2px solid #6EE7B7' }}>
+                <CheckCircle2 size={28} style={{ color: '#065F46' }} />
+              </div>
+              <p className="font-semibold text-sm" style={{ color: '#065F46' }}>Contrasena actualizada</p>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>Ya puedes iniciar sesion con tu nueva contrasena.</p>
+              <button
+                onClick={onClose}
+                className="mt-2 w-full py-2.5 rounded-xl text-sm font-semibold cursor-pointer"
+                style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}
+              >
+                Iniciar sesion
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm" style={{ color: '#475569' }}>
+                Introduce tu nueva contrasena para <strong>{email}</strong>.
+              </p>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
+                  Nueva contrasena
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPw ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                    placeholder="Minimo 8 caracteres"
+                    className="w-full px-4 pr-10 py-2.5 rounded-xl text-sm outline-none"
+                    style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer"
+                    style={{ color: '#94A3B8' }}
+                  >
+                    {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                <div className="mt-2 space-y-1">
+                  {rules.map((r) => (
+                    <div key={r.label} className="flex items-center gap-1.5 text-xs" style={{ color: r.ok ? '#16A34A' : '#94A3B8' }}>
+                      {r.ok ? <CheckCircle2 size={11} /> : <span style={{ width: 11, height: 11, borderRadius: '50%', border: '1px solid #CBD5E1', display: 'inline-block' }} />}
+                      {r.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
+                  Confirmar contrasena
+                </label>
+                <input
+                  type="password"
+                  value={confirm}
+                  onChange={(e) => { setConfirm(e.target.value); setError(''); }}
+                  placeholder="Repite la nueva contrasena"
+                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+                  style={{
+                    border: `1.5px solid ${confirm && confirm !== password ? '#FECACA' : '#E2E8F0'}`,
+                    color: '#1E293B', backgroundColor: '#F8FAFC',
+                  }}
+                />
+                {confirm && confirm !== password && (
+                  <p className="text-xs mt-1" style={{ color: '#DC2626' }}>Las contrasenas no coinciden</p>
+                )}
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                  <AlertCircle size={13} style={{ color: '#DC2626' }} />
+                  <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
+                </div>
+              )}
+
+              <button
+                onClick={handleSubmit}
+                disabled={loading || !canSubmit}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#0F172A' }}
+              >
+                {loading ? <RefreshCw size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                Cambiar contrasena
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1822,6 +2144,7 @@ useEffect(() => {
     { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
     { id: 'formacion', label: 'Formacion', icon: GraduationCap },
     { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },
+    { id: 'fichajes', label: 'Fichajes', icon: Clock },
   ];
 
   const [formacionSubTab, setFormacionSubTab] = useState<'examenes' | 'certificados'>('examenes');
@@ -2159,6 +2482,10 @@ useEffect(() => {
             currentUserNombre={currentUserNombre || email}
             currentUserRole="employee"
           />
+        )}
+
+        {activeTab === 'fichajes' && (
+          <MisFichajesView theme={theme} userId={currentUserId} />
         )}
       </main>
     </div>

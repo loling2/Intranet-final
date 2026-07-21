@@ -11,6 +11,7 @@ import HorasExtrasModule from './HorasExtrasModule';
 import * as XLSX from 'xlsx-js-style';
 import { supabase } from '../supabaseClient';
 import { uploadPnrJustificante, getWasabiBlobUrl } from '../lib/wasabi';
+import { jsPDF } from 'jspdf';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,7 @@ interface Baja {
   justificante_estado: string | null;
   justificante_url: string | null;
   descontado: boolean;
+  descripcion_descuento: string | null;
 }
 
 interface Sustitucion {
@@ -375,55 +377,126 @@ function exportPDF(bajas: BajaWithSustituciones[], empleados: Empleado[]) {
   const groups = buildReporteGroups(bajas, empleados);
   const fechaGen = new Date().toLocaleString('es-ES');
   const groupsArr = Array.from(groups.values());
-  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8">
-<title>Balance de Sustituciones</title>
-<style>
-  @page { size: A4; margin: 14mm 12mm; }
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; }
-  .header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 14px; }
-  .header h1 { font-size: 18px; margin: 0; letter-spacing: -0.2px; }
-  .header .meta { font-size: 11px; color: #64748b; text-align: right; }
-  .group { margin-bottom: 18px; page-break-inside: avoid; }
-  .group-title { font-size: 13px; font-weight: 700; background: #f1f5f9; padding: 6px 10px; border-left: 4px solid #0369a1; border-radius: 4px; margin-bottom: 6px; }
-  .group-title .tot { color: #0369a1; font-weight: 700; }
-  table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  th { background: #0f172a; color: #fff; text-align: left; padding: 6px 8px; font-weight: 600; }
-  th.num { text-align: right; }
-  td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  tr:nth-child(even) td { background: #f8fafc; }
-  tr.tot td { font-weight: 700; background: #ecfdf5 !important; border-top: 2px solid #16a34a; }
-  tr.tot td.num { color: #16a34a; }
-  .empty { padding: 20px; text-align: center; color: #94a3b8; font-style: italic; }
-  .footer { margin-top: 18px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 6px; }
-</style></head><body>
-<div class="header">
-  <h1>Balance de Sustituciones</h1>
-  <div class="meta">Generado el ${fechaGen}</div>
-</div>
-${groupsArr.length === 0 ? '<div class="empty">Sin datos para mostrar.</div>' : groupsArr.map((g) => {
-  const totHoras = g.rows.reduce((s, r) => s + r.horas, 0);
-  const totNoc = g.rows.reduce((s, r) => s + r.horasNoc, 0);
-  return `<div class="group">
-    <div class="group-title">${g.nombre} <span class="tot">· TOTAL: ${totHoras}h${totNoc > 0 ? ' / ' + totNoc + 'h nocturnas' : ''}</span></div>
-    <table>
-      <thead><tr><th>Persona sustituida</th><th>Fecha</th><th>Centro</th><th class="num">Horas</th><th class="num">H. Nocturnas</th></tr></thead>
-      <tbody>
-        ${g.rows.map((r) => `<tr><td>${escapeHtml(r.sustituido)}</td><td>${r.fecha}</td><td>${escapeHtml(r.centro)}</td><td class="num">${r.horas}</td><td class="num">${r.horasNoc}</td></tr>`).join('')}
-        <tr class="tot"><td>TOTAL</td><td></td><td></td><td class="num">${totHoras}</td><td class="num">${totNoc}</td></tr>
-      </tbody>
-    </table>
-  </div>`;
-}).join('')}
-<div class="footer">Documento generado automáticamente · ${fechaGen}</div>
-<script>window.onload=function(){setTimeout(function(){window.print();},250);}</script>
-</body></html>`;
-  const w = window.open('', '_blank');
-  if (!w) { alert('Por favor, permite las ventanas emergentes para exportar el PDF.'); return; }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const marginX = 12;
+  const contentW = pageW - marginX * 2;
+
+  let y = 14;
+
+  // Header
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Balance de Sustituciones', marginX, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Generado el ${fechaGen}`, pageW - marginX, y, { align: 'right' });
+  y += 3;
+  doc.setDrawColor(15, 23, 42);
+  doc.setLineWidth(0.6);
+  doc.line(marginX, y, pageW - marginX, y);
+  y += 8;
+
+  const colSust = 55;
+  const colFecha = 25;
+  const colCentro = 40;
+  const colHoras = 20;
+  const colNoc = contentW - colSust - colFecha - colCentro - colHoras;
+
+  const drawHeader = () => {
+    doc.setFillColor(15, 23, 42);
+    doc.rect(marginX, y, contentW, 7, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text('Persona sustituida', marginX + 2, y + 4.8);
+    doc.text('Fecha', marginX + colSust + 2, y + 4.8);
+    doc.text('Centro', marginX + colSust + colFecha + 2, y + 4.8);
+    doc.text('Horas', marginX + colSust + colFecha + colCentro + colHoras - 2, y + 4.8, { align: 'right' });
+    doc.text('H. Noct.', pageW - marginX - 2, y + 4.8, { align: 'right' });
+    y += 7;
+  };
+
+  if (groupsArr.length === 0) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(11);
+    doc.setTextColor(148, 163, 184);
+    doc.text('Sin datos para mostrar.', marginX, y + 6);
+  } else {
+    for (const g of groupsArr) {
+      const totHoras = g.rows.reduce((s, r) => s + r.horas, 0);
+      const totNoc = g.rows.reduce((s, r) => s + r.horasNoc, 0);
+
+      // Group title bar
+      if (y > pageH - 30) { doc.addPage(); y = 14; }
+      doc.setFillColor(241, 245, 249);
+      doc.rect(marginX, y, contentW, 7, 'F');
+      doc.setFillColor(3, 105, 161);
+      doc.rect(marginX, y, 1.5, 7, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(15, 23, 42);
+      doc.text(g.nombre, marginX + 4, y + 4.8);
+      doc.setTextColor(3, 105, 161);
+      const totTxt = `TOTAL: ${totHoras}h${totNoc > 0 ? ' / ' + totNoc + 'h nocturnas' : ''}`;
+      doc.text(totTxt, pageW - marginX - 2, y + 4.8, { align: 'right' });
+      y += 7;
+
+      drawHeader();
+
+      g.rows.forEach((r, idx) => {
+        if (y > pageH - 18) { doc.addPage(); y = 14; drawHeader(); }
+        if (idx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(marginX, y, contentW, 6, 'F');
+        }
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text(String(r.sustituido).slice(0, 32), marginX + 2, y + 4.2);
+        doc.text(formatDate(r.fecha), marginX + colSust + 2, y + 4.2);
+        doc.text(String(r.centro).slice(0, 22), marginX + colSust + colFecha + 2, y + 4.2);
+        doc.text(String(r.horas), marginX + colSust + colFecha + colCentro + colHoras - 2, y + 4.2, { align: 'right' });
+        doc.text(String(r.horasNoc), pageW - marginX - 2, y + 4.2, { align: 'right' });
+        y += 6;
+      });
+
+      // Total row
+      if (y > pageH - 14) { doc.addPage(); y = 14; }
+      doc.setFillColor(236, 253, 245);
+      doc.rect(marginX, y, contentW, 7, 'F');
+      doc.setDrawColor(22, 163, 74);
+      doc.setLineWidth(0.5);
+      doc.line(marginX, y, pageW - marginX, y);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      doc.text('TOTAL', marginX + 2, y + 4.8);
+      doc.setTextColor(22, 163, 74);
+      doc.text(String(totHoras), marginX + colSust + colFecha + colCentro + colHoras - 2, y + 4.8, { align: 'right' });
+      doc.text(String(totNoc), pageW - marginX - 2, y + 4.8, { align: 'right' });
+      y += 10;
+    }
+  }
+
+  // Footer on every page
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.2);
+    doc.line(marginX, pageH - 12, pageW - marginX, pageH - 12);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Documento generado automáticamente · ${fechaGen}`, pageW / 2, pageH - 8, { align: 'center' });
+  }
+
+  doc.save('Balance_Sustituciones.pdf');
 }
 
 function escapeHtml(s: string) {
@@ -649,6 +722,11 @@ export default function BajasModule() {
   const [liquidarHoras, setLiquidarHoras] = useState(0);
   const [liquidarNotas, setLiquidarNotas] = useState('');
   const [savingLiquidar, setSavingLiquidar] = useState(false);
+
+  // Descontar modal
+  const [descontarTarget, setDescontarTarget] = useState<{ bajaId: string; nombre: string } | null>(null);
+  const [descontarDescripcion, setDescontarDescripcion] = useState('');
+  const [savingDescontar, setSavingDescontar] = useState(false);
 
   // Sustituciones
   const [sustitucionesForm, setSustitucionesForm] = useState<SustitucionForm[]>([]);
@@ -891,13 +969,29 @@ export default function BajasModule() {
     }
   };
 
-  const handleDescontar = async (bajaId: string, nombre: string) => {
-    if (!confirm(`¿Descontar la ausencia de ${nombre}? Pasará a 0 y se marcará como compensada.`)) return;
+  const openDescontarModal = (bajaId: string, nombre: string) => {
+    setDescontarTarget({ bajaId, nombre });
+    setDescontarDescripcion('');
+    setError('');
+  };
+
+  const handleConfirmDescontar = async () => {
+    if (!descontarTarget) return;
+    if (!descontarDescripcion.trim()) { setError('Indica una descripción del descuento.'); return; }
+    setSavingDescontar(true); setError('');
     try {
-      await supabase.from('bajas_temporales').update({ descontado: true, updated_at: new Date().toISOString() }).eq('id', bajaId);
+      const { error: updErr } = await supabase.from('bajas_temporales')
+        .update({ descontado: true, descripcion_descuento: descontarDescripcion.trim(), updated_at: new Date().toISOString() })
+        .eq('id', descontarTarget.bajaId);
+      if (updErr) throw updErr;
+      setDescontarTarget(null);
       await loadBajas();
       setSuccessMsg('Ausencia descontada del balance.'); setTimeout(() => setSuccessMsg(''), 3000);
-    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Error al descontar'); }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al descontar');
+    } finally {
+      setSavingDescontar(false);
+    }
   };
 
   const handleConfirmFinalizar = async () => {
@@ -1005,7 +1099,7 @@ export default function BajasModule() {
     .filter((b) => b.descontado)
     .filter((b) => !reporteFechaInicio || b.fecha_inicio >= reporteFechaInicio)
     .filter((b) => !reporteFechaFin || !b.fecha_fin || b.fecha_fin <= reporteFechaFin)
-    .map((b) => ({ id: b.id, nombre: b.empleado_nombre, fecha_inicio: b.fecha_inicio, dias: b.larga_duracion ? 1 : (b.total_dias ?? 1), tipo: b.tipo_absentismo as string }));
+    .map((b) => ({ id: b.id, nombre: b.empleado_nombre, fecha_inicio: b.fecha_inicio, dias: b.larga_duracion ? 1 : (b.total_dias ?? 1), tipo: b.tipo_absentismo as string, descripcion_descuento: b.descripcion_descuento }));
   const balanceData = Array.from(balanceMap.entries()).map(([id, val]) => {
     const liquidadas = liquidacionesPorSustituto.get(id) ?? 0;
     return { sustituto_id: id, ...val, horasLiquidadas: liquidadas, horasPendientes: Math.max(0, val.horas - liquidadas) };
@@ -1132,7 +1226,7 @@ export default function BajasModule() {
                   <button onClick={() => { exportPDF(reporteView === 'finalizadas' ? finalizadasBajas : activeBajas, empleados); setExportMenuOpen(false); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium cursor-pointer hover:bg-slate-50"
                     style={{ color: '#DC2626' }}>
-                    <FileText size={14} /> PDF (imprimir)
+                    <FileText size={14} /> PDF
                   </button>
                 </div>
               </>
@@ -1461,7 +1555,7 @@ export default function BajasModule() {
                       <span className="text-sm px-3 py-1.5 rounded-lg font-bold" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
                         −{b.dias}d
                       </span>
-                      <button onClick={() => handleDescontar(b.id, b.nombre)}
+                      <button onClick={() => openDescontarModal(b.id, b.nombre)}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white cursor-pointer transition-opacity hover:opacity-90"
                         style={{ backgroundColor: '#16A34A' }}>
                         <CheckCircle2 size={12} /> Descontar
@@ -1487,7 +1581,7 @@ export default function BajasModule() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{b.nombre}</p>
-                        <p className="text-xs" style={{ color: '#94A3B8' }}>{b.tipo} · {formatDate(b.fecha_inicio)} · {b.dias}d compensados</p>
+                        <p className="text-xs" style={{ color: '#94A3B8' }}>{b.tipo} · {formatDate(b.fecha_inicio)} · {b.dias}d compensados{b.descripcion_descuento ? ` · ${b.descripcion_descuento}` : ''}</p>
                       </div>
                       <span className="text-sm px-3 py-1.5 rounded-lg font-bold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
                         0d
@@ -1671,6 +1765,53 @@ export default function BajasModule() {
                   style={{ backgroundColor: '#D97706' }}>
                   {savingLiquidar ? <RefreshCw size={14} className="animate-spin" /> : <Banknote size={14} />}
                   {savingLiquidar ? 'Liquidando...' : 'Liquidar horas'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {descontarTarget && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-white rounded-2xl max-w-md w-full mx-4 shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #15803D, #16A34A)' }}>
+              <h2 className="text-white font-semibold text-sm flex items-center gap-2"><CreditCard size={15} /> Descontar ausencia</h2>
+              <button onClick={() => setDescontarTarget(null)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff' }}>
+                <X size={15} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="rounded-lg px-4 py-3" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                <p className="text-sm font-semibold" style={{ color: '#15803D' }}>{descontarTarget.nombre}</p>
+                <p className="text-xs mt-0.5" style={{ color: '#16A34A' }}>
+                  La ausencia pasará a 0 y se marcará como compensada.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Descripción del descuento *</label>
+                <input type="text" value={descontarDescripcion} onChange={(e) => setDescontarDescripcion(e.target.value)}
+                  placeholder="Ej. Nómina de junio"
+                  autoFocus
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ borderColor: '#BBF7D0', backgroundColor: '#F0FDF4', color: '#15803D', fontWeight: 600 }} />
+                <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
+                  Indica el motivo o referencia del descuento. Se guardará junto al registro.
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setDescontarTarget(null)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold cursor-pointer"
+                  style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
+                  Cancelar
+                </button>
+                <button onClick={handleConfirmDescontar} disabled={savingDescontar || !descontarDescripcion.trim()}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: '#16A34A' }}>
+                  {savingDescontar ? <RefreshCw size={14} className="animate-spin" /> : <CreditCard size={14} />}
+                  {savingDescontar ? 'Descontando...' : 'Descontar'}
                 </button>
               </div>
             </div>

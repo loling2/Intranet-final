@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import SustitucionesModule from './SustitucionesModule';
 import HorasExtrasModule from './HorasExtrasModule';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 import { supabase } from '../supabaseClient';
 import { uploadPnrJustificante, getWasabiBlobUrl } from '../lib/wasabi';
 
@@ -43,6 +43,7 @@ interface Baja {
   reposo_duracion: string | null;
   justificante_estado: string | null;
   justificante_url: string | null;
+  descontado: boolean;
 }
 
 interface Sustitucion {
@@ -193,37 +194,181 @@ function buildReporteGroups(bajas: BajaWithSustituciones[], empleados: Empleado[
   return groups;
 }
 
-function exportExcel(bajas: BajaWithSustituciones[], empleados: Empleado[]) {
+function exportExcel(
+  bajas: BajaWithSustituciones[],
+  empleados: Empleado[],
+  fechaInicio: string,
+  fechaFin: string,
+  liquidaciones: LiquidacionHoras[],
+  ausenciasPend: { id: string; nombre: string; fecha_inicio: string; fecha_fin: string | null; dias: number; tipo: string }[],
+  ausenciasDesc: { id: string; nombre: string; fecha_inicio: string; dias: number; tipo: string }[],
+) {
   const groups = buildReporteGroups(bajas, empleados);
   const wb = XLSX.utils.book_new();
+
+  const titleStyle = { font: { bold: true, sz: 16, color: { rgb: '1E293B' } }, alignment: { horizontal: 'center' as const } };
+  const subtitleStyle = { font: { bold: true, sz: 11, color: { rgb: '64748B' } }, alignment: { horizontal: 'center' as const } };
+  const headerStyle = { font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0F172A' } }, alignment: { horizontal: 'center' as const, vertical: 'center' as const }, border: { top: { style: 'thin', color: { rgb: '334155' } }, bottom: { style: 'thin', color: { rgb: '334155' } }, left: { style: 'thin', color: { rgb: '334155' } }, right: { style: 'thin', color: { rgb: '334155' } } } };
+  const cellStyle = { font: { sz: 10, color: { rgb: '1E293B' } }, border: { top: { style: 'thin', color: { rgb: 'E2E8F0' } }, bottom: { style: 'thin', color: { rgb: 'E2E8F0' } }, left: { style: 'thin', color: { rgb: 'E2E8F0' } }, right: { style: 'thin', color: { rgb: 'E2E8F0' } } } };
+  const totalStyle = { font: { bold: true, sz: 11, color: { rgb: '15803D' } }, fill: { fgColor: { rgb: 'ECFDF5' } }, border: { top: { style: 'medium', color: { rgb: '22C55E' } }, bottom: { style: 'thin', color: { rgb: 'BBF7D0' } }, left: { style: 'thin', color: { rgb: 'BBF7D0' } }, right: { style: 'thin', color: { rgb: 'BBF7D0' } } } };
+  const nightStyle = { ...cellStyle, font: { sz: 10, color: { rgb: '6D28D9' } } };
+  const ausenciaStyle = { ...cellStyle, font: { sz: 10, color: { rgb: 'DC2626' } }, fill: { fgColor: { rgb: 'FEF2F2' } } };
+  const descontadaStyle = { ...cellStyle, font: { sz: 10, color: { rgb: '16A34A' } }, fill: { fgColor: { rgb: 'F0FDF4' } } };
+
+  const rangoTexto = fechaInicio || fechaFin
+    ? `Rango: ${fechaInicio ? formatDate(fechaInicio) : 'Inicio'} → ${fechaFin ? formatDate(fechaFin) : 'Hoy'}`
+    : 'Rango: Todas las fechas';
+
+  const liqMap = new Map<string, number>();
+  for (const l of liquidaciones) liqMap.set(l.sustituto_id, (liqMap.get(l.sustituto_id) ?? 0) + l.horas_liquidadas);
+
+  // ── Sheet 1: Resumen ──
+  const summaryAoa: (string | number)[][] = [
+    ['BALANCE DE SUSTITUCIONES'],
+    [rangoTexto],
+    [`Generado: ${new Date().toLocaleString('es-ES')}`],
+    [],
+    ['Sustituto', 'Horas realizadas', 'Horas nocturnas', 'Días festivos', 'Horas pagadas', 'Horas pendientes', 'Días compensados'],
+  ];
+
+  // Build per-sustituto totals from groups
+  const sustitutoIds = new Map<string, string>(); // id → nombre
+  for (const b of bajas) {
+    for (const s of b.sustituciones) sustitutoIds.set(s.sustituto_id, s.sustituto_nombre);
+  }
+
+  for (const [sid, nombre] of sustitutoIds) {
+    const g = groups.get(sid);
+    const totHoras = g ? g.rows.reduce((s, r) => s + r.horas, 0) : 0;
+    const totNoc = g ? g.rows.reduce((s, r) => s + r.horasNoc, 0) : 0;
+    const totFest = g ? g.rows.length : 0;
+    const liquidadas = liqMap.get(sid) ?? 0;
+    const pendientes = Math.max(0, totHoras - liquidadas);
+    summaryAoa.push([nombre, totHoras, totNoc, totFest, liquidadas, pendientes, 0]);
+  }
+
+  const wsSum = XLSX.utils.aoa_to_sheet(summaryAoa);
+  wsSum['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 }];
+  wsSum['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 6 } },
+  ];
+  wsSum['A1'].s = titleStyle;
+  wsSum['A2'].s = subtitleStyle;
+  wsSum['A3'].s = subtitleStyle;
+  for (let c = 0; c < 7; c++) {
+    const ref = XLSX.utils.encode_cell({ r: 4, c });
+    if (wsSum[ref]) wsSum[ref].s = headerStyle;
+  }
+  for (let r = 5; r < 5 + sustitutoIds.size; r++) {
+    for (let c = 0; c < 7; c++) {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      if (wsSum[ref]) wsSum[ref].s = cellStyle;
+    }
+  }
+  XLSX.utils.book_append_sheet(wb, wsSum, 'Resumen');
+
+  // ── Sheet 2+: One per sustituto ──
   let hasData = false;
-  for (const [, g] of groups) {
-    const totHoras = g.rows.reduce((sum, r) => sum + r.horas, 0);
-    const totNoc = g.rows.reduce((sum, r) => sum + r.horasNoc, 0);
+  for (const [sid, g] of groups) {
+    const totHoras = g.rows.reduce((s, r) => s + r.horas, 0);
+    const totNoc = g.rows.reduce((s, r) => s + r.horasNoc, 0);
+    const liquidadas = liqMap.get(sid) ?? 0;
+    const pendientes = Math.max(0, totHoras - liquidadas);
     const aoa: (string | number)[][] = [
-      [`BALANCE DE SUSTITUCIONES - ${g.nombre}`],
-      [`TOTAL: ${totHoras}h${totNoc > 0 ? ' / ' + totNoc + 'h nocturnas' : ''}`],
+      [`BALANCE DE SUSTITUCIONES — ${g.nombre}`],
+      [rangoTexto],
       [],
-      ['Persona sustituida', 'Fecha', 'Centro', 'Horas', 'H. Nocturnas'],
-      ...g.rows.map((r) => [r.sustituido, r.fecha, r.centro, r.horas, r.horasNoc]),
+      ['Persona sustituida', 'Fecha', 'Centro', 'Horas', 'H. Nocturnas', 'Festivo'],
+      ...g.rows.map((r) => [r.sustituido, formatDate(r.fecha), r.centro, r.horas, r.horasNoc, '']),
       [],
-      ['TOTAL HORAS', '', '', totHoras, totNoc],
+      ['TOTAL HORAS', '', '', totHoras, totNoc, ''],
+      ['HORAS PAGADAS', '', '', liquidadas, '', ''],
+      ['HORAS PENDIENTES', '', '', pendientes, '', ''],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 10 }, { wch: 14 }];
+    ws['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 10 }, { wch: 14 }, { wch: 10 }];
     ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } },
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
     ];
+    ws['A1'].s = titleStyle;
+    ws['A2'].s = subtitleStyle;
+    for (let c = 0; c < 6; c++) {
+      const ref = XLSX.utils.encode_cell({ r: 3, c });
+      if (ws[ref]) ws[ref].s = headerStyle;
+    }
+    const dataStart = 4;
+    const dataEnd = dataStart + g.rows.length;
+    for (let r = dataStart; r < dataEnd; r++) {
+      for (let c = 0; c < 6; c++) {
+        const ref = XLSX.utils.encode_cell({ r, c });
+        if (ws[ref]) {
+          if (c === 4 && (ws[ref].v as number) > 0) ws[ref].s = nightStyle;
+          else ws[ref].s = cellStyle;
+        }
+      }
+    }
+    for (let r = dataEnd; r < dataEnd + 3; r++) {
+      for (let c = 0; c < 6; c++) {
+        const ref = XLSX.utils.encode_cell({ r, c });
+        if (ws[ref]) ws[ref].s = totalStyle;
+      }
+    }
     const safeName = g.nombre.replace(/[\\/?*[\]:]/g, '_').slice(0, 28) || 'Hoja';
     XLSX.utils.book_append_sheet(wb, ws, safeName);
     hasData = true;
   }
-  if (!hasData) {
+
+  // ── Sheet: Ausencias PNR/Reposo ──
+  if (ausenciasPend.length > 0 || ausenciasDesc.length > 0) {
+    const ausAoa: (string | number)[][] = [
+      ['AUSENCIAS QUE DESCUENTAN DÍAS (PNR / REPOSO)'],
+      [rangoTexto],
+      [],
+      ['Trabajador', 'Tipo', 'Fecha inicio', 'Fecha fin', 'Días', 'Estado'],
+    ];
+    for (const b of ausenciasPend) {
+      ausAoa.push([b.nombre, b.tipo, formatDate(b.fecha_inicio), b.fecha_fin ? formatDate(b.fecha_fin) : '—', b.dias, 'Pendiente']);
+    }
+    for (const b of ausenciasDesc) {
+      ausAoa.push([b.nombre, b.tipo, formatDate(b.fecha_inicio), '—', 0, 'Descontada']);
+    }
+    const wsAus = XLSX.utils.aoa_to_sheet(ausAoa);
+    wsAus['!cols'] = [{ wch: 28 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 14 }];
+    wsAus['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+    ];
+    wsAus['A1'].s = { ...titleStyle, font: { bold: true, sz: 14, color: { rgb: 'DC2626' } } };
+    wsAus['A2'].s = subtitleStyle;
+    for (let c = 0; c < 6; c++) {
+      const ref = XLSX.utils.encode_cell({ r: 3, c });
+      if (wsAus[ref]) wsAus[ref].s = headerStyle;
+    }
+    const ausDataStart = 4;
+    for (let r = ausDataStart; r < ausDataStart + ausenciasPend.length; r++) {
+      for (let c = 0; c < 6; c++) {
+        const ref = XLSX.utils.encode_cell({ r, c });
+        if (wsAus[ref]) wsAus[ref].s = ausenciaStyle;
+      }
+    }
+    for (let r = ausDataStart + ausenciasPend.length; r < ausDataStart + ausenciasPend.length + ausenciasDesc.length; r++) {
+      for (let c = 0; c < 6; c++) {
+        const ref = XLSX.utils.encode_cell({ r, c });
+        if (wsAus[ref]) wsAus[ref].s = descontadaStyle;
+      }
+    }
+    XLSX.utils.book_append_sheet(wb, wsAus, 'Ausencias');
+    hasData = true;
+  }
+
+  if (!hasData && groups.size === 0) {
     const ws = XLSX.utils.aoa_to_sheet([['Sin datos para exportar']]);
     XLSX.utils.book_append_sheet(wb, ws, 'Sin datos');
   }
-  XLSX.writeFile(wb, `bajas_balance_${new Date().toISOString().split('T')[0]}.xlsx`);
+  XLSX.writeFile(wb, `balance_sustituciones_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 function exportPDF(bajas: BajaWithSustituciones[], empleados: Empleado[]) {
@@ -535,6 +680,7 @@ export default function BajasModule() {
         reposo_duracion: b.reposo_duracion ?? null,
         justificante_estado: b.justificante_estado ?? 'pendiente',
         justificante_url: b.justificante_url ?? null,
+        descontado: b.descontado ?? false,
         larga_duracion: b.larga_duracion ?? false,
         dias_no_cubiertos: b.dias_no_cubiertos ?? 0,
         modo_finalizacion: b.modo_finalizacion ?? null,
@@ -745,6 +891,15 @@ export default function BajasModule() {
     }
   };
 
+  const handleDescontar = async (bajaId: string, nombre: string) => {
+    if (!confirm(`¿Descontar la ausencia de ${nombre}? Pasará a 0 y se marcará como compensada.`)) return;
+    try {
+      await supabase.from('bajas_temporales').update({ descontado: true, updated_at: new Date().toISOString() }).eq('id', bajaId);
+      await loadBajas();
+      setSuccessMsg('Ausencia descontada del balance.'); setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Error al descontar'); }
+  };
+
   const handleConfirmFinalizar = async () => {
     if (!finalizarTarget || !modoFinalizacion) return;
     if (modoFinalizacion === 'otro' && !notasFinalizacion.trim()) { setError('Indica el motivo en el campo de notas.'); return; }
@@ -838,24 +993,24 @@ export default function BajasModule() {
     if (reporteFechaFin && l.fecha > reporteFechaFin) continue;
     liquidacionesPorSustituto.set(l.sustituto_id, (liquidacionesPorSustituto.get(l.sustituto_id) ?? 0) + l.horas_liquidadas);
   }
-  // Subtract PNR/Reposo days from the absent worker's balance (count as -1 day each)
-  // We track these as negative day entries keyed by empleado_id of the baja
-  const ausenciasPorTrabajador = new Map<string, { nombre: string; dias: number }>();
-  for (const b of bajas) {
-    if (b.estado !== 'activa') continue;
-    if (b.tipo_absentismo !== 'PNR' && b.tipo_absentismo !== 'Reposo') continue;
-    if (reporteFechaInicio && b.fecha_inicio < reporteFechaInicio) continue;
-    if (reporteFechaFin && b.fecha_fin && b.fecha_fin > reporteFechaFin) continue;
-    const dias = b.larga_duracion ? 1 : (b.total_dias ?? 1);
-    const existing = ausenciasPorTrabajador.get(b.empleado_id);
-    if (existing) existing.dias += dias;
-    else ausenciasPorTrabajador.set(b.empleado_id, { nombre: b.empleado_nombre, dias });
-  }
+  // Individual PNR/Reposo absences not yet descontado — shown with a Descontar button each
+  const ausenciasIndividuales = bajas
+    .filter((b) => b.estado === 'activa' && (b.tipo_absentismo === 'PNR' || b.tipo_absentismo === 'Reposo') && !b.descontado)
+    .filter((b) => !reporteFechaInicio || b.fecha_inicio >= reporteFechaInicio)
+    .filter((b) => !reporteFechaFin || !b.fecha_fin || b.fecha_fin <= reporteFechaFin)
+    .map((b) => ({ id: b.id, nombre: b.empleado_nombre, fecha_inicio: b.fecha_inicio, fecha_fin: b.fecha_fin, dias: b.larga_duracion ? 1 : (b.total_dias ?? 1), tipo: b.tipo_absentismo as string }));
+
+  // Descontadas (compensated) absences — shown in a separate green section
+  const ausenciasDescontadas = bajas
+    .filter((b) => b.descontado)
+    .filter((b) => !reporteFechaInicio || b.fecha_inicio >= reporteFechaInicio)
+    .filter((b) => !reporteFechaFin || !b.fecha_fin || b.fecha_fin <= reporteFechaFin)
+    .map((b) => ({ id: b.id, nombre: b.empleado_nombre, fecha_inicio: b.fecha_inicio, dias: b.larga_duracion ? 1 : (b.total_dias ?? 1), tipo: b.tipo_absentismo as string }));
   const balanceData = Array.from(balanceMap.entries()).map(([id, val]) => {
     const liquidadas = liquidacionesPorSustituto.get(id) ?? 0;
     return { sustituto_id: id, ...val, horasLiquidadas: liquidadas, horasPendientes: Math.max(0, val.horas - liquidadas) };
   }).sort((a, b) => (b.dias + Math.ceil(b.horas / 8)) - (a.dias + Math.ceil(a.horas / 8)));
-  const ausenciasData = Array.from(ausenciasPorTrabajador.entries()).map(([id, val]) => ({ sustituto_id: id, nombre: val.nombre, dias: -val.dias, horas: 0, horasNocturnas: 0, diasFestivos: 0, count: 0, horasLiquidadas: 0, horasPendientes: 0, esAusencia: true as const }));
+
 
   // Finalizadas KPIs by modo
   const finalizadasByModo = {
@@ -969,7 +1124,7 @@ export default function BajasModule() {
                 <div className="fixed inset-0 z-10" onClick={() => setExportMenuOpen(false)} />
                 <div className="absolute right-0 mt-1 rounded-lg shadow-lg z-20 overflow-hidden min-w-[180px]"
                   style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                  <button onClick={() => { exportExcel(reporteView === 'finalizadas' ? finalizadasBajas : activeBajas, empleados); setExportMenuOpen(false); }}
+                  <button onClick={() => { exportExcel(reporteView === 'finalizadas' ? finalizadasBajas : activeBajas, empleados, reporteFechaInicio, reporteFechaFin, liquidaciones, ausenciasIndividuales, ausenciasDescontadas); setExportMenuOpen(false); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium cursor-pointer hover:bg-slate-50"
                     style={{ color: '#16A34A' }}>
                     <FileSpreadsheet size={14} /> Excel (.xlsx)
@@ -1279,32 +1434,63 @@ export default function BajasModule() {
           </div>
         )
       ) : (
-        balanceData.length === 0 && ausenciasData.length === 0 ? (
+        balanceData.length === 0 && ausenciasIndividuales.length === 0 && ausenciasDescontadas.length === 0 ? (
           <div className="rounded-xl p-8 text-center" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
             <UserCheck size={32} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
             <p className="text-sm font-medium" style={{ color: '#64748B' }}>No hay sustituciones ni ausencias registradas</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Ausencias (PNR/Reposo) — negative days in red */}
-            {ausenciasData.length > 0 && (
+            {/* Ausencias pendientes de descontar (PNR/Reposo) */}
+            {ausenciasIndividuales.length > 0 && (
               <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #FECACA' }}>
                 <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid #FECACA', backgroundColor: '#FEF2F2' }}>
                   <AlertTriangle size={14} style={{ color: '#DC2626' }} />
-                  <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#DC2626' }}>Ausencias que descuentan días (PNR / Reposo)</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#DC2626' }}>Ausencias que descuentan días (PNR / Reposo) — pendientes de descontar</p>
                 </div>
                 <div className="divide-y" style={{ borderColor: '#FEE2E2' }}>
-                  {ausenciasData.map((b) => (
-                    <div key={b.sustituto_id} className="px-5 py-3.5 flex items-center gap-3">
+                  {ausenciasIndividuales.map((b) => (
+                    <div key={b.id} className="px-5 py-3.5 flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEF2F2' }}>
                         <BedSingle size={14} style={{ color: '#DC2626' }} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{b.nombre}</p>
-                        <p className="text-xs" style={{ color: '#DC2626' }}>Ausencia (PNR/Reposo)</p>
+                        <p className="text-xs" style={{ color: '#94A3B8' }}>{b.tipo} · {formatDate(b.fecha_inicio)}{b.fecha_fin ? ' → ' + formatDate(b.fecha_fin) : ''}</p>
                       </div>
                       <span className="text-sm px-3 py-1.5 rounded-lg font-bold" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
-                        {b.dias}d
+                        −{b.dias}d
+                      </span>
+                      <button onClick={() => handleDescontar(b.id, b.nombre)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white cursor-pointer transition-opacity hover:opacity-90"
+                        style={{ backgroundColor: '#16A34A' }}>
+                        <CheckCircle2 size={12} /> Descontar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Ausencias ya descontadas (compensadas) */}
+            {ausenciasDescontadas.length > 0 && (
+              <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #BBF7D0' }}>
+                <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid #BBF7D0', backgroundColor: '#F0FDF4' }}>
+                  <CheckCircle2 size={14} style={{ color: '#16A34A' }} />
+                  <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#16A34A' }}>Ausencias descontadas / compensadas ({ausenciasDescontadas.length})</p>
+                </div>
+                <div className="divide-y" style={{ borderColor: '#DCFCE7' }}>
+                  {ausenciasDescontadas.map((b) => (
+                    <div key={b.id} className="px-5 py-3 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F0FDF4' }}>
+                        <CheckCircle2 size={14} style={{ color: '#16A34A' }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{b.nombre}</p>
+                        <p className="text-xs" style={{ color: '#94A3B8' }}>{b.tipo} · {formatDate(b.fecha_inicio)} · {b.dias}d compensados</p>
+                      </div>
+                      <span className="text-sm px-3 py-1.5 rounded-lg font-bold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                        0d
                       </span>
                     </div>
                   ))}

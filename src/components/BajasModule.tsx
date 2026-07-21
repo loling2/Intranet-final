@@ -4,7 +4,10 @@ import {
   AlertTriangle, UserCheck, CheckCircle2, Clock, ArrowRight,
   Sun, Moon, Sunset, Banknote, RotateCcw, MoreHorizontal, Star,
   FileCheck, CreditCard, Hash, FileSpreadsheet, FileText, ChevronDown,
+  Timer,
 } from 'lucide-react';
+import SustitucionesModule from './SustitucionesModule';
+import HorasExtrasModule from './HorasExtrasModule';
 import * as XLSX from 'xlsx';
 import { supabase } from '../supabaseClient';
 
@@ -443,8 +446,8 @@ export default function BajasModule() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // View tabs: bajas | finalizadas | balance
-  const [reporteView, setReporteView] = useState<'bajas' | 'finalizadas' | 'balance'>('bajas');
+  // View tabs: bajas | finalizadas | balance | sustituciones | horas-extras
+  const [reporteView, setReporteView] = useState<'bajas' | 'finalizadas' | 'balance' | 'sustituciones' | 'horas-extras'>('bajas');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
   // Finalizar modal
@@ -744,6 +747,14 @@ export default function BajasModule() {
               style={{ backgroundColor: reporteView === 'balance' ? '#0369A1' : '#FFFFFF', color: reporteView === 'balance' ? '#FFFFFF' : '#64748B' }}>
               Balance Sustitutos
             </button>
+            <button onClick={() => setReporteView('sustituciones')} className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold transition-all cursor-pointer"
+              style={{ backgroundColor: reporteView === 'sustituciones' ? '#0369A1' : '#FFFFFF', color: reporteView === 'sustituciones' ? '#FFFFFF' : '#64748B' }}>
+              <UserCheck size={12} />Sustituciones
+            </button>
+            <button onClick={() => setReporteView('horas-extras')} className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold transition-all cursor-pointer"
+              style={{ backgroundColor: reporteView === 'horas-extras' ? '#0369A1' : '#FFFFFF', color: reporteView === 'horas-extras' ? '#FFFFFF' : '#64748B' }}>
+              <Timer size={12} />Horas Extras
+            </button>
           </div>
 
           <div className="relative">
@@ -865,8 +876,12 @@ export default function BajasModule() {
         </div>
       )}
 
+      {/* Sustituciones & Horas Extras subviews */}
+      {reporteView === 'sustituciones' && <SustitucionesModule />}
+      {reporteView === 'horas-extras' && <HorasExtrasModule />}
+
       {/* Content */}
-      {loading ? (
+      {(reporteView === 'sustituciones' || reporteView === 'horas-extras') ? null : loading ? (
         <div className="flex items-center justify-center py-12">
           <RefreshCw size={24} className="animate-spin" style={{ color: '#94A3B8' }} />
         </div>
@@ -1133,6 +1148,7 @@ export default function BajasModule() {
           </div>
         )
       )}
+
 
       {/* ── Finalizar Modal ── */}
       {finalizarTarget && (

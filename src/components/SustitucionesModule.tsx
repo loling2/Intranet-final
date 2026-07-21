@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserCheck, Search, RefreshCw, Calendar, Moon, Star } from 'lucide-react';
+import { UserCheck, Search, RefreshCw, Calendar, Moon, Star, Plus, X } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface SustitucionRow {
   id: string;
-  baja_id: string;
+  baja_id: string | null;
   sustituto_id: string;
   sustituto_nombre: string;
   fecha_inicio: string;
@@ -20,6 +20,12 @@ interface SustitucionRow {
   empleado_nombre: string;
 }
 
+interface Empleado {
+  id: string;
+  nombre: string;
+  dni: string | null;
+}
+
 const turnoColors: Record<string, { color: string; bg: string }> = {
   'mañana': { color: '#D97706', bg: '#FFFBEB' },
   tarde:    { color: '#EA580C', bg: '#FFF7ED' },
@@ -28,23 +34,34 @@ const turnoColors: Record<string, { color: string; bg: string }> = {
 
 export default function SustitucionesModule() {
   const [rows, setRows] = useState<SustitucionRow[]>([]);
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
   const [filterDesde, setFilterDesde] = useState('');
   const [filterHasta, setFilterHasta] = useState('');
 
+  // New sustitución form
+  const [showForm, setShowForm] = useState(false);
+  const [sustitutoSearch, setSustitutoSearch] = useState('');
+  const [form, setForm] = useState({ sustituto_id: '', sustituto_nombre: '', num_horas: 0, motivo: '', fecha: '' });
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: sData }, { data: bData }] = await Promise.all([
+    const [{ data: sData }, { data: bData }, { data: empData }] = await Promise.all([
       supabase.from('sustituciones').select('*').order('fecha_inicio', { ascending: false }).limit(1000),
       supabase.from('bajas_temporales').select('id, empleado_nombre'),
+      supabase.from('empleados').select('id, nombre, dni').order('nombre', { ascending: true }),
     ]);
     const bMap = new Map((bData ?? []).map((b) => [b.id as string, b.empleado_nombre as string]));
+    setEmpleados(empData ?? []);
     setRows(
       (sData ?? []).map((s) => ({
         ...s,
-        empleado_nombre: bMap.get(s.baja_id) ?? '—',
+        baja_id: s.baja_id ?? null,
+        empleado_nombre: s.baja_id ? (bMap.get(s.baja_id) ?? '—') : 'Sustitución directa',
       }))
     );
     setLoading(false);
@@ -68,6 +85,59 @@ export default function SustitucionesModule() {
   const totalNocturnas = filtered.reduce((acc, s) => acc + (s.horas_nocturnas || 0), 0);
   const sustitutosUnicos = new Set(filtered.map((s) => s.sustituto_id)).size;
 
+  const filteredSustitutos = empleados.filter((e) =>
+    e.nombre.toLowerCase().includes(sustitutoSearch.toLowerCase()) &&
+    e.id !== form.sustituto_id
+  );
+
+  const handleSelectSustituto = (emp: Empleado) => {
+    setForm({ ...form, sustituto_id: emp.id, sustituto_nombre: emp.nombre });
+    setSustitutoSearch('');
+  };
+
+  const handleSave = async () => {
+    if (!form.sustituto_id) { setFormError('Selecciona un sustituto.'); return; }
+    if (!form.num_horas || form.num_horas <= 0) { setFormError('Indica el número de horas.'); return; }
+    if (!form.fecha) { setFormError('Selecciona la fecha.'); return; }
+    setSaving(true); setFormError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id ?? null;
+      const row = {
+        baja_id: null,
+        sustituto_id: form.sustituto_id,
+        sustituto_nombre: form.sustituto_nombre,
+        fecha_inicio: form.fecha,
+        num_dias: 0,
+        num_horas: form.num_horas,
+        tipo_cobertura: 'pagar',
+        turno: null,
+        es_festivo: false,
+        unidad: 'horas',
+        notas: form.motivo.trim() || null,
+        horas_nocturnas: 0,
+        num_dias_festivos: 0,
+        motivo_otro: null,
+        created_by: userId,
+      };
+      const { error } = await supabase.from('sustituciones').insert(row);
+      if (error) throw error;
+      setShowForm(false);
+      setForm({ sustituto_id: '', sustituto_nombre: '', num_horas: 0, motivo: '', fecha: '' });
+      await load();
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('¿Eliminar esta sustitución?')) return;
+    await supabase.from('sustituciones').delete().eq('id', id);
+    await load();
+  };
+
   return (
     <div className="space-y-4">
       {/* KPIs */}
@@ -85,8 +155,8 @@ export default function SustitucionesModule() {
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      {/* Filters + New button */}
+      <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[180px]">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
           <input
@@ -119,7 +189,101 @@ export default function SustitucionesModule() {
           style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
           <RefreshCw size={13} />
         </button>
+        <button onClick={() => { setShowForm(true); setForm({ sustituto_id: '', sustituto_nombre: '', num_horas: 0, motivo: '', fecha: new Date().toISOString().slice(0, 10) }); setFormError(''); }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white cursor-pointer"
+          style={{ backgroundColor: '#0369A1' }}>
+          <Plus size={13} /> Nueva Sustitución
+        </button>
       </div>
+
+      {/* New sustitución form */}
+      {showForm && (
+        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #BFDBFE' }}>
+          <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#EFF6FF' }}>
+            <div className="flex items-center gap-2">
+              <UserCheck size={14} style={{ color: '#0369A1' }} />
+              <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Nueva Sustitución (directa)</h3>
+            </div>
+            <button onClick={() => setShowForm(false)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#FFFFFF', color: '#64748B' }}>
+              <X size={14} />
+            </button>
+          </div>
+          <div className="p-5 space-y-4">
+            {/* Sustituto picker */}
+            <div>
+              <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Sustituto *</label>
+              {form.sustituto_id ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: '#0369A1', color: '#fff' }}>
+                    {form.sustituto_nombre.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-sm font-medium flex-1" style={{ color: '#1E293B' }}>{form.sustituto_nombre}</span>
+                  <button onClick={() => setForm({ ...form, sustituto_id: '', sustituto_nombre: '' })} className="text-xs cursor-pointer" style={{ color: '#64748B' }}>Cambiar</button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+                  <input type="text" value={sustitutoSearch}
+                    onChange={(e) => setSustitutoSearch(e.target.value)}
+                    placeholder="Buscar trabajador..."
+                    className="w-full pl-8 pr-3 py-2 rounded-lg text-sm border outline-none"
+                    style={{ borderColor: '#E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
+                  {sustitutoSearch && (
+                    <div className="mt-1.5 max-h-48 overflow-y-auto rounded-lg" style={{ border: '1px solid #E2E8F0' }}>
+                      {filteredSustitutos.slice(0, 8).map((emp) => (
+                        <button key={emp.id} onClick={() => handleSelectSustituto(emp)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 cursor-pointer"
+                          style={{ borderBottom: '1px solid #F1F5F9' }}>
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
+                            {emp.nombre.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-xs font-medium" style={{ color: '#1E293B' }}>{emp.nombre}</span>
+                          {emp.dni && <span className="text-xs" style={{ color: '#94A3B8' }}>{emp.dni}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Horas *</label>
+                <input type="number" min={0} step={0.5} value={form.num_horas || ''}
+                  onChange={(e) => setForm({ ...form, num_horas: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ borderColor: '#BFDBFE', backgroundColor: '#EFF6FF', color: '#0369A1', fontWeight: 700 }} />
+              </div>
+              <div>
+                <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Fecha *</label>
+                <input type="date" value={form.fecha}
+                  onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ borderColor: '#E2E8F0', color: '#1E293B' }} />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Motivo</label>
+              <input type="text" value={form.motivo}
+                onChange={(e) => setForm({ ...form, motivo: e.target.value })}
+                placeholder="Ej. Refuerzo de limpieza"
+                className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                style={{ borderColor: '#E2E8F0', color: '#1E293B' }} />
+            </div>
+
+            {formError && <p className="text-xs" style={{ color: '#DC2626' }}>{formError}</p>}
+
+            <button onClick={handleSave} disabled={saving}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
+              style={{ backgroundColor: '#0369A1' }}>
+              {saving ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+              {saving ? 'Guardando...' : 'Añadir al balance de sustitutos'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
@@ -146,10 +310,10 @@ export default function SustitucionesModule() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ minWidth: '820px' }}>
+            <table className="w-full text-sm" style={{ minWidth: '880px' }}>
               <thead>
                 <tr style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                  {['Sustituto', 'Persona sustituida', 'Fecha', 'Cantidad', 'Retribución', 'Turno', 'Extras'].map((h) => (
+                  {['Sustituto', 'Persona sustituida', 'Fecha', 'Cantidad', 'Retribución', 'Turno', 'Extras', ''].map((h) => (
                     <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>{h}</th>
                   ))}
                 </tr>
@@ -205,10 +369,22 @@ export default function SustitucionesModule() {
                               <Star size={10} />{s.num_dias_festivos}d
                             </span>
                           )}
-                          {!(s.horas_nocturnas ?? 0) && !s.es_festivo && (
+                          {s.notas && (
+                            <span className="text-xs truncate max-w-[100px]" style={{ color: '#94A3B8' }} title={s.notas}>{s.notas}</span>
+                          )}
+                          {!(s.horas_nocturnas ?? 0) && !s.es_festivo && !s.notas && (
                             <span style={{ color: '#CBD5E1' }}>—</span>
                           )}
                         </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {!s.baja_id && (
+                          <button onClick={() => handleDelete(s.id)}
+                            className="w-6 h-6 rounded flex items-center justify-center cursor-pointer hover:bg-red-50"
+                            style={{ color: '#DC2626' }}>
+                            <X size={12} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

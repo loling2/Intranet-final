@@ -1,92 +1,122 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Timer, Search, RefreshCw, Calendar, Clock } from 'lucide-react';
+import { Timer, Search, RefreshCw, Calendar, Banknote, TrendingUp } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
-interface ExtraRow {
+interface SustRow {
   id: string;
-  user_id: string;
-  start_time: string;
-  end_time: string | null;
-  break_time: number;
-  log_date: string;
-  nombre: string;
-  email: string;
-  duracion_min: number;
+  sustituto_id: string;
+  sustituto_nombre: string;
+  fecha_inicio: string;
+  num_horas: number;
+  num_dias: number;
+  unidad: string;
+  turno: string | null;
+  horas_nocturnas: number | null;
+  tipo_cobertura: string | null;
 }
 
-function duracionMin(start: string, end: string | null, breakMin: number): number {
-  if (!end) return 0;
-  return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000) - (breakMin ?? 0));
+interface LiquidacionRow {
+  id: string;
+  sustituto_id: string;
+  sustituto_nombre: string;
+  horas_liquidadas: number;
+  fecha: string;
+  notas: string | null;
 }
 
-function formatDuration(min: number): string {
-  if (!min) return '—';
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
+const HORAS_POR_TURNO: Record<string, number> = { 'mañana': 8, tarde: 8, noche: 8 };
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+function yearOf(date: string): string {
+  return date.slice(0, 4);
 }
 
 export default function HorasExtrasModule() {
-  const [rows, setRows] = useState<ExtraRow[]>([]);
+  const [rows, setRows] = useState<SustRow[]>([]);
+  const [liquidaciones, setLiquidaciones] = useState<LiquidacionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [filterDesde, setFilterDesde] = useState('');
-  const [filterHasta, setFilterHasta] = useState('');
+  const [filterYear, setFilterYear] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: wData }, { data: pData }] = await Promise.all([
-      supabase.from('work_logs').select('*').eq('is_extra', true).order('log_date', { ascending: false }).limit(500),
-      supabase.from('user_profiles').select('id, nombre, email'),
+    const [{ data: sData }, { data: lData }] = await Promise.all([
+      supabase.from('sustituciones').select('id, sustituto_id, sustituto_nombre, fecha_inicio, num_horas, num_dias, unidad, turno, horas_nocturnas, tipo_cobertura').order('fecha_inicio', { ascending: false }).limit(5000),
+      supabase.from('liquidaciones_horas').select('*').order('fecha', { ascending: false }),
     ]);
-    const profMap = new Map((pData ?? []).map((p) => [p.id as string, p as { id: string; nombre: string; email: string }]));
-    setRows(
-      (wData ?? []).map((w) => {
-        const prof = profMap.get(w.user_id);
-        return {
-          ...w,
-          nombre: prof?.nombre ?? '—',
-          email: prof?.email ?? '',
-          duracion_min: duracionMin(w.start_time, w.end_time, w.break_time ?? 0),
-        };
-      })
-    );
+    setRows((sData ?? []) as SustRow[]);
+    setLiquidaciones((lData ?? []) as LiquidacionRow[]);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = rows.filter((r) => {
-    if (search && !r.nombre.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filterDesde && r.log_date < filterDesde) return false;
-    if (filterHasta && r.log_date > filterHasta) return false;
+  // Only paid substitutions (tipo_cobertura='pagar') count as paid overtime hours
+  const paidRows = rows.filter((r) => r.tipo_cobertura === 'pagar');
+
+  const yearsSet = new Set<string>();
+  for (const r of paidRows) yearsSet.add(yearOf(r.fecha_inicio));
+  for (const l of liquidaciones) yearsSet.add(yearOf(l.fecha));
+  const years = Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
+
+  const filteredPaid = paidRows.filter((r) => {
+    if (search && !r.sustituto_nombre.toLowerCase().includes(search.toLowerCase())) return false;
+    if (filterYear && yearOf(r.fecha_inicio) !== filterYear) return false;
     return true;
   });
 
-  const totalMin = filtered.reduce((acc, r) => acc + r.duracion_min, 0);
-  const empleadosUnicos = new Set(filtered.map((r) => r.user_id)).size;
+  const filteredLiq = liquidaciones.filter((l) => {
+    if (search && !l.sustituto_nombre.toLowerCase().includes(search.toLowerCase())) return false;
+    if (filterYear && yearOf(l.fecha) !== filterYear) return false;
+    return true;
+  });
 
-  // Group by employee for summary
-  const byEmployee = new Map<string, { nombre: string; count: number; totalMin: number }>();
-  for (const r of filtered) {
-    const ex = byEmployee.get(r.user_id);
-    if (ex) { ex.count++; ex.totalMin += r.duracion_min; }
-    else byEmployee.set(r.user_id, { nombre: r.nombre, count: 1, totalMin: r.duracion_min });
+  // Compute per-employee, per-year totals
+  const byEmployee = new Map<string, { sustituto_id: string; nombre: string; porAnio: Map<string, { horas: number; liquidadas: number }> }>();
+  for (const r of filteredPaid) {
+    const y = yearOf(r.fecha_inicio);
+    let emp = byEmployee.get(r.sustituto_id);
+    if (!emp) {
+      emp = { sustituto_id: r.sustituto_id, nombre: r.sustituto_nombre, porAnio: new Map() };
+      byEmployee.set(r.sustituto_id, emp);
+    }
+    let yv = emp.porAnio.get(y);
+    if (!yv) { yv = { horas: 0, liquidadas: 0 }; emp.porAnio.set(y, yv); }
+    const horasBase = HORAS_POR_TURNO[r.turno ?? ''] ?? 8;
+    yv.horas += r.unidad === 'horas' ? (r.num_horas || 0) : (r.num_dias || 0) * horasBase;
   }
-  const employeeSummary = Array.from(byEmployee.values()).sort((a, b) => b.totalMin - a.totalMin);
+  for (const l of filteredLiq) {
+    const y = yearOf(l.fecha);
+    let emp = byEmployee.get(l.sustituto_id);
+    if (!emp) {
+      emp = { sustituto_id: l.sustituto_id, nombre: l.sustituto_nombre, porAnio: new Map() };
+      byEmployee.set(l.sustituto_id, emp);
+    }
+    let yv = emp.porAnio.get(y);
+    if (!yv) { yv = { horas: 0, liquidadas: 0 }; emp.porAnio.set(y, yv); }
+    yv.liquidadas += l.horas_liquidadas;
+  }
+
+  const employeeList = Array.from(byEmployee.values()).sort((a, b) => {
+    const aTotal = Array.from(a.porAnio.values()).reduce((s, v) => s + v.horas, 0);
+    const bTotal = Array.from(b.porAnio.values()).reduce((s, v) => s + v.horas, 0);
+    return bTotal - aTotal;
+  });
+
+  const totalHorasPagadas = filteredPaid.reduce((acc, r) => {
+    const horasBase = HORAS_POR_TURNO[r.turno ?? ''] ?? 8;
+    return acc + (r.unidad === 'horas' ? (r.num_horas || 0) : (r.num_dias || 0) * horasBase);
+  }, 0);
+  const totalLiquidadas = filteredLiq.reduce((acc, l) => acc + l.horas_liquidadas, 0);
+  const totalPendientes = Math.max(0, totalHorasPagadas - totalLiquidadas);
 
   return (
     <div className="space-y-4">
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'Registros', value: filtered.length, color: '#64748B', bg: '#F8FAFC' },
-          { label: 'Empleados', value: empleadosUnicos, color: '#0369A1', bg: '#EFF6FF' },
-          { label: 'Total horas extra', value: formatDuration(totalMin), color: '#D97706', bg: '#FFFBEB' },
+          { label: 'Horas pagadas', value: `${totalHorasPagadas.toFixed(1)}h`, color: '#D97706', bg: '#FFFBEB' },
+          { label: 'Liquidadas', value: `${totalLiquidadas.toFixed(1)}h`, color: '#16A34A', bg: '#F0FDF4' },
+          { label: 'Pendientes', value: `${totalPendientes.toFixed(1)}h`, color: '#DC2626', bg: '#FEF2F2' },
         ].map((kpi, i) => (
           <div key={i} className="rounded-xl p-4" style={{ backgroundColor: kpi.bg }}>
             <p className="text-2xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
@@ -96,26 +126,20 @@ export default function HorasExtrasModule() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[180px]">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
-          <input
-            type="text" placeholder="Buscar empleado..."
+          <input type="text" placeholder="Buscar trabajador..."
             value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-2 rounded-xl text-xs outline-none"
-            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}
-          />
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Calendar size={13} style={{ color: '#94A3B8' }} />
-          <input type="date" value={filterDesde} onChange={(e) => setFilterDesde(e.target.value)}
-            className="px-2 py-2 rounded-xl text-xs outline-none"
-            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }} />
-          <span className="text-xs" style={{ color: '#94A3B8' }}>—</span>
-          <input type="date" value={filterHasta} onChange={(e) => setFilterHasta(e.target.value)}
-            className="px-2 py-2 rounded-xl text-xs outline-none"
             style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }} />
         </div>
+        <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)}
+          className="px-3 py-2 rounded-xl text-xs outline-none cursor-pointer"
+          style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
+          <option value="">Todos los años</option>
+          {years.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
         <button onClick={load}
           className="w-8 h-8 flex items-center justify-center rounded-xl cursor-pointer hover:opacity-70 transition-opacity"
           style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
@@ -123,89 +147,127 @@ export default function HorasExtrasModule() {
         </button>
       </div>
 
-      {/* Employee summary cards */}
-      {employeeSummary.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {employeeSummary.map((emp) => (
-            <div key={emp.nombre} className="rounded-xl p-3.5" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                  style={{ backgroundColor: '#F59E0B', color: '#FFFFFF' }}>
-                  {emp.nombre.charAt(0).toUpperCase()}
-                </div>
-                <p className="text-xs font-semibold truncate" style={{ color: '#1E293B' }}>{emp.nombre}</p>
-              </div>
-              <p className="text-xl font-bold" style={{ color: '#D97706' }}>{formatDuration(emp.totalMin)}</p>
-              <p className="text-xs mt-0.5" style={{ color: '#92400E' }}>{emp.count} registro{emp.count !== 1 ? 's' : ''}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Detail table */}
+      {/* Balance table */}
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
         <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
-          <Timer size={14} style={{ color: '#D97706' }} />
-          <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Detalle de Horas Extras</h3>
-          <span className="ml-auto text-xs" style={{ color: '#94A3B8' }}>{filtered.length} registros</span>
+          <Banknote size={14} style={{ color: '#D97706' }} />
+          <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Balance de horas extras pagadas por trabajador</h3>
+          <span className="ml-auto text-xs" style={{ color: '#94A3B8' }}>{employeeList.length} trabajadores</span>
         </div>
 
         {loading ? (
           <div className="flex justify-center py-12">
             <RefreshCw size={18} className="animate-spin" style={{ color: '#94A3B8' }} />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : employeeList.length === 0 ? (
           <div className="flex flex-col items-center py-12">
-            <Clock size={28} style={{ color: '#E2E8F0' }} />
-            <p className="text-sm mt-3" style={{ color: '#94A3B8' }}>No hay horas extras registradas</p>
+            <Timer size={28} style={{ color: '#E2E8F0' }} />
+            <p className="text-sm mt-3" style={{ color: '#94A3B8' }}>No hay horas extras pagadas registradas</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm" style={{ minWidth: '700px' }}>
               <thead>
                 <tr style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                  {['Empleado', 'Fecha', 'Hora inicio', 'Hora fin', 'Pausa', 'Duración total'].map((h) => (
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Trabajador</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Año</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Horas pagadas</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Liquidadas</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Pendientes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: '#F1F5F9' }}>
+                {employeeList.flatMap((emp) => {
+                  const anios = Array.from(emp.porAnio.keys()).sort((a, b) => b.localeCompare(a));
+                  return anios.map((y, idx) => {
+                    const v = emp.porAnio.get(y)!;
+                    const pendiente = Math.max(0, v.horas - v.liquidadas);
+                    return (
+                      <tr key={`${emp.sustituto_id}-${y}`} className="hover:bg-slate-50 transition-colors">
+                        {idx === 0 ? (
+                          <td className="px-4 py-3" rowSpan={anios.length}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                                style={{ backgroundColor: '#FFFBEB', color: '#D97706' }}>
+                                {emp.nombre.charAt(0).toUpperCase()}
+                              </div>
+                              <span className="text-sm font-semibold" style={{ color: '#1E293B' }}>{emp.nombre}</span>
+                            </div>
+                          </td>
+                        ) : null}
+                        <td className="px-4 py-3 text-xs font-mono" style={{ color: '#64748B' }}>{y}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-sm font-bold" style={{ color: '#D97706' }}>{v.horas.toFixed(1)}h</span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-sm font-semibold" style={{ color: v.liquidadas > 0 ? '#16A34A' : '#CBD5E1' }}>
+                            {v.liquidadas.toFixed(1)}h
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-sm font-bold" style={{ color: pendiente > 0 ? '#DC2626' : '#16A34A' }}>
+                            {pendiente.toFixed(1)}h
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  });
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ backgroundColor: '#F8FAFC', borderTop: '2px solid #E2E8F0' }}>
+                  <td className="px-4 py-3 text-xs font-semibold uppercase tracking-wider" colSpan={2} style={{ color: '#64748B' }}>Total</td>
+                  <td className="px-4 py-3 text-right">
+                    <span className="text-sm font-bold" style={{ color: '#D97706' }}>{totalHorasPagadas.toFixed(1)}h</span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <span className="text-sm font-bold" style={{ color: '#16A34A' }}>{totalLiquidadas.toFixed(1)}h</span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <span className="text-sm font-bold" style={{ color: '#DC2626' }}>{totalPendientes.toFixed(1)}h</span>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Liquidaciones detail */}
+      {filteredLiq.length > 0 && (
+        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+          <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F0FDF4' }}>
+            <TrendingUp size={14} style={{ color: '#16A34A' }} />
+            <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Liquidaciones realizadas</h3>
+            <span className="ml-auto text-xs" style={{ color: '#94A3B8' }}>{filteredLiq.length} registros</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ minWidth: '600px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                  {['Trabajador', 'Fecha', 'Horas liquidadas', 'Notas'].map((h) => (
                     <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-                {filtered.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                          style={{ backgroundColor: '#FFFBEB', color: '#D97706' }}>
-                          {r.nombre.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{r.nombre}</p>
-                          {r.email && <p className="text-xs" style={{ color: '#94A3B8' }}>{r.email}</p>}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs font-mono" style={{ color: '#64748B' }}>{r.log_date}</td>
-                    <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: '#16A34A' }}>
-                      {formatTime(r.start_time)}
-                    </td>
-                    <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.end_time ? '#DC2626' : '#CBD5E1' }}>
-                      {r.end_time ? formatTime(r.end_time) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: '#64748B' }}>
-                      {r.break_time ? `${r.break_time}m` : '—'}
+                {filteredLiq.map((l) => (
+                  <tr key={l.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 text-sm font-semibold" style={{ color: '#1E293B' }}>{l.sustituto_nombre}</td>
+                    <td className="px-4 py-3 text-xs font-mono" style={{ color: '#64748B' }}>
+                      <span className="inline-flex items-center gap-1"><Calendar size={11} />{l.fecha}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-sm font-bold" style={{ color: r.duracion_min > 0 ? '#D97706' : '#CBD5E1' }}>
-                        {formatDuration(r.duracion_min)}
-                      </span>
+                      <span className="text-sm font-bold" style={{ color: '#16A34A' }}>{l.horas_liquidadas}h</span>
                     </td>
+                    <td className="px-4 py-3 text-xs" style={{ color: '#64748B' }}>{l.notas ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

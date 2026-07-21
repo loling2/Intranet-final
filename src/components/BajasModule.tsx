@@ -4,12 +4,13 @@ import {
   AlertTriangle, UserCheck, CheckCircle2, Clock, ArrowRight,
   Sun, Moon, Sunset, Banknote, RotateCcw, MoreHorizontal, Star,
   FileCheck, CreditCard, Hash, FileSpreadsheet, FileText, ChevronDown,
-  Timer,
+  Timer, Upload, CheckSquare, Square,
 } from 'lucide-react';
 import SustitucionesModule from './SustitucionesModule';
 import HorasExtrasModule from './HorasExtrasModule';
 import * as XLSX from 'xlsx';
 import { supabase } from '../supabaseClient';
+import { uploadPnrJustificante, getWasabiBlobUrl } from '../lib/wasabi';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,11 +39,15 @@ interface Baja {
   dias_no_cubiertos: number;
   modo_finalizacion: string | null;
   notas_finalizacion: string | null;
+  tipo_absentismo: string | null;
+  reposo_duracion: string | null;
+  justificante_estado: string | null;
+  justificante_url: string | null;
 }
 
 interface Sustitucion {
   id: string;
-  baja_id: string;
+  baja_id: string | null;
   sustituto_id: string;
   sustituto_nombre: string;
   fecha_inicio: string;
@@ -57,6 +62,30 @@ interface Sustitucion {
   motivo_otro: string | null;
   num_dias_festivos: number | null;
 }
+
+interface LiquidacionHoras {
+  id: string;
+  sustituto_id: string;
+  sustituto_nombre: string;
+  horas_liquidadas: number;
+  fecha: string;
+  notas: string | null;
+  created_by: string | null;
+  created_by_nombre: string | null;
+  created_at: string;
+}
+
+type TipoAbsentismo = 'IT' | 'AT' | 'PR' | 'PNR' | 'Reposo';
+
+const TIPOS_ABSENTISMO: { value: TipoAbsentismo; label: string; color: string; bg: string; border: string }[] = [
+  { value: 'IT', label: 'IT', color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
+  { value: 'AT', label: 'AT', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+  { value: 'PR', label: 'PR', color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' },
+  { value: 'PNR', label: 'PNR', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+  { value: 'Reposo', label: 'Reposo', color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
+];
+
+const REPOSO_DURACIONES = ['24h', '48h', '72h'] as const;
 
 interface BajaWithSustituciones extends Baja {
   sustituciones: Sustitucion[];
@@ -460,6 +489,21 @@ export default function BajasModule() {
   const [bajaForm, setBajaForm] = useState({ empleado_id: '', empleado_nombre: '', fecha_inicio: '', fecha_fin: '', motivo: '' });
   const [largaDuracion, setLargaDuracion] = useState(false);
   const [diasNoCubiertos, setDiasNoCubiertos] = useState(0);
+  const [tipoAbsentismo, setTipoAbsentismo] = useState<TipoAbsentismo | ''>('');
+  const [reposoDuracion, setReposoDuracion] = useState<string>('');
+  const [justificanteEstado, setJustificanteEstado] = useState<'pendiente' | 'entregado'>('pendiente');
+  const [justificanteUrl, setJustificanteUrl] = useState<string | null>(null);
+  const [uploadingJustificante, setUploadingJustificante] = useState(false);
+
+  // Standalone sustituciones + liquidaciones
+  const [standaloneSustituciones, setStandaloneSustituciones] = useState<Sustitucion[]>([]);
+  const [liquidaciones, setLiquidaciones] = useState<LiquidacionHoras[]>([]);
+
+  // Liquidar modal
+  const [liquidarTarget, setLiquidarTarget] = useState<{ sustituto_id: string; sustituto_nombre: string; pendiente: number } | null>(null);
+  const [liquidarHoras, setLiquidarHoras] = useState(0);
+  const [liquidarNotas, setLiquidarNotas] = useState('');
+  const [savingLiquidar, setSavingLiquidar] = useState(false);
 
   // Sustituciones
   const [sustitucionesForm, setSustitucionesForm] = useState<SustitucionForm[]>([]);
@@ -477,13 +521,20 @@ export default function BajasModule() {
 
   const loadBajas = useCallback(async () => {
     setLoading(true);
-    const { data: bajasData } = await supabase.from('bajas_temporales').select('*').order('created_at', { ascending: false });
-    const { data: sustData } = await supabase.from('sustituciones').select('*').order('created_at', { ascending: false });
+    const [{ data: bajasData }, { data: sustData }, { data: liqData }] = await Promise.all([
+      supabase.from('bajas_temporales').select('*').order('created_at', { ascending: false }),
+      supabase.from('sustituciones').select('*').order('created_at', { ascending: false }),
+      supabase.from('liquidaciones_horas').select('*').order('fecha', { ascending: false }),
+    ]);
     const enriched: BajaWithSustituciones[] = (bajasData ?? []).map((b) => {
       const susts = (sustData ?? []).filter((s) => s.baja_id === b.id) as Sustitucion[];
       const stats = computeStatsFromDB(susts);
       return {
         ...b,
+        tipo_absentismo: b.tipo_absentismo ?? null,
+        reposo_duracion: b.reposo_duracion ?? null,
+        justificante_estado: b.justificante_estado ?? 'pendiente',
+        justificante_url: b.justificante_url ?? null,
         larga_duracion: b.larga_duracion ?? false,
         dias_no_cubiertos: b.dias_no_cubiertos ?? 0,
         modo_finalizacion: b.modo_finalizacion ?? null,
@@ -494,6 +545,8 @@ export default function BajasModule() {
       };
     });
     setBajas(enriched);
+    setStandaloneSustituciones((sustData ?? []).filter((s) => !s.baja_id) as Sustitucion[]);
+    setLiquidaciones((liqData ?? []) as LiquidacionHoras[]);
     setLoading(false);
   }, []);
 
@@ -510,6 +563,10 @@ export default function BajasModule() {
     setBajaForm({ empleado_id: '', empleado_nombre: '', fecha_inicio: '', fecha_fin: '', motivo: '' });
     setLargaDuracion(false);
     setDiasNoCubiertos(0);
+    setTipoAbsentismo('');
+    setReposoDuracion('');
+    setJustificanteEstado('pendiente');
+    setJustificanteUrl(null);
     setSustitucionesForm([]);
     setShowBajaModal(true);
     setError('');
@@ -520,6 +577,10 @@ export default function BajasModule() {
     setBajaForm({ empleado_id: baja.empleado_id, empleado_nombre: baja.empleado_nombre, fecha_inicio: baja.fecha_inicio, fecha_fin: baja.fecha_fin ?? '', motivo: baja.motivo ?? '' });
     setLargaDuracion(baja.larga_duracion ?? false);
     setDiasNoCubiertos(baja.dias_no_cubiertos ?? 0);
+    setTipoAbsentismo((baja.tipo_absentismo as TipoAbsentismo) ?? '');
+    setReposoDuracion(baja.reposo_duracion ?? '');
+    setJustificanteEstado((baja.justificante_estado as 'pendiente' | 'entregado') ?? 'pendiente');
+    setJustificanteUrl(baja.justificante_url ?? null);
     setSustitucionesForm(baja.sustituciones.map((s) => ({
       sustituto_id: s.sustituto_id, sustituto_nombre: s.sustituto_nombre,
       fecha_inicio: s.fecha_inicio, num_dias: s.num_dias, notas: s.notas ?? '',
@@ -569,6 +630,10 @@ export default function BajasModule() {
         total_dias: largaDuracion ? 0 : totalDiasBaja, motivo: bajaForm.motivo.trim() || null,
         estado: 'activa', created_by: userId, updated_at: new Date().toISOString(),
         larga_duracion: largaDuracion, dias_no_cubiertos: diasNoCubiertos,
+        tipo_absentismo: tipoAbsentismo || null,
+        reposo_duracion: tipoAbsentismo === 'Reposo' ? reposoDuracion : null,
+        justificante_estado: tipoAbsentismo === 'PNR' ? justificanteEstado : null,
+        justificante_url: tipoAbsentismo === 'PNR' && justificanteEstado === 'entregado' ? justificanteUrl : null,
       };
       let bajaId: string;
       if (editingBaja) {
@@ -619,6 +684,65 @@ export default function BajasModule() {
     setFinalizarTarget(baja);
     setModoFinalizacion('');
     setNotasFinalizacion('');
+  };
+
+  const handleUploadJustificante = async (file: File) => {
+    if (!bajaForm.empleado_id) { setError('Selecciona un trabajador primero.'); return; }
+    setUploadingJustificante(true); setError('');
+    try {
+      const emp = empleados.find((e) => e.id === bajaForm.empleado_id);
+      const dni = emp?.dni ?? 'sin-dni';
+      const nombre = emp?.nombre ?? bajaForm.empleado_nombre;
+      const anio = new Date().getFullYear().toString();
+      const key = await uploadPnrJustificante(file, dni, nombre, anio);
+      setJustificanteUrl(key);
+      setJustificanteEstado('entregado');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al subir justificante');
+    } finally {
+      setUploadingJustificante(false);
+    }
+  };
+
+  const handleViewJustificante = async (url: string) => {
+    try {
+      const blobUrl = await getWasabiBlobUrl(url);
+      window.open(blobUrl, '_blank');
+    } catch { setError('No se pudo abrir el justificante.'); }
+  };
+
+  const openLiquidarModal = (sustituto_id: string, sustituto_nombre: string, pendiente: number) => {
+    setLiquidarTarget({ sustituto_id, sustituto_nombre, pendiente });
+    setLiquidarHoras(pendiente);
+    setLiquidarNotas('');
+  };
+
+  const handleConfirmLiquidar = async () => {
+    if (!liquidarTarget) return;
+    if (!liquidarHoras || liquidarHoras <= 0) { setError('Indica las horas a liquidar.'); return; }
+    if (liquidarHoras > liquidarTarget.pendiente) { setError(`No puedes liquidar más de ${liquidarTarget.pendiente}h pendientes.`); return; }
+    setSavingLiquidar(true); setError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id ?? null;
+      const { error: insErr } = await supabase.from('liquidaciones_horas').insert({
+        sustituto_id: liquidarTarget.sustituto_id,
+        sustituto_nombre: liquidarTarget.sustituto_nombre,
+        horas_liquidadas: liquidarHoras,
+        fecha: new Date().toISOString().slice(0, 10),
+        notas: liquidarNotas.trim() || null,
+        created_by: userId,
+      });
+      if (insErr) throw insErr;
+      setLiquidarTarget(null);
+      await loadBajas();
+      setSuccessMsg(`${liquidarHoras}h liquidadas para ${liquidarTarget.sustituto_nombre}.`);
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al liquidar');
+    } finally {
+      setSavingLiquidar(false);
+    }
   };
 
   const handleConfirmFinalizar = async () => {
@@ -692,7 +816,46 @@ export default function BajasModule() {
       }
     }
   }
-  const balanceData = Array.from(balanceMap.entries()).map(([id, val]) => ({ sustituto_id: id, ...val })).sort((a, b) => (b.dias + Math.ceil(b.horas / 8)) - (a.dias + Math.ceil(a.horas / 8)));
+  // Include standalone sustituciones in the balance
+  for (const s of standaloneSustituciones) {
+    if (reporteFechaInicio && s.fecha_inicio < reporteFechaInicio) continue;
+    if (reporteFechaFin && s.fecha_inicio > reporteFechaFin) continue;
+    const existing = balanceMap.get(s.sustituto_id);
+    const horasBase = HORAS_POR_TURNO[s.turno ?? ''] ?? 8;
+    const horasVal = s.unidad === 'horas' ? (s.num_horas ?? 0) : s.num_dias * horasBase;
+    const horasNoc = s.turno === 'noche' ? (s.horas_nocturnas ?? horasVal) : 0;
+    if (existing) {
+      existing.dias += s.num_dias; existing.horas += s.unidad === 'horas' ? (s.num_horas ?? 0) : 0;
+      existing.horasNocturnas += horasNoc; existing.count += 1;
+    } else {
+      balanceMap.set(s.sustituto_id, { nombre: s.sustituto_nombre, dias: s.num_dias, horas: s.unidad === 'horas' ? (s.num_horas ?? 0) : 0, horasNocturnas: horasNoc, diasFestivos: 0, count: 1 });
+    }
+  }
+  // Apply liquidaciones (subtract liquidadas from horas)
+  const liquidacionesPorSustituto = new Map<string, number>();
+  for (const l of liquidaciones) {
+    if (reporteFechaInicio && l.fecha < reporteFechaInicio) continue;
+    if (reporteFechaFin && l.fecha > reporteFechaFin) continue;
+    liquidacionesPorSustituto.set(l.sustituto_id, (liquidacionesPorSustituto.get(l.sustituto_id) ?? 0) + l.horas_liquidadas);
+  }
+  // Subtract PNR/Reposo days from the absent worker's balance (count as -1 day each)
+  // We track these as negative day entries keyed by empleado_id of the baja
+  const ausenciasPorTrabajador = new Map<string, { nombre: string; dias: number }>();
+  for (const b of bajas) {
+    if (b.estado !== 'activa') continue;
+    if (b.tipo_absentismo !== 'PNR' && b.tipo_absentismo !== 'Reposo') continue;
+    if (reporteFechaInicio && b.fecha_inicio < reporteFechaInicio) continue;
+    if (reporteFechaFin && b.fecha_fin && b.fecha_fin > reporteFechaFin) continue;
+    const dias = b.larga_duracion ? 1 : (b.total_dias ?? 1);
+    const existing = ausenciasPorTrabajador.get(b.empleado_id);
+    if (existing) existing.dias += dias;
+    else ausenciasPorTrabajador.set(b.empleado_id, { nombre: b.empleado_nombre, dias });
+  }
+  const balanceData = Array.from(balanceMap.entries()).map(([id, val]) => {
+    const liquidadas = liquidacionesPorSustituto.get(id) ?? 0;
+    return { sustituto_id: id, ...val, horasLiquidadas: liquidadas, horasPendientes: Math.max(0, val.horas - liquidadas) };
+  }).sort((a, b) => (b.dias + Math.ceil(b.horas / 8)) - (a.dias + Math.ceil(a.horas / 8)));
+  const ausenciasData = Array.from(ausenciasPorTrabajador.entries()).map(([id, val]) => ({ sustituto_id: id, nombre: val.nombre, dias: -val.dias, horas: 0, horasNocturnas: 0, diasFestivos: 0, count: 0, horasLiquidadas: 0, horasPendientes: 0, esAusencia: true as const }));
 
   // Finalizadas KPIs by modo
   const finalizadasByModo = {
@@ -1116,34 +1279,84 @@ export default function BajasModule() {
           </div>
         )
       ) : (
-        balanceData.length === 0 ? (
+        balanceData.length === 0 && ausenciasData.length === 0 ? (
           <div className="rounded-xl p-8 text-center" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
             <UserCheck size={32} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
-            <p className="text-sm font-medium" style={{ color: '#64748B' }}>No hay sustituciones registradas</p>
+            <p className="text-sm font-medium" style={{ color: '#64748B' }}>No hay sustituciones ni ausencias registradas</p>
           </div>
         ) : (
-          <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-            <div className="px-5 py-3" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
-              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>Balance de Cobertura por Sustituto</p>
-            </div>
-            <div className="divide-y" style={{ borderColor: '#F8FAFC' }}>
-              {balanceData.map((b) => (
-                <div key={b.sustituto_id} className="px-5 py-3.5 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F0FDF4' }}>
-                    <UserCheck size={14} style={{ color: '#16A34A' }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{b.nombre}</p>
-                    <p className="text-xs" style={{ color: '#94A3B8' }}>{b.count} sustitucion(es)</p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap justify-end">
-                    {b.dias > 0 && <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>{b.dias}d</span>}
-                    {b.horas > 0 && <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A' }}>{b.horas}h</span>}
-                    {b.horasNocturnas > 0 && <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#F5F3FF', color: '#7C3AED' }}><Moon size={10} className="inline mr-0.5" />{b.horasNocturnas}h noct.</span>}
-                    {b.diasFestivos > 0 && <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#FEF9C3', color: '#854D0E' }}><Star size={10} className="inline mr-0.5" />{b.diasFestivos}d fest.</span>}
-                  </div>
+          <div className="space-y-4">
+            {/* Ausencias (PNR/Reposo) — negative days in red */}
+            {ausenciasData.length > 0 && (
+              <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #FECACA' }}>
+                <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid #FECACA', backgroundColor: '#FEF2F2' }}>
+                  <AlertTriangle size={14} style={{ color: '#DC2626' }} />
+                  <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#DC2626' }}>Ausencias que descuentan días (PNR / Reposo)</p>
                 </div>
-              ))}
+                <div className="divide-y" style={{ borderColor: '#FEE2E2' }}>
+                  {ausenciasData.map((b) => (
+                    <div key={b.sustituto_id} className="px-5 py-3.5 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEF2F2' }}>
+                        <BedSingle size={14} style={{ color: '#DC2626' }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{b.nombre}</p>
+                        <p className="text-xs" style={{ color: '#DC2626' }}>Ausencia (PNR/Reposo)</p>
+                      </div>
+                      <span className="text-sm px-3 py-1.5 rounded-lg font-bold" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
+                        {b.dias}d
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Balance de sustitutos */}
+            <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+              <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+                <Banknote size={14} style={{ color: '#16A34A' }} />
+                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>Balance de Sustitutos — Liquidar horas</p>
+              </div>
+              <div className="divide-y" style={{ borderColor: '#F8FAFC' }}>
+                {balanceData.map((b) => (
+                  <div key={b.sustituto_id} className="px-5 py-3.5 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F0FDF4' }}>
+                      <UserCheck size={14} style={{ color: '#16A34A' }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{b.nombre}</p>
+                      <p className="text-xs" style={{ color: '#94A3B8' }}>{b.count} sustitucion(es)</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      {b.dias > 0 && <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>{b.dias}d</span>}
+                      {b.horas > 0 && <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A' }}>{b.horas}h</span>}
+                      {b.horasNocturnas > 0 && <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#F5F3FF', color: '#7C3AED' }}><Moon size={10} className="inline mr-0.5" />{b.horasNocturnas}h noct.</span>}
+                      {b.diasFestivos > 0 && <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#FEF9C3', color: '#854D0E' }}><Star size={10} className="inline mr-0.5" />{b.diasFestivos}d fest.</span>}
+                      {b.horas > 0 && (
+                        <>
+                          {b.horasLiquidadas > 0 && (
+                            <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                              <CheckCircle2 size={10} className="inline mr-0.5" />{b.horasLiquidadas}h liq.
+                            </span>
+                          )}
+                          {b.horasPendientes > 0 && (
+                            <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
+                              <Clock size={10} className="inline mr-0.5" />{b.horasPendientes}h pend.
+                            </span>
+                          )}
+                          <button onClick={() => openLiquidarModal(b.sustituto_id, b.nombre, b.horasPendientes)}
+                            disabled={b.horasPendientes <= 0}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-40 transition-opacity"
+                            style={{ backgroundColor: '#D97706' }}>
+                            <Banknote size={11} /> Liquidar
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )
@@ -1215,6 +1428,63 @@ export default function BajasModule() {
                   style={{ backgroundColor: '#065F46' }}>
                   {savingFinalizar ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                   Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Liquidar Horas Modal ── */}
+      {liquidarTarget && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-white rounded-2xl max-w-md w-full mx-4 shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #92400E, #D97706)' }}>
+              <h2 className="text-white font-semibold text-sm flex items-center gap-2"><Banknote size={15} /> Liquidar horas</h2>
+              <button onClick={() => setLiquidarTarget(null)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff' }}>
+                <X size={15} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="rounded-lg px-4 py-3" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                <p className="text-sm font-semibold" style={{ color: '#92400E' }}>{liquidarTarget.sustituto_nombre}</p>
+                <p className="text-xs mt-0.5" style={{ color: '#D97706' }}>
+                  Horas pendientes: <span className="font-bold">{liquidarTarget.pendiente.toFixed(1)}h</span>
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Horas a liquidar *</label>
+                <input type="number" min={0} max={liquidarTarget.pendiente} step={0.5} value={liquidarHoras || ''}
+                  onChange={(e) => setLiquidarHoras(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB', color: '#92400E', fontWeight: 700 }} />
+                <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
+                  Pendientes restantes: <span className="font-semibold" style={{ color: '#DC2626' }}>{Math.max(0, liquidarTarget.pendiente - (liquidarHoras || 0)).toFixed(1)}h</span>
+                  {' → '}
+                  Finalizadas: <span className="font-semibold" style={{ color: '#16A34A' }}>{(liquidarHoras || 0).toFixed(1)}h</span>
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Notas (opcional)</label>
+                <input type="text" value={liquidarNotas} onChange={(e) => setLiquidarNotas(e.target.value)}
+                  placeholder="Ej. Pago noviembre 2026"
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ borderColor: '#E2E8F0', color: '#1E293B' }} />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setLiquidarTarget(null)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold cursor-pointer"
+                  style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
+                  Cancelar
+                </button>
+                <button onClick={handleConfirmLiquidar} disabled={savingLiquidar || !liquidarHoras || liquidarHoras <= 0 || liquidarHoras > liquidarTarget.pendiente}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: '#D97706' }}>
+                  {savingLiquidar ? <RefreshCw size={14} className="animate-spin" /> : <Banknote size={14} />}
+                  {savingLiquidar ? 'Liquidando...' : 'Liquidar horas'}
                 </button>
               </div>
             </div>
@@ -1343,6 +1613,123 @@ export default function BajasModule() {
                   className="w-full px-3 py-2 rounded-lg text-sm border outline-none" style={{ borderColor: '#E2E8F0', color: '#1E293B' }}
                   placeholder="Ej. Baja médica, accidente, permiso..." />
               </div>
+
+              {/* Tipo de absentismo */}
+              <div>
+                <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Tipo de absentismo</label>
+                <div className="flex flex-wrap gap-2">
+                  {TIPOS_ABSENTISMO.map((t) => {
+                    const selected = tipoAbsentismo === t.value;
+                    return (
+                      <button key={t.value} type="button" onClick={() => {
+                        setTipoAbsentismo(selected ? '' : t.value);
+                        if (t.value !== 'PNR') { setJustificanteEstado('pendiente'); setJustificanteUrl(null); }
+                        if (t.value !== 'Reposo') setReposoDuracion('');
+                      }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                        style={{
+                          backgroundColor: selected ? t.bg : '#FFFFFF',
+                          border: `1.5px solid ${selected ? t.color : '#E2E8F0'}`,
+                          color: selected ? t.color : '#64748B',
+                        }}>
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Reposo: duración dropdown */}
+              {tipoAbsentismo === 'Reposo' && (
+                <div className="rounded-xl p-3" style={{ backgroundColor: '#F5F3FF', border: '1px solid #DDD6FE' }}>
+                  <label className="text-xs font-medium mb-1.5 block" style={{ color: '#7C3AED' }}>Duración del reposo *</label>
+                  <div className="flex gap-2">
+                    {REPOSO_DURACIONES.map((d) => {
+                      const selected = reposoDuracion === d;
+                      return (
+                        <button key={d} type="button" onClick={() => setReposoDuracion(selected ? '' : d)}
+                          className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
+                          style={{
+                            backgroundColor: selected ? '#7C3AED' : '#FFFFFF',
+                            border: `1.5px solid ${selected ? '#7C3AED' : '#DDD6FE'}`,
+                            color: selected ? '#FFFFFF' : '#7C3AED',
+                          }}>
+                          {d}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10px] mt-1.5" style={{ color: '#7C3AED' }}>
+                    Esta ausencia descontará 1 día del balance del trabajador.
+                  </p>
+                </div>
+              )}
+
+              {/* PNR: justificante */}
+              {tipoAbsentismo === 'PNR' && (
+                <div className="rounded-xl p-3 space-y-3" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                  <div>
+                    <label className="text-xs font-medium mb-1.5 block" style={{ color: '#D97706' }}>Justificante</label>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => { setJustificanteEstado('pendiente'); setJustificanteUrl(null); }}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
+                        style={{
+                          backgroundColor: justificanteEstado === 'pendiente' ? '#D97706' : '#FFFFFF',
+                          border: `1.5px solid ${justificanteEstado === 'pendiente' ? '#D97706' : '#FDE68A'}`,
+                          color: justificanteEstado === 'pendiente' ? '#FFFFFF' : '#D97706',
+                        }}>
+                        {justificanteEstado === 'pendiente' ? <CheckSquare size={14} /> : <Square size={14} />} Pendiente
+                      </button>
+                      <button type="button" onClick={() => setJustificanteEstado('entregado')}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
+                        style={{
+                          backgroundColor: justificanteEstado === 'entregado' ? '#16A34A' : '#FFFFFF',
+                          border: `1.5px solid ${justificanteEstado === 'entregado' ? '#16A34A' : '#FDE68A'}`,
+                          color: justificanteEstado === 'entregado' ? '#FFFFFF' : '#16A34A',
+                        }}>
+                        {justificanteEstado === 'entregado' ? <CheckSquare size={14} /> : <Square size={14} />} Entregado
+                      </button>
+                    </div>
+                  </div>
+
+                  {justificanteEstado === 'entregado' && (
+                    <div>
+                      {justificanteUrl ? (
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                          <FileCheck size={14} style={{ color: '#16A34A' }} />
+                          <span className="text-xs flex-1 truncate" style={{ color: '#16A34A' }}>Justificante subido</span>
+                          <button type="button" onClick={() => handleViewJustificante(justificanteUrl)}
+                            className="text-xs cursor-pointer" style={{ color: '#0369A1' }}>Ver</button>
+                          <button type="button" onClick={() => { setJustificanteUrl(null); }}
+                            className="text-xs cursor-pointer" style={{ color: '#DC2626' }}>Quitar</button>
+                        </div>
+                      ) : (
+                        <label className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg cursor-pointer"
+                          style={{ backgroundColor: '#FFFFFF', border: '1.5px dashed #FDE68A', color: '#D97706' }}>
+                          <Upload size={14} />
+                          <span className="text-xs font-semibold">
+                            {uploadingJustificante ? 'Subiendo...' : 'Subir justificante'}
+                          </span>
+                          <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                            disabled={uploadingJustificante || !bajaForm.empleado_id}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleUploadJustificante(f);
+                              e.target.value = '';
+                            }} />
+                        </label>
+                      )}
+                      <p className="text-[10px] mt-1" style={{ color: '#D97706' }}>
+                        Se guardará en Documentos personales / PNR / {new Date().getFullYear()}
+                      </p>
+                    </div>
+                  )}
+
+                  <p className="text-[10px]" style={{ color: '#D97706' }}>
+                    Esta ausencia descontará 1 día del balance del trabajador.
+                  </p>
+                </div>
+              )}
 
               {/* Sustituciones */}
               <div className="pt-2 border-t" style={{ borderColor: '#F1F5F9' }}>

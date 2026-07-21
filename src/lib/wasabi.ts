@@ -311,6 +311,36 @@ export async function listBajasEmployeeFiles(sociedadSlug: string, dni: string, 
     }));
 }
 
+// Upload a PNR justificante: rrhh/privado/<dni>-<nombre>/PNR/<año>/<filename>
+export async function uploadPnrJustificante(file: File, dni: string, nombre: string, anio: string): Promise<string> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const employeeFolder = `rrhh/privado/${dni}-${nombre}/`;
+  const pnrFolder = `${employeeFolder}PNR/`;
+  const yearFolder = `${pnrFolder}${anio}/`;
+
+  // Ensure folders exist
+  for (const fk of [employeeFolder, pnrFolder, yearFolder]) {
+    const resp = await wasabiClient.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: fk, MaxKeys: 1 }));
+    if (!resp.Contents?.length) {
+      await wasabiClient.send(new PutObjectCommand({
+        Bucket: bucket, Key: `${fk}.keep`,
+        Body: new Uint8Array(0), ContentType: 'application/octet-stream', ContentLength: 0,
+      }));
+    }
+  }
+
+  const ts = Date.now();
+  const key = `${yearFolder}${ts}-${file.name}`;
+  const buffer = await file.arrayBuffer();
+  await wasabiClient.send(new PutObjectCommand({
+    Bucket: bucket, Key: key,
+    Body: new Uint8Array(buffer),
+    ContentType: file.type || 'application/octet-stream',
+    ContentLength: file.size,
+  }));
+  return key;
+}
+
 // Download a file by key and trigger browser download
 export async function downloadFromWasabi(key: string, filename: string): Promise<void> {
   const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;

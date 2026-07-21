@@ -38,6 +38,10 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   titulacion_habilitante: null,
   fecha_pago_tasas: null,
   nass: null,
+  sexo: null,
+  convenio: null,
+  direccion: null,
+  codigo_postal: null,
   observaciones: null,
   activo: true,
   estado_contrato: 'pendiente',
@@ -66,6 +70,10 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     titulacion_habilitante: e.titulacion_habilitante,
     fecha_pago_tasas: e.fecha_pago_tasas,
     nass: e.nass ?? null,
+    sexo: e.sexo ?? null,
+    convenio: e.convenio ?? null,
+    direccion: e.direccion ?? null,
+    codigo_postal: e.codigo_postal ?? null,
     observaciones: e.observaciones,
     activo: e.activo,
     estado_contrato: e.estado_contrato ?? 'pendiente',
@@ -1299,6 +1307,73 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               <button onClick={cancelForm} className="cursor-pointer" style={{ color: '#94A3B8' }}><X size={16} /></button>
             </div>
 
+            {/* Section: Estado + Reconocimiento medico (top) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 rounded-xl p-3" style={{ backgroundColor: '#F1F5F9', border: '1px solid #E2E8F0' }}>
+              <FormField label="Estado">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => f('activo', true)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                    style={{
+                      backgroundColor: form.activo ? '#DCFCE7' : '#FFFFFF',
+                      color: form.activo ? '#15803D' : '#94A3B8',
+                      border: `1.5px solid ${form.activo ? '#22C55E' : '#E2E8F0'}`,
+                    }}
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: form.activo ? '#22C55E' : '#CBD5E1' }} />
+                    Activo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => f('activo', false)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                    style={{
+                      backgroundColor: !form.activo ? '#FEE2E2' : '#FFFFFF',
+                      color: !form.activo ? '#B91C1C' : '#94A3B8',
+                      border: `1.5px solid ${!form.activo ? '#EF4444' : '#E2E8F0'}`,
+                    }}
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: !form.activo ? '#EF4444' : '#CBD5E1' }} />
+                    Inactivo
+                  </button>
+                </div>
+              </FormField>
+
+              <div>
+                <p className="text-xs font-medium mb-1.5" style={{ color: '#64748B' }}>Reconocimiento medico</p>
+                <div className="flex gap-2 flex-wrap">
+                  {([
+                    { value: 'pendiente', label: 'Pendiente', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' },
+                    { value: 'acepta', label: 'Acepta', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' },
+                    { value: 'renuncia', label: 'Renuncia', color: '#B91C1C', bg: '#FEE2E2', border: '#EF4444' },
+                  ] as const).map(({ value, label, color, bg, border }) => {
+                    const isActive = (form.reconocimiento_medico ?? 'pendiente') === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => f('reconocimiento_medico', value)}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                        style={{
+                          backgroundColor: isActive ? bg : '#FFFFFF',
+                          color: isActive ? color : '#94A3B8',
+                          border: `1.5px solid ${isActive ? border : '#E2E8F0'}`,
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {form.reconocimiento_medico === 'acepta' && (
+                  <p className="text-xs mt-2" style={{ color: '#15803D' }}>
+                    Este empleado aparecera en el panel de prevencion para gestionar el reconocimiento medico.
+                  </p>
+                )}
+              </div>
+            </div>
+
             {/* Section: Datos personales */}
             <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Datos personales</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
@@ -1337,6 +1412,26 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               <FormField label="NASS">
                 <input value={form.nass ?? ''} onChange={(e) => f('nass', e.target.value || null)}
                   type="text" className="form-input" placeholder="Nº Afiliación Seg. Social" />
+              </FormField>
+              <FormField label="Sexo">
+                <select value={form.sexo ?? ''} onChange={(e) => f('sexo', e.target.value || null)} className="form-input">
+                  <option value="">Seleccionar...</option>
+                  <option value="M">Masculino</option>
+                  <option value="F">Femenino</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </FormField>
+              <FormField label="Convenio">
+                <input value={form.convenio ?? ''} onChange={(e) => f('convenio', e.target.value || null)}
+                  type="text" className="form-input" placeholder="Convenio aplicable" />
+              </FormField>
+              <FormField label="Direccion">
+                <input value={form.direccion ?? ''} onChange={(e) => f('direccion', e.target.value || null)}
+                  type="text" className="form-input" placeholder="Calle, numero, poblacion" />
+              </FormField>
+              <FormField label="Codigo postal">
+                <input value={form.codigo_postal ?? ''} onChange={(e) => f('codigo_postal', e.target.value || null)}
+                  type="text" className="form-input" placeholder="28001" />
               </FormField>
             </div>
 
@@ -1409,76 +1504,12 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               </FormField>
             </div>
 
-            {/* Section: Observaciones + estado */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-              <FormField label="Observaciones generales" className="sm:col-span-2">
+            {/* Section: Observaciones */}
+            <div className="grid grid-cols-1 gap-3 mb-5">
+              <FormField label="Observaciones generales">
                 <textarea value={form.observaciones ?? ''} onChange={(e) => f('observaciones', e.target.value)}
                   rows={2} className="form-input resize-none" placeholder="Notas adicionales..." />
               </FormField>
-              <FormField label="Estado">
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => f('activo', true)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
-                    style={{
-                      backgroundColor: form.activo ? '#DCFCE7' : '#FFFFFF',
-                      color: form.activo ? '#15803D' : '#94A3B8',
-                      border: `1.5px solid ${form.activo ? '#22C55E' : '#E2E8F0'}`,
-                    }}
-                  >
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: form.activo ? '#22C55E' : '#CBD5E1' }} />
-                    Activo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => f('activo', false)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
-                    style={{
-                      backgroundColor: !form.activo ? '#FEE2E2' : '#FFFFFF',
-                      color: !form.activo ? '#B91C1C' : '#94A3B8',
-                      border: `1.5px solid ${!form.activo ? '#EF4444' : '#E2E8F0'}`,
-                    }}
-                  >
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: !form.activo ? '#EF4444' : '#CBD5E1' }} />
-                    Inactivo
-                  </button>
-                </div>
-              </FormField>
-
-              {/* Section: Reconocimiento medico */}
-              <div className="mt-4">
-                <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Reconocimiento medico</p>
-                <div className="flex gap-2 flex-wrap">
-                  {([
-                    { value: 'pendiente', label: 'Pendiente', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' },
-                    { value: 'acepta', label: 'Acepta', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' },
-                    { value: 'renuncia', label: 'Renuncia', color: '#B91C1C', bg: '#FEE2E2', border: '#EF4444' },
-                  ] as const).map(({ value, label, color, bg, border }) => {
-                    const isActive = (form.reconocimiento_medico ?? 'pendiente') === value;
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => f('reconocimiento_medico', value)}
-                        className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
-                        style={{
-                          backgroundColor: isActive ? bg : '#FFFFFF',
-                          color: isActive ? color : '#94A3B8',
-                          border: `1.5px solid ${isActive ? border : '#E2E8F0'}`,
-                        }}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {form.reconocimiento_medico === 'acepta' && (
-                  <p className="text-xs mt-2" style={{ color: '#15803D' }}>
-                    Este empleado aparecera en el panel de prevencion para gestionar el reconocimiento medico.
-                  </p>
-                )}
-              </div>
             </div>
 
             {/* Section: Estado del contrato */}
@@ -1684,6 +1715,73 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         <button onClick={cancelForm} className="cursor-pointer" style={{ color: '#94A3B8' }}><X size={16} /></button>
                       </div>
 
+                      {/* Section: Estado + Reconocimiento medico (top) */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 rounded-xl p-3" style={{ backgroundColor: '#F1F5F9', border: '1px solid #E2E8F0' }}>
+                        <FormField label="Estado">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => f('activo', true)}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                              style={{
+                                backgroundColor: form.activo ? '#DCFCE7' : '#FFFFFF',
+                                color: form.activo ? '#15803D' : '#94A3B8',
+                                border: `1.5px solid ${form.activo ? '#22C55E' : '#E2E8F0'}`,
+                              }}
+                            >
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: form.activo ? '#22C55E' : '#CBD5E1' }} />
+                              Activo
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => f('activo', false)}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                              style={{
+                                backgroundColor: !form.activo ? '#FEE2E2' : '#FFFFFF',
+                                color: !form.activo ? '#B91C1C' : '#94A3B8',
+                                border: `1.5px solid ${!form.activo ? '#EF4444' : '#E2E8F0'}`,
+                              }}
+                            >
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: !form.activo ? '#EF4444' : '#CBD5E1' }} />
+                              Inactivo
+                            </button>
+                          </div>
+                        </FormField>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1.5" style={{ color: '#64748B' }}>Reconocimiento medico</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {([
+                              { value: 'pendiente', label: 'Pendiente', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' },
+                              { value: 'acepta', label: 'Acepta', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' },
+                              { value: 'renuncia', label: 'Renuncia', color: '#B91C1C', bg: '#FEE2E2', border: '#EF4444' },
+                            ] as const).map(({ value, label, color, bg, border }) => {
+                              const isActive = (form.reconocimiento_medico ?? 'pendiente') === value;
+                              return (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  onClick={() => f('reconocimiento_medico', value)}
+                                  className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                                  style={{
+                                    backgroundColor: isActive ? bg : '#FFFFFF',
+                                    color: isActive ? color : '#94A3B8',
+                                    border: `1.5px solid ${isActive ? border : '#E2E8F0'}`,
+                                  }}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {form.reconocimiento_medico === 'acepta' && (
+                            <p className="text-xs mt-2" style={{ color: '#15803D' }}>
+                              Este empleado aparecera en el panel de prevencion para gestionar el reconocimiento medico.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
                       {/* Section: Datos personales */}
                       <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Datos personales</p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
@@ -1722,6 +1820,26 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         <FormField label="NASS">
                           <input value={form.nass ?? ''} onChange={(e) => f('nass', e.target.value || null)}
                             type="text" className="form-input" placeholder="Nº Afiliación Seg. Social" />
+                        </FormField>
+                        <FormField label="Sexo">
+                          <select value={form.sexo ?? ''} onChange={(e) => f('sexo', e.target.value || null)} className="form-input">
+                            <option value="">Seleccionar...</option>
+                            <option value="M">Masculino</option>
+                            <option value="F">Femenino</option>
+                            <option value="Otro">Otro</option>
+                          </select>
+                        </FormField>
+                        <FormField label="Convenio">
+                          <input value={form.convenio ?? ''} onChange={(e) => f('convenio', e.target.value || null)}
+                            type="text" className="form-input" placeholder="Convenio aplicable" />
+                        </FormField>
+                        <FormField label="Direccion">
+                          <input value={form.direccion ?? ''} onChange={(e) => f('direccion', e.target.value || null)}
+                            type="text" className="form-input" placeholder="Calle, numero, poblacion" />
+                        </FormField>
+                        <FormField label="Codigo postal">
+                          <input value={form.codigo_postal ?? ''} onChange={(e) => f('codigo_postal', e.target.value || null)}
+                            type="text" className="form-input" placeholder="28001" />
                         </FormField>
                       </div>
 
@@ -1794,76 +1912,12 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         </FormField>
                       </div>
 
-                      {/* Section: Observaciones + estado */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-                        <FormField label="Observaciones generales" className="sm:col-span-2">
+                      {/* Section: Observaciones */}
+                      <div className="grid grid-cols-1 gap-3 mb-5">
+                        <FormField label="Observaciones generales">
                           <textarea value={form.observaciones ?? ''} onChange={(e) => f('observaciones', e.target.value)}
                             rows={2} className="form-input resize-none" placeholder="Notas adicionales..." />
                         </FormField>
-                        <FormField label="Estado">
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => f('activo', true)}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
-                              style={{
-                                backgroundColor: form.activo ? '#DCFCE7' : '#FFFFFF',
-                                color: form.activo ? '#15803D' : '#94A3B8',
-                                border: `1.5px solid ${form.activo ? '#22C55E' : '#E2E8F0'}`,
-                              }}
-                            >
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: form.activo ? '#22C55E' : '#CBD5E1' }} />
-                              Activo
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => f('activo', false)}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
-                              style={{
-                                backgroundColor: !form.activo ? '#FEE2E2' : '#FFFFFF',
-                                color: !form.activo ? '#B91C1C' : '#94A3B8',
-                                border: `1.5px solid ${!form.activo ? '#EF4444' : '#E2E8F0'}`,
-                              }}
-                            >
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: !form.activo ? '#EF4444' : '#CBD5E1' }} />
-                              Inactivo
-                            </button>
-                          </div>
-                        </FormField>
-
-                        {/* Section: Reconocimiento medico */}
-                        <div className="mt-4">
-                          <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Reconocimiento medico</p>
-                          <div className="flex gap-2 flex-wrap">
-                            {([
-                              { value: 'pendiente', label: 'Pendiente', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' },
-                              { value: 'acepta', label: 'Acepta', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' },
-                              { value: 'renuncia', label: 'Renuncia', color: '#B91C1C', bg: '#FEE2E2', border: '#EF4444' },
-                            ] as const).map(({ value, label, color, bg, border }) => {
-                              const isActive = (form.reconocimiento_medico ?? 'pendiente') === value;
-                              return (
-                                <button
-                                  key={value}
-                                  type="button"
-                                  onClick={() => f('reconocimiento_medico', value)}
-                                  className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
-                                  style={{
-                                    backgroundColor: isActive ? bg : '#FFFFFF',
-                                    color: isActive ? color : '#94A3B8',
-                                    border: `1.5px solid ${isActive ? border : '#E2E8F0'}`,
-                                  }}
-                                >
-                                  {label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {form.reconocimiento_medico === 'acepta' && (
-                            <p className="text-xs mt-2" style={{ color: '#15803D' }}>
-                              Este empleado aparecera en el panel de prevencion para gestionar el reconocimiento medico.
-                            </p>
-                          )}
-                        </div>
                       </div>
 
                       {/* Section: Estado del contrato */}

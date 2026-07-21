@@ -95,6 +95,10 @@ export interface Empleado {
   titulacion_habilitante: string | null;
   fecha_pago_tasas: string | null;
   nass: string | null;
+  sexo: string | null;
+  convenio: string | null;
+  direccion: string | null;
+  codigo_postal: string | null;
   observaciones: string | null;
   activo: boolean;
   estado_contrato: EstadoContrato | null;

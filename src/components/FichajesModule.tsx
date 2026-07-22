@@ -259,8 +259,15 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
     }
     setLoading(true);
     try {
+      const { data: emp } = await supabase
+        .from('empleados')
+        .select('id')
+        .eq('user_id', profile.id)
+        .maybeSingle();
+
       const { error: insErr } = await supabase.from('fichajes').insert({
         nombre_empleado: profile.nombre,
+        empleado_id: emp?.id ?? null,
         tipo_evento: tipo,
         metodo: 'web',
         es_manual: false,

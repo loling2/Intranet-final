@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Clock, RefreshCw, Download, Calendar, AlertTriangle, X,
-  ChevronUp, ChevronDown, CheckCircle2, FileText, Send,
+  ChevronUp, ChevronDown, CheckCircle2, FileText, Send, Car,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import type { SocietyTheme } from '../themes';
@@ -48,6 +48,21 @@ interface Correccion {
   respuesta_rrhh: string | null;
   validado_at: string | null;
   created_at: string;
+}
+
+interface VehicleLogEntry {
+  id: string;
+  vehicle_id: string;
+  user_id: string | null;
+  user_nombre: string | null;
+  fecha_inicio: string;
+  fecha_fin: string | null;
+  km_inicio: number | null;
+  km_fin: number | null;
+  duracion_minutos: number | null;
+  tipo: string;
+  created_at: string;
+  vehicles: { matricula: string; modelo: string } | null;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -387,6 +402,8 @@ export default function MisFichajesView({ theme, userId }: Props) {
   const [hasta, setHasta] = useState('');
   const [error, setError] = useState('');
   const [correctionTarget, setCorrectionTarget] = useState<JornadaResumen | null>(null);
+  const [vehicleLogs, setVehicleLogs] = useState<VehicleLogEntry[]>([]);
+  const [viewMode, setViewMode] = useState<'asistencia' | 'vehiculos'>('asistencia');
 
   // Default: last 30 days
   useEffect(() => {
@@ -402,37 +419,30 @@ export default function MisFichajesView({ theme, userId }: Props) {
     setLoading(true);
     setError('');
     try {
-      // Resolve empleado record
+      // Resolve name from user_profiles — this is what fichajes store in nombre_empleado
+      const { data: prof } = await supabase
+        .from('user_profiles')
+        .select('nombre')
+        .eq('id', userId)
+        .maybeSingle();
+      const resolvedNombre = prof?.nombre ?? '';
+
+      // Also try empleados for the name fallback
       const { data: emp } = await supabase
         .from('empleados')
         .select('id, nombre')
         .eq('user_id', userId)
         .maybeSingle();
 
-      const empId = emp?.id ?? null;
-      const empNombre = emp?.nombre ?? '';
+      setNombreEmpleado(resolvedNombre || emp?.nombre || '');
 
-      // Fallback to user_profiles name
-      let resolvedNombre = empNombre;
-      if (!resolvedNombre) {
-        const { data: prof } = await supabase
-          .from('user_profiles')
-          .select('nombre')
-          .eq('id', userId)
-          .maybeSingle();
-        resolvedNombre = prof?.nombre ?? '';
-      }
-      setNombreEmpleado(resolvedNombre);
-
-      // Load fichajes for this empleado
-      let fichQuery = supabase.from('fichajes').select('*');
-      if (empId) {
-        fichQuery = fichQuery.eq('empleado_id', empId);
-      } else {
-        // No empleado record: filter by name
-        fichQuery = fichQuery.eq('nombre_empleado', resolvedNombre);
-      }
-      const { data: fichData, error: fichErr } = await fichQuery.order('timestamp', { ascending: false }).limit(2000);
+      // Load fichajes — always filter by nombre_empleado (fichajes store the profile name, not empleado_id)
+      const { data: fichData, error: fichErr } = await supabase
+        .from('fichajes')
+        .select('*')
+        .eq('nombre_empleado', resolvedNombre)
+        .order('timestamp', { ascending: false })
+        .limit(2000);
       if (fichErr) throw fichErr;
       setFichajes((fichData ?? []) as Fichaje[]);
 
@@ -443,6 +453,16 @@ export default function MisFichajesView({ theme, userId }: Props) {
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
       setCorrecciones((corrData ?? []) as Correccion[]);
+
+      // Load vehicle logs for this user
+      const { data: vehData, error: vehErr } = await supabase
+        .from('vehicle_logs')
+        .select('id, vehicle_id, user_id, user_nombre, fecha_inicio, fecha_fin, km_inicio, km_fin, duracion_minutos, tipo, created_at, vehicles(matricula, modelo)')
+        .eq('user_id', userId)
+        .order('fecha_inicio', { ascending: false })
+        .limit(500);
+      if (vehErr) throw vehErr;
+      setVehicleLogs((vehData ?? []) as VehicleLogEntry[]);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al cargar fichajes');
     } finally {
@@ -480,6 +500,13 @@ export default function MisFichajesView({ theme, userId }: Props) {
     return true;
   });
 
+  const filteredVehicleLogs = vehicleLogs.filter((v) => {
+    const logDate = v.fecha_inicio.split('T')[0];
+    if (desde && logDate < desde) return false;
+    if (hasta && logDate > hasta) return false;
+    return true;
+  });
+
   const handleExportPDF = () => {
     if (!rangeValid || resumenes.length === 0) return;
     exportPDF(resumenes, correccionesInRange, nombreEmpleado || 'Empleado', desde, hasta);
@@ -495,22 +522,54 @@ export default function MisFichajesView({ theme, userId }: Props) {
           </div>
           <div>
             <h3 className="text-lg font-bold" style={{ color: theme.textPrimary }}>Mis Fichajes</h3>
-            {!loading && (
+            {!loading && viewMode === 'asistencia' && (
               <p className="text-xs" style={{ color: theme.textSecondary }}>
                 {resumenes.length} jornada{resumenes.length !== 1 ? 's' : ''} · {formatDuration(totalHoras)} totales
               </p>
             )}
+            {!loading && viewMode === 'vehiculos' && (
+              <p className="text-xs" style={{ color: theme.textSecondary }}>
+                {filteredVehicleLogs.length} registro{filteredVehicleLogs.length !== 1 ? 's' : ''} de vehículo
+              </p>
+            )}
           </div>
         </div>
-        <button
-          onClick={handleExportPDF}
-          disabled={loading || resumenes.length === 0 || !rangeValid}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-all duration-150 disabled:opacity-50"
-          style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}
-        >
-          <Download size={14} />
-          Descargar PDF
-        </button>
+        <div className="flex items-center gap-3">
+          {/* View toggle */}
+          <div className="flex rounded-xl overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
+            <button
+              onClick={() => setViewMode('asistencia')}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold cursor-pointer transition-all"
+              style={{
+                backgroundColor: viewMode === 'asistencia' ? theme.primary : theme.bgCard,
+                color: viewMode === 'asistencia' ? '#FFFFFF' : theme.textSecondary,
+              }}
+            >
+              <Clock size={13} /> Asistencia
+            </button>
+            <button
+              onClick={() => setViewMode('vehiculos')}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold cursor-pointer transition-all"
+              style={{
+                backgroundColor: viewMode === 'vehiculos' ? theme.primary : theme.bgCard,
+                color: viewMode === 'vehiculos' ? '#FFFFFF' : theme.textSecondary,
+              }}
+            >
+              <Car size={13} /> Vehículos
+            </button>
+          </div>
+          {viewMode === 'asistencia' && (
+            <button
+              onClick={handleExportPDF}
+              disabled={loading || resumenes.length === 0 || !rangeValid}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-all duration-150 disabled:opacity-50"
+              style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}
+            >
+              <Download size={14} />
+              Descargar PDF
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Date filter */}
@@ -567,7 +626,8 @@ export default function MisFichajesView({ theme, userId }: Props) {
         </div>
       )}
 
-      {/* Table */}
+      {/* Asistencia table */}
+      {viewMode === 'asistencia' && (
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
         {loading ? (
           <div className="flex items-center justify-center py-16">
@@ -643,9 +703,67 @@ export default function MisFichajesView({ theme, userId }: Props) {
           </div>
         )}
       </div>
+      )}
+
+      {/* Vehicle logs table */}
+      {viewMode === 'vehiculos' && (
+      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <RefreshCw size={20} className="animate-spin" style={{ color: theme.textSecondary }} />
+          </div>
+        ) : filteredVehicleLogs.length === 0 ? (
+          <div className="flex flex-col items-center py-16 text-center">
+            <Car size={32} style={{ color: theme.border, margin: '0 auto 8px' }} />
+            <p className="text-sm font-semibold" style={{ color: theme.textPrimary }}>No hay registros de vehículo en este periodo</p>
+            <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>Ajusta el rango de fechas para ver registros</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ minWidth: '720px' }}>
+              <thead>
+                <tr style={{ backgroundColor: theme.bg, borderBottom: `1px solid ${theme.border}` }}>
+                  {['Fecha', 'Vehículo', 'Inicio', 'Fin', 'KM Inicio', 'KM Fin', 'Recorrido', 'Duración'].map((h) => (
+                    <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: theme.textSecondary }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: theme.border }}>
+                {filteredVehicleLogs.map((v) => {
+                  const kmRecorrido = (v.km_fin != null && v.km_inicio != null) ? v.km_fin - v.km_inicio : null;
+                  const veh = v.vehicles;
+                  return (
+                    <tr key={v.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 text-xs font-medium" style={{ color: theme.textPrimary }}>
+                        {new Date(v.fecha_inicio).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </td>
+                      <td className="px-4 py-3 text-xs" style={{ color: theme.textPrimary }}>
+                        <div className="flex items-center gap-1.5">
+                          <Car size={12} style={{ color: theme.primary }} />
+                          <span className="font-semibold">{veh?.matricula ?? '—'}</span>
+                          {veh?.modelo && <span style={{ color: theme.textSecondary }}>{veh.modelo}</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: '#16A34A' }}>{formatTime(v.fecha_inicio)}</td>
+                      <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: v.fecha_fin ? '#DC2626' : '#CBD5E1' }}>{formatTime(v.fecha_fin)}</td>
+                      <td className="px-4 py-3 text-xs font-mono" style={{ color: theme.textPrimary }}>{v.km_inicio ?? '—'}</td>
+                      <td className="px-4 py-3 text-xs font-mono" style={{ color: theme.textPrimary }}>{v.km_fin ?? '—'}</td>
+                      <td className="px-4 py-3 text-xs font-bold" style={{ color: kmRecorrido != null ? theme.primary : '#CBD5E1' }}>
+                        {kmRecorrido != null ? `${kmRecorrido} km` : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-xs" style={{ color: theme.textPrimary }}>{formatDuration(v.duracion_minutos)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      )}
 
       {/* Correcciones list */}
-      {correcciones.length > 0 && (
+      {viewMode === 'asistencia' && correcciones.length > 0 && (
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
           <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: `1px solid ${theme.border}`, backgroundColor: theme.bg }}>
             <FileText size={14} style={{ color: theme.primary }} />

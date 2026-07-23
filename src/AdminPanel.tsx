@@ -5,6 +5,7 @@ import {
   Eye, Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette,
   MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock, Mail, Menu,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { validUsers } from './mockData';
 import UserManagement from './UserManagement';
 import VehiclesModule from './VehiclesModule';
@@ -30,7 +31,7 @@ import type { Centro } from './supabaseClient';
 interface Props {
   email: string;
   onLogout: () => void;
-  onNavigate: (view: 'admin' | 'rrhh' | 'society', societyId?: string) => void;
+  onNavigate: (view: 'admin' | 'rrhh' | 'society' | 'dashboard', societyId?: string) => void;
   onImpersonate?: (userId: string, societyId: string | null) => void;
 }
 
@@ -97,10 +98,10 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
   // Reload data when active society changes
   useEffect(() => {}, [activeSocietyId]);
 
-  const allDocuments: unknown[] = [];
-  const allVacations: unknown[] = [];
-  const allCertificates: unknown[] = [];
-  const allExams: unknown[] = [];
+  const allDocuments: { status: string }[] = [];
+  const allVacations: { status: string }[] = [];
+  const allCertificates: { status: string }[] = [];
+  const allExams: { status: string }[] = [];
 
   const employees = validUsers.filter((u) => u.role === 'employee');
 
@@ -112,7 +113,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     { label: 'Vacaciones pendientes', value: allVacations.filter((v) => v.status === 'pendiente').length, icon: Palmtree, color: '#8B5CF6', bg: '#F5F3FF' },
   ];
 
-  const tabs: { id: AdminTab; label: string; icon: React.FC<{ size?: number; className?: string }> }[] = [
+  const tabs: { id: AdminTab; label: string; icon: LucideIcon }[] = [
     { id: 'overview',   label: 'Panel General',      icon: BarChart2 },
     { id: 'employees',  label: 'Empleados',           icon: Users },
     { id: 'users',      label: 'Gestion de Usuarios', icon: Users },
@@ -132,8 +133,6 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     { id: 'fichajes',     label: 'Fichajes',              icon: Clock },
     { id: 'permissions',  label: 'Permisos de Perfiles',  icon: Lock },
   ];
-
-  const getSocietyTheme = (id: string) => societies.find((s) => s.id === id);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F1F5F9' }}>

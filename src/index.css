@@ -19,3 +19,19 @@ input:focus {
 ::selection {
   background: rgba(14, 124, 107, 0.15);
 }
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  #delivery-doc-print,
+  #delivery-doc-print * {
+    visibility: visible !important;
+  }
+  #delivery-doc-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}

@@ -3,7 +3,7 @@ import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination
 import {
   Laptop, Smartphone, Monitor, Headphones, Tablet, Phone,
   Plus, Search, Pencil, Trash2, X, RefreshCw, AlertCircle,
-  CheckCircle2, ChevronDown, Settings, MapPin,
+  CheckCircle2, ChevronDown, Settings, MapPin, FileText, Euro, Printer,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import type { Dispositivo, Empleado, Centro } from '../supabaseClient';
@@ -37,6 +37,8 @@ interface FormState {
   numero_serie: string;
 
   etiquetado: string;
+  valor_estimado: string;
+  numero_telefono: string;
 
   estado_id: 1 | 2 | 3;
   society_id: string;
@@ -54,6 +56,8 @@ const EMPTY_FORM: FormState = {
   numero_serie: '',
 
   etiquetado: '',
+  valor_estimado: '',
+  numero_telefono: '',
 
   estado_id: 1,
   society_id: '',
@@ -177,6 +181,8 @@ function DeviceModal({
           tipo: existing.tipo,
           marca_modelo: existing.marca_modelo,
         etiquetado: existing.etiquetado || '',
+        valor_estimado: existing.valor_estimado != null ? String(existing.valor_estimado) : '',
+        numero_telefono: existing.numero_telefono || '',
           caracteristicas: existing.caracteristicas || '',
           centro_trabajo: existing.centro_trabajo || '',
           numero_serie: existing.numero_serie || '',
@@ -220,6 +226,8 @@ function DeviceModal({
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),
       etiquetado: form.etiquetado.trim(),
+      valor_estimado: form.valor_estimado.trim() ? parseFloat(form.valor_estimado) : null,
+      numero_telefono: form.tipo === 'Movil' ? form.numero_telefono.trim() : null,
       caracteristicas: form.caracteristicas.trim(),
       centro_trabajo: form.centro_trabajo.trim(),
       numero_serie: form.numero_serie.trim(),
@@ -378,6 +386,42 @@ function DeviceModal({
 </div>
 
           
+          {/* Valor estimado */}
+          <div>
+            <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Valor estimado (€)</label>
+            <div className="relative">
+              <Euro size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.valor_estimado}
+                onChange={(e) => set('valor_estimado', e.target.value)}
+                placeholder="Ej: 1200.00"
+                className="w-full pl-8 pr-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+              />
+            </div>
+          </div>
+
+          {/* Numero de telefono (solo Movil) */}
+          {form.tipo === 'Movil' && (
+            <div>
+              <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Numero de telefono</label>
+              <div className="relative">
+                <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+                <input
+                  type="tel"
+                  value={form.numero_telefono}
+                  onChange={(e) => set('numero_telefono', e.target.value)}
+                  placeholder="Ej: 600 123 456"
+                  className="w-full pl-8 pr-3 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Caracteristicas */}
           <div>
             <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#64748B' }}>Caracteristicas tecnicas</label>
@@ -534,6 +578,143 @@ function ConfirmDelete({ name, onConfirm, onClose, loading }: {
   );
 }
 
+// ── Delivery Document Modal (Acta de Entrega) ─────────────────────────────────
+
+function DeliveryDocModal({ device, empleados, onClose }: {
+  device: Dispositivo;
+  empleados: Empleado[];
+  onClose: () => void;
+}) {
+  const emp = empleados.find((e) => e.id === device.empleado_id);
+  const trabajadorNombre = emp ? `${emp.nombre}${emp.apellidos ? ' ' + emp.apellidos : ''}` : device.usuario_asignado_nombre || '—';
+  const trabajadorDni = emp?.dni ?? '—';
+  const fechaGen = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
+  const valorTexto = device.valor_estimado != null
+    ? `${device.valor_estimado.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`
+    : '—';
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
+        {/* Header bar */}
+        <div className="px-6 py-4 flex items-center justify-between flex-shrink-0" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+          <div className="flex items-center gap-2">
+            <FileText size={18} style={{ color: '#0F172A' }} />
+            <h2 className="font-bold text-sm" style={{ color: '#0F172A' }}>Acta de Entrega de Equipos</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all hover:opacity-80"
+              style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}
+            >
+              <Printer size={13} /> Imprimir
+            </button>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors"
+              style={{ color: '#64748B' }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* Printable document body */}
+        <div className="flex-1 overflow-y-auto p-8" id="delivery-doc-print">
+          {/* Document title */}
+          <div className="text-center mb-6">
+            <h1 className="text-xl font-bold uppercase tracking-wider" style={{ color: '#0F172A' }}>Acta de Entrega de Equipos</h1>
+            <div className="mt-2 mx-auto" style={{ width: 60, height: 3, backgroundColor: '#0F172A' }} />
+          </div>
+
+          {/* Date */}
+          <p className="text-sm text-right mb-6" style={{ color: '#475569' }}>
+            Fecha de generación: <strong style={{ color: '#0F172A' }}>{fechaGen}</strong>
+          </p>
+
+          {/* Worker info box */}
+          <div className="rounded-xl p-5 mb-6" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#94A3B8' }}>Datos del Trabajador</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>Nombre y apellidos</p>
+                <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>{trabajadorNombre}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>DNI / NIE</p>
+                <p className="text-sm font-semibold font-mono" style={{ color: '#0F172A' }}>{trabajadorDni}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Device info table */}
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#94A3B8' }}>Datos del Equipo Entregado</p>
+            <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
+              <tbody>
+                <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
+                  <td className="py-2.5 px-4 font-medium" style={{ color: '#64748B', backgroundColor: '#F8FAFC', width: '40%' }}>Tipo de dispositivo</td>
+                  <td className="py-2.5 px-4" style={{ color: '#0F172A' }}>{device.tipo}</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
+                  <td className="py-2.5 px-4 font-medium" style={{ color: '#64748B', backgroundColor: '#F8FAFC' }}>Marca / Modelo</td>
+                  <td className="py-2.5 px-4" style={{ color: '#0F172A' }}>{device.marca_modelo}</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
+                  <td className="py-2.5 px-4 font-medium" style={{ color: '#64748B', backgroundColor: '#F8FAFC' }}>Número de serie</td>
+                  <td className="py-2.5 px-4 font-mono font-semibold" style={{ color: '#0F172A' }}>{device.numero_serie || '—'}</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
+                  <td className="py-2.5 px-4 font-medium" style={{ color: '#64748B', backgroundColor: '#F8FAFC' }}>Etiqueta de inventario</td>
+                  <td className="py-2.5 px-4 font-mono font-semibold" style={{ color: '#0F172A' }}>{device.etiquetado || '—'}</td>
+                </tr>
+                {device.tipo === 'Movil' && device.numero_telefono && (
+                  <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
+                    <td className="py-2.5 px-4 font-medium" style={{ color: '#64748B', backgroundColor: '#F8FAFC' }}>Número de teléfono</td>
+                    <td className="py-2.5 px-4 font-mono font-semibold" style={{ color: '#0F172A' }}>{device.numero_telefono}</td>
+                  </tr>
+                )}
+                <tr>
+                  <td className="py-2.5 px-4 font-medium" style={{ color: '#64748B', backgroundColor: '#F8FAFC' }}>Valor estimado</td>
+                  <td className="py-2.5 px-4 font-semibold" style={{ color: '#0F172A' }}>{valorTexto}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Responsibility clause */}
+          <div className="rounded-xl p-5 mb-8" style={{ border: '1px solid #FED7AA', backgroundColor: '#FFF7ED' }}>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#C2410C' }}>Cláusula de Responsabilidad</p>
+            <p className="text-sm leading-relaxed" style={{ color: '#7C2D12' }}>
+              El trabajador recibe el equipo descrito en la presente acta, comprometiéndose a hacer un uso adecuado y responsable del mismo,
+              así como a conservarlo en buen estado. El usuario se hace responsable del uso del dispositivo y de cualquier deterioro,
+              pérdida o sustracción que pudiera derivarse de un uso negligente o distinto al previsto. El equipo deberá ser devuelto
+              a la empresa en el momento en que se solicite o al finalizar la relación laboral.
+            </p>
+          </div>
+
+          {/* Signatures */}
+          <div className="grid grid-cols-2 gap-8 mt-12">
+            <div className="text-center">
+              <div style={{ borderTop: '1px solid #0F172A', paddingTop: 8, marginTop: 60 }}>
+                <p className="text-xs font-semibold" style={{ color: '#0F172A' }}>Entrega</p>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>Firma de la empresa</p>
+              </div>
+            </div>
+            <div className="text-center">
+              <div style={{ borderTop: '1px solid #0F172A', paddingTop: 8, marginTop: 60 }}>
+                <p className="text-xs font-semibold" style={{ color: '#0F172A' }}>Recibe</p>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>Firma del trabajador</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main DevicesModule ────────────────────────────────────────────────────────
 
 export default function DevicesModule() {
@@ -551,6 +732,7 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
   const [editing, setEditing] = useState<Dispositivo | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Dispositivo | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deliveryDevice, setDeliveryDevice] = useState<Dispositivo | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -570,7 +752,7 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
   const loadEmpleados = useCallback(async () => {
     const { data } = await supabase
       .from('empleados')
-      .select('id, nombre, id_sociedad')
+      .select('id, nombre, apellidos, dni, telefono, id_sociedad')
       .eq('activo', true)
       .order('nombre');
     setEmpleados((data ?? []) as Empleado[]);
@@ -648,6 +830,9 @@ const totalActivos =
       )}
       {deleteTarget && (
         <ConfirmDelete name={deleteTarget.marca_modelo} onConfirm={handleDelete} onClose={() => setDeleteTarget(null)} loading={deleting} />
+      )}
+      {deliveryDevice && (
+        <DeliveryDocModal device={deliveryDevice} empleados={empleados} onClose={() => setDeliveryDevice(null)} />
       )}
 
       {/* Header */}
@@ -882,10 +1067,13 @@ const totalActivos =
 
                   {/* Acciones */}
                   <div className="col-span-1 flex items-center justify-end gap-1">
-                    <button type="button" onClick={() => setEditing(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#CBD5E1' }}>
+                    <button type="button" onClick={() => setEditing(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#CBD5E1' }} title="Editar">
                       <Pencil size={13} />
                     </button>
-                    <button type="button" onClick={() => setDeleteTarget(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors" style={{ color: '#CBD5E1' }}>
+                    <button type="button" onClick={() => setDeliveryDevice(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors" style={{ color: '#94A3B8' }} title="Generar acta de entrega">
+                      <FileText size={13} />
+                    </button>
+                    <button type="button" onClick={() => setDeleteTarget(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors" style={{ color: '#CBD5E1' }} title="Eliminar">
                       <Trash2 size={13} />
                     </button>
                   </div>

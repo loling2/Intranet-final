@@ -187,6 +187,8 @@ export interface Dispositivo {
   numero_serie: string;
   estado_id: 1 | 2 | 3;
   etiquetado: string | null;
+  valor_estimado: number | null;
+  numero_telefono: string | null;
   society_id: string;
   empleado_id: string | null;
   usuario_asignado_nombre: string;

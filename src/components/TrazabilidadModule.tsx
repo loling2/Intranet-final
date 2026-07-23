@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   ShieldCheck, FileText, Search, RefreshCw, ChevronDown, ChevronUp,
-  CheckCircle2, Clock, Building2, Users, X,
+  CheckCircle2, Clock, Building2, Users, X, BarChart3,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useSociety } from '../context/SocietyContext';
+import TrazabilidadStats from './TrazabilidadStats';
+
+type SubTab = 'trazabilidad' | 'estadisticas';
 
 interface PrlDoc {
   id: string;
@@ -29,6 +32,7 @@ interface EmpleadoTrace {
 
 export default function TrazabilidadModule() {
   const { activeSocietyId } = useSociety();
+  const [subTab, setSubTab] = useState<SubTab>('trazabilidad');
 
   const [docs, setDocs] = useState<PrlDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,7 +154,35 @@ export default function TrazabilidadModule() {
   const pending = trace.filter((r) => !r.downloaded);
 
   return (
-    <div className="flex gap-0 h-full" style={{ minHeight: 'calc(100vh - 260px)' }}>
+    <div className="space-y-4">
+      {/* ── Sub-tabs ───────────────────────────────────────────── */}
+      <div className="inline-flex items-center gap-1 p-1 rounded-2xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        <button
+          onClick={() => setSubTab('trazabilidad')}
+          className="flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer transition-colors"
+          style={{
+            backgroundColor: subTab === 'trazabilidad' ? '#065F46' : 'transparent',
+            color: subTab === 'trazabilidad' ? '#FFFFFF' : '#64748B',
+          }}
+        >
+          <ShieldCheck size={13} /> Trazabilidad
+        </button>
+        <button
+          onClick={() => setSubTab('estadisticas')}
+          className="flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl cursor-pointer transition-colors"
+          style={{
+            backgroundColor: subTab === 'estadisticas' ? '#065F46' : 'transparent',
+            color: subTab === 'estadisticas' ? '#FFFFFF' : '#64748B',
+          }}
+        >
+          <BarChart3 size={13} /> Estadísticas
+        </button>
+      </div>
+
+      {subTab === 'estadisticas' ? (
+        <TrazabilidadStats />
+      ) : (
+      <div className="flex gap-0 h-full" style={{ minHeight: 'calc(100vh - 320px)' }}>
 
       {/* ── Left: document list ─────────────────────────────────── */}
       <div className="flex flex-col gap-3 flex-shrink-0" style={{ width: '320px', paddingRight: '20px', borderRight: '1px solid #E2E8F0' }}>
@@ -365,6 +397,8 @@ export default function TrazabilidadModule() {
           </div>
         )}
       </div>
+      </div>
+      )}
     </div>
   );
 }

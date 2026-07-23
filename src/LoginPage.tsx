@@ -2068,6 +2068,7 @@ function Dashboard({
   const [assignedVehicle, setAssignedVehicle] = useState<any>(null);
   const [notifications, setNotifications] = useState<{ id: string; tipo: string; titulo: string; descripcion: string; leida: boolean; created_at: string }[]>([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const [tabBadges, setTabBadges] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (impersonatingUserId) {
@@ -2132,7 +2133,96 @@ useEffect(() => {
   })();
 }, [impersonatingUserId]);
 
-  
+  // ── Tab badge counts: fetch new items since last_seen_at per tab ──
+  useEffect(() => {
+    (async () => {
+      const resolvedUserId = impersonatingUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
+      if (!resolvedUserId) return;
+
+      const { data: seenRows } = await supabase
+        .from('tab_last_seen')
+        .select('tab_id, last_seen_at')
+        .eq('user_id', resolvedUserId);
+      const seenMap: Record<string, string> = {};
+      for (const r of (seenRows ?? []) as { tab_id: string; last_seen_at: string }[]) {
+        seenMap[r.tab_id] = r.last_seen_at;
+      }
+
+      const { data: empData } = await supabase
+        .from('empleados')
+        .select('dni, user_id')
+        .eq('user_id', resolvedUserId)
+        .maybeSingle();
+      const dni = empData?.dni ?? (await supabase.from('user_profiles').select('dni').eq('id', resolvedUserId).maybeSingle()).data?.dni ?? null;
+
+      const { data: profileData } = await supabase
+        .from('user_profiles')
+        .select('nombre')
+        .eq('id', resolvedUserId)
+        .maybeSingle();
+      const empNombre = profileData?.nombre ?? '';
+
+      const badges: Record<string, number> = {};
+
+      if (dni) {
+        let nominaQuery = supabase.from('nominas').select('*', { count: 'exact', head: true }).eq('dni', dni);
+        if (seenMap['nominas']) nominaQuery = nominaQuery.gt('created_at', seenMap['nominas']);
+        const { count: nominaCount } = await nominaQuery;
+        if (nominaCount && nominaCount > 0) badges['nominas'] = nominaCount;
+      }
+
+      let docsQuery = supabase.from('documents').select('*', { count: 'exact', head: true }).eq('folder', 'publico').or(`usuario_destino_id.eq.${resolvedUserId},usuario_destino_email.ilike.${email}`);
+      if (seenMap['misdocumentos']) docsQuery = docsQuery.gt('fecha_subida', seenMap['misdocumentos']);
+      const { count: docsCount } = await docsQuery;
+      if (docsCount && docsCount > 0) badges['misdocumentos'] = docsCount;
+
+      let calQuery = supabase.from('calidad_documentos').select('*', { count: 'exact', head: true });
+      if (seenMap['calidad']) calQuery = calQuery.gt('created_at', seenMap['calidad']);
+      const { count: calCount } = await calQuery;
+      if (calCount && calCount > 0) badges['calidad'] = calCount;
+
+      try {
+        const { data: prlDocs } = await supabase.rpc('get_my_prl_documents');
+        const prlList = (prlDocs ?? []) as { created_at: string }[];
+        const prlSeen = seenMap['prevencion'];
+        const prlNew = prlSeen ? prlList.filter((d) => new Date(d.created_at) > new Date(prlSeen)) : prlList;
+        if (prlNew.length > 0) badges['prevencion'] = prlNew.length;
+      } catch { /* skip */ }
+
+      let incQuery = supabase.from('incidencias').select('*', { count: 'exact', head: true }).or(`creado_por_id.eq.${resolvedUserId}`);
+      if (seenMap['incidencias']) incQuery = incQuery.gt('fecha_creacion', seenMap['incidencias']);
+      const { count: incCount } = await incQuery;
+      if (incCount && incCount > 0) badges['incidencias'] = incCount;
+
+      if (empNombre) {
+        let fichQuery = supabase.from('fichajes').select('*', { count: 'exact', head: true }).eq('nombre_empleado', empNombre);
+        if (seenMap['fichajes']) fichQuery = fichQuery.gt('timestamp', seenMap['fichajes']);
+        const { count: fichCount } = await fichQuery;
+        if (fichCount && fichCount > 0) badges['fichajes'] = fichCount;
+      }
+
+      setTabBadges(badges);
+    })();
+  }, [impersonatingUserId, email]);
+
+  const handleTabClick = (tabId: string) => {
+    setActiveTab(tabId);
+    setTabBadges((prev) => {
+      if (!prev[tabId]) return prev;
+      const next = { ...prev };
+      delete next[tabId];
+      return next;
+    });
+    (async () => {
+      const resolvedUserId = impersonatingUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
+      if (!resolvedUserId) return;
+      await supabase.from('tab_last_seen').upsert(
+        { user_id: resolvedUserId, tab_id: tabId, last_seen_at: new Date().toISOString() },
+        { onConflict: 'user_id,tab_id' }
+      );
+    })();
+  };
+
   const certificates = mockCertificates[theme.id] ?? [];
   const exams = mockExams[theme.id] ?? [];
 
@@ -2356,11 +2446,12 @@ useEffect(() => {
           {tabs.map((tab) => {
             const TabIcon = tab.icon;
             const isActive = activeTab === tab.id;
+            const badge = tabBadges[tab.id] ?? 0;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className="flex-shrink-0 sm:flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 cursor-pointer whitespace-nowrap"
+                onClick={() => handleTabClick(tab.id)}
+                className="relative flex-shrink-0 sm:flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 cursor-pointer whitespace-nowrap"
                 style={{
                   backgroundColor: isActive ? theme.primary : 'transparent',
                   color: isActive ? '#FFFFFF' : theme.textSecondary,
@@ -2369,6 +2460,14 @@ useEffect(() => {
               >
                 <TabIcon size={15} />
                 <span>{tab.label}</span>
+                {badge > 0 && (
+                  <span
+                    className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center text-white text-[10px] font-bold rounded-full px-1 animate-pulse"
+                    style={{ backgroundColor: '#EF4444', border: '1.5px solid #FFFFFF', zIndex: 10 }}
+                  >
+                    {badge > 99 ? '99+' : badge}
+                  </span>
+                )}
               </button>
             );
           })}

@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   BarChart3, RefreshCw, CheckCircle2, Clock, Building2, Users, FileText,
   ChevronDown, ChevronUp, Download, FileSpreadsheet, AlertTriangle, Search,
-  CheckSquare, Square, X,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import * as XLSX from 'xlsx-js-style';
@@ -36,10 +35,6 @@ function fmtDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function fmtDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
 export default function TrazabilidadStats() {
   const [stats, setStats] = useState<StatRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +50,6 @@ export default function TrazabilidadStats() {
   const [showDropdown, setShowDropdown] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [selectedWorkers, setSelectedWorkers] = useState<Set<string>>(new Set());
 
   useEffect(() => { loadFilters(); }, []);
   useEffect(() => { loadStats(); }, [selSociety, selCentro]);
@@ -94,7 +88,6 @@ export default function TrazabilidadStats() {
   async function loadStats() {
     setLoading(true);
     setError(null);
-    setSelectedWorkers(new Set());
     try {
       const params: Record<string, any> = {};
       if (selSociety) params.p_society_id = selSociety;
@@ -111,7 +104,6 @@ export default function TrazabilidadStats() {
   useEffect(() => {
     loadCentros(selSociety);
     setSelCentro('');
-    setSelectedWorkers(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selSociety]);
 
@@ -145,23 +137,6 @@ export default function TrazabilidadStats() {
     return stats.filter((r) => r.nombre.toLowerCase().includes(q) || (r.email ?? '').toLowerCase().includes(q));
   }, [stats, searchQuery, selectedEmpId]);
 
-  // ── Export target: selected workers if any, else all filteredStats ──
-  const exportRows = useMemo(() => {
-    if (selectedWorkers.size > 0) return filteredStats.filter((r) => selectedWorkers.has(r.empleado_id));
-    return filteredStats;
-  }, [filteredStats, selectedWorkers]);
-
-  // ── Export totals (computed from exportRows, not global) ──
-  const exportTotals = useMemo(() => {
-    let asignados = 0, descargados = 0, pendientes = 0;
-    exportRows.forEach((r) => {
-      asignados += r.total_asignados;
-      descargados += r.total_descargados;
-      pendientes += r.total_pendientes;
-    });
-    return { asignados, descargados, pendientes, empleados: exportRows.length };
-  }, [exportRows]);
-
   const toggleRow = (id: string) => {
     setExpandedRows((prev) => {
       const next = new Set(prev);
@@ -182,194 +157,45 @@ export default function TrazabilidadStats() {
     setShowDropdown(false);
   }
 
-  // ── Checkbox selection handlers ──
-  const toggleWorker = (id: string) => {
-    setSelectedWorkers((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleAllWorkers = () => {
-    setSelectedWorkers((prev) => {
-      if (prev.size === filteredStats.length && filteredStats.length > 0) return new Set();
-      return new Set(filteredStats.map((r) => r.empleado_id));
-    });
-  };
-
-  const clearSelection = () => setSelectedWorkers(new Set());
-
-  const allChecked = filteredStats.length > 0 && selectedWorkers.size === filteredStats.length;
-  const someChecked = selectedWorkers.size > 0 && selectedWorkers.size < filteredStats.length;
-
   // ── Export helpers ──────────────────────────────────────────
-  function getExportSubtitle(): string {
-    const parts: string[] = [];
-    parts.push(sociedades.find((s) => s.id === selSociety)?.nombre ?? 'Todas las sociedades');
-    if (selCentro) parts.push(`Centro: ${selCentro}`);
-    if (selectedWorkers.size > 0) parts.push(`${selectedWorkers.size} trabajador(es) seleccionado(s)`);
-    return parts.join(' · ');
-  }
-
   function exportExcel() {
-    if (exportRows.length === 0) return;
-    const GREEN = '065F46';
-    const ORANGE = 'C2410C';
-    const LIGHT_GREEN = 'ECFDF5';
-    const LIGHT_ORANGE = 'FFF7ED';
-    const LIGHT_GRAY = 'F8FAFC';
-    const DARK = '1E293B';
-    const WHITE = 'FFFFFF';
-
-    const headerStyle = {
-      font: { bold: true, color: { rgb: WHITE }, size: 11 },
-      fill: { fgColor: { rgb: GREEN } },
-      alignment: { horizontal: 'center' as const, vertical: 'center' as const },
-      border: {
-        top: { style: 'medium', color: { rgb: GREEN } },
-        bottom: { style: 'medium', color: { rgb: GREEN } },
-        left: { style: 'thin', color: { rgb: GREEN } },
-        right: { style: 'thin', color: { rgb: GREEN } },
-      },
-    };
-
-    const titleStyle = {
-      font: { bold: true, color: { rgb: WHITE }, size: 14 },
-      fill: { fgColor: { rgb: GREEN } },
-      alignment: { horizontal: 'center' as const, vertical: 'center' as const },
-    };
-
-    const subtitleStyle = {
-      font: { italic: true, color: { rgb: '64748B' }, size: 10 },
-      alignment: { horizontal: 'left' as const },
-    };
-
-    const summaryLabelStyle = {
-      font: { bold: true, color: { rgb: DARK }, size: 10 },
-      fill: { fgColor: { rgb: LIGHT_GREEN } },
-      alignment: { horizontal: 'right' as const },
-      border: { top: { style: 'thin', color: { rgb: '6EE7B7' } }, bottom: { style: 'thin', color: { rgb: '6EE7B7' } } },
-    };
-
-    const summaryValueStyle = {
-      font: { bold: true, color: { rgb: GREEN }, size: 12 },
-      fill: { fgColor: { rgb: LIGHT_GREEN } },
-      alignment: { horizontal: 'center' as const },
-      border: { top: { style: 'thin', color: { rgb: '6EE7B7' } }, bottom: { style: 'thin', color: { rgb: '6EE7B7' } } },
-    };
-
-    const dataRowStyle = (idx: number, hasPendientes: boolean) => ({
-      font: { color: { rgb: DARK }, size: 10 },
-      fill: { fgColor: { rgb: idx % 2 === 0 ? WHITE : LIGHT_GRAY } },
-      alignment: { horizontal: 'left' as const, vertical: 'center' as const },
-      border: {
-        top: { style: 'thin', color: { rgb: 'E2E8F0' } },
-        bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
-      },
-      ...(hasPendientes ? { font: { color: { rgb: ORANGE }, size: 10, bold: true } } : {}),
-    });
-
-    // ── Sheet 1: Resumen ──
     const rows: any[][] = [];
-    rows.push(['Informe de Trazabilidad PRL']);
-    rows.push([getExportSubtitle()]);
-    rows.push([`Generado: ${new Date().toLocaleString('es-ES')}`]);
-    rows.push([]);
-    const expPct = exportTotals.asignados > 0 ? Math.round((exportTotals.descargados / exportTotals.asignados) * 100) : 0;
-    rows.push(['Empleados', 'Asignados', 'Descargados', 'Pendientes', 'Cumplimiento']);
-    rows.push([exportTotals.empleados, exportTotals.asignados, exportTotals.descargados, exportTotals.pendientes, `${expPct}%`]);
-    rows.push([]);
-    rows.push(['Empleado', 'Sociedad', 'Centro', 'Asignados', 'Descargados', 'Pendientes', '% Cumpl.']);
-    exportRows.forEach((r) => {
-      const pct = r.total_asignados > 0 ? Math.round((r.total_descargados / r.total_asignados) * 100) : 0;
-      rows.push([r.nombre, r.society_nombre, r.centro_trabajo || '', r.total_asignados, r.total_descargados, r.total_pendientes, `${pct}%`]);
+    rows.push(['Empleado', 'Sociedad', 'Centro', 'Asignados', 'Descargados', 'Pendientes']);
+    const headerStyle = {
+      font: { bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '065F46' } },
+      alignment: { horizontal: 'center' as const, vertical: 'center' as const },
+      border: {
+        top: { style: 'thin', color: { rgb: '065F46' } }, bottom: { style: 'thin', color: { rgb: '065F46' } },
+        left: { style: 'thin', color: { rgb: '065F46' } }, right: { style: 'thin', color: { rgb: '065F46' } },
+      },
+    };
+    filteredStats.forEach((r) => {
+      rows.push([r.nombre, r.society_nombre, r.centro_trabajo || '', r.total_asignados, r.total_descargados, r.total_pendientes]);
     });
-
+    const detailRows: any[][] = [['Empleado', 'Documento', 'Carpeta', 'Fecha asignación', 'Tiempo pendiente']];
+    filteredStats.forEach((r) => {
+      r.docs_pendientes.forEach((d) => {
+        detailRows.push([r.nombre, d.nombre_archivo, d.folder_nombre, fmtDate(d.created_at), timeAgo(d.created_at)]);
+      });
+    });
     const ws1 = XLSX.utils.aoa_to_sheet(rows);
-
-    // Style title (row 0)
-    if (ws1['A1']) ws1['A1'].s = titleStyle;
-    // Style subtitle (row 1)
-    if (ws1['A2']) ws1['A2'].s = subtitleStyle;
-    if (ws1['A3']) ws1['A3'].s = subtitleStyle;
-    // Style summary header (row 5)
-    ['A6', 'B6', 'C6', 'D6', 'E6'].forEach((cell) => { if (ws1[cell]) ws1[cell].s = summaryLabelStyle; });
-    // Style summary values (row 6)
-    ['A7', 'B7', 'C7', 'D7', 'E7'].forEach((cell) => { if (ws1[cell]) ws1[cell].s = summaryValueStyle; });
-    // Style table header (row 9)
-    ['A10', 'B10', 'C10', 'D10', 'E10', 'F10', 'G10'].forEach((cell) => { if (ws1[cell]) ws1[cell].s = headerStyle; });
-    // Style data rows (row 10+)
-    exportRows.forEach((r, i) => {
-      const rowIdx = 11 + i;
-      const pct = r.total_asignados > 0 ? Math.round((r.total_descargados / r.total_asignados) * 100) : 0;
-      const vals = [r.nombre, r.society_nombre, r.centro_trabajo || '', r.total_asignados, r.total_descargados, r.total_pendientes, `${pct}%`];
-      vals.forEach((_, ci) => {
-        const cellRef = XLSX.utils.encode_cell({ r: rowIdx, c: ci });
-        if (ws1[cellRef]) {
-          const base = dataRowStyle(i, r.total_pendientes > 0);
-          ws1[cellRef].s = ci >= 3 ? { ...base, alignment: { horizontal: 'center' as const, vertical: 'center' as const } } : base;
-        }
-      });
-    });
-
-    ws1['!cols'] = [{ wch: 30 }, { wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
-    ws1['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
-      { s: { r: 2, c: 0 }, e: { r: 2, c: 6 } },
-    ];
-    ws1['!rows'] = [{ hpt: 28 }, {}, {}, {}, {}, { hpt: 20 }, { hpt: 24 }, {}, { hpt: 22 }];
-
-    // ── Sheet 2: Pendientes detalle ──
-    const detailRows: any[][] = [];
-    detailRows.push(['Documentos Pendientes por Trabajador']);
-    detailRows.push([getExportSubtitle()]);
-    detailRows.push([]);
-    detailRows.push(['Trabajador', 'Sociedad', 'Documento', 'Carpeta', 'Fecha asignación', 'Pendiente desde']);
-    exportRows.forEach((r) => {
-      r.docs_pendientes.forEach((d) => {
-        detailRows.push([r.nombre, r.society_nombre, d.nombre_archivo, d.folder_nombre, fmtDate(d.created_at), timeAgo(d.created_at)]);
-      });
-    });
-
     const ws2 = XLSX.utils.aoa_to_sheet(detailRows);
-    if (ws2['A1']) ws2['A1'].s = { ...titleStyle, fill: { fgColor: { rgb: ORANGE } } };
-    if (ws2['A2']) ws2['A2'].s = subtitleStyle;
-    ['A4', 'B4', 'C4', 'D4', 'E4', 'F4'].forEach((cell) => {
-      if (ws2[cell]) ws2[cell].s = { ...headerStyle, fill: { fgColor: { rgb: ORANGE } }, font: { bold: true, color: { rgb: WHITE }, size: 11 } };
+    [ws1, ws2].forEach((ws) => {
+      if (ws['!ref']) {
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const cell = ws[XLSX.utils.encode_cell({ r: 0, c })];
+          if (cell) cell.s = headerStyle;
+        }
+      }
     });
-    let dRowIdx = 0;
-    exportRows.forEach((r) => {
-      r.docs_pendientes.forEach((d) => {
-        const rowIdx = 4 + dRowIdx + 1;
-        const vals = [r.nombre, r.society_nombre, d.nombre_archivo, d.folder_nombre, fmtDate(d.created_at), timeAgo(d.created_at)];
-        vals.forEach((_, ci) => {
-          const cellRef = XLSX.utils.encode_cell({ r: rowIdx, c: ci });
-          if (ws2[cellRef]) {
-            ws2[cellRef].s = {
-              font: { color: { rgb: DARK }, size: 10 },
-              fill: { fgColor: { rgb: dRowIdx % 2 === 0 ? WHITE : LIGHT_ORANGE } },
-              border: { top: { style: 'thin', color: { rgb: 'FED7AA' } }, bottom: { style: 'thin', color: { rgb: 'FED7AA' } } },
-            };
-          }
-        });
-        dRowIdx++;
-      });
-    });
-
-    ws2['!cols'] = [{ wch: 28 }, { wch: 22 }, { wch: 38 }, { wch: 22 }, { wch: 18 }, { wch: 22 }];
-    ws2['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
-    ];
-    ws2['!rows'] = [{ hpt: 28 }, {}, {}, { hpt: 22 }];
-
+    ws1['!cols'] = [{ wch: 28 }, { wch: 20 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 12 }];
+    ws2['!cols'] = [{ wch: 28 }, { wch: 35 }, { wch: 20 }, { wch: 18 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws1, 'Resumen');
-    XLSX.utils.book_append_sheet(wb, ws2, 'Pendientes');
-    const suffix = selectedWorkers.size > 0 ? `_${selectedWorkers.size}sel` : '';
-    XLSX.writeFile(wb, `trazabilidad_prl${suffix}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws2, 'Pendientes detalle');
+    XLSX.writeFile(wb, 'trazabilidad_estadisticas.xlsx');
   }
 
   function drawArcSlice(doc: jsPDF, cx: number, cy: number, radius: number, startPct: number, endPct: number) {
@@ -397,147 +223,70 @@ export default function TrazabilidadStats() {
   }
 
   function exportPDF() {
-    if (exportRows.length === 0) return;
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
-    const margin = 12;
-    let y = 0;
+    const margin = 10;
+    let y = margin;
 
-    // ── Header banner ──
-    doc.setFillColor(6, 95, 70);
-    doc.rect(0, 0, pageW, 22, 'F');
-    doc.setFontSize(18); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
-    doc.text('Informe de Trazabilidad PRL', margin, 14);
-    doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(220, 240, 230);
-    doc.text(getExportSubtitle(), pageW - margin, 14, { align: 'right' });
-    y = 28;
+    doc.setFontSize(16); doc.setTextColor(6, 95, 70); doc.setFont('helvetica', 'bold');
+    doc.text('Estadísticas de Trazabilidad PRL', margin, y + 6);
+    y += 12;
+    doc.setFontSize(10); doc.setTextColor(100, 116, 139); doc.setFont('helvetica', 'normal');
+    const fecha = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
+    doc.text(`Generado el ${fecha}`, margin, y);
+    y += 4;
+    doc.text(`Empleados: ${globalTotals.empleados}  |  Asignados: ${globalTotals.asignados}  |  Descargados: ${globalTotals.descargados}  |  Pendientes: ${globalTotals.pendientes}  |  Cumplimiento: ${globalPct}%`, margin, y);
+    y += 8;
 
-    // ── Date line ──
-    doc.setFontSize(8); doc.setTextColor(100, 116, 139);
-    doc.text(`Generado el ${new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })} a las ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`, margin, y);
-    y += 6;
+    const chartCx = pageW - 45;
+    const chartCy = y + 25;
+    drawPieChart(doc, chartCx, chartCy, 22, globalTotals.descargados, globalTotals.pendientes, globalPct);
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+    doc.setFillColor(6, 95, 70); doc.rect(chartCx - 35, chartCy + 30, 4, 4, 'F');
+    doc.setTextColor(30, 41, 59); doc.text(`Descargados (${globalTotals.descargados})`, chartCx - 29, chartCy + 33);
+    doc.setFillColor(194, 65, 12); doc.rect(chartCx - 35, chartCy + 36, 4, 4, 'F');
+    doc.text(`Pendientes (${globalTotals.pendientes})`, chartCx - 29, chartCy + 39);
 
-    // ── Summary KPI boxes ──
-    const expPct = exportTotals.asignados > 0 ? Math.round((exportTotals.descargados / exportTotals.asignados) * 100) : 0;
-    const kpiW = 52, kpiH = 22, kpiGap = 6;
-    const kpis = [
-      { label: 'Empleados', value: String(exportTotals.empleados), color: [3, 105, 161], bg: [240, 249, 255] },
-      { label: 'Asignados', value: String(exportTotals.asignados), color: [71, 85, 105], bg: [248, 250, 252] },
-      { label: 'Descargados', value: String(exportTotals.descargados), color: [6, 95, 70], bg: [236, 253, 245] },
-      { label: 'Pendientes', value: String(exportTotals.pendientes), color: [194, 65, 12], bg: [255, 247, 237] },
-      { label: 'Cumplimiento', value: `${expPct}%`, color: expPct >= 75 ? [6, 95, 70] : expPct >= 50 ? [245, 158, 11] : [220, 38, 38], bg: [236, 253, 245] },
-    ];
-    let kpiX = margin;
-    kpis.forEach((k) => {
-      doc.setFillColor(k.bg[0], k.bg[1], k.bg[2]);
-      doc.roundedRect(kpiX, y, kpiW, kpiH, 2, 2, 'F');
-      doc.setFontSize(7); doc.setTextColor(k.color[0], k.color[1], k.color[2]); doc.setFont('helvetica', 'normal');
-      doc.text(k.label, kpiX + 4, y + 6);
-      doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-      doc.text(k.value, kpiX + 4, y + 16);
-      kpiX += kpiW + kpiGap;
-    });
-    y += kpiH + 8;
-
-    // ── Pie chart ──
-    const chartCx = pageW - 38;
-    const chartCy = y + 18;
-    drawPieChart(doc, chartCx, chartCy, 18, exportTotals.descargados, exportTotals.pendientes, expPct);
-    doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-    doc.setFillColor(6, 95, 70); doc.rect(chartCx - 28, chartCy + 24, 3.5, 3.5, 'F');
-    doc.setTextColor(30, 41, 59); doc.text(`Descargados (${exportTotals.descargados})`, chartCx - 23, chartCy + 27);
-    doc.setFillColor(194, 65, 12); doc.rect(chartCx - 28, chartCy + 30, 3.5, 3.5, 'F');
-    doc.text(`Pendientes (${exportTotals.pendientes})`, chartCx - 23, chartCy + 33);
-
-    // ── Summary table ──
-    const colW = [55, 38, 28, 22, 22, 22, 20];
-    const headers = ['Empleado', 'Sociedad', 'Centro', 'Asign.', 'Descarg.', 'Pend.', '%'];
-    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255); doc.setFillColor(6, 95, 70);
-    doc.roundedRect(margin, y, pageW - margin * 2 - 50, 7, 1, 1, 'F');
+    const colW = [60, 40, 30, 25, 25, 25, 25];
+    const headers = ['Empleado', 'Sociedad', 'Centro', 'Asignados', 'Descargados', 'Pendientes', '%'];
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255); doc.setFillColor(6, 95, 70);
+    doc.rect(margin, y, pageW - margin * 2, 7, 'F');
     let x = margin + 2;
     headers.forEach((h, i) => { doc.text(h, x, y + 5); x += colW[i]; });
     y += 7;
     doc.setFont('helvetica', 'normal');
-    exportRows.forEach((r, idx) => {
-      if (y > pageH - 20) {
-        doc.addPage();
-        y = margin;
-        doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255); doc.setFillColor(6, 95, 70);
-        doc.roundedRect(margin, y, pageW - margin * 2 - 50, 7, 1, 1, 'F');
-        x = margin + 2;
-        headers.forEach((h, i) => { doc.text(h, x, y + 5); x += colW[i]; });
-        y += 7;
-        doc.setFont('helvetica', 'normal');
-      }
+    filteredStats.forEach((r, idx) => {
+      if (y > pageH - 15) { doc.addPage(); y = margin; }
       const rowPct = r.total_asignados > 0 ? Math.round((r.total_descargados / r.total_asignados) * 100) : 0;
-      if (idx % 2 === 0) { doc.setFillColor(236, 253, 245); doc.rect(margin, y, pageW - margin * 2 - 50, 6, 'F'); }
-      if (r.total_pendientes > 0) { doc.setTextColor(194, 65, 12); } else { doc.setTextColor(30, 41, 59); }
       const vals = [r.nombre, r.society_nombre, r.centro_trabajo || '', String(r.total_asignados), String(r.total_descargados), String(r.total_pendientes), `${rowPct}%`];
-      x = margin + 2;
-      vals.forEach((v, i) => {
-        if (i >= 3) { doc.setFont('helvetica', 'bold'); } else { doc.setFont('helvetica', 'normal'); }
-        doc.text(String(v).substring(0, 26), x, y + 4.5);
-        x += colW[i];
-      });
+      if (idx % 2 === 0) { doc.setFillColor(236, 253, 245); doc.rect(margin, y, pageW - margin * 2, 6, 'F'); }
+      doc.setTextColor(30, 41, 59); x = margin + 2;
+      vals.forEach((v, i) => { doc.text(String(v).substring(0, 28), x, y + 4.5); x += colW[i]; });
       y += 6;
     });
 
-    // ── Detail page ──
-    if (exportRows.some((r) => r.docs_pendientes.length > 0)) {
-      doc.addPage();
-      y = 0;
-      doc.setFillColor(194, 65, 12);
-      doc.rect(0, 0, pageW, 22, 'F');
-      doc.setFontSize(16); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
-      doc.text('Documentos Pendientes por Trabajador', margin, 14);
-      y = 28;
-      doc.setFontSize(8); doc.setTextColor(100, 116, 139); doc.setFont('helvetica', 'normal');
-      doc.text(getExportSubtitle(), margin, y);
-      y += 8;
-
-      const dColW = [50, 55, 35, 32, 38];
-      const dHeaders = ['Trabajador', 'Documento', 'Carpeta', 'Fecha asignación', 'Pendiente desde'];
-      doc.setFontSize(8); doc.setFillColor(194, 65, 12); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
-      doc.roundedRect(margin, y, pageW - margin * 2, 7, 1, 1, 'F');
-      x = margin + 2;
-      dHeaders.forEach((h, i) => { doc.text(h, x, y + 5); x += dColW[i]; });
-      y += 7;
-      doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
-      let rowIdx = 0;
-      exportRows.forEach((r) => {
-        r.docs_pendientes.forEach((d) => {
-          if (y > pageH - 20) {
-            doc.addPage();
-            y = margin;
-            doc.setFontSize(8); doc.setFillColor(194, 65, 12); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
-            doc.roundedRect(margin, y, pageW - margin * 2, 7, 1, 1, 'F');
-            x = margin + 2;
-            dHeaders.forEach((h, i) => { doc.text(h, x, y + 5); x += dColW[i]; });
-            y += 7;
-            doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
-            rowIdx = 0;
-          }
-          if (rowIdx % 2 === 0) { doc.setFillColor(255, 247, 237); doc.rect(margin, y, pageW - margin * 2, 6, 'F'); }
-          const dvals = [r.nombre, d.nombre_archivo.substring(0, 30), d.folder_nombre, fmtDate(d.created_at), timeAgo(d.created_at)];
-          x = margin + 2;
-          dvals.forEach((v, i) => { doc.text(String(v), x, y + 4.5); x += dColW[i]; });
-          y += 6; rowIdx++;
-        });
+    doc.addPage(); y = margin;
+    doc.setFontSize(14); doc.setTextColor(6, 95, 70); doc.setFont('helvetica', 'bold');
+    doc.text('Documentos pendientes por empleado', margin, y + 6); y += 12;
+    const dColW = [55, 60, 40, 35, 40];
+    const dHeaders = ['Empleado', 'Documento', 'Carpeta', 'Fecha asignación', 'Pendiente desde'];
+    doc.setFontSize(9); doc.setFillColor(194, 65, 12); doc.setTextColor(255, 255, 255);
+    doc.rect(margin, y, pageW - margin * 2, 7, 'F'); x = margin + 2;
+    dHeaders.forEach((h, i) => { doc.text(h, x, y + 5); x += dColW[i]; });
+    y += 7; doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
+    let rowIdx = 0;
+    filteredStats.forEach((r) => {
+      r.docs_pendientes.forEach((d) => {
+        if (y > pageH - 15) { doc.addPage(); y = margin; }
+        if (rowIdx % 2 === 0) { doc.setFillColor(255, 247, 237); doc.rect(margin, y, pageW - margin * 2, 6, 'F'); }
+        const dvals = [r.nombre, d.nombre_archivo.substring(0, 32), d.folder_nombre, fmtDate(d.created_at), timeAgo(d.created_at)];
+        x = margin + 2;
+        dvals.forEach((v, i) => { doc.text(String(v), x, y + 4.5); x += dColW[i]; });
+        y += 6; rowIdx++;
       });
-    }
-
-    // ── Footer with page numbers ──
-    const pageCount = doc.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(7); doc.setTextColor(148, 163, 184); doc.setFont('helvetica', 'normal');
-      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, pageH - 5, { align: 'right' });
-      doc.text('Informe de Trazabilidad PRL', margin, pageH - 5);
-    }
-
-    const suffix = selectedWorkers.size > 0 ? `_${selectedWorkers.size}sel` : '';
-    doc.save(`trazabilidad_prl${suffix}.pdf`);
+    });
+    doc.save('trazabilidad_estadisticas.pdf');
   }
 
   const maxBar = Math.max(globalTotals.descargados, globalTotals.pendientes, 1);
@@ -627,17 +376,15 @@ export default function TrazabilidadStats() {
         </button>
 
         <div className="flex items-center gap-2">
-          <button onClick={exportExcel} disabled={exportRows.length === 0}
+          <button onClick={exportExcel} disabled={filteredStats.length === 0}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ backgroundColor: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }}>
             <FileSpreadsheet size={14} /> Excel
-            {selectedWorkers.size > 0 && <span className="px-1 rounded-full text-[9px] font-bold" style={{ backgroundColor: '#065F46', color: '#FFF' }}>{selectedWorkers.size}</span>}
           </button>
-          <button onClick={exportPDF} disabled={exportRows.length === 0}
+          <button onClick={exportPDF} disabled={filteredStats.length === 0}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
             <Download size={14} /> PDF
-            {selectedWorkers.size > 0 && <span className="px-1 rounded-full text-[9px] font-bold" style={{ backgroundColor: '#DC2626', color: '#FFF' }}>{selectedWorkers.size}</span>}
           </button>
         </div>
       </div>
@@ -703,25 +450,13 @@ export default function TrazabilidadStats() {
             </div>
           ) : (
             <div>
-              <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <div className="flex items-center gap-2 mb-3">
                 <Users size={16} style={{ color: '#065F46' }} />
                 <h3 className="text-sm font-bold" style={{ color: '#1E293B' }}>Informe por empleado</h3>
                 {selectedEmpId && (
                   <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#ECFDF5', color: '#065F46' }}>
                     {filteredStats[0]?.nombre}
                   </span>
-                )}
-                {selectedWorkers.size > 0 && (
-                  <div className="flex items-center gap-2 ml-auto">
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ backgroundColor: '#065F46', color: '#FFFFFF' }}>
-                      {selectedWorkers.size} seleccionado{selectedWorkers.size !== 1 ? 's' : ''}
-                    </span>
-                    <button onClick={clearSelection}
-                      className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg cursor-pointer transition-colors hover:opacity-80"
-                      style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
-                      <X size={11} /> Limpiar
-                    </button>
-                  </div>
                 )}
               </div>
 
@@ -738,15 +473,6 @@ export default function TrazabilidadStats() {
                   <table className="w-full">
                     <thead>
                       <tr style={{ backgroundColor: '#F8FAFC' }}>
-                        <th className="px-3 py-2" style={{ width: '36px' }}>
-                          <button onClick={toggleAllWorkers} className="flex items-center justify-center cursor-pointer" title={allChecked ? 'Deseleccionar todos' : 'Seleccionar todos'}>
-                            {allChecked
-                              ? <CheckSquare size={15} style={{ color: '#065F46' }} />
-                              : someChecked
-                                ? <CheckSquare size={15} style={{ color: '#065F46', opacity: 0.5 }} />
-                                : <Square size={15} style={{ color: '#CBD5E1' }} />}
-                          </button>
-                        </th>
                         <th className="text-left text-[11px] font-semibold px-4 py-2" style={{ color: '#64748B' }}>Empleado</th>
                         <th className="text-left text-[11px] font-semibold px-4 py-2" style={{ color: '#64748B' }}>Sociedad</th>
                         <th className="text-center text-[11px] font-semibold px-4 py-2" style={{ color: '#64748B' }}>Asignados</th>
@@ -759,21 +485,13 @@ export default function TrazabilidadStats() {
                     <tbody>
                       {filteredStats.map((r) => {
                         const isOpen = expandedRows.has(r.empleado_id);
-                        const isChecked = selectedWorkers.has(r.empleado_id);
                         const rowPct = r.total_asignados > 0 ? Math.round((r.total_descargados / r.total_asignados) * 100) : 0;
                         return (
-                          <Fragment key={r.empleado_id}>
-                            <tr
+                          <>
+                            <tr key={r.empleado_id}
                               onClick={() => r.total_pendientes > 0 && toggleRow(r.empleado_id)}
                               className={r.total_pendientes > 0 ? 'cursor-pointer' : ''}
-                              style={{ borderBottom: '1px solid #F1F5F9', backgroundColor: isChecked ? '#F0FDF4' : undefined }}>
-                              <td className="px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
-                                <button onClick={() => toggleWorker(r.empleado_id)} className="flex items-center justify-center cursor-pointer" title={isChecked ? 'Deseleccionar' : 'Seleccionar'}>
-                                  {isChecked
-                                    ? <CheckSquare size={15} style={{ color: '#065F46' }} />
-                                    : <Square size={15} style={{ color: '#CBD5E1' }} />}
-                                </button>
-                              </td>
+                              style={{ borderBottom: '1px solid #F1F5F9' }}>
                               <td className="px-4 py-2.5">
                                 <div className="flex items-center gap-2">
                                   <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
@@ -810,13 +528,13 @@ export default function TrazabilidadStats() {
                                   <span className="text-[10px] font-semibold" style={{ color: '#64748B' }}>{rowPct}%</span>
                                 </div>
                               </td>
-                              <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
+                              <td className="px-2 py-2.5">
                                 {r.total_pendientes > 0 && (isOpen ? <ChevronUp size={14} style={{ color: '#94A3B8' }} /> : <ChevronDown size={14} style={{ color: '#94A3B8' }} />)}
                               </td>
                             </tr>
                             {isOpen && r.total_pendientes > 0 && (
                               <tr style={{ backgroundColor: '#FFFBEB' }}>
-                                <td colSpan={8} className="px-4 py-3">
+                                <td colSpan={7} className="px-4 py-3">
                                   <div className="space-y-2">
                                     <p className="text-xs font-semibold mb-2" style={{ color: '#C2410C' }}>
                                       {r.nombre.split(' ')[0]}, te faltan {r.total_pendientes} documento{r.total_pendientes > 1 ? 's' : ''} por descargar:
@@ -836,7 +554,7 @@ export default function TrazabilidadStats() {
                                 </td>
                               </tr>
                             )}
-                          </Fragment>
+                          </>
                         );
                       })}
                     </tbody>
@@ -915,6 +633,3 @@ function BarColumn({ label, value, max, height, color }: { label: string; value:
     </div>
   );
 }
-
-
-export default TrazabilidadStats

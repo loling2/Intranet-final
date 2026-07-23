@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   BarChart3, RefreshCw, CheckCircle2, Clock, Building2, Users, FileText,
-  ChevronDown, ChevronUp, Download, FileSpreadsheet, AlertTriangle,
+  ChevronDown, ChevronUp, Download, FileSpreadsheet, AlertTriangle, Search,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import * as XLSX from 'xlsx-js-style';
@@ -58,11 +58,10 @@ export default function TrazabilidadStats() {
 
   const [sociedades, setSociedades] = useState<Sociedad[]>([]);
   const [centros, setCentros] = useState<string[]>([]);
-  const [empleados, setEmpleados] = useState<{ id: string; nombre: string }[]>([]);
 
   const [selSociety, setSelSociety] = useState<string>('');
   const [selCentro, setSelCentro] = useState<string>('');
-  const [selEmpleado, setSelEmpleado] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -71,7 +70,7 @@ export default function TrazabilidadStats() {
 
   useEffect(() => {
     loadStats();
-  }, [selSociety, selCentro, selEmpleado]);
+  }, [selSociety, selCentro]);
 
   async function loadFilters() {
     try {
@@ -83,9 +82,9 @@ export default function TrazabilidadStats() {
     }
   }
 
-  async function loadCentrosAndEmpleados(societyId: string) {
+  async function loadCentros(societyId: string) {
     try {
-      let q = supabase.from('empleados').select('id, nombre, centro_trabajo').eq('activo', true);
+      let q = supabase.from('empleados').select('centro_trabajo').eq('activo', true);
       if (societyId) q = q.eq('id_sociedad', societyId);
       const { data, error } = await q;
       if (error) throw error;
@@ -93,10 +92,8 @@ export default function TrazabilidadStats() {
       const cSet = new Set<string>();
       rows.forEach((r) => { if (r.centro_trabajo) cSet.add(r.centro_trabajo); });
       setCentros(Array.from(cSet).sort());
-      setEmpleados(rows.map((r) => ({ id: r.id, nombre: r.nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre)));
     } catch {
       setCentros([]);
-      setEmpleados([]);
     }
   }
 
@@ -107,21 +104,10 @@ export default function TrazabilidadStats() {
       const params: Record<string, any> = {};
       if (selSociety) params.p_society_id = selSociety;
       if (selCentro) params.p_centro = selCentro;
-      if (selEmpleado) params.p_empleado_id = selEmpleado;
 
       const { data, error: rpcErr } = await supabase.rpc('get_prl_trazabilidad_stats', params);
       if (rpcErr) throw rpcErr;
       setStats((data ?? []) as StatRow[]);
-
-      // Load centros and empleados for the selected society if not yet loaded
-      if (selSociety && centros.length === 0) {
-        await loadCentrosAndEmpleados(selSociety);
-      } else if (!selSociety && (centros.length > 0 || empleados.length > 0)) {
-        // reset if user cleared society
-      }
-      if (!selSociety && empleados.length === 0) {
-        await loadCentrosAndEmpleados('');
-      }
     } catch (e: any) {
       setError(e?.message ?? 'Error al cargar estadísticas');
       setStats([]);
@@ -130,23 +116,31 @@ export default function TrazabilidadStats() {
     }
   }
 
-  // When society changes, reload centros/empleados
   useEffect(() => {
-    loadCentrosAndEmpleados(selSociety);
+    loadCentros(selSociety);
     setSelCentro('');
-    setSelEmpleado('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selSociety]);
 
+  // Client-side search filter
+  const filteredStats = useMemo(() => {
+    if (!searchQuery.trim()) return stats;
+    const q = searchQuery.toLowerCase();
+    return stats.filter((r) =>
+      r.nombre.toLowerCase().includes(q) ||
+      (r.email ?? '').toLowerCase().includes(q)
+    );
+  }, [stats, searchQuery]);
+
   const totals = useMemo(() => {
     let asignados = 0, descargados = 0, pendientes = 0;
-    stats.forEach((r) => {
+    filteredStats.forEach((r) => {
       asignados += r.total_asignados;
       descargados += r.total_descargados;
       pendientes += r.total_pendientes;
     });
-    return { asignados, descargados, pendientes, empleados: stats.length };
-  }, [stats]);
+    return { asignados, descargados, pendientes, empleados: filteredStats.length };
+  }, [filteredStats]);
 
   const pct = totals.asignados > 0 ? Math.round((totals.descargados / totals.asignados) * 100) : 0;
 
@@ -161,9 +155,7 @@ export default function TrazabilidadStats() {
   // ── Export helpers ──────────────────────────────────────────
   function exportExcel() {
     const rows: any[][] = [];
-    // Header
     rows.push(['Empleado', 'Sociedad', 'Centro', 'Asignados', 'Descargados', 'Pendientes']);
-    // Style header
     const headerStyle = {
       font: { bold: true, color: { rgb: 'FFFFFF' } },
       fill: { fgColor: { rgb: '065F46' } },
@@ -175,7 +167,7 @@ export default function TrazabilidadStats() {
         right: { style: 'thin', color: { rgb: '065F46' } },
       },
     };
-    stats.forEach((r) => {
+    filteredStats.forEach((r) => {
       rows.push([
         r.nombre,
         r.society_nombre,
@@ -186,9 +178,8 @@ export default function TrazabilidadStats() {
       ]);
     });
 
-    // Pending detail sheet
     const detailRows: any[][] = [['Empleado', 'Documento', 'Carpeta', 'Fecha asignación', 'Tiempo pendiente']];
-    stats.forEach((r) => {
+    filteredStats.forEach((r) => {
       r.docs_pendientes.forEach((d) => {
         detailRows.push([r.nombre, d.nombre_archivo, d.folder_nombre, fmtDate(d.created_at), timeAgo(d.created_at)]);
       });
@@ -196,7 +187,6 @@ export default function TrazabilidadStats() {
 
     const ws1 = XLSX.utils.aoa_to_sheet(rows);
     const ws2 = XLSX.utils.aoa_to_sheet(detailRows);
-    // Apply header style
     if (ws1['!ref']) {
       const range = XLSX.utils.decode_range(ws1['!ref']);
       for (let c = range.s.c; c <= range.e.c; c++) {
@@ -220,9 +210,59 @@ export default function TrazabilidadStats() {
     XLSX.writeFile(wb, 'trazabilidad_estadisticas.xlsx');
   }
 
+  function drawPieChart(doc: jsPDF, cx: number, cy: number, radius: number, descargados: number, pendientes: number) {
+    const total = descargados + pendientes;
+    if (total === 0) return;
+    const descPct = descargados / total;
+    const pendPct = pendientes / total;
+
+    // Draw descargados slice (green) — from top, clockwise
+    if (descargados > 0) {
+      doc.setFillColor(6, 95, 70);
+      drawArcSlice(doc, cx, cy, radius, 0, descPct);
+    }
+    // Draw pendientes slice (orange)
+    if (pendientes > 0) {
+      doc.setFillColor(194, 65, 12);
+      drawArcSlice(doc, cx, cy, radius, descPct, descPct + pendPct);
+    }
+
+    // Center circle (donut effect)
+    doc.setFillColor(255, 255, 255);
+    doc.circle(cx, cy, radius * 0.55, 'F');
+
+    // Center text
+    doc.setFontSize(14);
+    doc.setTextColor(6, 95, 70);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`${pct}%`, cx, cy + 1, { align: 'center' });
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.setFont('helvetica', 'normal');
+    doc.text('cumplimiento', cx, cy + 5, { align: 'center' });
+  }
+
+  function drawArcSlice(doc: jsPDF, cx: number, cy: number, radius: number, startPct: number, endPct: number) {
+    // Draw a pie slice using a series of triangles
+    const steps = 60;
+    const startAngle = startPct * 2 * Math.PI - Math.PI / 2;
+    const endAngle = endPct * 2 * Math.PI - Math.PI / 2;
+
+    for (let i = 0; i < steps; i++) {
+      const a1 = startAngle + (endAngle - startAngle) * (i / steps);
+      const a2 = startAngle + (endAngle - startAngle) * ((i + 1) / steps);
+      const x1 = cx + radius * Math.cos(a1);
+      const y1 = cy + radius * Math.sin(a1);
+      const x2 = cx + radius * Math.cos(a2);
+      const y2 = cy + radius * Math.sin(a2);
+      doc.triangle(cx, cy, x1, y1, x2, y2, 'F');
+    }
+  }
+
   function exportPDF() {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
     const margin = 10;
     let y = margin;
 
@@ -243,6 +283,23 @@ export default function TrazabilidadStats() {
     doc.text(`Empleados: ${totals.empleados}  |  Asignados: ${totals.asignados}  |  Descargados: ${totals.descargados}  |  Pendientes: ${totals.pendientes}  |  Cumplimiento: ${pct}%`, margin, y);
     y += 8;
 
+    // ── Pie chart on the right side of the summary page ──
+    const chartCx = pageW - 45;
+    const chartCy = y + 25;
+    drawPieChart(doc, chartCx, chartCy, 22, totals.descargados, totals.pendientes);
+
+    // Legend for pie chart
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setFillColor(6, 95, 70);
+    doc.rect(chartCx - 35, chartCy + 30, 4, 4, 'F');
+    doc.setTextColor(30, 41, 59);
+    doc.text(`Descargados (${totals.descargados})`, chartCx - 29, chartCy + 33);
+
+    doc.setFillColor(194, 65, 12);
+    doc.rect(chartCx - 35, chartCy + 36, 4, 4, 'F');
+    doc.text(`Pendientes (${totals.pendientes})`, chartCx - 29, chartCy + 39);
+
     // Table header
     const colW = [60, 40, 30, 25, 25, 25, 25];
     const headers = ['Empleado', 'Sociedad', 'Centro', 'Asignados', 'Descargados', 'Pendientes', '%'];
@@ -260,8 +317,8 @@ export default function TrazabilidadStats() {
 
     // Rows
     doc.setFont('helvetica', 'normal');
-    stats.forEach((r, idx) => {
-      if (y > doc.internal.pageSize.getHeight() - 15) {
+    filteredStats.forEach((r, idx) => {
+      if (y > pageH - 15) {
         doc.addPage();
         y = margin;
       }
@@ -305,9 +362,9 @@ export default function TrazabilidadStats() {
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(30, 41, 59);
     let rowIdx = 0;
-    stats.forEach((r) => {
+    filteredStats.forEach((r) => {
       r.docs_pendientes.forEach((d) => {
-        if (y > doc.internal.pageSize.getHeight() - 15) {
+        if (y > pageH - 15) {
           doc.addPage();
           y = margin;
         }
@@ -367,19 +424,28 @@ export default function TrazabilidadStats() {
           </select>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="text-[11px] font-semibold" style={{ color: '#64748B' }}>Empleado</label>
-          <select
-            value={selEmpleado}
-            onChange={(e) => setSelEmpleado(e.target.value)}
-            className="text-xs rounded-xl px-3 py-2 outline-none cursor-pointer"
-            style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B', minWidth: '180px' }}
-          >
-            <option value="">Todos</option>
-            {empleados.map((em) => (
-              <option key={em.id} value={em.id}>{em.nombre}</option>
-            ))}
-          </select>
+        <div className="flex flex-col gap-1 flex-1" style={{ minWidth: '200px' }}>
+          <label className="text-[11px] font-semibold" style={{ color: '#64748B' }}>Buscar empleado</label>
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Escribe el nombre del empleado..."
+              className="text-xs rounded-xl pl-9 pr-3 py-2 outline-none w-full"
+              style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full cursor-pointer"
+                style={{ color: '#94A3B8' }}
+              >
+                <span style={{ fontSize: '14px', lineHeight: 1 }}>×</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <button
@@ -390,10 +456,10 @@ export default function TrazabilidadStats() {
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Actualizar
         </button>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <button
             onClick={exportExcel}
-            disabled={stats.length === 0}
+            disabled={filteredStats.length === 0}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ backgroundColor: '#ECFDF5', color: '#065F46', border: '1px solid #6EE7B7' }}
           >
@@ -401,7 +467,7 @@ export default function TrazabilidadStats() {
           </button>
           <button
             onClick={exportPDF}
-            disabled={stats.length === 0}
+            disabled={filteredStats.length === 0}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}
           >
@@ -420,11 +486,15 @@ export default function TrazabilidadStats() {
         <div className="flex justify-center py-20">
           <RefreshCw size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
         </div>
-      ) : stats.length === 0 ? (
+      ) : filteredStats.length === 0 ? (
         <div className="flex flex-col items-center py-20 text-center rounded-2xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
           <BarChart3 size={32} className="mb-3" style={{ color: '#CBD5E1' }} />
-          <p className="text-sm font-semibold" style={{ color: '#475569' }}>Sin datos para los filtros seleccionados</p>
-          <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Prueba a cambiar la sociedad, centro o empleado</p>
+          <p className="text-sm font-semibold" style={{ color: '#475569' }}>
+            {searchQuery ? 'Sin resultados para tu búsqueda' : 'Sin datos para los filtros seleccionados'}
+          </p>
+          <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
+            {searchQuery ? 'Prueba con otro nombre' : 'Prueba a cambiar la sociedad o centro'}
+          </p>
         </div>
       ) : (
         <>
@@ -462,7 +532,7 @@ export default function TrazabilidadStats() {
               <Users size={14} style={{ color: '#065F46' }} />
               <span className="text-sm font-semibold" style={{ color: '#1E293B' }}>Informe por empleado</span>
               <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#ECFDF5', color: '#065F46' }}>
-                {stats.length}
+                {filteredStats.length}
               </span>
             </div>
 
@@ -480,7 +550,7 @@ export default function TrazabilidadStats() {
                   </tr>
                 </thead>
                 <tbody>
-                  {stats.map((r) => {
+                  {filteredStats.map((r) => {
                     const isOpen = expandedRows.has(r.empleado_id);
                     const rowPct = r.total_asignados > 0 ? Math.round((r.total_descargados / r.total_asignados) * 100) : 0;
                     return (

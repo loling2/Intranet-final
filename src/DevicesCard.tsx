@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Monitor, Smartphone, Laptop, Headphones, Tablet, Phone, Settings, RefreshCw } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import type { Dispositivo } from './supabaseClient';
 import type { SocietyTheme } from './themes';
@@ -9,7 +10,7 @@ interface Props {
   userId?: string | null;
 }
 
-const typeIcons: Record<string, React.FC<{ size?: number; className?: string }>> = {
+const typeIcons: Record<string, LucideIcon> = {
   Portatil: Laptop,
   Sobremesa: Settings,
   Monitor: Monitor,

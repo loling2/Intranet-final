@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { Receipt, Upload, FileText, CheckCircle2, AlertCircle, X, Eye, Loader2, Building2, Hash, Calendar, Euro, Search, Filter, ChevronDown, Download, RefreshCw } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { useSociety } from '../context/SocietyContext';
-import { uploadToWasabi, downloadFromWasabi } from '../lib/wasabi';
+import { uploadToWasabi, getWasabiBlobUrl } from '../lib/wasabi';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).href;
 
@@ -181,7 +182,7 @@ function ConfirmStep({ file, data, onConfirm, onBack, saving }: {
           { key: 'fecha_factura', label: 'Fecha', icon: Calendar, placeholder: '', type: 'date' },
           { key: 'importe', label: 'Importe (€)', icon: Euro, placeholder: 'Ej: 1250.00' },
           { key: 'concepto', label: 'Concepto', icon: FileText, placeholder: 'Descripción del servicio' },
-        ] as { key: keyof InvoiceData; label: string; icon: React.FC<{ size?: number }>; placeholder: string; type?: string }[]).map(({ key, label, icon: Icon, placeholder, type }) => (
+        ] as { key: keyof InvoiceData; label: string; icon: LucideIcon; placeholder: string; type?: string }[]).map(({ key, label, icon: Icon, placeholder, type }) => (
           <div key={key}>
             <label className="block text-xs font-medium mb-1" style={{ color: '#475569' }}>{label}</label>
             <div className="relative">
@@ -333,8 +334,8 @@ export default function FacturasModule({ isAdmin = false }: Props) {
 
   async function handleViewPdf(key: string) {
     try {
-      const url = await downloadFromWasabi(key);
-      window.open(url, '_blank');
+      const url = await getWasabiBlobUrl(key);
+      if (url) window.open(url, '_blank');
     } catch {
       alert('No se pudo abrir el PDF.');
     }

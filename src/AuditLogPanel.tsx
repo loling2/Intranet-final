@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Shield, Search, RefreshCw, User, Car, FileText, Key, AlertTriangle, Clock, Activity } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './components/Pagination';
 import { supabase, AuditLog } from './supabaseClient';
 import { useSociety } from './context/SocietyContext';
 
-const EVENT_ICONS: Record<string, { Icon: React.FC<{ size?: number }>; color: string; bg: string }> = {
+const EVENT_ICONS: Record<string, { Icon: LucideIcon; color: string; bg: string }> = {
   user_invited:         { Icon: User,         color: '#2563EB', bg: '#EFF6FF' },
   user_role_changed:    { Icon: Shield,        color: '#7C3AED', bg: '#F5F3FF' },
   user_activated:       { Icon: User,          color: '#16A34A', bg: '#F0FDF4' },

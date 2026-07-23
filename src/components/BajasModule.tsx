@@ -6,6 +6,7 @@ import {
   FileCheck, CreditCard, Hash, FileSpreadsheet, FileText, ChevronDown,
   Timer, Upload, CheckSquare, Square,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import SustitucionesModule from './SustitucionesModule';
 import HorasExtrasModule from './HorasExtrasModule';
 import * as XLSX from 'xlsx-js-style';
@@ -1156,7 +1157,7 @@ export default function BajasModule() {
     sin_modo: finalizadasBajas.filter((b) => !b.modo_finalizacion).length,
   };
 
-  const modoConfig: Record<ModoFinalizacion, { label: string; color: string; bg: string; border: string; icon: React.FC<{ size?: number }> }> = {
+  const modoConfig: Record<ModoFinalizacion, { label: string; color: string; bg: string; border: string; icon: LucideIcon }> = {
     nomina: { label: 'Pagadas en nómina', color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0', icon: CreditCard },
     solicitud: { label: 'Días/horas solicitados', color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE', icon: FileCheck },
     otro: { label: 'Otro', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', icon: Hash },

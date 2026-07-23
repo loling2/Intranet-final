@@ -1,9 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  ClipboardCheck, Plus, X, Trash2, Edit2, Users, Clock, CheckCircle2,
-  XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw,
-  ListChecks, UserCheck,
-} from 'lucide-react';
+import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import ChangePasswordModal from './components/ChangePasswordModal';
 
@@ -334,7 +331,7 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee }: 
     (e.dni ?? '').toLowerCase().includes(searchEmpleado.toLowerCase())
   );
 
-  const tabs: { id: Tab; label: string; icon: React.FC<{ size?: number }> }[] = [
+  const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
     { id: 'examenes', label: 'Examenes', icon: ClipboardCheck },
     { id: 'asignaciones', label: 'Asignaciones', icon: UserCheck },
   ];

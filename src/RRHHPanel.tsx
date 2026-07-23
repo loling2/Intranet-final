@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound, AlertCircle, Menu, BedSingle } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { mockVacations, mockCertificates, mockExams, mockDocuments } from './mockData';
 import UserManagement from './UserManagement';
 import VehiclesModule from './VehiclesModule';
@@ -105,7 +106,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     return diff <= 90 && diff > 0;
   });
 
-  const allTabs: { id: RRHHTab; label: string; icon: React.FC<{ size?: number }>; badge?: number }[] = [
+  const allTabs: { id: RRHHTab; label: string; icon: LucideIcon; badge?: number }[] = [
     { id: 'overview', label: 'Resumen RRHH', icon: Clock },
     { id: 'employees', label: 'Empleados', icon: Users },
     { id: 'users', label: 'Gestion de Usuarios', icon: Users },

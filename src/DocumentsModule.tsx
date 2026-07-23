@@ -660,7 +660,7 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
   const { activeSocietyId } = useSociety();
 
   // Use real profile when available; otherwise build a synthetic one from the email prop
-  const profile: UserProfile = authProfile ?? {
+  const profile: UserProfile = (authProfile ?? {
     id: 'local',
     nombre: userEmail?.split('@')[0] ?? currentUserRole,
     email: userEmail ?? `${currentUserRole}@empresa.com`,
@@ -670,7 +670,7 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
     invited_by: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-  };
+  }) as UserProfile;
   const [dbDocs, setDbDocs] = useState<DocumentRecord[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [wasabiError] = useState(false);
@@ -716,7 +716,7 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
 
   // Build DB-only entries per folder; Wasabi objects are merged inside FolderPanel
   function buildDbEntries(folder: Folder): FileEntry[] {
-    return dbDocs
+    return (dbDocs
       .filter((d) => d.folder === folder)
       .map((d) => ({
         id: d.id,
@@ -728,9 +728,9 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
         idbKey: d.indexeddb_key,
         wasabiKey: d.wasabi_key ?? undefined,
         dbRecord: d,
-        uploaderNombre: d.subido_por_nombre,
+        uploaderNombre: d.subido_por_nombre ?? undefined,
         destinoEmail: d.usuario_destino_email || undefined,
-      }));
+      }))) as FileEntry[];
   }
 
   const handleDelete = async (entry: FileEntry) => {
@@ -756,7 +756,7 @@ export default function DocumentsModule({ currentUserRole, userEmail }: Props) {
           entidad: 'document',
           entidad_id: entry.dbRecord.id,
           metadata: { nombre_archivo: entry.nombre, folder: entry.dbRecord.folder },
-          society_id: entry.dbRecord.society_id,
+          society_id: entry.dbRecord.society_id ?? undefined,
         });
       }
       await loadAll();

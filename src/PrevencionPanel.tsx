@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2, HeartPulse } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
 import SocietySwitcher from './SocietySwitcher';
 import PrlDocsModule from './components/PrlDocsModule';
@@ -36,7 +37,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
   const [activeTab, setActiveTab] = useState<PrevTab>('empleados');
   const [showChangePassword, setShowChangePassword] = useState(false);
 
-  const tabs: { id: PrevTab; label: string; icon: React.FC<{ size?: number }> }[] = [
+  const tabs: { id: PrevTab; label: string; icon: LucideIcon }[] = [
     { id: 'empleados',     label: 'Empleados y Tags',   icon: Users },
     { id: 'documentos',    label: 'Documentos PRL',      icon: FileText },
     { id: 'trazabilidad',  label: 'Trazabilidad',        icon: CheckCircle2 },
@@ -200,13 +201,13 @@ function EmpleadosTagsTab() {
         .select('*, tags(id, nombre, created_at)')
         .eq('entidad_id', empleadoId);
       if (err) throw err;
-      const tgs: AssignedTag[] = (data ?? []).map((et: { id: string; tag_id: string; entidad_id: string; created_at: string; tags: TagType | null }) => ({
+      const tgs = ((data ?? []) as any[]).map((et: any) => ({
         id: et.tags?.id ?? et.tag_id,
         nombre: et.tags?.nombre ?? '',
         created_at: et.tags?.created_at ?? '',
         etiquetado_id: et.id,
       }));
-      setTagCache((prev) => ({ ...prev, [empleadoId]: tgs }));
+      setTagCache((prev) => ({ ...prev, [empleadoId]: tgs as AssignedTag[] }));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al cargar etiquetas');
     } finally {
@@ -276,7 +277,7 @@ function EmpleadosTagsTab() {
     if (filterSociedad && e.id_sociedad !== filterSociedad) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      return e.nombre.toLowerCase().includes(q) || e.email.toLowerCase().includes(q) || (e.puesto?.toLowerCase().includes(q) ?? false);
+      return e.nombre.toLowerCase().includes(q) || (e.email ?? '').toLowerCase().includes(q) || (e.puesto?.toLowerCase().includes(q) ?? false);
     }
     return true;
   });
@@ -343,7 +344,7 @@ function EmpleadosTagsTab() {
         ) : (
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
             {filtered.map((emp) => {
-              const soc = getSociedad(emp.id_sociedad);
+              const soc = getSociedad(emp.id_sociedad ?? '');
               const isExpanded = expandedId === emp.id;
               const assignedTags = tagCache[emp.id] ?? [];
               const assignedTagIds = new Set(assignedTags.map((t) => t.id));
@@ -590,11 +591,11 @@ function DepartamentosPrlTab() {
       .select('id, empleado_id, empleados(nombre, email)')
       .eq('departamento_prl_id', deptId);
     if (!err) {
-      const rows: DeptEmpleado[] = (data ?? []).map((r: { id: string; empleado_id: string; empleados: { nombre: string; email: string } | null }) => ({
+      const rows: DeptEmpleado[] = (data ?? []).map((r: { id: string; empleado_id: string; empleados: { nombre: string; email: string }[] | null }) => ({
         id: r.id,
         empleado_id: r.empleado_id,
-        empleado_nombre: r.empleados?.nombre ?? '',
-        empleado_email: r.empleados?.email ?? '',
+        empleado_nombre: r.empleados?.[0]?.nombre ?? '',
+        empleado_email: r.empleados?.[0]?.email ?? '',
       }));
       setDeptEmpleados((prev) => ({ ...prev, [deptId]: rows }));
     }
@@ -827,7 +828,7 @@ function DepartamentosPrlTab() {
                     if ((deptEmpleados[assigningDeptId] ?? []).some((de) => de.empleado_id === e.id)) return false;
                     if (!assignSearch.trim()) return true;
                     const q = assignSearch.toLowerCase();
-                    return e.nombre.toLowerCase().includes(q) || e.email.toLowerCase().includes(q) || (e.dni ?? '').toLowerCase().includes(q);
+                    return e.nombre.toLowerCase().includes(q) || (e.email ?? '').toLowerCase().includes(q) || (e.dni ?? '').toLowerCase().includes(q);
                   })
                   .map((emp) => {
                     const sel = selectedEmpIds.has(emp.id);
@@ -851,7 +852,7 @@ function DepartamentosPrlTab() {
                   if ((deptEmpleados[assigningDeptId] ?? []).some((de) => de.empleado_id === e.id)) return false;
                   if (!assignSearch.trim()) return true;
                   const q = assignSearch.toLowerCase();
-                  return e.nombre.toLowerCase().includes(q) || e.email.toLowerCase().includes(q) || (e.dni ?? '').toLowerCase().includes(q);
+                  return e.nombre.toLowerCase().includes(q) || (e.email ?? '').toLowerCase().includes(q) || (e.dni ?? '').toLowerCase().includes(q);
                 }).length === 0 && (
                   <p className="text-xs text-center py-4" style={{ color: '#94A3B8' }}>
                     {assignSearch.trim() ? 'Sin resultados para esta busqueda' : 'Todos los empleados ya estan asignados'}
@@ -1021,7 +1022,7 @@ function ReconocimientoMedicoTab() {
 
   const handleEdit = (emp: Empleado) => {
     setEditingId(emp.id);
-    setEditEstado(emp.reconocimiento_medico_estado ?? null);
+    setEditEstado((emp.reconocimiento_medico_estado as 'en_proceso' | 'finalizado' | null) ?? null);
   };
 
   const handleSave = async (empId: string) => {

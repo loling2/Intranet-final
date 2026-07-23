@@ -5,13 +5,13 @@ import {
   AlertCircle, Clock, Receipt, Ligature as FileSignature, Zap, Award,
   ClipboardCheck, BarChart2, Plus, Trash2, X, Check, BedSingle,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-type AppRole = 'rrhh' | 'supervisor' | 'prevencion' | 'administracion' | 'employee' | string;
 
 interface TabDef {
   id: string;
   label: string;
-  icon: React.FC<{ size?: number }>;
+  icon: LucideIcon;
 }
 
 const ALL_TABS: TabDef[] = [

@@ -634,7 +634,7 @@ function BulkCreateAccessModal({ employees, onClose, onCreated }: BulkCreateAcce
           },
           body: JSON.stringify({
             action: 'create_user',
-            email: emp.email.trim().toLowerCase(),
+            email: (emp.email ?? '').trim().toLowerCase(),
             nombre: emp.nombre,
             role,
             societies: emp.id_sociedad ? [emp.id_sociedad] : [],
@@ -1038,7 +1038,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
     if (filterStatus === 'activo' && !e.activo) return false;
     if (!search) return true;
     const q = search.toLowerCase();
-    return e.nombre.toLowerCase().includes(q) || e.email.toLowerCase().includes(q);
+    return e.nombre.toLowerCase().includes(q) || (e.email ?? '').toLowerCase().includes(q);
   });
 
   const PAGE_SIZE = 25;

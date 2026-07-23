@@ -117,7 +117,7 @@ export async function getWasabiBlobUrl(key: string): Promise<string> {
     if (value) chunks.push(value);
     done = d;
   }
-  const blob = new Blob(chunks, { type: resp.ContentType ?? 'application/octet-stream' });
+  const blob = new Blob(chunks as BlobPart[], { type: resp.ContentType ?? 'application/octet-stream' });
   return URL.createObjectURL(blob);
 }
 
@@ -354,7 +354,7 @@ export async function downloadFromWasabi(key: string, filename: string): Promise
     if (value) chunks.push(value);
     done = d;
   }
-  const blob = new Blob(chunks, { type: resp.ContentType ?? 'application/octet-stream' });
+  const blob = new Blob(chunks as BlobPart[], { type: resp.ContentType ?? 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = filename; a.click();

@@ -462,7 +462,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
         .order('fecha_inicio', { ascending: false })
         .limit(500);
       if (vehErr) throw vehErr;
-      setVehicleLogs((vehData ?? []) as VehicleLogEntry[]);
+      setVehicleLogs((vehData ?? []) as unknown as VehicleLogEntry[]);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al cargar fichajes');
     } finally {

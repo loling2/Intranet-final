@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination';
 import { Users, Plus, Search, X, Save, ChevronDown, ChevronUp, Pencil, Trash2, AlertCircle, CheckCircle2, Building2, Tag, RefreshCw, UserPlus, Ligature as FileSignature, Clock, Bell, Upload, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad, type Centro, type Asignacion, type Tag as TagType, type UserProfile } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { uploadToWasabi, moveRrhhFolderToBajas, moveRrhhFolderToActivo } from '../lib/wasabi';
@@ -13,7 +14,7 @@ interface Props {
 const TIPOS_CONTRATO = ['Indefinido', 'Temporal', 'Practicas', 'Obra y Servicio', 'Formacion', 'Relevo', 'Interinidad'];
 const TURNOS = ['Manana', 'Tarde', 'Noche', 'Partido', 'Flexible'];
 
-const ESTADOS_CONTRATO: { value: EstadoContrato; label: string; color: string; bg: string; border: string; Icon: React.FC<{ size?: number }> }[] = [
+const ESTADOS_CONTRATO: { value: EstadoContrato; label: string; color: string; bg: string; border: string; Icon: LucideIcon }[] = [
   { value: 'pendiente', label: 'Pendiente', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', Icon: Clock },
   { value: 'avisado',   label: 'Avisado',   color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE', Icon: Bell },
   { value: 'firmado',   label: 'Firmado',   color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0', Icon: FileSignature },
@@ -24,6 +25,7 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   id_sociedad: '',
   id_sociedad_secundaria: null,
   nombre: '',
+  apellidos: null,
   email: '',
   dni: null,
   telefono: null,
@@ -48,6 +50,9 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   reconocimiento_medico: 'pendiente',
   reconocimiento_medico_estado: null,
   reconocimiento_medico_fecha: null,
+  reconocimiento_medico_realizado: null,
+  entrega_doc_prl: null,
+  entrega_doc_prl_observaciones: null,
 };
 
 function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
@@ -56,6 +61,7 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     id_sociedad: e.id_sociedad,
     id_sociedad_secundaria: e.id_sociedad_secundaria ?? null,
     nombre: e.nombre,
+    apellidos: e.apellidos ?? null,
     email: e.email,
     dni: e.dni,
     telefono: e.telefono,
@@ -80,6 +86,9 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     reconocimiento_medico: e.reconocimiento_medico ?? 'pendiente',
     reconocimiento_medico_estado: e.reconocimiento_medico_estado ?? null,
     reconocimiento_medico_fecha: e.reconocimiento_medico_fecha ?? null,
+    reconocimiento_medico_realizado: e.reconocimiento_medico_realizado ?? null,
+    entrega_doc_prl: e.entrega_doc_prl ?? null,
+    entrega_doc_prl_observaciones: e.entrega_doc_prl_observaciones ?? null,
   };
 }
 
@@ -629,7 +638,7 @@ function QuickUploadModal({ empleado, onClose, onUploaded }: { empleado: Emplead
           folder: 'publico',
           usuario_destino_id: empleado.user_id ?? null,
           usuario_destino_email: empleado.email ?? '',
-          society_id: empleado.id_sociedad,
+          society_id: empleado.id_sociedad ?? undefined,
           subido_por: profile.id,
           subido_por_nombre: profile.nombre,
           tamano_bytes: file.size,
@@ -643,7 +652,7 @@ function QuickUploadModal({ empleado, onClose, onUploaded }: { empleado: Emplead
           autor: profile as UserProfile,
           entidad: 'document',
           metadata: { nombre_archivo: file.name, folder: 'publico', empleado_id: empleado.id, wasabi_key: wasabiKey },
-          society_id: empleado.id_sociedad,
+          society_id: empleado.id_sociedad ?? undefined,
         });
       }
       onUploaded();
@@ -831,7 +840,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         created_at: et.tags?.created_at ?? '',
         etiquetado_id: et.id,
       }));
-      setEmpleadoTags(tgs);
+      setEmpleadoTags(tgs as typeof empleadoTags);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al cargar detalle');
     } finally {
@@ -1118,7 +1127,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
       const q = searchQuery.toLowerCase();
       return (
         e.nombre.toLowerCase().includes(q) ||
-        e.email.toLowerCase().includes(q) ||
+        (e.email ?? '').toLowerCase().includes(q) ||
         (e.dni?.toLowerCase().includes(q) ?? false) ||
         (e.puesto?.toLowerCase().includes(q) ?? false)
       );
@@ -1152,7 +1161,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
 
       {showCreateCentro && (
         <CreateCentroModal
-          societyId={form.id_sociedad}
+          societyId={form.id_sociedad ?? ''}
           sociedades={sociedades}
           onClose={() => setShowCreateCentro(false)}
           onCreated={(centro) => {
@@ -1398,7 +1407,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                   type="date" className="form-input" />
               </FormField>
               <FormField label="Sociedad *">
-                <select value={form.id_sociedad} onChange={(e) => f('id_sociedad', e.target.value)} className="form-input">
+                <select value={form.id_sociedad ?? ''} onChange={(e) => f('id_sociedad', e.target.value)} className="form-input">
                   <option value="">Seleccionar...</option>
                   {sociedades.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                 </select>
@@ -1620,7 +1629,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         ) : (
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
             {pagedEmpleados.map((emp) => {
-              const soc = getSociedad(emp.id_sociedad);
+              const soc = getSociedad(emp.id_sociedad ?? '');
               const isExpanded = expandedId === emp.id;
               return (
                 <div key={emp.id}>
@@ -1806,7 +1815,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                             type="date" className="form-input" />
                         </FormField>
                         <FormField label="Sociedad *">
-                          <select value={form.id_sociedad} onChange={(e) => f('id_sociedad', e.target.value)} className="form-input">
+                          <select value={form.id_sociedad ?? ''} onChange={(e) => f('id_sociedad', e.target.value)} className="form-input">
                             <option value="">Seleccionar...</option>
                             {sociedades.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                           </select>

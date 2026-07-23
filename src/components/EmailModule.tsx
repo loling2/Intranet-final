@@ -4,6 +4,7 @@ import {
   Server, Shield, Bell, Check, AlertCircle, ToggleLeft, ToggleRight,
   FileText, ChevronDown, ChevronUp,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1150,7 +1151,7 @@ type Section = 'cuentas' | 'notificaciones' | 'plantillas';
 export default function EmailModule() {
   const [section, setSection] = useState<Section>('cuentas');
 
-  const tabs: { id: Section; label: string; icon: React.FC<{ size?: number }> }[] = [
+  const tabs: { id: Section; label: string; icon: LucideIcon }[] = [
     { id: 'cuentas',        label: 'Cuentas SMTP',   icon: Server   },
     { id: 'notificaciones', label: 'Notificaciones', icon: Bell     },
     { id: 'plantillas',     label: 'Plantillas',     icon: FileText },

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ClipboardCheck, Clock, CheckCircle2, XCircle, Play, AlertCircle, Timer, RotateCcw, Loader2, ExternalLink, X, ChevronRight, ChevronLeft } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { SocietyTheme } from './themes';
 import { Exam } from './mockData';
 
@@ -8,7 +9,7 @@ interface Props {
   theme: SocietyTheme;
 }
 
-const statusConfig: Record<string, { label: string; icon: React.FC<{ size?: number; className?: string }>; color: string; bg: string; border: string }> = {
+const statusConfig: Record<string, { label: string; icon: LucideIcon; color: string; bg: string; border: string }> = {
   pendiente: { label: 'Pendiente', icon: Clock, color: '#64748B', bg: '#F8FAFC', border: '#E2E8F0' },
   en_curso: { label: 'En curso', icon: Play, color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' },
   completado: { label: 'Completado', icon: CheckCircle2, color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' },

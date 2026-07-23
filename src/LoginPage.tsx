@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
 import type { AppRole } from './supabaseClient';
@@ -26,7 +27,7 @@ import ChangePinModal from './components/ChangePinModal';
 import IncidenciasModule from './components/IncidenciasModule';
 import MisFichajesView from './components/MisFichajesView';
 
-const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> = {
+const iconMap: Record<string, LucideIcon> = {
   'building-2': Building2,
   landmark: Landmark,
   gem: Gem,
@@ -310,7 +311,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 
   
 
-  const MENU_ACTIONS: { id: JornadaAction; label: string; icon: React.FC<{ size?: number }>; color: string; bg: string; border: string }[] = [
+  const MENU_ACTIONS: { id: JornadaAction; label: string; icon: LucideIcon; color: string; bg: string; border: string }[] = [
     { id: 'entrada',             label: 'Entrada',             icon: Play,        color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' },
     { id: 'descanso',            label: 'Descanso',            icon: Coffee,      color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
     { id: 'fin_descanso',        label: 'Fin descanso',        icon: Play,        color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
@@ -952,7 +953,7 @@ export default function LoginPage() {
             <AdminPanel
               email={session.email}
               onLogout={handleLogout}
-              onNavigate={handleNavigate}
+              onNavigate={handleNavigate as (view: 'admin' | 'rrhh' | 'society' | 'dashboard', societyId?: string) => void}
               onImpersonate={handleImpersonate}
             />
           </SocietyProvider>

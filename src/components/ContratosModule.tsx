@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination';
 import { Ligature as FileSignature, Clock, Bell, Search, Filter, Upload, X, RefreshCw, AlertCircle, CheckCircle2, FileText, Download } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { uploadToWasabi, listWasabiFolder } from '../lib/wasabi';
@@ -10,7 +11,7 @@ interface Props {
   currentUserRole: 'admin' | 'rrhh';
 }
 
-const ESTADOS: { value: EstadoContrato; label: string; color: string; bg: string; border: string; Icon: React.FC<{ size?: number }> }[] = [
+const ESTADOS: { value: EstadoContrato; label: string; color: string; bg: string; border: string; Icon: LucideIcon }[] = [
   { value: 'pendiente', label: 'Pendiente', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', Icon: Clock },
   { value: 'avisado',   label: 'Avisado',   color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE', Icon: Bell },
   { value: 'firmado',   label: 'Firmado',   color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0', Icon: FileSignature },
@@ -47,7 +48,7 @@ function UploadContratoModal({ empleado, onClose, onUploaded }: UploadContratoMo
         folder: 'publico',
         usuario_destino_id: empleado.user_id ?? null,
         usuario_destino_email: empleado.email ?? '',
-        society_id: empleado.id_sociedad,
+        society_id: empleado.id_sociedad ?? undefined,
         subido_por: profile.id,
         subido_por_nombre: profile.nombre,
         tamano_bytes: file.size,
@@ -61,7 +62,7 @@ function UploadContratoModal({ empleado, onClose, onUploaded }: UploadContratoMo
         autor: profile,
         entidad: 'document',
         metadata: { empleado_id: empleado.id, nombre_archivo: nombre, wasabi_key: wasabiKey },
-        society_id: empleado.id_sociedad,
+        society_id: empleado.id_sociedad ?? undefined,
       });
       onUploaded();
       onClose();
@@ -385,7 +386,7 @@ export default function ContratosModule({ currentUserRole }: Props) {
                       )}
 
                       {/* Contratos subidos */}
-                      <ContratosDocs empleadoId={emp.id} empleadoEmail={emp.email} />
+                      <ContratosDocs empleadoId={emp.id} empleadoEmail={emp.email ?? ''} />
                     </div>
                   )}
                 </div>

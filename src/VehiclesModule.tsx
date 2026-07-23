@@ -630,7 +630,7 @@ export default function VehiclesModule({ currentUserRole, userEmail }: Props) {
   const { activeSocietyId } = useSociety();
 
   // Use real profile when available; otherwise build a synthetic one from the email prop
-  const profile: UserProfile = authProfile ?? {
+  const profile: UserProfile = (authProfile ?? {
     id: 'local',
     nombre: userEmail?.split('@')[0] ?? currentUserRole,
     email: userEmail ?? `${currentUserRole}@empresa.com`,
@@ -640,7 +640,7 @@ export default function VehiclesModule({ currentUserRole, userEmail }: Props) {
     invited_by: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-  };
+  }) as UserProfile;
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [logs, setLogs] = useState<VehicleLog[]>([]);
   const [loading, setLoading] = useState(true);

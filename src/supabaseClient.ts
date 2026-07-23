@@ -72,6 +72,8 @@ export interface DocumentRecord {
   society_id: string | null;
   folder: string | null;
   uploaded_by: string | null;
+  subido_por_nombre: string | null;
+  usuario_destino_email: string | null;
   created_at: string;
 }
 
@@ -79,6 +81,7 @@ export interface Empleado {
   id: string;
   user_id: string | null;
   nombre: string;
+  apellidos: string | null;
   email: string | null;
   dni: string | null;
   telefono: string | null;
@@ -102,6 +105,12 @@ export interface Empleado {
   observaciones: string | null;
   activo: boolean;
   estado_contrato: EstadoContrato | null;
+  reconocimiento_medico: string | null;
+  reconocimiento_medico_estado: string | null;
+  reconocimiento_medico_fecha: string | null;
+  reconocimiento_medico_realizado: boolean | null;
+  entrega_doc_prl: string | null;
+  entrega_doc_prl_observaciones: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -112,6 +121,11 @@ export interface HistorialContrato {
   id: string;
   empleado_id: string;
   estado: EstadoContrato;
+  estado_anterior: string | null;
+  estado_nuevo: string | null;
+  justificacion: string | null;
+  cambiado_por: string | null;
+  cambiado_por_nombre: string | null;
   fecha: string;
   observaciones: string | null;
   created_at: string;
@@ -138,6 +152,9 @@ export interface Asignacion {
   estado: string;
   puntuacion: number | null;
   fecha_realizacion: string | null;
+  id_centro: string | null;
+  rol: string | null;
+  centro_nombre?: string;
 }
 
 export interface Tag {

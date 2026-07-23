@@ -3,6 +3,7 @@ import {
   AlertCircle, Plus, X, Send, Clock, CheckCircle2, Loader2,
   Upload, Image, User, Building2, ChevronLeft, ChevronRight,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { getWasabiBlobUrl } from '../lib/wasabi';
 
@@ -43,7 +44,7 @@ interface Departamento {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const ESTADOS: Record<Estado, { label: string; color: string; bg: string; icon: React.FC<{ size?: number; className?: string }> }> = {
+const ESTADOS: Record<Estado, { label: string; color: string; bg: string; icon: LucideIcon }> = {
   pendiente:  { label: 'Pendiente',  color: '#D97706', bg: '#FEF3C7', icon: Clock },
   en_proceso: { label: 'En Proceso', color: '#2563EB', bg: '#EFF6FF', icon: Loader2 },
   finalizada: { label: 'Finalizada', color: '#059669', bg: '#ECFDF5', icon: CheckCircle2 },

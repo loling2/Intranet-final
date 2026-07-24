@@ -4,7 +4,7 @@ import {
   AlertTriangle, UserCheck, CheckCircle2, Clock, ArrowRight,
   Sun, Moon, Sunset, Banknote, RotateCcw, MoreHorizontal, Star,
   FileCheck, CreditCard, Hash, FileSpreadsheet, FileText, ChevronDown,
-  Timer, Upload, CheckSquare, Square,
+  Timer, Upload, CheckSquare, Square, Pencil,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import SustitucionesModule from './SustitucionesModule';
@@ -1604,6 +1604,13 @@ export default function BajasModule() {
                         style={{ backgroundColor: '#16A34A' }}>
                         <CheckCircle2 size={12} /> Descontar
                       </button>
+                      <button
+                        onClick={() => { const baja = bajas.find((bj) => bj.id === b.id); if (baja) openEditBaja(baja); }}
+                        title="Editar baja"
+                        className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer"
+                        style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
+                        <Pencil size={13} />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1674,6 +1681,13 @@ export default function BajasModule() {
                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-40 transition-opacity"
                             style={{ backgroundColor: '#D97706' }}>
                             <Banknote size={11} /> Liquidar
+                          </button>
+                          <button
+                            onClick={() => { const baja = bajas.find((bj) => bj.estado === 'activa' && bj.sustituciones.some((s) => s.sustituto_id === b.sustituto_id)); if (baja) openEditBaja(baja); }}
+                            title="Editar baja"
+                            className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer"
+                            style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
+                            <Pencil size={13} />
                           </button>
                         </>
                       )}

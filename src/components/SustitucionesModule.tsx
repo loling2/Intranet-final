@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserCheck, Search, RefreshCw, Calendar, Moon, Star, Plus, X } from 'lucide-react';
+import { UserCheck, Search, RefreshCw, Calendar, Moon, Star, Plus, X, Pencil, Trash2, CheckCircle2, Sun, Sunset } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface SustitucionRow {
@@ -26,6 +26,26 @@ interface Empleado {
   dni: string | null;
 }
 
+const HORAS_POR_TURNO: Record<string, number> = { mañana: 8, tarde: 8, noche: 8 };
+
+interface EditForm {
+  sustituto_nombre: string;
+  fecha_inicio: string;
+  unidad: 'dias' | 'horas';
+  num_dias: number;
+  num_horas: number;
+  tipo_cobertura: string;
+  turno: string;
+  es_festivo: boolean;
+  unidad_festivo: 'dias' | 'horas';
+  num_dias_festivos: number;
+  horas_festivas: number;
+  es_nocturno: boolean;
+  horas_nocturnas: number;
+  motivo_otro: string;
+  notas: string;
+}
+
 const turnoColors: Record<string, { color: string; bg: string }> = {
   'mañana': { color: '#D97706', bg: '#FFFBEB' },
   tarde:    { color: '#EA580C', bg: '#FFF7ED' },
@@ -47,6 +67,12 @@ export default function SustitucionesModule() {
   const [form, setForm] = useState({ sustituto_id: '', sustituto_nombre: '', num_horas: 0, motivo: '', fecha: '' });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+
+  // Edit state
+  const [editingRow, setEditingRow] = useState<SustitucionRow | null>(null);
+  const [editForm, setEditForm] = useState<EditForm | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -136,6 +162,66 @@ export default function SustitucionesModule() {
     if (!confirm('¿Eliminar esta sustitución?')) return;
     await supabase.from('sustituciones').delete().eq('id', id);
     await load();
+  };
+
+  const openEdit = (s: SustitucionRow) => {
+    setEditingRow(s);
+    setEditError('');
+    setEditForm({
+      sustituto_nombre: s.sustituto_nombre,
+      fecha_inicio: s.fecha_inicio,
+      unidad: (s.unidad === 'horas' ? 'horas' : 'dias'),
+      num_dias: s.num_dias || 0,
+      num_horas: s.num_horas || 0,
+      tipo_cobertura: s.tipo_cobertura ?? '',
+      turno: s.turno ?? '',
+      es_festivo: s.es_festivo ?? false,
+      unidad_festivo: (s.unidad_festivo === 'horas' ? 'horas' : 'dias'),
+      num_dias_festivos: s.num_dias_festivos ?? 0,
+      horas_festivas: s.horas_festivas ?? 0,
+      es_nocturno: s.es_nocturno ?? false,
+      horas_nocturnas: s.horas_nocturnas ?? 0,
+      motivo_otro: s.motivo_otro ?? '',
+      notas: s.notas ?? '',
+    });
+  };
+
+  const updField = (field: keyof EditForm, value: string | number | boolean) =>
+    setEditForm((p) => (p ? { ...p, [field]: value } : p));
+
+  const handleSaveEdit = async () => {
+    if (!editingRow || !editForm) return;
+    if (!editForm.fecha_inicio) { setEditError('La fecha es obligatoria.'); return; }
+    setSavingEdit(true); setEditError('');
+    try {
+      const horasCalculadas = editForm.unidad === 'horas'
+        ? editForm.num_horas
+        : (editForm.turno ? editForm.num_dias * (HORAS_POR_TURNO[editForm.turno] ?? 8) : editForm.num_horas);
+      const { error } = await supabase.from('sustituciones').update({
+        sustituto_nombre: editForm.sustituto_nombre.trim(),
+        fecha_inicio: editForm.fecha_inicio,
+        unidad: editForm.unidad,
+        num_dias: editForm.unidad === 'dias' ? editForm.num_dias : 0,
+        num_horas: horasCalculadas,
+        tipo_cobertura: editForm.tipo_cobertura || null,
+        turno: editForm.turno || null,
+        es_festivo: editForm.es_festivo,
+        unidad_festivo: editForm.unidad_festivo,
+        num_dias_festivos: editForm.es_festivo ? (editForm.unidad_festivo === 'dias' ? editForm.num_dias_festivos : 0) : 0,
+        horas_festivas: editForm.es_festivo ? (editForm.unidad_festivo === 'horas' ? editForm.horas_festivas : 0) : 0,
+        es_nocturno: editForm.es_nocturno,
+        horas_nocturnas: editForm.es_nocturno ? editForm.horas_nocturnas : 0,
+        motivo_otro: editForm.tipo_cobertura === 'otro' ? (editForm.motivo_otro.trim() || null) : null,
+        notas: editForm.notas.trim() || null,
+      }).eq('id', editingRow.id);
+      if (error) throw error;
+      setEditingRow(null); setEditForm(null);
+      await load();
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   return (
@@ -378,13 +464,18 @@ export default function SustitucionesModule() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        {!s.baja_id && (
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEdit(s)}
+                            className="w-6 h-6 rounded flex items-center justify-center cursor-pointer hover:bg-blue-50"
+                            style={{ color: '#0369A1' }} title="Editar">
+                            <Pencil size={12} />
+                          </button>
                           <button onClick={() => handleDelete(s.id)}
                             className="w-6 h-6 rounded flex items-center justify-center cursor-pointer hover:bg-red-50"
-                            style={{ color: '#DC2626' }}>
-                            <X size={12} />
+                            style={{ color: '#DC2626' }} title="Eliminar">
+                            <Trash2 size={12} />
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -394,6 +485,124 @@ export default function SustitucionesModule() {
           </div>
         )}
       </div>
+
+      {/* Edit modal */}
+      {editingRow && editForm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-white rounded-2xl max-w-lg w-full mx-4 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+            <div className="px-6 py-4 flex items-center justify-between flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0C4A6E, #0369A1)' }}>
+              <div className="flex items-center gap-2">
+                <Pencil size={16} className="text-white" />
+                <div>
+                  <h2 className="text-white font-semibold text-sm">Editar sustitución</h2>
+                  <p className="text-[10px] text-blue-100">{editingRow.sustituto_nombre}</p>
+                </div>
+              </div>
+              <button onClick={() => { setEditingRow(null); setEditForm(null); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff' }}>
+                <X size={15} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3 overflow-y-auto flex-1">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Sustituto</label>
+                  <input type="text" value={editForm.sustituto_nombre} onChange={(e) => updField('sustituto_nombre', e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#1E293B', backgroundColor: '#FFFFFF' }} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Fecha</label>
+                  <input type="date" value={editForm.fecha_inicio} onChange={(e) => updField('fecha_inicio', e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#1E293B', backgroundColor: '#FFFFFF' }} />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1.5" style={{ color: '#64748B' }}>Unidad</label>
+                <div className="flex gap-1.5">
+                  {(['dias', 'horas'] as const).map((u) => (
+                    <button key={u} onClick={() => updField('unidad', u)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all" style={{ backgroundColor: editForm.unidad === u ? '#0F172A' : '#F1F5F9', color: editForm.unidad === u ? '#FFFFFF' : '#64748B' }}>{u === 'dias' ? 'Días' : 'Horas'}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>{editForm.unidad === 'horas' ? 'Nº horas' : 'Nº días'}</label>
+                  <input type="number" min={0} step={editForm.unidad === 'horas' ? 0.5 : 1}
+                    value={editForm.unidad === 'horas' ? editForm.num_horas : editForm.num_dias}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value) || 0;
+                      if (editForm.unidad === 'horas') updField('num_horas', v);
+                      else { updField('num_dias', v); if (editForm.turno) updField('num_horas', v * (HORAS_POR_TURNO[editForm.turno] ?? 8)); }
+                    }}
+                    className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#BFDBFE', color: '#0369A1', backgroundColor: '#EFF6FF', fontWeight: 700, fontSize: '14px' }} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Retribución</label>
+                  <select value={editForm.tipo_cobertura} onChange={(e) => updField('tipo_cobertura', e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none cursor-pointer" style={{ borderColor: '#E2E8F0', color: '#1E293B', backgroundColor: '#FFFFFF' }}>
+                    <option value="">—</option>
+                    <option value="pagar">Pagar</option>
+                    <option value="compensar">Compensar</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+              </div>
+              {editForm.tipo_cobertura === 'otro' && (
+                <input type="text" value={editForm.motivo_otro} onChange={(e) => updField('motivo_otro', e.target.value)} placeholder="Especifica motivo" className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#1E293B', backgroundColor: '#FFFFFF' }} />
+              )}
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1.5" style={{ color: '#64748B' }}>Turno</label>
+                <div className="flex gap-1.5">
+                  {([['mañana', 'Mañana', Sun, '#D97706', '#FFFBEB', '#FDE68A'], ['tarde', 'Tarde', Sunset, '#EA580C', '#FFF7ED', '#FED7AA'], ['noche', 'Noche', Moon, '#7C3AED', '#F5F3FF', '#DDD6FE']] as const).map(([key, label, Icon, color, bg, border]) => {
+                    const isActive = editForm.turno === key;
+                    return (
+                      <button key={key} onClick={() => { const nv = isActive ? '' : key; updField('turno', nv); if (!isActive && editForm.unidad === 'dias') updField('num_horas', editForm.num_dias * (HORAS_POR_TURNO[key] ?? 8)); }}
+                        className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                        style={{ backgroundColor: isActive ? bg : '#F8FAFC', color: isActive ? color : '#94A3B8', border: `1.5px solid ${isActive ? border : '#E2E8F0'}` }}>
+                        <Icon size={11} />{label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="rounded-lg p-2.5" style={{ backgroundColor: editForm.es_festivo ? '#FEF9C3' : '#F8FAFC', border: `1.5px solid ${editForm.es_festivo ? '#FDE047' : '#E2E8F0'}` }}>
+                <div className="flex items-center justify-between mb-2">
+                  <button onClick={() => updField('es_festivo', !editForm.es_festivo)} className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer" style={{ color: editForm.es_festivo ? '#854D0E' : '#94A3B8' }}><Star size={12} />Festivo</button>
+                  {editForm.es_festivo && (
+                    <div className="flex gap-1">
+                      {(['dias', 'horas'] as const).map((u) => (
+                        <button key={u} onClick={() => updField('unidad_festivo', u)} className="px-2 py-0.5 rounded text-[10px] font-semibold cursor-pointer" style={{ backgroundColor: editForm.unidad_festivo === u ? '#854D0E' : '#FEF9C3', color: editForm.unidad_festivo === u ? '#FFFFFF' : '#854D0E' }}>{u === 'dias' ? 'Días' : 'Horas'}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {editForm.es_festivo && (
+                  <input type="number" min={0} step={editForm.unidad_festivo === 'horas' ? 0.5 : 1}
+                    value={editForm.unidad_festivo === 'horas' ? editForm.horas_festivas : editForm.num_dias_festivos}
+                    onChange={(e) => { const v = parseFloat(e.target.value) || 0; if (editForm.unidad_festivo === 'horas') updField('horas_festivas', v); else updField('num_dias_festivos', v); }}
+                    className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#FDE047', color: '#854D0E', backgroundColor: '#FFFFFF', fontWeight: 700, fontSize: '14px' }}
+                    placeholder={editForm.unidad_festivo === 'horas' ? 'Nº horas festivas' : 'Nº días festivos'} />
+                )}
+              </div>
+              <div className="rounded-lg p-2.5" style={{ backgroundColor: editForm.es_nocturno ? '#F5F3FF' : '#F8FAFC', border: `1.5px solid ${editForm.es_nocturno ? '#DDD6FE' : '#E2E8F0'}` }}>
+                <button onClick={() => updField('es_nocturno', !editForm.es_nocturno)} className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer mb-2" style={{ color: editForm.es_nocturno ? '#7C3AED' : '#94A3B8' }}><Moon size={12} />Nocturnidad</button>
+                {editForm.es_nocturno && (
+                  <input type="number" min={0} step={0.5} value={editForm.horas_nocturnas} onChange={(e) => updField('horas_nocturnas', parseFloat(e.target.value) || 0)}
+                    className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#DDD6FE', color: '#7C3AED', backgroundColor: '#FFFFFF', fontWeight: 700, fontSize: '14px' }} placeholder="Nº horas nocturnas" />
+                )}
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Notas</label>
+                <input type="text" value={editForm.notas} onChange={(e) => updField('notas', e.target.value)} placeholder="Observaciones..." className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#1E293B', backgroundColor: '#FFFFFF' }} />
+              </div>
+              {editError && <p className="text-xs" style={{ color: '#DC2626' }}>{editError}</p>}
+            </div>
+            <div className="px-5 py-3 flex gap-2 flex-shrink-0" style={{ borderTop: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+              <button onClick={() => { setEditingRow(null); setEditForm(null); }} className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>Cancelar</button>
+              <button onClick={handleSaveEdit} disabled={savingEdit} className="ml-auto px-4 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center gap-1.5" style={{ backgroundColor: '#0369A1' }}>
+                {savingEdit ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

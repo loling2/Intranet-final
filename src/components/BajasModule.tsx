@@ -760,7 +760,7 @@ export default function BajasModule() {
   const [savingLiquidar, setSavingLiquidar] = useState(false);
 
   // Descontar modal
-  const [descontarTarget, setDescontarTarget] = useState<{ bajaId: string; nombre: string } | null>(null);
+  const [descontarTarget, setDescontarTarget] = useState<{ bajaId: string; nombre: string; diasADescontar: number } | null>(null);
   const [descontarDescripcion, setDescontarDescripcion] = useState('');
   const [savingDescontar, setSavingDescontar] = useState(false);
 
@@ -1011,8 +1011,8 @@ export default function BajasModule() {
     }
   };
 
-  const openDescontarModal = (bajaId: string, nombre: string) => {
-    setDescontarTarget({ bajaId, nombre });
+  const openDescontarModal = (bajaId: string, nombre: string, diasADescontar: number) => {
+    setDescontarTarget({ bajaId, nombre, diasADescontar });
     setDescontarDescripcion('');
     setError('');
   };
@@ -1135,14 +1135,22 @@ export default function BajasModule() {
     .filter((b) => b.estado === 'activa' && (b.tipo_absentismo === 'PNR' || b.tipo_absentismo === 'Reposo') && !b.descontado)
     .filter((b) => !reporteFechaInicio || b.fecha_inicio >= reporteFechaInicio)
     .filter((b) => !reporteFechaFin || !b.fecha_fin || b.fecha_fin <= reporteFechaFin)
-    .map((b) => ({ id: b.id, nombre: b.empleado_nombre, fecha_inicio: b.fecha_inicio, fecha_fin: b.fecha_fin, dias: b.larga_duracion ? 1 : (b.total_dias ?? 1), tipo: b.tipo_absentismo as string }));
+    .map((b) => {
+      const diasReposo = b.reposo_duracion === '72h' ? 3 : b.reposo_duracion === '48h' ? 2 : 1;
+      const dias = b.tipo_absentismo === 'Reposo' ? diasReposo : (b.larga_duracion ? 1 : (b.total_dias ?? 1));
+      return { id: b.id, nombre: b.empleado_nombre, fecha_inicio: b.fecha_inicio, fecha_fin: b.fecha_fin, dias, tipo: b.tipo_absentismo as string };
+    });
 
   // Descontadas (compensated) absences — shown in a separate green section
   const ausenciasDescontadas = bajas
     .filter((b) => b.descontado)
     .filter((b) => !reporteFechaInicio || b.fecha_inicio >= reporteFechaInicio)
     .filter((b) => !reporteFechaFin || !b.fecha_fin || b.fecha_fin <= reporteFechaFin)
-    .map((b) => ({ id: b.id, nombre: b.empleado_nombre, fecha_inicio: b.fecha_inicio, dias: b.larga_duracion ? 1 : (b.total_dias ?? 1), tipo: b.tipo_absentismo as string, descripcion_descuento: b.descripcion_descuento }));
+    .map((b) => {
+      const diasReposo = b.reposo_duracion === '72h' ? 3 : b.reposo_duracion === '48h' ? 2 : 1;
+      const dias = b.tipo_absentismo === 'Reposo' ? diasReposo : (b.larga_duracion ? 1 : (b.total_dias ?? 1));
+      return { id: b.id, nombre: b.empleado_nombre, fecha_inicio: b.fecha_inicio, dias, tipo: b.tipo_absentismo as string, descripcion_descuento: b.descripcion_descuento };
+    });
   const balanceData = Array.from(balanceMap.entries()).map(([id, val]) => {
     const liquidadas = liquidacionesPorSustituto.get(id) ?? 0;
     return { sustituto_id: id, ...val, horasLiquidadas: liquidadas, horasPendientes: Math.max(0, val.horas - liquidadas) };
@@ -1599,7 +1607,7 @@ export default function BajasModule() {
                       <span className="text-sm px-3 py-1.5 rounded-lg font-bold" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
                         −{b.dias}d
                       </span>
-                      <button onClick={() => openDescontarModal(b.id, b.nombre)}
+                      <button onClick={() => openDescontarModal(b.id, b.nombre, b.dias)}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white cursor-pointer transition-opacity hover:opacity-90"
                         style={{ backgroundColor: '#16A34A' }}>
                         <CheckCircle2 size={12} /> Descontar
@@ -1843,7 +1851,7 @@ export default function BajasModule() {
               <div className="rounded-lg px-4 py-3" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
                 <p className="text-sm font-semibold" style={{ color: '#15803D' }}>{descontarTarget.nombre}</p>
                 <p className="text-xs mt-0.5" style={{ color: '#16A34A' }}>
-                  La ausencia pasará a 0 y se marcará como compensada.
+                  Se descontarán <strong>{descontarTarget.diasADescontar} día{descontarTarget.diasADescontar !== 1 ? 's' : ''}</strong> del balance del trabajador.
                 </p>
               </div>
 
@@ -2111,7 +2119,7 @@ export default function BajasModule() {
                   )}
 
                   <p className="text-[10px]" style={{ color: '#D97706' }}>
-                    Esta ausencia descontará 1 día del balance del trabajador.
+                    Esta ausencia descontará {reposoDuracion === '72h' ? 3 : reposoDuracion === '48h' ? 2 : 1} día{(reposoDuracion === '72h' ? 3 : reposoDuracion === '48h' ? 2 : 1) !== 1 ? 's' : ''} del balance del trabajador.
                   </p>
                 </div>
               )}

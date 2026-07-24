@@ -764,6 +764,12 @@ export default function BajasModule() {
   const [descontarDescripcion, setDescontarDescripcion] = useState('');
   const [savingDescontar, setSavingDescontar] = useState(false);
 
+  // Sustituto detail modal
+  const [sustitutoDetailTarget, setSustitutoDetailTarget] = useState<{ sustituto_id: string; sustituto_nombre: string } | null>(null);
+  const [editingSustId, setEditingSustId] = useState<string | null>(null);
+  const [editSustForm, setEditSustForm] = useState<SustitucionForm | null>(null);
+  const [savingSustEdit, setSavingSustEdit] = useState(false);
+
   // Sustituciones
   const [sustitucionesForm, setSustitucionesForm] = useState<SustitucionForm[]>([]);
   const [sustitutoSearch, setSustitutoSearch] = useState('');
@@ -1036,6 +1042,81 @@ export default function BajasModule() {
     }
   };
 
+  const openSustitutoDetail = (sustituto_id: string, sustituto_nombre: string) => {
+    setSustitutoDetailTarget({ sustituto_id, sustituto_nombre });
+    setEditingSustId(null);
+    setEditSustForm(null);
+  };
+
+  const openEditSustitucion = (s: Sustitucion) => {
+    setEditingSustId(s.id);
+    setEditSustForm({
+      sustituto_id: s.sustituto_id, sustituto_nombre: s.sustituto_nombre,
+      fecha_inicio: s.fecha_inicio, num_dias: s.num_dias, notas: s.notas ?? '',
+      tipo_cobertura: (s.tipo_cobertura as SustitucionForm['tipo_cobertura']) ?? '',
+      turno: (s.turno as SustitucionForm['turno']) ?? '',
+      es_festivo: s.es_festivo ?? false,
+      unidad: (s.unidad as SustitucionForm['unidad']) ?? 'dias',
+      num_horas: s.num_horas ?? 0,
+      horas_nocturnas: s.horas_nocturnas ?? 0,
+      motivo_otro: s.motivo_otro ?? '',
+      num_dias_festivos: s.num_dias_festivos ?? 0,
+      unidad_festivo: (s.unidad_festivo as 'dias' | 'horas') ?? 'dias',
+      horas_festivas: s.horas_festivas ?? 0,
+      es_nocturno: s.es_nocturno ?? false,
+    });
+  };
+
+  const updateEditSustField = (field: keyof SustitucionForm, value: string | number | boolean) => {
+    setEditSustForm((prev) => prev ? { ...prev, [field]: value } : prev);
+  };
+
+  const handleSaveSustitucion = async () => {
+    if (!editingSustId || !editSustForm) return;
+    setSavingSustEdit(true); setError('');
+    try {
+      const { error: updErr } = await supabase.from('sustituciones').update({
+        fecha_inicio: editSustForm.fecha_inicio,
+        num_dias: editSustForm.unidad === 'dias' ? editSustForm.num_dias : 0,
+        notas: editSustForm.notas.trim() || null,
+        tipo_cobertura: editSustForm.tipo_cobertura || null,
+        turno: editSustForm.turno || null,
+        es_festivo: editSustForm.es_festivo,
+        unidad: editSustForm.unidad,
+        num_horas: editSustForm.unidad === 'horas' ? editSustForm.num_horas : (editSustForm.turno ? editSustForm.num_dias * (HORAS_POR_TURNO[editSustForm.turno] ?? 8) : 0),
+        horas_nocturnas: editSustForm.es_nocturno ? editSustForm.horas_nocturnas : 0,
+        motivo_otro: editSustForm.tipo_cobertura === 'otro' ? (editSustForm.motivo_otro.trim() || null) : null,
+        num_dias_festivos: editSustForm.es_festivo ? (editSustForm.unidad_festivo === 'dias' ? editSustForm.num_dias_festivos : 0) : 0,
+        unidad_festivo: editSustForm.unidad_festivo,
+        horas_festivas: editSustForm.es_festivo ? (editSustForm.unidad_festivo === 'horas' ? editSustForm.horas_festivas : 0) : 0,
+        es_nocturno: editSustForm.es_nocturno,
+      }).eq('id', editingSustId);
+      if (updErr) throw updErr;
+      setEditingSustId(null);
+      setEditSustForm(null);
+      await loadBajas();
+      setSuccessMsg('Sustitución actualizada correctamente.');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al actualizar sustitución');
+    } finally {
+      setSavingSustEdit(false);
+    }
+  };
+
+  const handleDeleteSustitucion = async (id: string) => {
+    if (!confirm('¿Eliminar esta sustitución?')) return;
+    try {
+      await supabase.from('sustituciones').delete().eq('id', id);
+      setEditingSustId(null);
+      setEditSustForm(null);
+      await loadBajas();
+      setSuccessMsg('Sustitución eliminada.'); setTimeout(() => setSuccessMsg(''), 2500);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al eliminar');
+    }
+  };
+
   const handleConfirmFinalizar = async () => {
     if (!finalizarTarget || !modoFinalizacion) return;
     if (modoFinalizacion === 'otro' && !notasFinalizacion.trim()) { setError('Indica el motivo en el campo de notas.'); return; }
@@ -1155,6 +1236,23 @@ export default function BajasModule() {
     const liquidadas = liquidacionesPorSustituto.get(id) ?? 0;
     return { sustituto_id: id, ...val, horasLiquidadas: liquidadas, horasPendientes: Math.max(0, val.horas - liquidadas) };
   }).sort((a, b) => (b.dias + Math.ceil(b.horas / 8)) - (a.dias + Math.ceil(a.horas / 8)));
+
+  // Sustituto detail rows — all sustituciones for the selected sustituto (active bajas + standalone)
+  const sustitutoDetailRows: { sust: Sustitucion; empleado_nombre: string }[] = sustitutoDetailTarget
+    ? [
+        ...bajas.filter((b) => b.estado === 'activa').flatMap((b) =>
+          b.sustituciones.filter((s) => s.sustituto_id === sustitutoDetailTarget.sustituto_id)
+            .map((s) => ({ sust: s, empleado_nombre: b.empleado_nombre }))
+        ),
+        ...standaloneSustituciones.filter((s) => s.sustituto_id === sustitutoDetailTarget.sustituto_id)
+          .map((s) => ({ sust: s, empleado_nombre: 'Independiente' })),
+      ].sort((a, b) => b.sust.fecha_inicio.localeCompare(a.sust.fecha_inicio))
+    : [];
+
+  const sustitutoDetailTotalHoras = sustitutoDetailRows.reduce((sum, r) => {
+    const horasBase = HORAS_POR_TURNO[r.sust.turno ?? ''] ?? 8;
+    return sum + (r.sust.unidad === 'horas' ? (r.sust.num_horas ?? 0) : r.sust.num_dias * horasBase);
+  }, 0);
 
 
   // Finalizadas KPIs by modo
@@ -1691,8 +1789,8 @@ export default function BajasModule() {
                             <Banknote size={11} /> Liquidar
                           </button>
                           <button
-                            onClick={() => { const baja = bajas.find((bj) => bj.estado === 'activa' && bj.sustituciones.some((s) => s.sustituto_id === b.sustituto_id)); if (baja) openEditBaja(baja); }}
-                            title="Editar baja"
+                            onClick={() => openSustitutoDetail(b.sustituto_id, b.nombre)}
+                            title="Ver y editar sustituciones"
                             className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer"
                             style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
                             <Pencil size={13} />
@@ -1885,6 +1983,153 @@ export default function BajasModule() {
         </div>
       )}
 
+      {/* ── Sustituto Detail Modal ── */}
+      {sustitutoDetailTarget && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-white rounded-2xl max-w-2xl w-full mx-4 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+            <div className="px-6 py-4 flex items-center justify-between flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0C4A6E, #0369A1)' }}>
+              <div className="flex items-center gap-2">
+                <UserCheck size={16} className="text-white" />
+                <div>
+                  <h2 className="text-white font-semibold text-sm">{sustitutoDetailTarget.sustituto_nombre}</h2>
+                  <p className="text-[10px] text-blue-100">Sustituciones · Total: {sustitutoDetailTotalHoras}h · {sustitutoDetailRows.length} registro{sustitutoDetailRows.length !== 1 ? 's' : ''}</p>
+                </div>
+              </div>
+              <button onClick={() => { setSustitutoDetailTarget(null); setEditingSustId(null); setEditSustForm(null); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff' }}>
+                <X size={15} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3 overflow-y-auto flex-1">
+              {sustitutoDetailRows.length === 0 ? (
+                <p className="text-xs text-center py-6" style={{ color: '#94A3B8' }}>No hay sustituciones registradas</p>
+              ) : editingSustId && editSustForm ? (
+                <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #BFDBFE', backgroundColor: '#FAFBFC' }}>
+                  <div className="flex items-center justify-between px-4 py-2.5" style={{ backgroundColor: '#EFF6FF', borderBottom: '1px solid #BFDBFE' }}>
+                    <div className="flex items-center gap-2">
+                      <Pencil size={13} style={{ color: '#0369A1' }} />
+                      <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#1E293B' }}>Editando sustitución</span>
+                    </div>
+                    <button onClick={() => { setEditingSustId(null); setEditSustForm(null); }} className="text-xs cursor-pointer" style={{ color: '#64748B' }}>Cancelar</button>
+                  </div>
+                  <div className="p-3 space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Fecha inicio</label>
+                        <input type="date" value={editSustForm.fecha_inicio} onChange={(e) => updateEditSustField('fecha_inicio', e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#1E293B', backgroundColor: '#FFFFFF' }} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>{editSustForm.unidad === 'horas' ? 'Num. horas' : 'Num. días'}</label>
+                        <input type="number" min={0} step={editSustForm.unidad === 'horas' ? 0.5 : 1}
+                          value={editSustForm.unidad === 'horas' ? editSustForm.num_horas : editSustForm.num_dias}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            if (editSustForm.unidad === 'horas') updateEditSustField('num_horas', val);
+                            else { updateEditSustField('num_dias', val); if (editSustForm.turno) updateEditSustField('num_horas', val * (HORAS_POR_TURNO[editSustForm.turno] ?? 8)); }
+                          }}
+                          className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#BFDBFE', color: '#0369A1', backgroundColor: '#EFF6FF', fontWeight: 700, fontSize: '14px' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1.5" style={{ color: '#64748B' }}>Unidad de cobertura</label>
+                      <div className="flex gap-1.5">
+                        {(['dias', 'horas'] as const).map((u) => (
+                          <button key={u} onClick={() => updateEditSustField('unidad', u)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all" style={{ backgroundColor: editSustForm.unidad === u ? '#0F172A' : '#F1F5F9', color: editSustForm.unidad === u ? '#FFFFFF' : '#64748B' }}>{u === 'dias' ? 'Días' : 'Horas'}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1.5" style={{ color: '#64748B' }}>Turno</label>
+                      <div className="flex gap-1.5">
+                        {([['mañana', 'Mañana', Sun, '#D97706', '#FFFBEB', '#FDE68A'], ['tarde', 'Tarde', Sunset, '#EA580C', '#FFF7ED', '#FED7AA'], ['noche', 'Noche', Moon, '#7C3AED', '#F5F3FF', '#DDD6FE']] as const).map(([key, label, Icon, color, bg, border]) => {
+                          const isActive = editSustForm.turno === key;
+                          return (
+                            <button key={key} onClick={() => { updateEditSustField('turno', isActive ? '' : key); if (!isActive && editSustForm.unidad === 'dias') updateEditSustField('num_horas', editSustForm.num_dias * (HORAS_POR_TURNO[key] ?? 8)); }}
+                              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                              style={{ backgroundColor: isActive ? bg : '#F8FAFC', color: isActive ? color : '#94A3B8', border: `1.5px solid ${isActive ? border : '#E2E8F0'}` }}>
+                              <Icon size={11} />{label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="rounded-lg p-2.5" style={{ backgroundColor: editSustForm.es_festivo ? '#FEF9C3' : '#F8FAFC', border: `1.5px solid ${editSustForm.es_festivo ? '#FDE047' : '#E2E8F0'}` }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <button onClick={() => updateEditSustField('es_festivo', !editSustForm.es_festivo)} className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer transition-all" style={{ color: editSustForm.es_festivo ? '#854D0E' : '#94A3B8' }}><Star size={12} />Festivo</button>
+                        {editSustForm.es_festivo && (
+                          <div className="flex gap-1">
+                            {(['dias', 'horas'] as const).map((u) => (
+                              <button key={u} onClick={() => updateEditSustField('unidad_festivo', u)} className="px-2 py-0.5 rounded text-[10px] font-semibold cursor-pointer transition-all" style={{ backgroundColor: editSustForm.unidad_festivo === u ? '#854D0E' : '#FEF9C3', color: editSustForm.unidad_festivo === u ? '#FFFFFF' : '#854D0E' }}>{u === 'dias' ? 'Días' : 'Horas'}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {editSustForm.es_festivo && (
+                        <input type="number" min={0} step={editSustForm.unidad_festivo === 'horas' ? 0.5 : 1}
+                          value={editSustForm.unidad_festivo === 'horas' ? editSustForm.horas_festivas : editSustForm.num_dias_festivos}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            if (editSustForm.unidad_festivo === 'horas') updateEditSustField('horas_festivas', val);
+                            else updateEditSustField('num_dias_festivos', val);
+                          }}
+                          className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#FDE047', color: '#854D0E', backgroundColor: '#FFFFFF', fontWeight: 700, fontSize: '14px' }}
+                          placeholder={editSustForm.unidad_festivo === 'horas' ? 'Nº horas festivas' : 'Nº días festivos'} />
+                      )}
+                    </div>
+                    <div className="rounded-lg p-2.5" style={{ backgroundColor: editSustForm.es_nocturno ? '#F5F3FF' : '#F8FAFC', border: `1.5px solid ${editSustForm.es_nocturno ? '#DDD6FE' : '#E2E8F0'}` }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <button onClick={() => updateEditSustField('es_nocturno', !editSustForm.es_nocturno)} className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer transition-all" style={{ color: editSustForm.es_nocturno ? '#7C3AED' : '#94A3B8' }}><Moon size={12} />Nocturnidad</button>
+                      </div>
+                      {editSustForm.es_nocturno && (
+                        <input type="number" min={0} step={0.5} value={editSustForm.horas_nocturnas} onChange={(e) => updateEditSustField('horas_nocturnas', parseFloat(e.target.value) || 0)}
+                          className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#DDD6FE', color: '#7C3AED', backgroundColor: '#FFFFFF', fontWeight: 700, fontSize: '14px' }} placeholder="Nº horas nocturnas" />
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Notas (opcional)</label>
+                      <input type="text" value={editSustForm.notas} onChange={(e) => updateEditSustField('notas', e.target.value)} placeholder="Observaciones..." className="w-full px-2.5 py-1.5 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#1E293B', backgroundColor: '#FFFFFF' }} />
+                    </div>
+                  </div>
+                  <div className="px-3 py-3 flex gap-2" style={{ borderTop: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+                    <button onClick={() => handleDeleteSustitucion(editingSustId)} className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1.5" style={{ color: '#DC2626', border: '1px solid #FECACA', backgroundColor: '#FEF2F2' }}><Trash2 size={12} /> Eliminar</button>
+                    <button onClick={() => { setEditingSustId(null); setEditSustForm(null); }} className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>Cancelar</button>
+                    <button onClick={handleSaveSustitucion} disabled={savingSustEdit} className="ml-auto px-4 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center gap-1.5" style={{ backgroundColor: '#0369A1' }}>
+                      {savingSustEdit ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                      {savingSustEdit ? 'Guardando...' : 'Guardar cambios'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                sustitutoDetailRows.map(({ sust, empleado_nombre }) => {
+                  const horasBase = HORAS_POR_TURNO[sust.turno ?? ''] ?? 8;
+                  const horas = sust.unidad === 'horas' ? (sust.num_horas ?? 0) : sust.num_dias * horasBase;
+                  return (
+                    <div key={sust.id} className="rounded-xl overflow-hidden" style={{ border: '1px solid #E2E8F0', backgroundColor: '#FAFBFC' }}>
+                      <div className="flex items-center justify-between px-4 py-2.5" style={{ backgroundColor: '#F1F5F9', borderBottom: '1px solid #E2E8F0' }}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold" style={{ color: '#1E293B' }}>{empleado_nombre}</span>
+                          <span className="text-[10px]" style={{ color: '#94A3B8' }}>{formatDate(sust.fecha_inicio)}</span>
+                          {sust.turno && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: sust.turno === 'noche' ? '#F5F3FF' : sust.turno === 'tarde' ? '#FFF7ED' : '#FFFBEB', color: sust.turno === 'noche' ? '#7C3AED' : sust.turno === 'tarde' ? '#EA580C' : '#D97706' }}>{sust.turno}</span>}
+                          {sust.es_festivo && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-0.5" style={{ backgroundColor: '#FEF9C3', color: '#854D0E' }}><Star size={9} />fest.</span>}
+                          {sust.es_nocturno && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-0.5" style={{ backgroundColor: '#F5F3FF', color: '#7C3AED' }}><Moon size={9} />{sust.horas_nocturnas}h</span>}
+                        </div>
+                        <button onClick={() => openEditSustitucion(sust)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}><Pencil size={12} /></button>
+                      </div>
+                      <div className="px-4 py-2.5 flex items-center gap-3">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-lg font-bold" style={{ color: '#0369A1' }}>{horas}h</span>
+                          <span className="text-[10px]" style={{ color: '#94A3B8' }}>{sust.unidad === 'horas' ? 'horas' : `${sust.num_dias}d × ${horasBase}h`}</span>
+                        </div>
+                        {sust.notas && <span className="text-[10px] flex-1 truncate" style={{ color: '#64748B' }}>{sust.notas}</span>}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Baja Modal ── */}
       {showBajaModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
@@ -2053,7 +2298,7 @@ export default function BajasModule() {
                     })}
                   </div>
                   <p className="text-[10px] mt-1.5" style={{ color: '#7C3AED' }}>
-                    Esta ausencia descontará 1 día del balance del trabajador.
+                    Esta ausencia descontará {reposoDuracion === '72h' ? 3 : reposoDuracion === '48h' ? 2 : 1} día{(reposoDuracion === '72h' ? 3 : reposoDuracion === '48h' ? 2 : 1) !== 1 ? 's' : ''} del balance del trabajador.
                   </p>
                 </div>
               )}

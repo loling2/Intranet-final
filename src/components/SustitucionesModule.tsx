@@ -2,6 +2,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { UserCheck, Search, RefreshCw, Calendar, Moon, Star, Plus, X, Pencil, Trash2, CheckCircle2, Sun, Sunset, CheckSquare, Square } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
+interface BajaInfo {
+  id: string;
+  empleado_nombre: string;
+  estado: string;
+  tipo_absentismo: string | null;
+  reposo_duracion: string | null;
+  total_dias: number;
+  larga_duracion: boolean | null;
+  descontado: boolean | null;
+}
+
 interface SustitucionRow {
   id: string;
   baja_id: string | null;
@@ -24,6 +35,16 @@ interface SustitucionRow {
   dias_a_descontar: number | null;
   tiene_justificante: boolean | null;
   empleado_nombre: string;
+  baja: BajaInfo | null;
+}
+
+function computeBajaDiasDescontar(b: BajaInfo | null): number | null {
+  if (!b) return null;
+  if (b.estado !== 'activa') return null;
+  if (b.descontado) return null;
+  if (b.tipo_absentismo !== 'PNR' && b.tipo_absentismo !== 'Reposo') return null;
+  const diasReposo = b.reposo_duracion === '72h' ? 3 : b.reposo_duracion === '48h' ? 2 : 1;
+  return b.tipo_absentismo === 'Reposo' ? diasReposo : (b.larga_duracion ? 1 : (b.total_dias ?? 1));
 }
 
 interface Empleado {
@@ -91,19 +112,23 @@ export default function SustitucionesModule() {
     setLoading(true);
     const [{ data: sData }, { data: bData }, { data: empData }] = await Promise.all([
       supabase.from('sustituciones').select('*').order('fecha_inicio', { ascending: false }).limit(1000),
-      supabase.from('bajas_temporales').select('id, empleado_nombre'),
+      supabase.from('bajas_temporales').select('id, empleado_nombre, estado, tipo_absentismo, reposo_duracion, total_dias, larga_duracion, descontado'),
       supabase.from('empleados').select('id, nombre, dni').order('nombre', { ascending: true }),
     ]);
-    const bMap = new Map((bData ?? []).map((b) => [b.id as string, b.empleado_nombre as string]));
+    const bMap = new Map((bData ?? []).map((b) => [b.id as string, b as unknown as BajaInfo]));
     setEmpleados(empData ?? []);
     setRows(
-      (sData ?? []).map((s) => ({
-        ...s,
-        baja_id: s.baja_id ?? null,
-        dias_a_descontar: s.dias_a_descontar ?? null,
-        tiene_justificante: s.tiene_justificante ?? false,
-        empleado_nombre: s.baja_id ? (bMap.get(s.baja_id) ?? '—') : 'Sustitución directa',
-      }))
+      (sData ?? []).map((s) => {
+        const baja = s.baja_id ? (bMap.get(s.baja_id) ?? null) : null;
+        return {
+          ...s,
+          baja_id: s.baja_id ?? null,
+          dias_a_descontar: s.dias_a_descontar ?? null,
+          tiene_justificante: s.tiene_justificante ?? false,
+          empleado_nombre: baja ? (baja.empleado_nombre ?? '—') : 'Sustitución directa',
+          baja,
+        };
+      })
     );
     setLoading(false);
   }, []);
@@ -123,7 +148,10 @@ export default function SustitucionesModule() {
 
   const totalHorasPagar = filtered.filter((s) => s.tipo_cobertura === 'pagar').reduce((acc, s) => acc + computeHoras(s), 0);
   const totalHorasCompensar = filtered.filter((s) => s.tipo_cobertura === 'compensar').reduce((acc, s) => acc + computeHoras(s), 0);
-  const totalDiasDescontar = filtered.reduce((acc, s) => acc + (s.dias_a_descontar || 0), 0);
+  const totalDiasDescontar = filtered.reduce((acc, s) => {
+    const bajaDesc = computeBajaDiasDescontar(s.baja);
+    return acc + (bajaDesc ?? s.dias_a_descontar ?? 0);
+  }, 0);
   const sustitutosUnicos = new Set(filtered.map((s) => s.sustituto_id)).size;
 
   const filteredSustitutos = empleados.filter((e) =>
@@ -461,7 +489,8 @@ export default function SustitucionesModule() {
                   const hCompensar = s.tipo_cobertura === 'compensar' ? horas : null;
                   const hNoc = (s.horas_nocturnas ?? 0) > 0 ? s.horas_nocturnas : null;
                   const hFest = s.es_festivo ? (s.unidad_festivo === 'horas' ? (s.horas_festivas ?? 0) : (s.num_dias_festivos ?? 0)) : null;
-                  const diasDesc = s.dias_a_descontar;
+                  const bajaDiasDesc = computeBajaDiasDescontar(s.baja);
+                  const diasDesc = bajaDiasDesc ?? s.dias_a_descontar;
                   const bg = idx % 2 === 1 ? '#F8FAFC' : '#FFFFFF';
                   return (
                     <tr key={s.id} className="hover:bg-blue-50/40 transition-colors" style={{ backgroundColor: bg }}>

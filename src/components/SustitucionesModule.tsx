@@ -34,6 +34,7 @@ interface SustitucionRow {
   motivo_otro: string | null;
   dias_a_descontar: number | null;
   tiene_justificante: boolean | null;
+  finalizado: boolean | null;
   empleado_nombre: string;
   baja: BajaInfo | null;
 }
@@ -152,6 +153,7 @@ export default function SustitucionesModule() {
   }
 
   const filtered = rows.filter((s) => {
+    if (s.finalizado) return false;
     if (search) {
       const q = search.toLowerCase();
       if (!s.sustituto_nombre.toLowerCase().includes(q) && !s.empleado_nombre.toLowerCase().includes(q)) return false;
@@ -609,6 +611,15 @@ export default function SustitucionesModule() {
                       {/* Actions */}
                       <td className="px-3 py-2.5 border-b" style={{ borderColor: '#F1F5F9' }}>
                         <div className="flex items-center gap-1">
+                          <button onClick={async () => {
+                            if (!confirm('¿Marcar como liquidada? Desaparecerá de esta lista.')) return;
+                            await supabase.from('sustituciones').update({ finalizado: true, finalizado_at: new Date().toISOString() }).eq('id', s.id);
+                            await load();
+                          }}
+                            className="w-6 h-6 rounded flex items-center justify-center cursor-pointer hover:bg-emerald-50"
+                            style={{ color: '#16A34A' }} title="Liquidar / descontar">
+                            <CheckCircle2 size={12} />
+                          </button>
                           <button onClick={() => openEdit(s)}
                             className="w-6 h-6 rounded flex items-center justify-center cursor-pointer hover:bg-blue-50"
                             style={{ color: '#0369A1' }} title="Editar">

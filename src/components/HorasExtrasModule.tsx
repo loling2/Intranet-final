@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Timer, Search, RefreshCw, Calendar, Banknote, TrendingUp } from 'lucide-react';
+import { Timer, Search, RefreshCw, Calendar, Banknote, ChevronDown, ChevronRight, UserCheck, Moon } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface SustRow {
@@ -13,6 +13,8 @@ interface SustRow {
   turno: string | null;
   horas_nocturnas: number | null;
   tipo_cobertura: string | null;
+  empleado_nombre: string | null;
+  baja_id: string | null;
 }
 
 interface LiquidacionRow {
@@ -30,25 +32,41 @@ function yearOf(date: string): string {
   return date.slice(0, 4);
 }
 
+function formatDate(d: string): string {
+  if (!d) return '—';
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 export default function HorasExtrasModule() {
   const [rows, setRows] = useState<SustRow[]>([]);
   const [liquidaciones, setLiquidaciones] = useState<LiquidacionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterYear, setFilterYear] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: sData }, { data: lData }] = await Promise.all([
-      supabase.from('sustituciones').select('id, sustituto_id, sustituto_nombre, fecha_inicio, num_horas, num_dias, unidad, turno, horas_nocturnas, tipo_cobertura').order('fecha_inicio', { ascending: false }).limit(5000),
+    const [{ data: sData }, { data: lData }, { data: bData }] = await Promise.all([
+      supabase.from('sustituciones').select('id, sustituto_id, sustituto_nombre, fecha_inicio, num_horas, num_dias, unidad, turno, horas_nocturnas, tipo_cobertura, baja_id').order('fecha_inicio', { ascending: false }).limit(5000),
       supabase.from('liquidaciones_horas').select('*').order('fecha', { ascending: false }),
+      supabase.from('bajas_temporales').select('id, empleado_nombre'),
     ]);
-    setRows((sData ?? []) as SustRow[]);
+    const bMap = new Map((bData ?? []).map((b) => [b.id as string, (b.empleado_nombre ?? '—') as string]));
+    setRows((sData ?? []).map((s) => ({ ...s, empleado_nombre: s.baja_id ? (bMap.get(s.baja_id) ?? '—') : 'Sustitución directa' })) as SustRow[]);
     setLiquidaciones((lData ?? []) as LiquidacionRow[]);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const toggleExpand = (id: string) => setExpanded((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
 
   // Only paid substitutions (tipo_cobertura='pagar') count as paid overtime hours
   const paidRows = rows.filter((r) => r.tipo_cobertura === 'pagar');
@@ -70,37 +88,44 @@ export default function HorasExtrasModule() {
     return true;
   });
 
-  // Compute per-employee, per-year totals
-  const byEmployee = new Map<string, { sustituto_id: string; nombre: string; porAnio: Map<string, { horas: number; liquidadas: number }> }>();
+  // Group by employee: all paid sustituciones + liquidaciones
+  interface EmpAgg {
+    sustituto_id: string;
+    nombre: string;
+    totalHoras: number;
+    totalLiquidadas: number;
+    detailRows: { id: string; fecha: string; empleado_nombre: string; horas: number; turno: string | null; horas_nocturnas: number | null; unidad: string; num_horas: number; num_dias: number }[];
+    liquidaciones: { id: string; fecha: string; horas: number; notas: string | null }[];
+  }
+  const byEmployee = new Map<string, EmpAgg>();
   for (const r of filteredPaid) {
-    const y = yearOf(r.fecha_inicio);
     let emp = byEmployee.get(r.sustituto_id);
     if (!emp) {
-      emp = { sustituto_id: r.sustituto_id, nombre: r.sustituto_nombre, porAnio: new Map() };
+      emp = { sustituto_id: r.sustituto_id, nombre: r.sustituto_nombre, totalHoras: 0, totalLiquidadas: 0, detailRows: [], liquidaciones: [] };
       byEmployee.set(r.sustituto_id, emp);
     }
-    let yv = emp.porAnio.get(y);
-    if (!yv) { yv = { horas: 0, liquidadas: 0 }; emp.porAnio.set(y, yv); }
     const horasBase = HORAS_POR_TURNO[r.turno ?? ''] ?? 8;
-    yv.horas += r.unidad === 'horas' ? (r.num_horas || 0) : (r.num_dias || 0) * horasBase;
+    const horas = r.unidad === 'horas' ? (r.num_horas || 0) : (r.num_dias || 0) * horasBase;
+    emp.totalHoras += horas;
+    emp.detailRows.push({ id: r.id, fecha: r.fecha_inicio, empleado_nombre: r.empleado_nombre ?? '—', horas, turno: r.turno, horas_nocturnas: r.horas_nocturnas, unidad: r.unidad, num_horas: r.num_horas, num_dias: r.num_dias });
   }
   for (const l of filteredLiq) {
-    const y = yearOf(l.fecha);
     let emp = byEmployee.get(l.sustituto_id);
     if (!emp) {
-      emp = { sustituto_id: l.sustituto_id, nombre: l.sustituto_nombre, porAnio: new Map() };
+      emp = { sustituto_id: l.sustituto_id, nombre: l.sustituto_nombre, totalHoras: 0, totalLiquidadas: 0, detailRows: [], liquidaciones: [] };
       byEmployee.set(l.sustituto_id, emp);
     }
-    let yv = emp.porAnio.get(y);
-    if (!yv) { yv = { horas: 0, liquidadas: 0 }; emp.porAnio.set(y, yv); }
-    yv.liquidadas += l.horas_liquidadas;
+    emp.totalLiquidadas += l.horas_liquidadas;
+    emp.liquidaciones.push({ id: l.id, fecha: l.fecha, horas: l.horas_liquidadas, notas: l.notas });
   }
 
-  const employeeList = Array.from(byEmployee.values()).sort((a, b) => {
-    const aTotal = Array.from(a.porAnio.values()).reduce((s, v) => s + v.horas, 0);
-    const bTotal = Array.from(b.porAnio.values()).reduce((s, v) => s + v.horas, 0);
-    return bTotal - aTotal;
-  });
+  // Sort detail rows by date descending within each employee
+  for (const emp of byEmployee.values()) {
+    emp.detailRows.sort((a, b) => b.fecha.localeCompare(a.fecha));
+    emp.liquidaciones.sort((a, b) => b.fecha.localeCompare(a.fecha));
+  }
+
+  const employeeList = Array.from(byEmployee.values()).sort((a, b) => b.totalHoras - a.totalHoras);
 
   const totalHorasPagadas = filteredPaid.reduce((acc, r) => {
     const horasBase = HORAS_POR_TURNO[r.turno ?? ''] ?? 8;
@@ -147,12 +172,12 @@ export default function HorasExtrasModule() {
         </button>
       </div>
 
-      {/* Balance table */}
+      {/* Employee list with expandable detail */}
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
         <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
           <Banknote size={14} style={{ color: '#D97706' }} />
-          <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Balance de horas extras pagadas por trabajador</h3>
-          <span className="ml-auto text-xs" style={{ color: '#94A3B8' }}>{employeeList.length} trabajadores</span>
+          <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Horas extras pagadas por trabajador</h3>
+          <span className="ml-auto text-xs" style={{ color: '#94A3B8' }}>{employeeList.length} trabajadores · clic para ver detalle</span>
         </div>
 
         {loading ? (
@@ -165,109 +190,132 @@ export default function HorasExtrasModule() {
             <p className="text-sm mt-3" style={{ color: '#94A3B8' }}>No hay horas extras pagadas registradas</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ minWidth: '700px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Trabajador</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Año</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Horas pagadas</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Liquidadas</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Pendientes</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-                {employeeList.flatMap((emp) => {
-                  const anios = Array.from(emp.porAnio.keys()).sort((a, b) => b.localeCompare(a));
-                  return anios.map((y, idx) => {
-                    const v = emp.porAnio.get(y)!;
-                    const pendiente = Math.max(0, v.horas - v.liquidadas);
-                    return (
-                      <tr key={`${emp.sustituto_id}-${y}`} className="hover:bg-slate-50 transition-colors">
-                        {idx === 0 ? (
-                          <td className="px-4 py-3" rowSpan={anios.length}>
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                                style={{ backgroundColor: '#FFFBEB', color: '#D97706' }}>
-                                {emp.nombre.charAt(0).toUpperCase()}
-                              </div>
-                              <span className="text-sm font-semibold" style={{ color: '#1E293B' }}>{emp.nombre}</span>
-                            </div>
-                          </td>
-                        ) : null}
-                        <td className="px-4 py-3 text-xs font-mono" style={{ color: '#64748B' }}>{y}</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-sm font-bold" style={{ color: '#D97706' }}>{v.horas.toFixed(1)}h</span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-sm font-semibold" style={{ color: v.liquidadas > 0 ? '#16A34A' : '#CBD5E1' }}>
-                            {v.liquidadas.toFixed(1)}h
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-sm font-bold" style={{ color: pendiente > 0 ? '#DC2626' : '#16A34A' }}>
-                            {pendiente.toFixed(1)}h
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  });
-                })}
-              </tbody>
-              <tfoot>
-                <tr style={{ backgroundColor: '#F8FAFC', borderTop: '2px solid #E2E8F0' }}>
-                  <td className="px-4 py-3 text-xs font-semibold uppercase tracking-wider" colSpan={2} style={{ color: '#64748B' }}>Total</td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="text-sm font-bold" style={{ color: '#D97706' }}>{totalHorasPagadas.toFixed(1)}h</span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="text-sm font-bold" style={{ color: '#16A34A' }}>{totalLiquidadas.toFixed(1)}h</span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="text-sm font-bold" style={{ color: '#DC2626' }}>{totalPendientes.toFixed(1)}h</span>
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+          <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
+            {employeeList.map((emp) => {
+              const isExpanded = expanded.has(emp.sustituto_id);
+              const pendiente = Math.max(0, emp.totalHoras - emp.totalLiquidadas);
+              return (
+                <div key={emp.sustituto_id}>
+                  {/* Summary row — clickable */}
+                  <button onClick={() => toggleExpand(emp.sustituto_id)}
+                    className="w-full px-5 py-3.5 flex items-center gap-3 cursor-pointer transition-colors hover:bg-slate-50 text-left">
+                    <div className="flex-shrink-0">
+                      {isExpanded ? <ChevronDown size={16} style={{ color: '#94A3B8' }} /> : <ChevronRight size={16} style={{ color: '#94A3B8' }} />}
+                    </div>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                      style={{ backgroundColor: '#FFFBEB', color: '#D97706' }}>
+                      {emp.nombre.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0 text-left">
+                      <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{emp.nombre}</p>
+                      <p className="text-xs" style={{ color: '#94A3B8' }}>{emp.detailRows.length} sustitución(es)</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#FFFBEB', color: '#D97706' }}>{emp.totalHoras.toFixed(1)}h</span>
+                      {emp.totalLiquidadas > 0 && (
+                        <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A' }}>{emp.totalLiquidadas.toFixed(1)}h liq.</span>
+                      )}
+                      {pendiente > 0 && (
+                        <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>{pendiente.toFixed(1)}h pend.</span>
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Expanded detail */}
+                  {isExpanded && (
+                    <div className="px-5 pb-4 pt-1" style={{ backgroundColor: '#FAFBFC' }}>
+                      {/* Sustituciones detail */}
+                      {emp.detailRows.length > 0 && (
+                        <div className="rounded-lg overflow-hidden mb-3" style={{ border: '1px solid #E2E8F0' }}>
+                          <div className="px-3 py-2 flex items-center gap-2" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                            <UserCheck size={12} style={{ color: '#16A34A' }} />
+                            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#64748B' }}>Sustituciones realizadas</p>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                                  <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>Sustituido a</th>
+                                  <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>Fecha</th>
+                                  <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>Turno</th>
+                                  <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>Horas</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y" style={{ borderColor: '#F1F5F9' }}>
+                                {emp.detailRows.map((d) => (
+                                  <tr key={d.id} className="hover:bg-slate-50 transition-colors">
+                                    <td className="px-3 py-2 text-xs font-medium" style={{ color: '#1E293B' }}>{d.empleado_nombre}</td>
+                                    <td className="px-3 py-2 text-xs" style={{ color: '#64748B' }}>
+                                      <span className="inline-flex items-center gap-1"><Calendar size={10} />{formatDate(d.fecha)}</span>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      {d.turno ? (
+                                        <span className="text-xs px-1.5 py-0.5 rounded font-semibold capitalize" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>{d.turno}</span>
+                                      ) : <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>}
+                                    </td>
+                                    <td className="px-3 py-2 text-right">
+                                      <span className="text-xs font-bold" style={{ color: '#D97706' }}>{d.horas.toFixed(1)}h</span>
+                                      {d.horas_nocturnas != null && d.horas_nocturnas > 0 && (
+                                        <span className="ml-1 text-xs font-semibold" style={{ color: '#7C3AED' }}>
+                                          <Moon size={9} className="inline" /> {d.horas_nocturnas}h
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot>
+                                <tr style={{ backgroundColor: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
+                                  <td className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide" colSpan={3} style={{ color: '#64748B' }}>Total horas</td>
+                                  <td className="px-3 py-2 text-right">
+                                    <span className="text-sm font-bold" style={{ color: '#D97706' }}>{emp.totalHoras.toFixed(1)}h</span>
+                                  </td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Liquidaciones detail */}
+                      {emp.liquidaciones.length > 0 && (
+                        <div className="rounded-lg overflow-hidden" style={{ border: '1px solid #BBF7D0' }}>
+                          <div className="px-3 py-2 flex items-center gap-2" style={{ backgroundColor: '#F0FDF4', borderBottom: '1px solid #BBF7D0' }}>
+                            <Banknote size={12} style={{ color: '#16A34A' }} />
+                            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#16A34A' }}>Liquidaciones realizadas</p>
+                          </div>
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                                <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>Fecha</th>
+                                <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>Horas liquidadas</th>
+                                <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>Notas</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y" style={{ borderColor: '#F1F5F9' }}>
+                              {emp.liquidaciones.map((l) => (
+                                <tr key={l.id} className="hover:bg-slate-50 transition-colors">
+                                  <td className="px-3 py-2 text-xs" style={{ color: '#64748B' }}>
+                                    <span className="inline-flex items-center gap-1"><Calendar size={10} />{formatDate(l.fecha)}</span>
+                                  </td>
+                                  <td className="px-3 py-2 text-right">
+                                    <span className="text-xs font-bold" style={{ color: '#16A34A' }}>{l.horas.toFixed(1)}h</span>
+                                  </td>
+                                  <td className="px-3 py-2 text-xs" style={{ color: '#64748B' }}>{l.notas ?? '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
-
-      {/* Liquidaciones detail */}
-      {filteredLiq.length > 0 && (
-        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-          <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F0FDF4' }}>
-            <TrendingUp size={14} style={{ color: '#16A34A' }} />
-            <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Liquidaciones realizadas</h3>
-            <span className="ml-auto text-xs" style={{ color: '#94A3B8' }}>{filteredLiq.length} registros</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ minWidth: '600px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                  {['Trabajador', 'Fecha', 'Horas liquidadas', 'Notas'].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-                {filteredLiq.map((l) => (
-                  <tr key={l.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 text-sm font-semibold" style={{ color: '#1E293B' }}>{l.sustituto_nombre}</td>
-                    <td className="px-4 py-3 text-xs font-mono" style={{ color: '#64748B' }}>
-                      <span className="inline-flex items-center gap-1"><Calendar size={11} />{l.fecha}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm font-bold" style={{ color: '#16A34A' }}>{l.horas_liquidadas}h</span>
-                    </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: '#64748B' }}>{l.notas ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

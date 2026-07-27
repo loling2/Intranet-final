@@ -107,14 +107,17 @@ export default function SustitucionesModule() {
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
+  const [liquidaciones, setLiquidaciones] = useState<{ sustituto_id: string; horas_liquidadas: number }[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: sData }, { data: bData }, { data: empData }] = await Promise.all([
+    const [{ data: sData }, { data: bData }, { data: empData }, { data: liqData }] = await Promise.all([
       supabase.from('sustituciones').select('*').order('fecha_inicio', { ascending: false }).limit(1000),
       supabase.from('bajas_temporales').select('id, empleado_nombre, estado, tipo_absentismo, reposo_duracion, total_dias, larga_duracion, descontado'),
       supabase.from('empleados').select('id, nombre, dni').order('nombre', { ascending: true }),
+      supabase.from('liquidaciones_horas').select('sustituto_id, horas_liquidadas'),
     ]);
+    setLiquidaciones((liqData ?? []) as { sustituto_id: string; horas_liquidadas: number }[]);
     const bMap = new Map((bData ?? []).map((b) => [b.id as string, b as unknown as BajaInfo]));
     setEmpleados(empData ?? []);
     setRows(
@@ -135,7 +138,26 @@ export default function SustitucionesModule() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Build map of liquidadas hours per sustituto
+  const liquidadasPorSustituto = new Map<string, number>();
+  for (const l of liquidaciones) {
+    liquidadasPorSustituto.set(l.sustituto_id, (liquidadasPorSustituto.get(l.sustituto_id) ?? 0) + l.horas_liquidadas);
+  }
+  // Compute total paid horas per sustituto from active rows
+  const horasPagadasPorSustituto = new Map<string, number>();
+  for (const s of rows) {
+    if (s.tipo_cobertura === 'pagar') {
+      horasPagadasPorSustituto.set(s.sustituto_id, (horasPagadasPorSustituto.get(s.sustituto_id) ?? 0) + computeHoras(s));
+    }
+  }
+
   const filtered = rows.filter((s) => {
+    // Hide rows linked to a baja that has been descontada or finalized
+    if (s.baja && (s.baja.descontado || s.baja.estado === 'finalizada')) return false;
+    // Hide sustitutos whose paid hours are fully liquidated
+    const pagadas = horasPagadasPorSustituto.get(s.sustituto_id) ?? 0;
+    const liquidadas = liquidadasPorSustituto.get(s.sustituto_id) ?? 0;
+    if (pagadas > 0 && liquidadas >= pagadas) return false;
     if (search) {
       const q = search.toLowerCase();
       if (!s.sustituto_nombre.toLowerCase().includes(q) && !s.empleado_nombre.toLowerCase().includes(q)) return false;

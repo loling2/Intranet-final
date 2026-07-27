@@ -90,38 +90,48 @@ function incidentType(minutes: number | null): 'excess' | 'deficit' | null {
 }
 
 function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
-  const map = new Map<string, JornadaResumen>();
-  for (const f of fichajes) {
+  type Entry = { r: JornadaResumen; entradas: string[]; salidas: string[] };
+  const map = new Map<string, Entry>();
+  const sorted = [...fichajes].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  for (const f of sorted) {
     const key = `${f.nombre_empleado}|${f.fecha}`;
     if (!map.has(key)) {
       map.set(key, {
-        nombre: f.nombre_empleado, fecha: f.fecha,
-        entrada: null, salida: null, pausa_inicio: null, pausa_fin: null, permiso: null,
-        duracion_bruta: null, duracion_neta: null,
-        dispositivo: f.dispositivo ?? null, ubicacion: f.ubicacion ?? null,
-        empleado_id: f.empleado_id,
+        r: {
+          nombre: f.nombre_empleado, fecha: f.fecha,
+          entrada: null, salida: null, pausa_inicio: null, pausa_fin: null, permiso: null,
+          duracion_bruta: null, duracion_neta: null,
+          dispositivo: f.dispositivo ?? null, ubicacion: f.ubicacion ?? null,
+          empleado_id: f.empleado_id,
+        },
+        entradas: [],
+        salidas: [],
       });
     }
-    const r = map.get(key)!;
-    if (f.tipo_evento === 'entrada' && !r.entrada) r.entrada = f.timestamp;
-    if (f.tipo_evento === 'salida') r.salida = f.timestamp;
+    const entry = map.get(key)!;
+    const r = entry.r;
+    if (f.tipo_evento === 'entrada') entry.entradas.push(f.timestamp);
+    if (f.tipo_evento === 'salida') entry.salidas.push(f.timestamp);
     if (f.tipo_evento === 'pausa_inicio' && !r.pausa_inicio) r.pausa_inicio = f.timestamp;
     if (f.tipo_evento === 'pausa_fin' && !r.pausa_fin) r.pausa_fin = f.timestamp;
     if (f.tipo_evento === 'permiso' && !r.permiso) r.permiso = f.timestamp;
     if (!r.dispositivo && f.dispositivo) r.dispositivo = f.dispositivo;
     if (!r.ubicacion && f.ubicacion) r.ubicacion = f.ubicacion;
   }
-  for (const r of map.values()) {
-    if (r.entrada && r.salida) {
-      r.duracion_bruta = Math.round((new Date(r.salida).getTime() - new Date(r.entrada).getTime()) / 60000);
-      let pausa = 0;
-      if (r.pausa_inicio && r.pausa_fin) {
-        pausa = Math.round((new Date(r.pausa_fin).getTime() - new Date(r.pausa_inicio).getTime()) / 60000);
-      }
-      r.duracion_neta = Math.max(0, r.duracion_bruta - pausa);
+  for (const { r, entradas, salidas } of map.values()) {
+    if (entradas.length > 0) r.entrada = entradas[0];
+    if (salidas.length > 0) r.salida = salidas[salidas.length - 1];
+    // Sum hours from all entrada/salida pairs
+    let total = 0;
+    const pairs = Math.min(entradas.length, salidas.length);
+    for (let i = 0; i < pairs; i++) {
+      const diff = new Date(salidas[i]).getTime() - new Date(entradas[i]).getTime();
+      if (diff > 0) total += Math.round(diff / 60000);
     }
+    r.duracion_neta = pairs > 0 ? total : null;
+    r.duracion_bruta = r.duracion_neta;
   }
-  return Array.from(map.values()).sort((a, b) => {
+  return Array.from(map.values()).map((e) => e.r).sort((a, b) => {
     const d = b.fecha.localeCompare(a.fecha);
     return d !== 0 ? d : a.nombre.localeCompare(b.nombre);
   });
@@ -244,18 +254,30 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
 
   useEffect(() => { loadToday(); }, [loadToday]);
 
-  const hasEntrada = todayLogs.some((f) => f.tipo_evento === 'entrada');
-  const hasSalida = todayLogs.some((f) => f.tipo_evento === 'salida');
+  const relevantLogs = todayLogs.filter((f) => f.tipo_evento === 'entrada' || f.tipo_evento === 'salida');
+  const lastEvent = relevantLogs.length > 0 ? relevantLogs[relevantLogs.length - 1].tipo_evento : null;
+  const canEntrada = !lastEvent || lastEvent === 'salida';
+  const canSalida = lastEvent === 'entrada';
+
+  // Calculate total worked minutes from pairs
+  const entradas = relevantLogs.filter((f) => f.tipo_evento === 'entrada').map((f) => f.timestamp);
+  const salidas = relevantLogs.filter((f) => f.tipo_evento === 'salida').map((f) => f.timestamp);
+  let totalMinHoy = 0;
+  const pairs = Math.min(entradas.length, salidas.length);
+  for (let i = 0; i < pairs; i++) {
+    const diff = new Date(salidas[i]).getTime() - new Date(entradas[i]).getTime();
+    if (diff > 0) totalMinHoy += Math.round(diff / 60000);
+  }
 
   const handleClock = async (tipo: 'entrada' | 'salida') => {
     setError(''); setSuccess('');
-    if (tipo === 'entrada' && hasEntrada) {
-      setError('Ya has fichado la entrada hoy. No puedes fichar otra entrada.');
+    if (tipo === 'entrada' && !canEntrada) {
+      setError('Debes fichar la salida antes de registrar una nueva entrada.');
       return;
     }
-    if (tipo === 'salida') {
-      if (!hasEntrada) { setError('No puedes fichar la salida sin haber fichado la entrada primero.'); return; }
-      if (hasSalida) { setError('Ya has fichado la salida hoy. No puedes fichar otra salida.'); return; }
+    if (tipo === 'salida' && !canSalida) {
+      setError('Debes fichar la entrada antes de registrar la salida.');
+      return;
     }
     setLoading(true);
     try {
@@ -273,7 +295,7 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
         es_manual: false,
       });
       if (insErr) throw insErr;
-      setSuccess(`Fichaje de ${tipo === 'entrada' ? 'entrada' : 'salida'} registrado correctamente.`);
+      setSuccess(`Fichaje de ${tipo === 'entrada' ? 'entrada' : 'salida'} registrado.`);
       await loadToday();
       onChanged();
     } catch (err: unknown) {
@@ -283,32 +305,42 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
     }
   };
 
-  const lastEntrada = todayLogs.find((f) => f.tipo_evento === 'entrada');
-  const lastSalida = todayLogs.find((f) => f.tipo_evento === 'salida');
-
   return (
     <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-      <h3 className="text-sm font-bold mb-4" style={{ color: '#0F172A' }}>Mi Fichaje de Hoy</h3>
-      <div className="flex flex-wrap gap-3 mb-4">
-        <div className="flex-1 min-w-[140px] rounded-xl p-3" style={{ backgroundColor: hasEntrada ? '#F0FDF4' : '#F8FAFC', border: `1px solid ${hasEntrada ? '#BBF7D0' : '#E2E8F0'}` }}>
-          <div className="flex items-center gap-2 mb-1">
-            <LogIn size={14} style={{ color: hasEntrada ? '#16A34A' : '#94A3B8' }} />
-            <span className="text-xs font-semibold" style={{ color: hasEntrada ? '#16A34A' : '#94A3B8' }}>Entrada</span>
-          </div>
-          <p className="text-sm font-mono font-bold" style={{ color: hasEntrada ? '#16A34A' : '#CBD5E1' }}>
-            {lastEntrada ? formatTime(lastEntrada.timestamp) : '—'}
-          </p>
-        </div>
-        <div className="flex-1 min-w-[140px] rounded-xl p-3" style={{ backgroundColor: hasSalida ? '#FEF2F2' : '#F8FAFC', border: `1px solid ${hasSalida ? '#FECACA' : '#E2E8F0'}` }}>
-          <div className="flex items-center gap-2 mb-1">
-            <LogOut size={14} style={{ color: hasSalida ? '#DC2626' : '#94A3B8' }} />
-            <span className="text-xs font-semibold" style={{ color: hasSalida ? '#DC2626' : '#94A3B8' }}>Salida</span>
-          </div>
-          <p className="text-sm font-mono font-bold" style={{ color: hasSalida ? '#DC2626' : '#CBD5E1' }}>
-            {lastSalida ? formatTime(lastSalida.timestamp) : '—'}
-          </p>
-        </div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-bold" style={{ color: '#0F172A' }}>Mi Fichaje de Hoy</h3>
+        {totalMinHoy > 0 && (
+          <span className="text-xs font-bold px-2.5 py-1 rounded-lg" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>
+            {formatDuration(totalMinHoy)} trabajadas
+          </span>
+        )}
       </div>
+
+      {/* Timeline of today's fichajes */}
+      {relevantLogs.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {relevantLogs.map((f, i) => (
+            <div key={f.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+              style={{
+                backgroundColor: f.tipo_evento === 'entrada' ? '#F0FDF4' : '#FEF2F2',
+                border: `1px solid ${f.tipo_evento === 'entrada' ? '#BBF7D0' : '#FECACA'}`,
+              }}>
+              {f.tipo_evento === 'entrada'
+                ? <LogIn size={11} style={{ color: '#16A34A' }} />
+                : <LogOut size={11} style={{ color: '#DC2626' }} />}
+              <span className="text-xs font-mono font-bold"
+                style={{ color: f.tipo_evento === 'entrada' ? '#16A34A' : '#DC2626' }}>
+                {formatTime(f.timestamp)}
+              </span>
+              {i > 0 && i % 2 === 1 && (
+                <span className="text-xs ml-1" style={{ color: '#94A3B8' }}>
+                  ({formatDuration(Math.round((new Date(f.timestamp).getTime() - new Date(relevantLogs[i - 1].timestamp).getTime()) / 60000))})
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
@@ -326,21 +358,21 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
       <div className="flex gap-3">
         <button
           onClick={() => handleClock('entrada')}
-          disabled={loading || hasEntrada}
+          disabled={loading || !canEntrada}
           className="flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ backgroundColor: hasEntrada ? '#E2E8F0' : '#16A34A', color: hasEntrada ? '#94A3B8' : '#FFFFFF' }}
+          style={{ backgroundColor: canEntrada ? '#16A34A' : '#E2E8F0', color: canEntrada ? '#FFFFFF' : '#94A3B8' }}
         >
           <LogIn size={14} />
-          {hasEntrada ? 'Entrada registrada' : 'Fichar Entrada'}
+          Fichar Entrada
         </button>
         <button
           onClick={() => handleClock('salida')}
-          disabled={loading || !hasEntrada || hasSalida}
+          disabled={loading || !canSalida}
           className="flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ backgroundColor: hasSalida || !hasEntrada ? '#E2E8F0' : '#DC2626', color: hasSalida || !hasEntrada ? '#94A3B8' : '#FFFFFF' }}
+          style={{ backgroundColor: canSalida ? '#DC2626' : '#E2E8F0', color: canSalida ? '#FFFFFF' : '#94A3B8' }}
         >
           <LogOut size={14} />
-          {hasSalida ? 'Salida registrada' : 'Fichar Salida'}
+          Fichar Salida
         </button>
       </div>
     </div>

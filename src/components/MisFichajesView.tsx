@@ -106,42 +106,52 @@ function incidentType(minutes: number | null): 'excess' | 'deficit' | null {
 }
 
 function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
-  const map = new Map<string, JornadaResumen>();
-  for (const f of fichajes) {
+  type Entry = { r: JornadaResumen; entradas: { ts: string; id: string }[]; salidas: { ts: string; id: string }[] };
+  const map = new Map<string, Entry>();
+  const sorted = [...fichajes].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  for (const f of sorted) {
     const key = f.fecha;
     if (!map.has(key)) {
       map.set(key, {
-        fecha: f.fecha,
-        entrada: null, salida: null, pausa_inicio: null, pausa_fin: null, permiso: null,
-        duracion_bruta: null, duracion_neta: null,
-        empleado_id: f.empleado_id,
-        fichaje_entrada_id: null, fichaje_salida_id: null,
+        r: {
+          fecha: f.fecha,
+          entrada: null, salida: null, pausa_inicio: null, pausa_fin: null, permiso: null,
+          duracion_bruta: null, duracion_neta: null,
+          empleado_id: f.empleado_id,
+          fichaje_entrada_id: null, fichaje_salida_id: null,
+        },
+        entradas: [],
+        salidas: [],
       });
     }
-    const r = map.get(key)!;
-    if (f.tipo_evento === 'entrada' && !r.entrada) {
-      r.entrada = f.timestamp;
-      r.fichaje_entrada_id = f.id;
-    }
-    if (f.tipo_evento === 'salida') {
-      r.salida = f.timestamp;
-      r.fichaje_salida_id = f.id;
-    }
+    const entry = map.get(key)!;
+    const r = entry.r;
+    if (f.tipo_evento === 'entrada') entry.entradas.push({ ts: f.timestamp, id: f.id });
+    if (f.tipo_evento === 'salida') entry.salidas.push({ ts: f.timestamp, id: f.id });
     if (f.tipo_evento === 'pausa_inicio' && !r.pausa_inicio) r.pausa_inicio = f.timestamp;
     if (f.tipo_evento === 'pausa_fin' && !r.pausa_fin) r.pausa_fin = f.timestamp;
     if (f.tipo_evento === 'permiso' && !r.permiso) r.permiso = f.timestamp;
   }
-  for (const r of map.values()) {
-    if (r.entrada && r.salida) {
-      r.duracion_bruta = Math.round((new Date(r.salida).getTime() - new Date(r.entrada).getTime()) / 60000);
-      let pausa = 0;
-      if (r.pausa_inicio && r.pausa_fin) {
-        pausa = Math.round((new Date(r.pausa_fin).getTime() - new Date(r.pausa_inicio).getTime()) / 60000);
-      }
-      r.duracion_neta = Math.max(0, r.duracion_bruta - pausa);
+  for (const { r, entradas, salidas } of map.values()) {
+    if (entradas.length > 0) {
+      r.entrada = entradas[0].ts;
+      r.fichaje_entrada_id = entradas[0].id;
     }
+    if (salidas.length > 0) {
+      r.salida = salidas[salidas.length - 1].ts;
+      r.fichaje_salida_id = salidas[salidas.length - 1].id;
+    }
+    // Sum hours from all entrada/salida pairs
+    let total = 0;
+    const pairs = Math.min(entradas.length, salidas.length);
+    for (let i = 0; i < pairs; i++) {
+      const diff = new Date(salidas[i].ts).getTime() - new Date(entradas[i].ts).getTime();
+      if (diff > 0) total += Math.round(diff / 60000);
+    }
+    r.duracion_neta = pairs > 0 ? total : null;
+    r.duracion_bruta = r.duracion_neta;
   }
-  return Array.from(map.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  return Array.from(map.values()).map((e) => e.r).sort((a, b) => b.fecha.localeCompare(a.fecha));
 }
 
 function toLocalDatetimeInputValue(iso: string | null): string {

@@ -534,11 +534,21 @@ export default function SustitucionesModule() {
                       </td>
                       {/* Justificante */}
                       <td className="px-3 py-2.5 border-b text-center" style={{ borderColor: '#F1F5F9' }}>
-                        {s.tiene_justificante ? (
-                          <CheckSquare size={15} style={{ color: '#16A34A', display: 'inline-block' }} />
-                        ) : (
-                          <Square size={15} style={{ color: '#E2E8F0', display: 'inline-block' }} />
-                        )}
+                        <button
+                          onClick={async () => {
+                            const next = !s.tiene_justificante;
+                            await supabase.from('sustituciones').update({ tiene_justificante: next }).eq('id', s.id);
+                            setRows((prev) => prev.map((r) => r.id === s.id ? { ...r, tiene_justificante: next } : r));
+                          }}
+                          className="cursor-pointer hover:opacity-70 transition-opacity"
+                          title={s.tiene_justificante ? 'Quitar justificante' : 'Marcar con justificante'}
+                        >
+                          {s.tiene_justificante ? (
+                            <CheckSquare size={15} style={{ color: '#16A34A' }} />
+                          ) : (
+                            <Square size={15} style={{ color: '#CBD5E1' }} />
+                          )}
+                        </button>
                       </td>
                       {/* Persona sustituta */}
                       <td className="px-3 py-2.5 border-b" style={{ borderColor: '#F1F5F9' }}>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination';
-import { Users, Plus, Search, X, Save, ChevronDown, ChevronUp, Pencil, Trash2, AlertCircle, CheckCircle2, Building2, Tag, RefreshCw, UserPlus, Ligature as FileSignature, Clock, Bell, Upload, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { Users, Plus, Search, X, Save, ChevronDown, ChevronUp, Pencil, Trash2, AlertCircle, CheckCircle2, XCircle, Building2, Tag, RefreshCw, UserPlus, Ligature as FileSignature, Clock, Bell, Upload, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad, type Centro, type Asignacion, type Tag as TagType, type UserProfile } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
@@ -54,6 +54,10 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   reconocimiento_medico_realizado: null,
   entrega_doc_prl: null,
   entrega_doc_prl_observaciones: null,
+  prl_ficha_puesto: false,
+  prl_evaluacion_riesgos: false,
+  prl_medidas_emergencia: false,
+  prl_plan_prevencion: false,
 };
 
 function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
@@ -91,6 +95,10 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     reconocimiento_medico_realizado: e.reconocimiento_medico_realizado ?? null,
     entrega_doc_prl: e.entrega_doc_prl ?? null,
     entrega_doc_prl_observaciones: e.entrega_doc_prl_observaciones ?? null,
+    prl_ficha_puesto: e.prl_ficha_puesto ?? false,
+    prl_evaluacion_riesgos: e.prl_evaluacion_riesgos ?? false,
+    prl_medidas_emergencia: e.prl_medidas_emergencia ?? false,
+    prl_plan_prevencion: e.prl_plan_prevencion ?? false,
   };
 }
 
@@ -1582,6 +1590,42 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               </div>
             </div>
 
+            {/* Section: Entrega documentacion PRL */}
+            <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#64748B' }}>Entrega documentacion PRL</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {([
+                  { field: 'prl_ficha_puesto', label: 'Ficha del puesto de trabajo' },
+                  { field: 'prl_evaluacion_riesgos', label: 'Evaluacion de riesgos' },
+                  { field: 'prl_medidas_emergencia', label: 'Medidas de emergencia' },
+                  { field: 'prl_plan_prevencion', label: 'Plan de Prevencion' },
+                ] as const).map(({ field, label }) => {
+                  const entregado = Boolean(form[field]);
+                  return (
+                    <button
+                      key={field}
+                      type="button"
+                      onClick={() => f(field, !entregado)}
+                      className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                      style={{
+                        backgroundColor: entregado ? '#DCFCE7' : '#FEE2E2',
+                        color: entregado ? '#15803D' : '#B91C1C',
+                        border: `1.5px solid ${entregado ? '#22C55E' : '#EF4444'}`,
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        {entregado ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                        {label}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide">
+                        {entregado ? 'Entregado' : 'Pendiente'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Section: Datos personales */}
             <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Datos personales</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
@@ -1987,6 +2031,42 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                               Este empleado aparecera en el panel de prevencion para gestionar el reconocimiento medico.
                             </p>
                           )}
+                        </div>
+                      </div>
+
+                      {/* Section: Entrega documentacion PRL */}
+                      <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                        <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#64748B' }}>Entrega documentacion PRL</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {([
+                            { field: 'prl_ficha_puesto', label: 'Ficha del puesto de trabajo' },
+                            { field: 'prl_evaluacion_riesgos', label: 'Evaluacion de riesgos' },
+                            { field: 'prl_medidas_emergencia', label: 'Medidas de emergencia' },
+                            { field: 'prl_plan_prevencion', label: 'Plan de Prevencion' },
+                          ] as const).map(({ field, label }) => {
+                            const entregado = Boolean(form[field]);
+                            return (
+                              <button
+                                key={field}
+                                type="button"
+                                onClick={() => f(field, !entregado)}
+                                className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                                style={{
+                                  backgroundColor: entregado ? '#DCFCE7' : '#FEE2E2',
+                                  color: entregado ? '#15803D' : '#B91C1C',
+                                  border: `1.5px solid ${entregado ? '#22C55E' : '#EF4444'}`,
+                                }}
+                              >
+                                <span className="flex items-center gap-2">
+                                  {entregado ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                                  {label}
+                                </span>
+                                <span className="text-[10px] font-bold uppercase tracking-wide">
+                                  {entregado ? 'Entregado' : 'Pendiente'}
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
 

@@ -112,6 +112,10 @@ export interface Empleado {
   reconocimiento_medico_realizado: boolean | null;
   entrega_doc_prl: string | null;
   entrega_doc_prl_observaciones: string | null;
+  prl_ficha_puesto: boolean;
+  prl_evaluacion_riesgos: boolean;
+  prl_medidas_emergencia: boolean;
+  prl_plan_prevencion: boolean;
   created_at: string;
   updated_at: string;
 }

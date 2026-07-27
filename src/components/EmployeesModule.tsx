@@ -323,7 +323,11 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
             if (err) throw err;
             res.push({ label, ok: true, updated: false });
           } catch (err: unknown) {
-            res.push({ label, ok: false, error: err instanceof Error ? err.message : String(err) });
+            const msg =
+              err instanceof Error ? err.message
+              : typeof err === 'object' && err !== null && 'message' in err ? String((err as { message: unknown }).message)
+              : String(err);
+            res.push({ label, ok: false, error: msg });
           }
         }
         setResults(res);
@@ -358,7 +362,11 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
       setStep('result');
       onImported();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg =
+        err instanceof Error ? err.message
+        : typeof err === 'object' && err !== null && 'message' in err ? String((err as { message: unknown }).message)
+        : String(err);
+      setError(msg);
     } finally {
       setImporting(false);
     }

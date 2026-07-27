@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, Fingerprint } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
@@ -26,6 +26,7 @@ import ChangePasswordModal from './components/ChangePasswordModal';
 import ChangePinModal from './components/ChangePinModal';
 import IncidenciasModule from './components/IncidenciasModule';
 import MisFichajesView from './components/MisFichajesView';
+import PinFichajeModule from './components/PinFichajeModule';
 
 const iconMap: Record<string, LucideIcon> = {
   'building-2': Building2,
@@ -693,6 +694,7 @@ export default function LoginPage() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [session, setSession] = useState<SessionState | null>(null);
   const [showVehicleModal, setShowVehicleModal] = useState(false);
+  const [showPinFichaje, setShowPinFichaje] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetToken, setResetToken] = useState<string | null>(null);
   const [resetEmail, setResetEmail] = useState<string>('');
@@ -1280,8 +1282,16 @@ export default function LoginPage() {
             Problemas para acceder? Contacta al departamento de TI
           </p>
 
-          {/* Quick vehicle registration */}
-          <div className="mt-5 pt-5" style={{ borderTop: '1px solid #E2E8F0' }}>
+          {/* Quick PIN clock-in */}
+          <div className="mt-5 pt-5 space-y-2.5" style={{ borderTop: '1px solid #E2E8F0' }}>
+            <button
+              onClick={() => setShowPinFichaje(true)}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 cursor-pointer hover:opacity-90"
+              style={{ backgroundColor: '#000000', border: '1.5px solid #1E293B' }}
+            >
+              <Fingerprint size={16} />
+              FICHAR CON PIN
+            </button>
             <button
               onClick={() => setShowVehicleModal(true)}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer hover:opacity-80"
@@ -1294,6 +1304,7 @@ export default function LoginPage() {
         </div>
       </div>
 
+      {showPinFichaje && <PinFichajeModule onClose={() => setShowPinFichaje(false)} />}
       {showVehicleModal && <JornadaModal onClose={() => setShowVehicleModal(false)} />}
       {showForgotPassword && <ForgotPasswordModal onClose={() => setShowForgotPassword(false)} />}
       {resetToken && (

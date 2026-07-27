@@ -291,6 +291,3 @@ function KeypadButton({
     </button>
   );
 }
-
-
-export default PinFichajeModule

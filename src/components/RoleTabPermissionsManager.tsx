@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 import {
   Shield, Users, Truck, FileText, Palmtree, ShieldCheck, ScrollText,
   AlertCircle, Clock, Receipt, Ligature as FileSignature, Zap, Award,
-  ClipboardCheck, BarChart2, Plus, Trash2, X, Check, BedSingle,
+  ClipboardCheck, BarChart2, Plus, Trash2, X, Check, BedSingle, UserCog,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -33,6 +33,7 @@ const ALL_TABS: TabDef[] = [
   { id: 'fichajes',       label: 'Fichajes',              icon: Clock },
   { id: 'bajas',           label: 'Bajas/Ausencias',       icon: BedSingle },
   { id: 'prl-docs',       label: 'Documentos PRL',        icon: ShieldCheck },
+  { id: 'supervisor-empleados', label: 'Empleados Asignados', icon: UserCog },
 ];
 
 interface RoleDef {

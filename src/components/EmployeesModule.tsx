@@ -153,10 +153,17 @@ function parseCsv(text: string): { rows: Record<string, string>[]; mode: 'auth' 
     return obj;
   }).filter(r => Object.values(r).some(v => v.trim()));
 
-  // Detect mode: HR format has NIF/apellidos or 'nombre_completo'
-  const mode: 'auth' | 'hr' = headers.some(h =>
-    ['apellidos', 'apellido', 'nombre_completo', 'nif', 'nass', 'puesto_de_trabajo'].includes(h)
-  ) ? 'hr' : 'auth';
+  // Detect mode: HR format has any of these common Spanish HR export headers
+  const HR_HINTS = [
+    'apellidos', 'apellido', 'apellido_y_nombre', 'nombre_completo', 'nombre_apellidos',
+    'nif', 'dni', 'dni_nie', 'nass', 'numero_ss', 'n_seguridad_social',
+    'puesto_de_trabajo', 'puesto', 'cargo', 'categoria', 'categoria_profesional',
+    'fecha_de_alta', 'fecha_alta', 'fecha_de_alta_en_compania', 'fecha_antiguedad',
+    'fecha_nacimiento', 'telefono', 'telefono_1', 'email_personal',
+    'codigo_contrato', 'tipo_contrato', 'convenio', 'centro_de_trabajo',
+    'localidad', 'provincia', 'sexo', 'estado_civil',
+  ];
+  const mode: 'auth' | 'hr' = headers.some(h => HR_HINTS.includes(h)) ? 'hr' : 'auth';
   return { rows, mode };
 }
 
@@ -169,7 +176,8 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
 }) {
   const [step, setStep] = useState<'upload' | 'preview' | 'result'>('upload');
   const [rows, setRows] = useState<Record<string, string>[]>([]);
-  const [mode, setMode] = useState<'auth' | 'hr'>('auth');
+  const [mode, setMode] = useState<'auth' | 'hr'>('hr');
+  const [manualMode, setManualMode] = useState<'auth' | 'hr' | null>('hr');
   const [selectedSociety, setSelectedSociety] = useState(sociedades[0]?.id ?? '');
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
@@ -186,7 +194,8 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
       const parsed = parseCsv(text);
       if (!parsed.rows.length) { setError('El archivo no contiene datos válidos o el formato es incorrecto.'); return; }
       setRows(parsed.rows);
-      setMode(parsed.mode);
+      // User's explicit choice always wins over auto-detection
+      setMode(manualMode ?? parsed.mode);
       setStep('preview');
     };
     reader.readAsText(file, 'UTF-8');
@@ -291,11 +300,21 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
           {/* Step: upload */}
           {step === 'upload' && (
             <>
-              {/* Two template options */}
+              {/* Two template options — clicking one SELECTS the import mode */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* HR template */}
-                <div className="p-4 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                  <p className="text-sm font-semibold mb-1" style={{ color: '#14532D' }}>Plantilla RRHH</p>
+                <div
+                  onClick={() => setManualMode('hr')}
+                  className="p-4 rounded-xl cursor-pointer transition-all duration-150"
+                  style={{
+                    backgroundColor: manualMode === 'hr' ? '#DCFCE7' : '#F0FDF4',
+                    border: manualMode === 'hr' ? '2px solid #16A34A' : '1px solid #BBF7D0',
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    {manualMode === 'hr' && <span className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#16A34A' }}><svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>}
+                    <p className="text-sm font-semibold" style={{ color: '#14532D' }}>Plantilla RRHH</p>
+                  </div>
                   <p className="text-xs mb-2" style={{ color: '#166534' }}>
                     Importa ficha de empleado: apellidos, nombre, DNI, telefono, fechas, contrato, turno, puesto, centro...
                   </p>
@@ -303,7 +322,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                     No crea acceso de login. Util para cargar datos de RRHH directamente.
                   </p>
                   <button
-                    onClick={() => downloadTemplateCsv('hr')}
+                    onClick={e => { e.stopPropagation(); downloadTemplateCsv('hr'); }}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
                     style={{ backgroundColor: '#16A34A', color: '#FFFFFF' }}
                   >
@@ -311,8 +330,18 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                   </button>
                 </div>
                 {/* Auth template */}
-                <div className="p-4 rounded-xl" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-                  <p className="text-sm font-semibold mb-1" style={{ color: '#0C4A6E' }}>Plantilla Acceso Web</p>
+                <div
+                  onClick={() => setManualMode('auth')}
+                  className="p-4 rounded-xl cursor-pointer transition-all duration-150"
+                  style={{
+                    backgroundColor: manualMode === 'auth' ? '#DBEAFE' : '#EFF6FF',
+                    border: manualMode === 'auth' ? '2px solid #0369A1' : '1px solid #BFDBFE',
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    {manualMode === 'auth' && <span className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#0369A1' }}><svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>}
+                    <p className="text-sm font-semibold" style={{ color: '#0C4A6E' }}>Plantilla Acceso Web</p>
+                  </div>
                   <p className="text-xs mb-2" style={{ color: '#0369A1' }}>
                     Crea usuarios con login: email, nombre, DNI, contrasena, rol, sociedad...
                   </p>
@@ -320,7 +349,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                     Roles validos: <em>employee, rrhh, prevencion, supervisor, admin</em>
                   </p>
                   <button
-                    onClick={() => downloadTemplateCsv('auth')}
+                    onClick={e => { e.stopPropagation(); downloadTemplateCsv('auth'); }}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
                     style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
                   >
@@ -328,6 +357,12 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                   </button>
                 </div>
               </div>
+              {/* Mode indicator */}
+              <p className="text-xs mt-1" style={{ color: manualMode === 'hr' ? '#16A34A' : '#0369A1' }}>
+                {manualMode === 'hr'
+                  ? 'Modo seleccionado: RRHH — el CSV se importara como datos de empleados'
+                  : 'Modo seleccionado: Acceso Web — el CSV creara usuarios con login'}
+              </p>
 
               {/* Society selector (required for HR mode) */}
               {sociedades.length > 0 && (
@@ -351,10 +386,13 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
               <div>
                 <p className="text-sm font-semibold mb-2" style={{ color: '#374151' }}>Sube el CSV relleno</p>
                 <label
-                  className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl cursor-pointer transition-colors"
-                  style={{ border: '2px dashed #CBD5E1', backgroundColor: '#F8FAFC' }}
+                  className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl cursor-pointer transition-all duration-200"
+                  style={{
+                    border: `2px dashed ${manualMode === 'hr' ? '#16A34A' : manualMode === 'auth' ? '#0369A1' : '#CBD5E1'}`,
+                    backgroundColor: manualMode === 'hr' ? '#F0FDF4' : manualMode === 'auth' ? '#EFF6FF' : '#F8FAFC',
+                  }}
                 >
-                  <Upload size={28} style={{ color: '#94A3B8' }} />
+                  <Upload size={28} style={{ color: manualMode === 'hr' ? '#16A34A' : manualMode === 'auth' ? '#0369A1' : '#94A3B8' }} />
                   <div className="text-center">
                     <p className="text-sm font-medium" style={{ color: '#475569' }}>Haz clic para seleccionar el archivo</p>
                     <p className="text-xs" style={{ color: '#94A3B8' }}>Archivos .csv · separador coma o punto y coma · UTF-8</p>

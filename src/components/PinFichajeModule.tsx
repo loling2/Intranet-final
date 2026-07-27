@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Delete, Check, Fingerprint, LogIn, LogOut } from 'lucide-react';
+import { Delete, Check, Fingerprint, LogIn, LogOut, MapPin } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 const PIN_LENGTH = 6;
@@ -13,41 +13,34 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
   const [message, setMessage] = useState('');
   const [now, setNow] = useState(() => new Date());
   const [lastEvent, setLastEvent] = useState<'entrada' | 'salida' | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<'searching' | 'ready' | 'denied' | 'unsupported'>('searching');
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cachedGeo = useRef<{ latitud: number | null; longitud: number | null; ubicacion: string | null }>({
+    latitud: null,
+    longitud: null,
+    ubicacion: null,
+  });
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  const reset = useCallback(() => {
-    if (resetTimer.current) clearTimeout(resetTimer.current);
-    setPin('');
-    setStatus('idle');
-    setMessage('');
-    setLastEvent(null);
-  }, []);
-
-  useEffect(() => () => { if (resetTimer.current) clearTimeout(resetTimer.current); }, []);
-
-  const getDeviceInfo = () => {
-    const ua = navigator.userAgent;
-    const mobile = /Android|iPhone|iPad|iPod/i.test(ua);
-    const tablet = /iPad|Android(?!.*Mobile)/i.test(ua);
-    const type = tablet ? 'Tablet' : mobile ? 'Móvil' : 'Escritorio';
-    const browser = /Chrome/i.test(ua) ? 'Chrome' : /Firefox/i.test(ua) ? 'Firefox' : /Safari/i.test(ua) ? 'Safari' : /Edge/i.test(ua) ? 'Edge' : 'Navegador';
-    const os = /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'Mac' : /Android/i.test(ua) ? 'Android' : /iOS|iPhone|iPad/i.test(ua) ? 'iOS' : /Linux/i.test(ua) ? 'Linux' : 'Sistema';
-    return `${type} · ${browser} · ${os}`;
-  };
-
-  const getLocation = (): Promise<{ latitud: number | null; longitud: number | null; ubicacion: string | null }> => {
-    return new Promise((resolve) => {
-      if (!navigator.geolocation) {
-        resolve({ latitud: null, longitud: null, ubicacion: null });
-        return;
-      }
+  // Pre-fetch geolocation on mount so it's ready before the user enters their PIN
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setGpsStatus('unsupported');
+      return;
+    }
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      setGpsStatus('denied');
+      return;
+    }
+    let cancelled = false;
+    const fetchGeo = () => {
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
+          if (cancelled) return;
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
           let direccion: string | null = null;
@@ -71,12 +64,43 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
           } catch {
             direccion = null;
           }
-          resolve({ latitud: lat, longitud: lon, ubicacion: direccion });
+          if (cancelled) return;
+          cachedGeo.current = { latitud: lat, longitud: lon, ubicacion: direccion };
+          setGpsStatus('ready');
         },
-        () => resolve({ latitud: null, longitud: null, ubicacion: null }),
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+        () => {
+          if (cancelled) return;
+          setGpsStatus('denied');
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 },
       );
-    });
+    };
+    fetchGeo();
+    const refreshInterval = setInterval(fetchGeo, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(refreshInterval);
+    };
+  }, []);
+
+  const reset = useCallback(() => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+    setPin('');
+    setStatus('idle');
+    setMessage('');
+    setLastEvent(null);
+  }, []);
+
+  useEffect(() => () => { if (resetTimer.current) clearTimeout(resetTimer.current); }, []);
+
+  const getDeviceInfo = () => {
+    const ua = navigator.userAgent;
+    const mobile = /Android|iPhone|iPad|iPod/i.test(ua);
+    const tablet = /iPad|Android(?!.*Mobile)/i.test(ua);
+    const type = tablet ? 'Tablet' : mobile ? 'Móvil' : 'Escritorio';
+    const browser = /Chrome/i.test(ua) ? 'Chrome' : /Firefox/i.test(ua) ? 'Firefox' : /Safari/i.test(ua) ? 'Safari' : /Edge/i.test(ua) ? 'Edge' : 'Navegador';
+    const os = /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'Mac' : /Android/i.test(ua) ? 'Android' : /iOS|iPhone|iPad/i.test(ua) ? 'iOS' : /Linux/i.test(ua) ? 'Linux' : 'Sistema';
+    return `${type} · ${browser} · ${os}`;
   };
 
   const submit = useCallback(async (pinValue: string) => {
@@ -96,7 +120,7 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
       const { empleado_id, nombre_empleado, tipo } = result;
 
       const today = new Date().toISOString().split('T')[0];
-      const geo = await getLocation();
+      const geo = cachedGeo.current;
 
       const { error: insErr } = await supabase.from('fichajes').insert({
         empleado_id: empleado_id ?? null,
@@ -267,6 +291,28 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
           disabled={status === 'submitting' || status === 'success' || pin.length < 4}
           variant="confirm"
         />
+      </div>
+
+      {/* GPS status indicator */}
+      <div className="mt-4 sm:mt-6 flex items-center justify-center gap-2 text-[10px] sm:text-xs">
+        {gpsStatus === 'ready' && (
+          <span className="flex items-center gap-1.5" style={{ color: '#22C55E' }}>
+            <MapPin size={12} />
+            Ubicación lista
+          </span>
+        )}
+        {gpsStatus === 'searching' && (
+          <span className="flex items-center gap-1.5" style={{ color: '#64748B' }}>
+            <div className="w-2.5 h-2.5 rounded-full border animate-spin" style={{ borderColor: 'rgba(100,116,139,0.3)', borderTopColor: '#64748B' }} />
+            Obteniendo ubicación...
+          </span>
+        )}
+        {(gpsStatus === 'denied' || gpsStatus === 'unsupported') && (
+          <span className="flex items-center gap-1.5" style={{ color: '#475569' }}>
+            <MapPin size={12} />
+            Ubicación no disponible
+          </span>
+        )}
       </div>
 
       {/* Footer hint */}

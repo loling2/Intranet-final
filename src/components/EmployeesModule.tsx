@@ -236,7 +236,12 @@ function hrRowToEmpleado(r: Record<string, string>, sociedadId: string): Record<
   if (convenio) payload.convenio = convenio;
   if (direccion) payload.direccion = direccion;
   if (codigoPostal) payload.codigo_postal = codigoPostal;
-  if (sexo) payload.sexo = sexo;
+  if (sexo) {
+    const s = sexo.trim().toLowerCase();
+    if (['m', 'masculino', 'h', 'hombre', 'varon', 'male'].includes(s)) payload.sexo = 'M';
+    else if (['f', 'femenino', 'mujer', 'female'].includes(s)) payload.sexo = 'F';
+    else payload.sexo = sexo.trim().slice(0, 20);
+  }
   // nass and localidad are not columns in empleados table; keep for preview only
   (payload as Record<string, unknown>).nass = nass || null;
   (payload as Record<string, unknown>).localidad = localidad || null;

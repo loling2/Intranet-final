@@ -1,0 +1,1 @@
+ALTER TABLE empleados ALTER COLUMN sexo TYPE character varying(20);

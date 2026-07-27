@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserCheck, Search, RefreshCw, Calendar, Moon, Star, Plus, X, Pencil, Trash2, CheckCircle2, Sun, Sunset } from 'lucide-react';
+import { UserCheck, Search, RefreshCw, Calendar, Moon, Star, Plus, X, Pencil, Trash2, CheckCircle2, Sun, Sunset, CheckSquare, Square } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface SustitucionRow {
@@ -16,7 +16,13 @@ interface SustitucionRow {
   horas_nocturnas: number | null;
   num_dias_festivos: number | null;
   unidad: string;
+  unidad_festivo: string | null;
+  horas_festivas: number | null;
+  es_nocturno: boolean | null;
   notas: string | null;
+  motivo_otro: string | null;
+  dias_a_descontar: number | null;
+  tiene_justificante: boolean | null;
   empleado_nombre: string;
 }
 
@@ -44,13 +50,20 @@ interface EditForm {
   horas_nocturnas: number;
   motivo_otro: string;
   notas: string;
+  dias_a_descontar: number | null;
+  tiene_justificante: boolean;
 }
 
-const turnoColors: Record<string, { color: string; bg: string }> = {
-  'mañana': { color: '#D97706', bg: '#FFFBEB' },
-  tarde:    { color: '#EA580C', bg: '#FFF7ED' },
-  noche:    { color: '#7C3AED', bg: '#F5F3FF' },
-};
+function computeHoras(s: { unidad: string; num_horas: number; num_dias: number; turno: string | null }): number {
+  if (s.unidad === 'horas') return s.num_horas || 0;
+  return s.num_dias * (HORAS_POR_TURNO[s.turno ?? ''] ?? 8);
+}
+
+function festivoLabel(s: SustitucionRow): string {
+  if (!s.es_festivo) return '—';
+  if (s.unidad_festivo === 'horas') return `${s.horas_festivas ?? 0}h`;
+  return `${s.num_dias_festivos ?? 0}d`;
+}
 
 export default function SustitucionesModule() {
   const [rows, setRows] = useState<SustitucionRow[]>([]);
@@ -64,7 +77,7 @@ export default function SustitucionesModule() {
   // New sustitución form
   const [showForm, setShowForm] = useState(false);
   const [sustitutoSearch, setSustitutoSearch] = useState('');
-  const [form, setForm] = useState({ sustituto_id: '', sustituto_nombre: '', num_horas: 0, motivo: '', fecha: '' });
+  const [form, setForm] = useState({ sustituto_id: '', sustituto_nombre: '', num_horas: 0, motivo: '', fecha: '', dias_a_descontar: '', tiene_justificante: false });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -87,6 +100,8 @@ export default function SustitucionesModule() {
       (sData ?? []).map((s) => ({
         ...s,
         baja_id: s.baja_id ?? null,
+        dias_a_descontar: s.dias_a_descontar ?? null,
+        tiene_justificante: s.tiene_justificante ?? false,
         empleado_nombre: s.baja_id ? (bMap.get(s.baja_id) ?? '—') : 'Sustitución directa',
       }))
     );
@@ -106,9 +121,9 @@ export default function SustitucionesModule() {
     return true;
   });
 
-  const totalDias = filtered.filter((s) => s.unidad !== 'horas').reduce((acc, s) => acc + (s.num_dias || 0), 0);
-  const totalHoras = filtered.filter((s) => s.unidad === 'horas').reduce((acc, s) => acc + (s.num_horas || 0), 0);
-  const totalNocturnas = filtered.reduce((acc, s) => acc + (s.horas_nocturnas || 0), 0);
+  const totalHorasPagar = filtered.filter((s) => s.tipo_cobertura === 'pagar').reduce((acc, s) => acc + computeHoras(s), 0);
+  const totalHorasCompensar = filtered.filter((s) => s.tipo_cobertura === 'compensar').reduce((acc, s) => acc + computeHoras(s), 0);
+  const totalDiasDescontar = filtered.reduce((acc, s) => acc + (s.dias_a_descontar || 0), 0);
   const sustitutosUnicos = new Set(filtered.map((s) => s.sustituto_id)).size;
 
   const filteredSustitutos = empleados.filter((e) =>
@@ -144,12 +159,14 @@ export default function SustitucionesModule() {
         horas_nocturnas: 0,
         num_dias_festivos: 0,
         motivo_otro: null,
+        dias_a_descontar: form.dias_a_descontar === '' ? null : Number(form.dias_a_descontar),
+        tiene_justificante: form.tiene_justificante,
         created_by: userId,
       };
       const { error } = await supabase.from('sustituciones').insert(row);
       if (error) throw error;
       setShowForm(false);
-      setForm({ sustituto_id: '', sustituto_nombre: '', num_horas: 0, motivo: '', fecha: '' });
+      setForm({ sustituto_id: '', sustituto_nombre: '', num_horas: 0, motivo: '', fecha: '', dias_a_descontar: '', tiene_justificante: false });
       await load();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : 'Error al guardar');
@@ -183,10 +200,12 @@ export default function SustitucionesModule() {
       horas_nocturnas: s.horas_nocturnas ?? 0,
       motivo_otro: s.motivo_otro ?? '',
       notas: s.notas ?? '',
+      dias_a_descontar: s.dias_a_descontar,
+      tiene_justificante: s.tiene_justificante ?? false,
     });
   };
 
-  const updField = (field: keyof EditForm, value: string | number | boolean) =>
+  const updField = (field: keyof EditForm, value: string | number | boolean | null) =>
     setEditForm((p) => (p ? { ...p, [field]: value } : p));
 
   const handleSaveEdit = async () => {
@@ -213,6 +232,8 @@ export default function SustitucionesModule() {
         horas_nocturnas: editForm.es_nocturno ? editForm.horas_nocturnas : 0,
         motivo_otro: editForm.tipo_cobertura === 'otro' ? (editForm.motivo_otro.trim() || null) : null,
         notas: editForm.notas.trim() || null,
+        dias_a_descontar: editForm.dias_a_descontar === null ? null : Number(editForm.dias_a_descontar),
+        tiene_justificante: editForm.tiene_justificante,
       }).eq('id', editingRow.id);
       if (error) throw error;
       setEditingRow(null); setEditForm(null);
@@ -224,15 +245,17 @@ export default function SustitucionesModule() {
     }
   };
 
+  const colStyle = (width: string): React.CSSProperties => ({ minWidth: width, width: width });
+
   return (
     <div className="space-y-4">
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Sustitutos únicos', value: sustitutosUnicos, color: '#0369A1', bg: '#EFF6FF' },
-          { label: 'Registros', value: filtered.length, color: '#64748B', bg: '#F8FAFC' },
-          { label: 'Días cubiertos', value: totalDias, color: '#16A34A', bg: '#F0FDF4' },
-          { label: 'Horas nocturnas', value: `${totalNocturnas}h`, color: '#7C3AED', bg: '#F5F3FF' },
+          { label: 'H. a pagar', value: `${totalHorasPagar}h`, color: '#16A34A', bg: '#F0FDF4' },
+          { label: 'H. a compensar', value: `${totalHorasCompensar}h`, color: '#D97706', bg: '#FFFBEB' },
+          { label: 'Días a descontar', value: totalDiasDescontar, color: '#DC2626', bg: '#FEF2F2' },
         ].map((kpi, i) => (
           <div key={i} className="rounded-xl p-4" style={{ backgroundColor: kpi.bg }}>
             <p className="text-2xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
@@ -275,7 +298,7 @@ export default function SustitucionesModule() {
           style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
           <RefreshCw size={13} />
         </button>
-        <button onClick={() => { setShowForm(true); setForm({ sustituto_id: '', sustituto_nombre: '', num_horas: 0, motivo: '', fecha: new Date().toISOString().slice(0, 10) }); setFormError(''); }}
+        <button onClick={() => { setShowForm(true); setForm({ sustituto_id: '', sustituto_nombre: '', num_horas: 0, motivo: '', fecha: new Date().toISOString().slice(0, 10), dias_a_descontar: '', tiene_justificante: false }); setFormError(''); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white cursor-pointer"
           style={{ backgroundColor: '#0369A1' }}>
           <Plus size={13} /> Nueva Sustitución
@@ -350,6 +373,26 @@ export default function SustitucionesModule() {
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Días a descontar (opcional)</label>
+                <input type="number" min={0} step={1} value={form.dias_a_descontar}
+                  onChange={(e) => setForm({ ...form, dias_a_descontar: e.target.value })}
+                  placeholder="—"
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ borderColor: '#FECACA', backgroundColor: '#FEF2F2', color: '#DC2626', fontWeight: 700 }} />
+              </div>
+              <div>
+                <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Justificante (opcional)</label>
+                <button onClick={() => setForm({ ...form, tiene_justificante: !form.tiene_justificante })}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm border cursor-pointer transition-all"
+                  style={{ borderColor: form.tiene_justificante ? '#BBF7D0' : '#E2E8F0', backgroundColor: form.tiene_justificante ? '#F0FDF4' : '#F8FAFC', color: form.tiene_justificante ? '#16A34A' : '#94A3B8' }}>
+                  {form.tiene_justificante ? <CheckSquare size={16} /> : <Square size={16} />}
+                  <span className="font-medium">{form.tiene_justificante ? 'Con justificante' : 'Sin justificante'}</span>
+                </button>
+              </div>
+            </div>
+
             <div>
               <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Motivo</label>
               <input type="text" value={form.motivo}
@@ -371,18 +414,12 @@ export default function SustitucionesModule() {
         </div>
       )}
 
-      {/* Table */}
+      {/* Excel-like table */}
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
         <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
           <UserCheck size={14} style={{ color: '#0369A1' }} />
           <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Registro de Sustituciones</h3>
           <span className="ml-auto text-xs" style={{ color: '#94A3B8' }}>{filtered.length} registros</span>
-          {totalHoras > 0 && (
-            <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
-              style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
-              +{totalHoras}h en horas
-            </span>
-          )}
         </div>
 
         {loading ? (
@@ -396,74 +433,110 @@ export default function SustitucionesModule() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ minWidth: '880px' }}>
+            <table className="w-full text-sm border-collapse" style={{ minWidth: '1100px' }}>
               <thead>
-                <tr style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                  {['Sustituto', 'Persona sustituida', 'Fecha', 'Cantidad', 'Retribución', 'Turno', 'Extras', ''].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>{h}</th>
+                <tr style={{ backgroundColor: '#F1F5F9' }}>
+                  {[
+                    { label: 'Persona a sustituir', w: '170px' },
+                    { label: 'Fecha', w: '90px' },
+                    { label: 'Días descontar', w: '80px' },
+                    { label: 'Justif.', w: '60px' },
+                    { label: 'Persona sustituta', w: '160px' },
+                    { label: 'H. pagar', w: '70px' },
+                    { label: 'H. compensar', w: '75px' },
+                    { label: 'H. nocturnidad', w: '85px' },
+                    { label: 'H. festivas', w: '80px' },
+                    { label: '', w: '70px' },
+                  ].map((h) => (
+                    <th key={h.label} className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide border-b" style={{ color: '#475569', borderColor: '#E2E8F0', ...colStyle(h.w) }}>
+                      {h.label}
+                    </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-                {filtered.map((s) => {
-                  const tc = s.turno ? turnoColors[s.turno] : null;
+              <tbody>
+                {filtered.map((s, idx) => {
+                  const horas = computeHoras(s);
+                  const hPagar = s.tipo_cobertura === 'pagar' ? horas : null;
+                  const hCompensar = s.tipo_cobertura === 'compensar' ? horas : null;
+                  const hNoc = (s.horas_nocturnas ?? 0) > 0 ? s.horas_nocturnas : null;
+                  const hFest = s.es_festivo ? (s.unidad_festivo === 'horas' ? (s.horas_festivas ?? 0) : (s.num_dias_festivos ?? 0)) : null;
+                  const diasDesc = s.dias_a_descontar;
+                  const bg = idx % 2 === 1 ? '#F8FAFC' : '#FFFFFF';
                   return (
-                    <tr key={s.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    <tr key={s.id} className="hover:bg-blue-50/40 transition-colors" style={{ backgroundColor: bg }}>
+                      {/* Persona a sustituir */}
+                      <td className="px-3 py-2.5 border-b" style={{ borderColor: '#F1F5F9' }}>
+                        <span className="text-xs font-semibold" style={{ color: '#1E293B' }}>{s.empleado_nombre}</span>
+                      </td>
+                      {/* Fecha */}
+                      <td className="px-3 py-2.5 border-b text-xs font-mono" style={{ borderColor: '#F1F5F9', color: '#64748B' }}>
+                        {s.fecha_inicio}
+                      </td>
+                      {/* Días a descontar */}
+                      <td className="px-3 py-2.5 border-b text-center" style={{ borderColor: '#F1F5F9' }}>
+                        {diasDesc ? (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>−{diasDesc}d</span>
+                        ) : (
+                          <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>
+                        )}
+                      </td>
+                      {/* Justificante */}
+                      <td className="px-3 py-2.5 border-b text-center" style={{ borderColor: '#F1F5F9' }}>
+                        {s.tiene_justificante ? (
+                          <CheckSquare size={15} style={{ color: '#16A34A', display: 'inline-block' }} />
+                        ) : (
+                          <Square size={15} style={{ color: '#E2E8F0', display: 'inline-block' }} />
+                        )}
+                      </td>
+                      {/* Persona sustituta */}
+                      <td className="px-3 py-2.5 border-b" style={{ borderColor: '#F1F5F9' }}>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
                             style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>
                             {s.sustituto_nombre.charAt(0).toUpperCase()}
                           </div>
-                          <span className="text-sm font-semibold" style={{ color: '#1E293B' }}>{s.sustituto_nombre}</span>
+                          <span className="text-xs font-medium" style={{ color: '#1E293B' }}>{s.sustituto_nombre}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm" style={{ color: '#475569' }}>{s.empleado_nombre}</td>
-                      <td className="px-4 py-3 text-xs font-mono" style={{ color: '#64748B' }}>{s.fecha_inicio}</td>
-                      <td className="px-4 py-3">
-                        <span className="text-sm font-bold" style={{ color: '#0369A1' }}>
-                          {s.unidad === 'horas' ? `${s.num_horas}h` : `${s.num_dias}d`}
-                        </span>
+                      {/* H. pagar */}
+                      <td className="px-3 py-2.5 border-b text-center" style={{ borderColor: '#F1F5F9' }}>
+                        {hPagar !== null ? (
+                          <span className="text-xs font-bold" style={{ color: '#16A34A' }}>{hPagar}h</span>
+                        ) : (
+                          <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3">
-                        {s.tipo_cobertura ? (
-                          <span className="text-xs px-2 py-0.5 rounded font-semibold capitalize" style={{
-                            backgroundColor: s.tipo_cobertura === 'pagar' ? '#F0FDF4' : s.tipo_cobertura === 'compensar' ? '#EFF6FF' : '#FFFBEB',
-                            color: s.tipo_cobertura === 'pagar' ? '#16A34A' : s.tipo_cobertura === 'compensar' ? '#0369A1' : '#D97706',
-                          }}>
-                            {s.tipo_cobertura}
+                      {/* H. compensar */}
+                      <td className="px-3 py-2.5 border-b text-center" style={{ borderColor: '#F1F5F9' }}>
+                        {hCompensar !== null ? (
+                          <span className="text-xs font-bold" style={{ color: '#D97706' }}>{hCompensar}h</span>
+                        ) : (
+                          <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>
+                        )}
+                      </td>
+                      {/* H. nocturnidad */}
+                      <td className="px-3 py-2.5 border-b text-center" style={{ borderColor: '#F1F5F9' }}>
+                        {hNoc !== null ? (
+                          <span className="text-xs font-bold flex items-center justify-center gap-0.5" style={{ color: '#7C3AED' }}>
+                            <Moon size={10} />{hNoc}h
                           </span>
-                        ) : <span style={{ color: '#CBD5E1' }}>—</span>}
+                        ) : (
+                          <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3">
-                        {tc && s.turno ? (
-                          <span className="text-xs px-2 py-0.5 rounded font-semibold capitalize"
-                            style={{ backgroundColor: tc.bg, color: tc.color }}>{s.turno}</span>
-                        ) : <span style={{ color: '#CBD5E1' }}>—</span>}
+                      {/* H. festivas */}
+                      <td className="px-3 py-2.5 border-b text-center" style={{ borderColor: '#F1F5F9' }}>
+                        {hFest !== null ? (
+                          <span className="text-xs font-bold flex items-center justify-center gap-0.5" style={{ color: '#854D0E' }}>
+                            <Star size={10} />{festivoLabel(s)}
+                          </span>
+                        ) : (
+                          <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {(s.horas_nocturnas ?? 0) > 0 && (
-                            <span className="text-xs px-1.5 py-0.5 rounded font-semibold flex items-center gap-1"
-                              style={{ backgroundColor: '#F5F3FF', color: '#7C3AED' }}>
-                              <Moon size={10} />{s.horas_nocturnas}h
-                            </span>
-                          )}
-                          {s.es_festivo && (
-                            <span className="text-xs px-1.5 py-0.5 rounded font-semibold flex items-center gap-1"
-                              style={{ backgroundColor: '#FEF9C3', color: '#854D0E' }}>
-                              <Star size={10} />{s.num_dias_festivos}d
-                            </span>
-                          )}
-                          {s.notas && (
-                            <span className="text-xs truncate max-w-[100px]" style={{ color: '#94A3B8' }} title={s.notas}>{s.notas}</span>
-                          )}
-                          {!(s.horas_nocturnas ?? 0) && !s.es_festivo && !s.notas && (
-                            <span style={{ color: '#CBD5E1' }}>—</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
+                      {/* Actions */}
+                      <td className="px-3 py-2.5 border-b" style={{ borderColor: '#F1F5F9' }}>
                         <div className="flex items-center gap-1">
                           <button onClick={() => openEdit(s)}
                             className="w-6 h-6 rounded flex items-center justify-center cursor-pointer hover:bg-blue-50"
@@ -513,6 +586,28 @@ export default function SustitucionesModule() {
                   <input type="date" value={editForm.fecha_inicio} onChange={(e) => updField('fecha_inicio', e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#1E293B', backgroundColor: '#FFFFFF' }} />
                 </div>
               </div>
+
+              {/* Días a descontar + Justificante */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Días a descontar (opcional)</label>
+                  <input type="number" min={0} step={1} value={editForm.dias_a_descontar ?? ''}
+                    onChange={(e) => updField('dias_a_descontar', e.target.value === '' ? null : Number(e.target.value))}
+                    placeholder="—"
+                    className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none"
+                    style={{ borderColor: '#FECACA', color: '#DC2626', backgroundColor: '#FEF2F2', fontWeight: 700, fontSize: '14px' }} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Justificante (opcional)</label>
+                  <button onClick={() => updField('tiene_justificante', !editForm.tiene_justificante)}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs border cursor-pointer transition-all"
+                    style={{ borderColor: editForm.tiene_justificante ? '#BBF7D0' : '#E2E8F0', backgroundColor: editForm.tiene_justificante ? '#F0FDF4' : '#F8FAFC', color: editForm.tiene_justificante ? '#16A34A' : '#94A3B8' }}>
+                    {editForm.tiene_justificante ? <CheckSquare size={13} /> : <Square size={13} />}
+                    <span className="font-semibold">{editForm.tiene_justificante ? 'Con justificante' : 'Sin justificante'}</span>
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1.5" style={{ color: '#64748B' }}>Unidad</label>
                 <div className="flex gap-1.5">

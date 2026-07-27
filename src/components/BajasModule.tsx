@@ -4,7 +4,7 @@ import {
   AlertTriangle, UserCheck, CheckCircle2, Clock, ArrowRight,
   Sun, Moon, Sunset, Banknote, RotateCcw, MoreHorizontal, Star,
   FileCheck, CreditCard, Hash, FileSpreadsheet, FileText, ChevronDown,
-  Timer, Upload, CheckSquare, Square, Pencil,
+  Timer, Upload, CheckSquare, Square, Pencil, ChevronRight,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import SustitucionesModule from './SustitucionesModule';
@@ -68,6 +68,8 @@ interface Sustitucion {
   unidad_festivo: string | null;
   horas_festivas: number | null;
   es_nocturno: boolean | null;
+  dias_a_descontar: number | null;
+  tiene_justificante: boolean | null;
 }
 
 interface LiquidacionHoras {
@@ -117,6 +119,8 @@ interface SustitucionForm {
   unidad_festivo: 'dias' | 'horas';
   horas_festivas: number;
   es_nocturno: boolean;
+  dias_a_descontar: number | null;
+  tiene_justificante: boolean;
 }
 
 type ModoFinalizacion = 'nomina' | 'solicitud' | 'otro';
@@ -517,7 +521,7 @@ interface SustitucionBlockProps {
   idx: number;
   bajaFechaInicio: string;
   tipoContrato: string | null;
-  onUpdate: (idx: number, field: keyof SustitucionForm, value: string | number | boolean) => void;
+  onUpdate: (idx: number, field: keyof SustitucionForm, value: string | number | boolean | null) => void;
   onRemove: (idx: number) => void;
 }
 
@@ -703,6 +707,25 @@ function SustitucionBlock({ s, idx, bajaFechaInicio, tipoContrato, onUpdate, onR
             </span>
           </div>
         )}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Días a descontar (opcional)</label>
+            <input type="number" min={0} step={1} value={s.dias_a_descontar ?? ''}
+              onChange={(e) => onUpdate(idx, 'dias_a_descontar', e.target.value === '' ? null : Number(e.target.value))}
+              placeholder="—"
+              className="w-full px-2.5 py-1.5 rounded-lg text-xs border outline-none"
+              style={{ borderColor: '#FECACA', color: '#DC2626', backgroundColor: '#FEF2F2', fontWeight: 700 }} />
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Justificante (opcional)</label>
+            <button onClick={() => onUpdate(idx, 'tiene_justificante', !s.tiene_justificante)}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs border cursor-pointer transition-all"
+              style={{ borderColor: s.tiene_justificante ? '#BBF7D0' : '#E2E8F0', backgroundColor: s.tiene_justificante ? '#F0FDF4' : '#F8FAFC', color: s.tiene_justificante ? '#16A34A' : '#94A3B8' }}>
+              {s.tiene_justificante ? <CheckSquare size={13} /> : <Square size={13} />}
+              <span className="font-semibold">{s.tiene_justificante ? 'Con justificante' : 'Sin justificante'}</span>
+            </button>
+          </div>
+        </div>
         <div>
           <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Notas (opcional)</label>
           <input type="text" value={s.notas} onChange={(e) => onUpdate(idx, 'notas', e.target.value)}
@@ -721,6 +744,7 @@ export default function BajasModule() {
   const [bajas, setBajas] = useState<BajaWithSustituciones[]>([]);
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedBajas, setExpandedBajas] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [filterTipoCobertura, setFilterTipoCobertura] = useState('');
   const [showBajaModal, setShowBajaModal] = useState(false);
@@ -861,6 +885,8 @@ export default function BajasModule() {
       unidad_festivo: (s.unidad_festivo as 'dias' | 'horas') ?? 'dias',
       horas_festivas: s.horas_festivas ?? 0,
       es_nocturno: s.es_nocturno ?? false,
+      dias_a_descontar: s.dias_a_descontar ?? null,
+      tiene_justificante: s.tiene_justificante ?? false,
     })));
     setShowBajaModal(true);
     setError('');
@@ -873,13 +899,13 @@ export default function BajasModule() {
 
   const addSustitucionBlock = (emp: Empleado) => {
     if (sustitucionesForm.find((s) => s.sustituto_id === emp.id)) { setError(`${emp.nombre} ya está asignado.`); return; }
-    setSustitucionesForm([...sustitucionesForm, { sustituto_id: emp.id, sustituto_nombre: emp.nombre, fecha_inicio: bajaForm.fecha_inicio || '', num_dias: 1, notas: '', tipo_cobertura: '', turno: '', es_festivo: false, unidad: 'dias', num_horas: 8, horas_nocturnas: 0, motivo_otro: '', num_dias_festivos: 0, unidad_festivo: 'dias', horas_festivas: 0, es_nocturno: false }]);
+    setSustitucionesForm([...sustitucionesForm, { sustituto_id: emp.id, sustituto_nombre: emp.nombre, fecha_inicio: bajaForm.fecha_inicio || '', num_dias: 1, notas: '', tipo_cobertura: '', turno: '', es_festivo: false, unidad: 'dias', num_horas: 8, horas_nocturnas: 0, motivo_otro: '', num_dias_festivos: 0, unidad_festivo: 'dias', horas_festivas: 0, es_nocturno: false, dias_a_descontar: null, tiene_justificante: false }]);
     setShowSustitutoDropdown(false);
     setSustitutoSearch('');
     setError('');
   };
 
-  const updateSustitucion = (idx: number, field: keyof SustitucionForm, value: string | number | boolean) => {
+  const updateSustitucion = (idx: number, field: keyof SustitucionForm, value: string | number | boolean | null) => {
     setSustitucionesForm((prev) => prev.map((s, i) => (i === idx ? { ...s, [field]: value } : s)));
   };
 
@@ -927,6 +953,8 @@ export default function BajasModule() {
           num_dias_festivos: s.es_festivo ? (s.unidad_festivo === 'dias' ? s.num_dias_festivos : 0) : 0,
           unidad_festivo: s.unidad_festivo,
           horas_festivas: s.es_festivo ? (s.unidad_festivo === 'horas' ? s.horas_festivas : 0) : 0,
+          dias_a_descontar: s.dias_a_descontar === null ? null : Number(s.dias_a_descontar),
+          tiene_justificante: s.tiene_justificante,
           es_nocturno: s.es_nocturno,
         }));
         const { error: sustErr } = await supabase.from('sustituciones').insert(sustRows);
@@ -1064,10 +1092,12 @@ export default function BajasModule() {
       unidad_festivo: (s.unidad_festivo as 'dias' | 'horas') ?? 'dias',
       horas_festivas: s.horas_festivas ?? 0,
       es_nocturno: s.es_nocturno ?? false,
+      dias_a_descontar: s.dias_a_descontar ?? null,
+      tiene_justificante: s.tiene_justificante ?? false,
     });
   };
 
-  const updateEditSustField = (field: keyof SustitucionForm, value: string | number | boolean) => {
+  const updateEditSustField = (field: keyof SustitucionForm, value: string | number | boolean | null) => {
     setEditSustForm((prev) => prev ? { ...prev, [field]: value } : prev);
   };
 
@@ -1090,6 +1120,8 @@ export default function BajasModule() {
         unidad_festivo: editSustForm.unidad_festivo,
         horas_festivas: editSustForm.es_festivo ? (editSustForm.unidad_festivo === 'horas' ? editSustForm.horas_festivas : 0) : 0,
         es_nocturno: editSustForm.es_nocturno,
+        dias_a_descontar: editSustForm.dias_a_descontar === null ? null : Number(editSustForm.dias_a_descontar),
+        tiene_justificante: editSustForm.tiene_justificante,
       }).eq('id', editingSustId);
       if (updErr) throw updErr;
       setEditingSustId(null);
@@ -1457,6 +1489,13 @@ export default function BajasModule() {
             {activeBajas.map((baja) => {
               const dbStats = computeStatsFromDB(baja.sustituciones);
               const diasACubrirBaja = baja.larga_duracion ? null : Math.max(0, baja.total_dias - (baja.dias_no_cubiertos ?? 0));
+              const isExpanded = expandedBajas.has(baja.id);
+              const toggleExpand = () => setExpandedBajas((prev) => {
+                const next = new Set(prev);
+                if (next.has(baja.id)) next.delete(baja.id);
+                else next.add(baja.id);
+                return next;
+              });
               return (
                 <div key={baja.id} className="rounded-xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                   <div className="p-4">
@@ -1470,6 +1509,14 @@ export default function BajasModule() {
                           <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' }}>Activa</span>
                           {baja.larga_duracion && (
                             <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ backgroundColor: '#F5F3FF', color: '#7C3AED', border: '1px solid #DDD6FE' }}>Larga duración</span>
+                          )}
+                          {baja.sustituciones.length > 0 && (
+                            <button onClick={toggleExpand}
+                              className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded cursor-pointer transition-all"
+                              style={{ backgroundColor: isExpanded ? '#EFF6FF' : '#F1F5F9', color: isExpanded ? '#0369A1' : '#64748B', border: `1px solid ${isExpanded ? '#BFDBFE' : '#E2E8F0'}` }}>
+                              {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                              {baja.sustituciones.length} sustituto{baja.sustituciones.length !== 1 ? 's' : ''}
+                            </button>
                           )}
                         </div>
                         <div className="flex items-center gap-3 mt-1 flex-wrap text-xs" style={{ color: '#94A3B8' }}>
@@ -1500,8 +1547,8 @@ export default function BajasModule() {
                       </div>
                     </div>
 
-                    {/* Sustituciones in column table */}
-                    {baja.sustituciones.length > 0 && (
+                    {/* Sustituciones in column table — collapsible */}
+                    {baja.sustituciones.length > 0 && isExpanded && (
                       <div className="mt-3 pt-3 border-t" style={{ borderColor: '#F1F5F9' }}>
                         {/* Coverage summary badges */}
                         <div className="flex flex-wrap gap-2 mb-2">
@@ -1597,6 +1644,13 @@ export default function BajasModule() {
               const dbStats = computeStatsFromDB(baja.sustituciones);
               const modoCfg = baja.modo_finalizacion ? modoConfig[baja.modo_finalizacion as ModoFinalizacion] : null;
               const ModoIcon = modoCfg?.icon;
+              const isExpanded = expandedBajas.has(baja.id);
+              const toggleExpand = () => setExpandedBajas((prev) => {
+                const next = new Set(prev);
+                if (next.has(baja.id)) next.delete(baja.id);
+                else next.add(baja.id);
+                return next;
+              });
               return (
                 <div key={baja.id} className="rounded-xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                   <div className="p-4">
@@ -1614,6 +1668,14 @@ export default function BajasModule() {
                               {modoCfg.label}
                             </span>
                           )}
+                          {baja.sustituciones.length > 0 && (
+                            <button onClick={toggleExpand}
+                              className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded cursor-pointer transition-all"
+                              style={{ backgroundColor: isExpanded ? '#EFF6FF' : '#F1F5F9', color: isExpanded ? '#0369A1' : '#64748B', border: `1px solid ${isExpanded ? '#BFDBFE' : '#E2E8F0'}` }}>
+                              {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                              {baja.sustituciones.length} sustituto{baja.sustituciones.length !== 1 ? 's' : ''}
+                            </button>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 mt-1 flex-wrap text-xs" style={{ color: '#94A3B8' }}>
                           <span className="flex items-center gap-1"><Calendar size={11} />{formatDate(baja.fecha_inicio)}</span>
@@ -1630,7 +1692,7 @@ export default function BajasModule() {
                       </div>
                     </div>
 
-                    {baja.sustituciones.length > 0 && (
+                    {baja.sustituciones.length > 0 && isExpanded && (
                       <div className="mt-3 pt-3 border-t" style={{ borderColor: '#F1F5F9' }}>
                         <div className="flex flex-wrap gap-2 mb-2">
                           {dbStats.totalDias > 0 && (
@@ -2083,6 +2145,25 @@ export default function BajasModule() {
                         <input type="number" min={0} step={0.5} value={editSustForm.horas_nocturnas} onChange={(e) => updateEditSustField('horas_nocturnas', parseFloat(e.target.value) || 0)}
                           className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#DDD6FE', color: '#7C3AED', backgroundColor: '#FFFFFF', fontWeight: 700, fontSize: '14px' }} placeholder="Nº horas nocturnas" />
                       )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Días a descontar (opcional)</label>
+                        <input type="number" min={0} step={1} value={editSustForm.dias_a_descontar ?? ''}
+                          onChange={(e) => updateEditSustField('dias_a_descontar', e.target.value === '' ? null : Number(e.target.value))}
+                          placeholder="—"
+                          className="w-full px-2.5 py-2 rounded-lg text-xs border outline-none"
+                          style={{ borderColor: '#FECACA', color: '#DC2626', backgroundColor: '#FEF2F2', fontWeight: 700, fontSize: '14px' }} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Justificante (opcional)</label>
+                        <button onClick={() => updateEditSustField('tiene_justificante', !editSustForm.tiene_justificante)}
+                          className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs border cursor-pointer transition-all"
+                          style={{ borderColor: editSustForm.tiene_justificante ? '#BBF7D0' : '#E2E8F0', backgroundColor: editSustForm.tiene_justificante ? '#F0FDF4' : '#F8FAFC', color: editSustForm.tiene_justificante ? '#16A34A' : '#94A3B8' }}>
+                          {editSustForm.tiene_justificante ? <CheckSquare size={13} /> : <Square size={13} />}
+                          <span className="font-semibold">{editSustForm.tiene_justificante ? 'Con justificante' : 'Sin justificante'}</span>
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Notas (opcional)</label>

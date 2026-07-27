@@ -750,11 +750,14 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
   }, []);
 
   const loadEmpleados = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error: empErr } = await supabase
       .from('empleados')
-      .select('id, nombre, apellidos, dni, telefono, id_sociedad')
+      .select('id, nombre, dni, telefono, id_sociedad')
       .eq('activo', true)
       .order('nombre');
+    if (empErr) {
+      setError('No se pudieron cargar los empleados: ' + empErr.message);
+    }
     setEmpleados((data ?? []) as Empleado[]);
   }, []);
 

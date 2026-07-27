@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Users, UserPlus, Search, Mail, CheckCircle2,
   CreditCard as Edit2, Key, X, Eye, EyeOff, AlertCircle,
-  RefreshCw, Hash, UserCheck, Send, FileText,
+  RefreshCw, Hash, UserCheck, Send, FileText, UserCog, Trash2,
 } from 'lucide-react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './components/Pagination';
 import { supabase, UserProfile, AppRole, Empleado } from './supabaseClient';
@@ -231,6 +231,80 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const [loading, setLoading] = useState(false);
   const [fieldSuccess, setFieldSuccess] = useState<ActiveField>(null);
   const [error, setError] = useState('');
+
+  // Supervisor assignment state
+  const [supervisorEmpleados, setSupervisorEmpleados] = useState<Empleado[]>([]);
+  const [allEmpleados, setAllEmpleados] = useState<Empleado[]>([]);
+  const [empSearch, setEmpSearch] = useState('');
+  const [savingAsign, setSavingAsign] = useState(false);
+
+  const loadSupervisorEmpleados = useCallback(async () => {
+    if (user.role !== 'supervisor') return;
+    try {
+      const { data, error: err } = await supabase
+        .from('supervisor_asignaciones')
+        .select('empleado_id')
+        .eq('supervisor_id', user.id);
+      if (err) throw err;
+      const ids = (data ?? []).map((r: { empleado_id: string }) => r.empleado_id);
+      if (ids.length === 0) { setSupervisorEmpleados([]); return; }
+      const { data: emps } = await supabase
+        .from('empleados')
+        .select('*')
+        .in('id', ids)
+        .order('nombre');
+      setSupervisorEmpleados((emps ?? []) as Empleado[]);
+    } catch { setSupervisorEmpleados([]); }
+  }, [user.id, user.role]);
+
+  const loadAllEmpleados = useCallback(async () => {
+    if (user.role !== 'supervisor') return;
+    try {
+      const { data, error: err } = await supabase
+        .from('empleados')
+        .select('*')
+        .order('nombre');
+      if (err) throw err;
+      setAllEmpleados((data ?? []) as Empleado[]);
+    } catch { setAllEmpleados([]); }
+  }, [user.role]);
+
+  useEffect(() => {
+    if (user.role === 'supervisor') {
+      loadSupervisorEmpleados();
+      loadAllEmpleados();
+    }
+  }, [user.role, loadSupervisorEmpleados, loadAllEmpleados]);
+
+  const handleAssignEmpleado = async (empId: string) => {
+    setSavingAsign(true);
+    setError('');
+    try {
+      const { error: err } = await supabase
+        .from('supervisor_asignaciones')
+        .insert({ supervisor_id: user.id, empleado_id: empId });
+      if (err) throw err;
+      await loadSupervisorEmpleados();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al asignar');
+    } finally { setSavingAsign(false); }
+  };
+
+  const handleUnassignEmpleado = async (empId: string) => {
+    setSavingAsign(true);
+    setError('');
+    try {
+      const { error: err } = await supabase
+        .from('supervisor_asignaciones')
+        .delete()
+        .eq('supervisor_id', user.id)
+        .eq('empleado_id', empId);
+      if (err) throw err;
+      await loadSupervisorEmpleados();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al desasignar');
+    } finally { setSavingAsign(false); }
+  };
 
   const open = (field: ActiveField) => {
     setActiveField(field);
@@ -546,6 +620,96 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
             </div>
           </CredentialRow>
         </div>
+
+        {/* ── Supervisor: empleados asignados ── */}
+        {user.role === 'supervisor' && (
+          <div className="px-5 pb-5">
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #DDD6FE', backgroundColor: '#FAFAFF' }}>
+              <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid #EDE9FE' }}>
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F5F3FF', color: '#7C3AED' }}>
+                  <UserCog size={15} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#7C3AED' }}>Empleados asignados a este supervisor</p>
+                  <p className="text-sm font-medium mt-0.5" style={{ color: '#1E293B' }}>
+                    {supervisorEmpleados.length} empleado{supervisorEmpleados.length !== 1 ? 's' : ''} asignado{supervisorEmpleados.length !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+
+              {/* List of assigned employees */}
+              <div className="px-4 py-3 space-y-2">
+                {supervisorEmpleados.length === 0 && (
+                  <p className="text-xs text-center py-4" style={{ color: '#94A3B8' }}>No hay empleados asignados</p>
+                )}
+                {supervisorEmpleados.map((emp) => (
+                  <div key={emp.id} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0"
+                      style={{ backgroundColor: '#F5F3FF', color: '#7C3AED' }}>
+                      {emp.nombre.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>
+                        {emp.nombre}{emp.apellidos ? ` ${emp.apellidos}` : ''}
+                      </p>
+                      <p className="text-xs truncate" style={{ color: '#94A3B8' }}>
+                        {emp.puesto || 'Sin puesto'}{emp.centro_trabajo ? ` · ${emp.centro_trabajo}` : ''}
+                      </p>
+                    </div>
+                    <button onClick={() => handleUnassignEmpleado(emp.id)} disabled={savingAsign}
+                      className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 disabled:opacity-50"
+                      style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}
+                      title="Desasignar">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add employee to supervisor */}
+              <div className="px-4 pb-4 pt-2" style={{ borderTop: '1px solid #EDE9FE' }}>
+                <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: '#7C3AED' }}>Asignar nuevo empleado</label>
+                <div className="relative mb-2">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+                  <input type="text" value={empSearch} onChange={(e) => setEmpSearch(e.target.value)}
+                    placeholder="Buscar empleado por nombre o DNI..."
+                    className="w-full pl-8 pr-3 py-2 rounded-lg text-sm outline-none"
+                    style={{ border: '1px solid #DDD6FE', color: '#1E293B', backgroundColor: '#FFFFFF' }} />
+                </div>
+                <div className="max-h-40 overflow-y-auto rounded-lg" style={{ border: '1px solid #E2E8F0' }}>
+                  {allEmpleados
+                    .filter((emp) => {
+                      const assigned = supervisorEmpleados.some((se) => se.id === emp.id);
+                      if (assigned) return false;
+                      if (!empSearch.trim()) return true;
+                      const q = empSearch.toLowerCase();
+                      return (emp.nombre + ' ' + (emp.apellidos ?? '')).toLowerCase().includes(q) ||
+                        (emp.dni ?? '').toLowerCase().includes(q);
+                    })
+                    .slice(0, 30)
+                    .map((emp) => (
+                      <div key={emp.id} className="flex items-center gap-3 px-3 py-2" style={{ borderBottom: '1px solid #F1F5F9' }}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>
+                            {emp.nombre}{emp.apellidos ? ` ${emp.apellidos}` : ''}
+                          </p>
+                          <p className="text-xs truncate" style={{ color: '#94A3B8' }}>
+                            {emp.puesto || 'Sin puesto'}{emp.centro_trabajo ? ` · ${emp.centro_trabajo}` : ''}
+                          </p>
+                        </div>
+                        <button onClick={() => handleAssignEmpleado(emp.id)} disabled={savingAsign}
+                          className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 disabled:opacity-50"
+                          style={{ backgroundColor: '#7C3AED', color: '#FFFFFF' }}>
+                          + Asignar
+                        </button>
+                      </div>
+                    ))}
+                </div>
+                {error && <p className="text-xs mt-2" style={{ color: '#DC2626' }}>{error}</p>}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="px-5 pb-5">
           <button onClick={onClose} className="w-full py-2.5 rounded-xl text-sm font-medium cursor-pointer"

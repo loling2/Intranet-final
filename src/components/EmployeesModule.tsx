@@ -42,6 +42,7 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   nass: null,
   sexo: null,
   convenio: null,
+  localidad: null,
   direccion: null,
   codigo_postal: null,
   observaciones: null,
@@ -78,6 +79,7 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     nass: e.nass ?? null,
     sexo: e.sexo ?? null,
     convenio: e.convenio ?? null,
+    localidad: (e as typeof EMPTY_FORM & { localidad?: string | null }).localidad ?? null,
     direccion: e.direccion ?? null,
     codigo_postal: e.codigo_postal ?? null,
     observaciones: e.observaciones,
@@ -101,11 +103,17 @@ const CSV_AUTH_EXAMPLE = [
   ['supervisor@empresa.com', 'Maria Perez Ruiz', '87654321B', 'Contrasena456!', 'supervisor', ''],
 ];
 
-// Template B: HR data (apellidos + nombre → creates empleado record, no login)
-const CSV_HR_HEADERS = ['apellidos', 'nombre', 'dni', 'telefono', 'fecha_alta', 'fecha_nacimiento', 'tipo_contrato', 'turno', 'puesto', 'centro_trabajo', 'emails'];
+// Template B: HR data — matches the real RRHH export format
+// Name format: "APELLIDOS, NOMBRE" → stored as "NOMBRE APELLIDOS"
+const CSV_HR_HEADERS = [
+  'Nombre Completo', 'Puesto de trabajo', 'NASS', 'NIF',
+  'Codigo Contrato', 'Fecha de alta en compania', 'Fecha Antiguedad en la empresa',
+  'Fecha Nacimiento', 'Telefono 1', 'E-mail personal',
+  'Convenio', 'Localidad', 'Direccion Completa', 'Codigo Postal', 'Sexo',
+];
 const CSV_HR_EXAMPLE = [
-  ['Garcia Lopez', 'Juan', '12345678A', '600000001', '2024-01-15', '1990-05-20', 'Indefinido', 'Manana', 'Tecnico', 'Sede Central', 'juan@empresa.com'],
-  ['Perez Ruiz', 'Maria', '87654321B', '600000002', '2024-03-01', '1985-11-08', 'Temporal', 'Tarde', 'Administrativo', 'Oficina Norte', 'maria@empresa.com'],
+  ['GARCIA LOPEZ, JUAN', 'TECNICO', '38/12345678/90', '12345678A', '100', '01/01/2024', '01/01/2020', '15/05/1990', '600000001', 'juan@email.com', 'SERVICIOS ATENCION PERSONAS', 'SANTA CRUZ DE TENERIFE', 'CL/EJEMPLO, 1', '38001', 'Hombre'],
+  ['PEREZ RUIZ, MARIA', 'PSICOLOGO/A', '38/87654321/05', '87654321B', '100', '01/03/2024', '01/03/2024', '08/11/1985', '600000002', 'maria@email.com', 'SERVICIOS ATENCION PERSONAS', 'SANTA URSULA', 'AV/PRINCIPAL, 5', '38390', 'Mujer'],
 ];
 
 function downloadTemplateCsv(type: 'auth' | 'hr') {
@@ -145,44 +153,14 @@ function parseCsv(text: string): { rows: Record<string, string>[]; mode: 'auth' 
     return obj;
   }).filter(r => Object.values(r).some(v => v.trim()));
 
-  // Detect mode: HR format has 'apellidos' column
-  const mode: 'auth' | 'hr' = headers.includes('apellidos') || headers.includes('apellido') ? 'hr' : 'auth';
+  // Detect mode: HR format has NIF/apellidos or 'nombre_completo'
+  const mode: 'auth' | 'hr' = headers.some(h =>
+    ['apellidos', 'apellido', 'nombre_completo', 'nif', 'nass', 'puesto_de_trabajo'].includes(h)
+  ) ? 'hr' : 'auth';
   return { rows, mode };
 }
 
-// Map HR CSV row to empleado payload
-function hrRowToEmpleado(r: Record<string, string>, societyId: string): Partial<Empleado> {
-  const apellidos = r['apellidos'] ?? r['apellido'] ?? '';
-  const nombre = r['nombre'] ?? '';
-  const fullName = apellidos && nombre ? `${nombre} ${apellidos}` : nombre || apellidos;
 
-  // Normalize date: accept DD/MM/YYYY or YYYY-MM-DD
-  const parseDate = (s: string) => {
-    if (!s?.trim()) return null;
-    const dmyMatch = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
-    if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2].padStart(2,'0')}-${dmyMatch[1].padStart(2,'0')}`;
-    const ymatch = s.match(/^\d{4}-\d{2}-\d{2}$/);
-    if (ymatch) return s;
-    return null;
-  };
-
-  return {
-    nombre: fullName,
-    email: r['emails'] ?? r['email'] ?? r['correo'] ?? '',
-    dni: r['dni'] ?? r['dni_nie'] ?? null,
-    telefono: r['telefono'] ?? r['tel'] ?? null,
-    fecha_alta: parseDate(r['fecha_alta'] ?? r['fechaalta'] ?? ''),
-    fecha_nacimiento: parseDate(r['fecha_nacimiento'] ?? r['fechanacimiento'] ?? r['fecha_de_nacimiento'] ?? ''),
-    tipo_contrato: r['tipo_contrato'] ?? r['tipocontrato'] ?? null,
-    turno: r['turno'] ?? null,
-    puesto: r['puesto'] ?? null,
-    centro_trabajo: r['centro_trabajo'] ?? r['centrotrabajo'] ?? r['centro_de_trabajo'] ?? null,
-    id_sociedad: societyId,
-    activo: true,
-    estado_contrato: 'pendiente' as const,
-    user_id: null,
-  };
-}
 
 function ImportUsersModal({ sociedades, onClose, onImported }: {
   sociedades: Sociedad[];
@@ -195,7 +173,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
   const [selectedSociety, setSelectedSociety] = useState(sociedades[0]?.id ?? '');
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
-  const [results, setResults] = useState<Array<{ label: string; ok: boolean; error?: string }>>([]);
+  const [results, setResults] = useState<Array<{ label: string; ok: boolean; updated?: boolean; error?: string }>>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -219,16 +197,28 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
     setError('');
     try {
       if (mode === 'hr') {
-        // Direct insert into empleados table
         if (!selectedSociety) throw new Error('Selecciona una sociedad antes de importar');
-        const res: Array<{ label: string; ok: boolean; error?: string }> = [];
+        const res: Array<{ label: string; ok: boolean; updated?: boolean; error?: string }> = [];
         for (const r of rows) {
           const payload = hrRowToEmpleado(r, selectedSociety);
-          if (!payload.nombre?.trim()) { res.push({ label: r['emails'] || r['nombre'] || '?', ok: false, error: 'Nombre vacío' }); continue; }
-          const { error: err } = await supabase.from('empleados').insert(payload);
-          const label = payload.email || payload.nombre || '?';
-          if (err) { res.push({ label, ok: false, error: err.message }); }
-          else { res.push({ label, ok: true }); }
+          if (!payload.nombre?.trim()) { res.push({ label: payload.email || payload.nombre || '?', ok: false, error: 'Nombre vacío' }); continue; }
+          const label = payload.nombre || payload.email || '?';
+          try {
+            if (payload.dni) {
+              const { data: existing } = await supabase.from('empleados').select('id').eq('dni', payload.dni).maybeSingle();
+              if (existing?.id) {
+                const { error: err } = await supabase.from('empleados').update(payload).eq('id', existing.id);
+                if (err) throw err;
+                res.push({ label, ok: true, updated: true });
+                continue;
+              }
+            }
+            const { error: err } = await supabase.from('empleados').insert(payload);
+            if (err) throw err;
+            res.push({ label, ok: true, updated: false });
+          } catch (err: unknown) {
+            res.push({ label, ok: false, error: err instanceof Error ? err.message : String(err) });
+          }
         }
         setResults(res);
       } else {
@@ -285,7 +275,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                 {step === 'upload'
                   ? 'Sube un CSV con los datos'
                   : step === 'preview'
-                  ? `${rows.length} registro(s) detectados · formato ${mode === 'hr' ? 'RRHH' : 'acceso'}`
+                  ? `${rows.length} registro(s) · formato ${mode === 'hr' ? 'RRHH (upsert por DNI)' : 'acceso'}`
                   : 'Resultado de la importación'}
               </p>
             </div>
@@ -399,7 +389,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                   <thead style={{ backgroundColor: '#F8FAFC' }}>
                     <tr>
                       {mode === 'hr'
-                        ? ['Nombre', 'Apellidos', 'DNI', 'Telefono', 'Fecha Alta', 'F. Nacimiento', 'Contrato', 'Turno', 'Puesto', 'Centro', 'Email'].map(h => (
+                        ? ['Nombre (parseado)', 'DNI/NIF', 'NASS', 'Puesto', 'Fecha Alta', 'F. Nacimiento', 'Teléfono', 'Email', 'Localidad', 'Sexo'].map(h => (
                             <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: '#374151', borderBottom: '1px solid #E2E8F0' }}>{h}</th>
                           ))
                         : ['Email', 'Nombre', 'DNI', 'Contraseña', 'Rol', 'Sociedad'].map(h => (
@@ -412,19 +402,23 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                     {rows.map((r, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
                         {mode === 'hr' ? (
-                          <>
-                            <td className="px-3 py-2 font-medium whitespace-nowrap" style={{ color: '#1E293B' }}>{r['nombre'] || '—'}</td>
-                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{r['apellidos'] || r['apellido'] || '—'}</td>
-                            <td className="px-3 py-2 font-mono" style={{ color: '#475569' }}>{r['dni'] || '—'}</td>
-                            <td className="px-3 py-2" style={{ color: '#475569' }}>{r['telefono'] || r['tel'] || '—'}</td>
-                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{r['fecha_alta'] || r['fechaalta'] || '—'}</td>
-                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{r['fecha_nacimiento'] || r['fechanacimiento'] || r['fecha_de_nacimiento'] || '—'}</td>
-                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{r['tipo_contrato'] || r['tipocontrato'] || '—'}</td>
-                            <td className="px-3 py-2" style={{ color: '#475569' }}>{r['turno'] || '—'}</td>
-                            <td className="px-3 py-2" style={{ color: '#475569' }}>{r['puesto'] || '—'}</td>
-                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{r['centro_trabajo'] || r['centrotrabajo'] || r['centro_de_trabajo'] || '—'}</td>
-                            <td className="px-3 py-2 font-mono" style={{ color: '#0369A1' }}>{r['emails'] || r['email'] || r['correo'] || '—'}</td>
-                          </>
+                          (() => {
+                            const parsed = hrRowToEmpleado(r, selectedSociety);
+                            return (
+                              <>
+                                <td className="px-3 py-2 font-medium whitespace-nowrap" style={{ color: '#1E293B' }}>{parsed.nombre || '—'}</td>
+                                <td className="px-3 py-2 font-mono" style={{ color: '#475569' }}>{parsed.dni || '—'}</td>
+                                <td className="px-3 py-2 font-mono" style={{ color: '#475569' }}>{parsed.nass || '—'}</td>
+                                <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{parsed.puesto || '—'}</td>
+                                <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{parsed.fecha_alta || '—'}</td>
+                                <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{parsed.fecha_nacimiento || '—'}</td>
+                                <td className="px-3 py-2" style={{ color: '#475569' }}>{parsed.telefono || '—'}</td>
+                                <td className="px-3 py-2 font-mono" style={{ color: '#0369A1' }}>{parsed.email || '—'}</td>
+                                <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{(parsed as { localidad?: string | null }).localidad || '—'}</td>
+                                <td className="px-3 py-2" style={{ color: '#475569' }}>{parsed.sexo || '—'}</td>
+                              </>
+                            );
+                          })()
                         ) : (
                           <>
                             <td className="px-3 py-2 font-mono" style={{ color: '#0369A1' }}>{r['email'] || r['correo'] || '—'}</td>
@@ -470,6 +464,11 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                   <p className="text-xs" style={{ color: '#94A3B8' }}>Errores</p>
                 </div>
               </div>
+              {results.filter(r => r.ok && r.updated).length > 0 && (
+                <div className="flex items-center gap-2 p-2 rounded-lg text-xs" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>
+                  <span className="font-semibold">{results.filter(r => r.ok && r.updated).length}</span> actualizados por DNI · <span className="font-semibold">{results.filter(r => r.ok && !r.updated).length}</span> nuevos insertados
+                </div>
+              )}
               {results.filter(r => !r.ok).map((r, i) => (
                 <div key={i} className="flex items-start gap-2 p-3 rounded-xl text-xs" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
                   <AlertCircle size={13} className="flex-shrink-0 mt-0.5" style={{ color: '#DC2626' }} />

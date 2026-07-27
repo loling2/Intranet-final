@@ -100,6 +100,7 @@ export interface Empleado {
   nass: string | null;
   sexo: string | null;
   convenio: string | null;
+  localidad: string | null;
   direccion: string | null;
   codigo_postal: string | null;
   observaciones: string | null;

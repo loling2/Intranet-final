@@ -63,19 +63,13 @@ export default function PinFichajeModule({ onClose }: { onClose?: () => void } =
         .order('timestamp', { ascending: true });
 
       const logs = (todayLogs ?? []) as { tipo_evento: string; timestamp: string }[];
-      const hasEntrada = logs.some((l) => l.tipo_evento === 'entrada');
-      const hasSalida = logs.some((l) => l.tipo_evento === 'salida');
+      const lastEvent = logs.length > 0 ? logs[logs.length - 1].tipo_evento : null;
 
       let tipo: 'entrada' | 'salida';
-      if (!hasEntrada) {
+      if (!lastEvent || lastEvent === 'salida') {
         tipo = 'entrada';
-      } else if (hasEntrada && !hasSalida) {
-        tipo = 'salida';
       } else {
-        setStatus('error');
-        setMessage('Ya has fichado entrada y salida hoy.');
-        resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
-        return;
+        tipo = 'salida';
       }
 
       const { data: emp } = await supabase

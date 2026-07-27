@@ -1601,42 +1601,6 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               </div>
             </div>
 
-            {/* Section: Entrega documentacion PRL */}
-            <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#64748B' }}>Entrega documentacion PRL</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {([
-                  { field: 'prl_ficha_puesto', label: 'Ficha del puesto de trabajo' },
-                  { field: 'prl_evaluacion_riesgos', label: 'Evaluacion de riesgos' },
-                  { field: 'prl_medidas_emergencia', label: 'Medidas de emergencia' },
-                  { field: 'prl_plan_prevencion', label: 'Plan de Prevencion' },
-                ] as const).map(({ field, label }) => {
-                  const entregado = Boolean(form[field]);
-                  return (
-                    <button
-                      key={field}
-                      type="button"
-                      onClick={() => f(field, !entregado)}
-                      className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
-                      style={{
-                        backgroundColor: entregado ? '#DCFCE7' : '#FEE2E2',
-                        color: entregado ? '#15803D' : '#B91C1C',
-                        border: `1.5px solid ${entregado ? '#22C55E' : '#EF4444'}`,
-                      }}
-                    >
-                      <span className="flex items-center gap-2">
-                        {entregado ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-                        {label}
-                      </span>
-                      <span className="text-[10px] font-bold uppercase tracking-wide">
-                        {entregado ? 'Entregado' : 'Pendiente'}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             {/* Section: Datos personales */}
             <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Datos personales</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
@@ -1773,6 +1737,42 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                 <textarea value={form.observaciones ?? ''} onChange={(e) => f('observaciones', e.target.value)}
                   rows={2} className="form-input resize-none" placeholder="Notas adicionales..." />
               </FormField>
+            </div>
+
+            {/* Section: Entrega documentacion PRL */}
+            <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#64748B' }}>Entrega documentacion PRL</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {([
+                  { field: 'prl_ficha_puesto', label: 'Ficha del puesto de trabajo' },
+                  { field: 'prl_evaluacion_riesgos', label: 'Evaluacion de riesgos' },
+                  { field: 'prl_medidas_emergencia', label: 'Medidas de emergencia' },
+                  { field: 'prl_plan_prevencion', label: 'Plan de Prevencion' },
+                ] as const).map(({ field, label }) => {
+                  const entregado = Boolean(form[field]);
+                  return (
+                    <button
+                      key={field}
+                      type="button"
+                      onClick={() => f(field, !entregado)}
+                      className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                      style={{
+                        backgroundColor: entregado ? '#DCFCE7' : '#FEE2E2',
+                        color: entregado ? '#15803D' : '#B91C1C',
+                        border: `1.5px solid ${entregado ? '#22C55E' : '#EF4444'}`,
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        {entregado ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                        {label}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide">
+                        {entregado ? 'Entregado' : 'Pendiente'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Section: Estado del contrato */}
@@ -2045,42 +2045,6 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         </div>
                       </div>
 
-                      {/* Section: Entrega documentacion PRL */}
-                      <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                        <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#64748B' }}>Entrega documentacion PRL</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {([
-                            { field: 'prl_ficha_puesto', label: 'Ficha del puesto de trabajo' },
-                            { field: 'prl_evaluacion_riesgos', label: 'Evaluacion de riesgos' },
-                            { field: 'prl_medidas_emergencia', label: 'Medidas de emergencia' },
-                            { field: 'prl_plan_prevencion', label: 'Plan de Prevencion' },
-                          ] as const).map(({ field, label }) => {
-                            const entregado = Boolean(form[field]);
-                            return (
-                              <button
-                                key={field}
-                                type="button"
-                                onClick={() => f(field, !entregado)}
-                                className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
-                                style={{
-                                  backgroundColor: entregado ? '#DCFCE7' : '#FEE2E2',
-                                  color: entregado ? '#15803D' : '#B91C1C',
-                                  border: `1.5px solid ${entregado ? '#22C55E' : '#EF4444'}`,
-                                }}
-                              >
-                                <span className="flex items-center gap-2">
-                                  {entregado ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-                                  {label}
-                                </span>
-                                <span className="text-[10px] font-bold uppercase tracking-wide">
-                                  {entregado ? 'Entregado' : 'Pendiente'}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
                       {/* Section: Datos personales */}
                       <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Datos personales</p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
@@ -2217,6 +2181,42 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                           <textarea value={form.observaciones ?? ''} onChange={(e) => f('observaciones', e.target.value)}
                             rows={2} className="form-input resize-none" placeholder="Notas adicionales..." />
                         </FormField>
+                      </div>
+
+                      {/* Section: Entrega documentacion PRL */}
+                      <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                        <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#64748B' }}>Entrega documentacion PRL</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {([
+                            { field: 'prl_ficha_puesto', label: 'Ficha del puesto de trabajo' },
+                            { field: 'prl_evaluacion_riesgos', label: 'Evaluacion de riesgos' },
+                            { field: 'prl_medidas_emergencia', label: 'Medidas de emergencia' },
+                            { field: 'prl_plan_prevencion', label: 'Plan de Prevencion' },
+                          ] as const).map(({ field, label }) => {
+                            const entregado = Boolean(form[field]);
+                            return (
+                              <button
+                                key={field}
+                                type="button"
+                                onClick={() => f(field, !entregado)}
+                                className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150"
+                                style={{
+                                  backgroundColor: entregado ? '#DCFCE7' : '#FEE2E2',
+                                  color: entregado ? '#15803D' : '#B91C1C',
+                                  border: `1.5px solid ${entregado ? '#22C55E' : '#EF4444'}`,
+                                }}
+                              >
+                                <span className="flex items-center gap-2">
+                                  {entregado ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                                  {label}
+                                </span>
+                                <span className="text-[10px] font-bold uppercase tracking-wide">
+                                  {entregado ? 'Entregado' : 'Pendiente'}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       {/* Section: Estado del contrato */}

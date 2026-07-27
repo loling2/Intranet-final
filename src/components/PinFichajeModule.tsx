@@ -7,7 +7,7 @@ const RESET_DELAY_MS = 2500;
 
 type Status = 'idle' | 'submitting' | 'success' | 'error';
 
-export default function PinFichajeModule({ onClose }: { onClose: () => void }) {
+export default function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
   const [pin, setPin] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('');
@@ -140,7 +140,7 @@ export default function PinFichajeModule({ onClose }: { onClose: () => void }) {
         deleteDigit();
       } else if (e.key === 'Enter') {
         confirm();
-      } else if (e.key === 'Escape') {
+      } else if (e.key === 'Escape' && onClose) {
         onClose();
       }
     };
@@ -155,15 +155,17 @@ export default function PinFichajeModule({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center" style={{ backgroundColor: '#000000' }}>
-      {/* Close button */}
-      <button
-        onClick={onClose}
-        className="absolute top-5 right-5 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors"
-        style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#FFFFFF' }}
-        title="Salir"
-      >
-        <span className="text-lg font-light">×</span>
-      </button>
+      {/* Close button (hidden in kiosk mode) */}
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="absolute top-5 right-5 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors"
+          style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#FFFFFF' }}
+          title="Salir"
+        >
+          <span className="text-lg font-light">×</span>
+        </button>
+      )}
 
       {/* Header clock */}
       <div className="text-center mb-8 select-none">
@@ -250,7 +252,7 @@ export default function PinFichajeModule({ onClose }: { onClose: () => void }) {
 
       {/* Footer hint */}
       <p className="absolute bottom-6 text-center text-xs" style={{ color: '#334155' }}>
-        Teclado físico habilitado · ESC para salir
+        Teclado físico habilitado{onClose ? ' · ESC para salir' : ''}
       </p>
     </div>
   );
@@ -289,3 +291,6 @@ function KeypadButton({
     </button>
   );
 }
+
+
+export default PinFichajeModule

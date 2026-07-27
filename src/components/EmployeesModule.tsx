@@ -256,7 +256,22 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
   const [results, setResults] = useState<Array<{ label: string; ok: boolean; updated?: boolean; error?: string }>>([]);
+  const [existingDnis, setExistingDnis] = useState<Set<string>>(new Set());
+  const [updateExisting, setUpdateExisting] = useState(true);
+  const [checkingDnis, setCheckingDnis] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  async function checkExistingDnis(dnis: string[]) {
+    if (!dnis.length) return;
+    setCheckingDnis(true);
+    try {
+      const { data } = await supabase.from('empleados').select('dni').not('dni', 'is', null);
+      const set = new Set<string>();
+      (data ?? []).forEach((r: { dni: string | null }) => { if (r.dni) set.add(r.dni.toUpperCase()); });
+      setExistingDnis(set);
+    } catch { /* non-fatal: treat as no matches */ }
+    finally { setCheckingDnis(false); }
+  }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -271,6 +286,13 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
       // User's explicit choice always wins over auto-detection
       setMode(manualMode ?? parsed.mode);
       setStep('preview');
+      if ((manualMode ?? parsed.mode) === 'hr') {
+        const dnis = parsed.rows
+          .map(r => hrRowToEmpleado(r, selectedSociety).dni)
+          .filter((d): d is string => !!d && d.trim() !== '')
+          .map(d => d.toUpperCase());
+        checkExistingDnis(dnis);
+      }
     };
     reader.readAsText(file, 'UTF-8');
   }
@@ -290,6 +312,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
             if (payload.dni) {
               const { data: existing } = await supabase.from('empleados').select('id').eq('dni', payload.dni).maybeSingle();
               if (existing?.id) {
+                if (!updateExisting) { res.push({ label, ok: true, updated: false }); continue; }
                 const { error: err } = await supabase.from('empleados').update(payload).eq('id', existing.id);
                 if (err) throw err;
                 res.push({ label, ok: true, updated: true });
@@ -496,12 +519,53 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                 )}
               </div>
 
+              {/* DNI duplicate summary + toggle (HR mode only) */}
+              {mode === 'hr' && (() => {
+                const parsedRows = rows.map(r => hrRowToEmpleado(r, selectedSociety));
+                const newCount = parsedRows.filter(p => !p.dni || !existingDnis.has(p.dni.toUpperCase())).length;
+                const existCount = parsedRows.length - newCount;
+                return (
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                    <div className="flex items-center gap-3 text-xs">
+                      {checkingDnis ? (
+                        <span className="flex items-center gap-1.5" style={{ color: '#64748B' }}><Loader2 size={12} className="animate-spin" /> Comprobando DNIs existentes...</span>
+                      ) : (
+                        <>
+                          <span className="flex items-center gap-1.5" style={{ color: '#16A34A' }}>
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#16A34A' }} />
+                            <strong>{newCount}</strong> nuevos
+                          </span>
+                          {existCount > 0 && (
+                            <span className="flex items-center gap-1.5" style={{ color: '#D97706' }}>
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#D97706' }} />
+                              <strong>{existCount}</strong> ya existen (DNI)
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    {existCount > 0 && !checkingDnis && (
+                      <label className="flex items-center gap-2 cursor-pointer text-xs" style={{ color: '#374151' }}>
+                        <input
+                          type="checkbox"
+                          checked={updateExisting}
+                          onChange={e => setUpdateExisting(e.target.checked)}
+                          className="cursor-pointer"
+                          style={{ width: 14, height: 14, accentColor: '#0369A1' }}
+                        />
+                        Actualizar registros existentes
+                      </label>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid #E2E8F0' }}>
                 <table className="w-full text-xs">
                   <thead style={{ backgroundColor: '#F8FAFC' }}>
                     <tr>
                       {mode === 'hr'
-                        ? ['Nombre (parseado)', 'DNI/NIF', 'NASS', 'Puesto', 'Fecha Alta', 'F. Nacimiento', 'Teléfono', 'Email', 'Localidad', 'Sexo'].map(h => (
+                        ? ['Nombre (parseado)', 'DNI/NIF', 'NASS', 'Puesto', 'Fecha Alta', 'F. Nacimiento', 'Teléfono', 'Email', 'Localidad', 'Sexo', 'Estado'].map(h => (
                             <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: '#374151', borderBottom: '1px solid #E2E8F0' }}>{h}</th>
                           ))
                         : ['Email', 'Nombre', 'DNI', 'Contraseña', 'Rol', 'Sociedad'].map(h => (
@@ -528,6 +592,17 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                                 <td className="px-3 py-2 font-mono" style={{ color: '#0369A1' }}>{parsed.email || '—'}</td>
                                 <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{(parsed as { localidad?: string | null }).localidad || '—'}</td>
                                 <td className="px-3 py-2" style={{ color: '#475569' }}>{parsed.sexo || '—'}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  {parsed.dni && existingDnis.has(parsed.dni.toUpperCase()) ? (
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#FEF3C7', color: '#B45309' }}>
+                                      Existente
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#DCFCE7', color: '#166534' }}>
+                                      Nuevo
+                                    </span>
+                                  )}
+                                </td>
                               </>
                             );
                           })()

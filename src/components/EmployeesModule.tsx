@@ -1742,7 +1742,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
             {/* Section: Entrega documentacion PRL */}
             <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
               <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#64748B' }}>Entrega documentacion PRL</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 {([
                   { field: 'prl_ficha_puesto', label: 'Ficha del puesto de trabajo' },
                   { field: 'prl_evaluacion_riesgos', label: 'Evaluacion de riesgos' },
@@ -2186,7 +2186,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                       {/* Section: Entrega documentacion PRL */}
                       <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
                         <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#64748B' }}>Entrega documentacion PRL</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="grid grid-cols-4 gap-3">
                           {([
                             { field: 'prl_ficha_puesto', label: 'Ficha del puesto de trabajo' },
                             { field: 'prl_evaluacion_riesgos', label: 'Evaluacion de riesgos' },

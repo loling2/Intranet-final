@@ -169,6 +169,80 @@ function parseCsv(text: string): { rows: Record<string, string>[]; mode: 'auth' 
 
 
 
+// Convert a parsed HR CSV row into an empleados insert/update payload.
+// "APELLIDOS, NOMBRE" → "NOMBRE APELLIDOS"; dates dd/mm/yyyy → yyyy-mm-dd.
+function hrRowToEmpleado(r: Record<string, string>, sociedadId: string): Record<string, string | null> {
+  const get = (...keys: string[]) => {
+    for (const k of keys) {
+      const v = r[k] ?? r[normHeader(k)];
+      if (v && v.trim()) return v.trim();
+    }
+    return '';
+  };
+
+  // Parse "APELLIDOS, NOMBRE" → "NOMBRE APELLIDOS"
+  function parseName(raw: string): string {
+    const s = raw.trim();
+    const commaIdx = s.indexOf(',');
+    if (commaIdx > 0 && commaIdx < s.length - 1) {
+      const apellidos = s.slice(0, commaIdx).trim();
+      const nombre = s.slice(commaIdx + 1).trim();
+      return `${nombre} ${apellidos}`.trim();
+    }
+    return s;
+  }
+
+  // dd/mm/yyyy → yyyy-mm-dd  (also handles yyyy-mm-dd already)
+  function parseDate(raw: string): string {
+    const s = raw.trim();
+    if (!s) return '';
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+      const [, d, mo, y] = m;
+      return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return '';
+  }
+
+  const nombre = parseName(get('Nombre Completo', 'nombre_completo', 'apellidos_y_nombre', 'nombre_apellidos', 'apellidos'));
+  const dni = get('NIF', 'DNI', 'DNI/NIE', 'nif', 'dni', 'dni_nie').toUpperCase();
+  const nass = get('NASS', 'Numero SS', 'nass', 'numero_ss', 'n_seguridad_social');
+  const puesto = get('Puesto de trabajo', 'Puesto', 'puesto_de_trabajo', 'puesto', 'cargo', 'categoria');
+  const tipoContrato = get('Codigo Contrato', 'Tipo Contrato', 'codigo_contrato', 'tipo_contrato');
+  const fechaAlta = parseDate(get('Fecha de alta en compania', 'Fecha Alta', 'fecha_de_alta_en_compania', 'fecha_alta', 'fecha_de_alta'));
+  const fechaNacimiento = parseDate(get('Fecha Nacimiento', 'fecha_nacimiento'));
+  const telefono = get('Telefono 1', 'Telefono', 'telefono_1', 'telefono');
+  const email = get('E-mail personal', 'Email', 'email_personal', 'email').toLowerCase();
+  const convenio = get('Convenio', 'convenio');
+  const localidad = get('Localidad', 'localidad');
+  const direccion = get('Direccion Completa', 'Direccion', 'direccion_completa', 'direccion');
+  const codigoPostal = get('Codigo Postal', 'codigo_postal');
+  const sexo = get('Sexo', 'sexo');
+
+  const payload: Record<string, string | null> = {
+    nombre,
+    email,
+    dni: dni || null,
+    telefono: telefono || null,
+    fecha_nacimiento: fechaAlta || null, // placeholder, overwritten below
+    puesto: puesto || null,
+    tipo_contrato: tipoContrato || null,
+    fecha_alta: fechaAlta || null,
+    id_sociedad: sociedadId,
+    activo: 'true',
+  };
+  payload.fecha_nacimiento = fechaNacimiento || null;
+  if (convenio) payload.convenio = convenio;
+  if (direccion) payload.direccion = direccion;
+  if (codigoPostal) payload.codigo_postal = codigoPostal;
+  if (sexo) payload.sexo = sexo;
+  // nass and localidad are not columns in empleados table; keep for preview only
+  (payload as Record<string, unknown>).nass = nass || null;
+  (payload as Record<string, unknown>).localidad = localidad || null;
+  return payload;
+}
+
 function ImportUsersModal({ sociedades, onClose, onImported }: {
   sociedades: Sociedad[];
   onClose: () => void;

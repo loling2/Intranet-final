@@ -40,47 +40,67 @@ export default function PinFichajeModule({ onClose }: { onClose?: () => void } =
     return `${type} · ${browser} · ${os}`;
   };
 
+  const getLocation = (): Promise<{ latitud: number | null; longitud: number | null; ubicacion: string | null }> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve({ latitud: null, longitud: null, ubicacion: null });
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          let direccion: string | null = null;
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
+              { headers: { 'Accept-Language': 'es' } },
+            );
+            if (res.ok) {
+              const data = await res.json();
+              const a = data.address || {};
+              const parts = [
+                a.road,
+                a.house_number,
+                a.postcode,
+                a.village || a.town || a.city || a.municipality,
+                a.state,
+              ].filter(Boolean);
+              direccion = parts.join(', ') || data.display_name || null;
+            }
+          } catch {
+            direccion = null;
+          }
+          resolve({ latitud: lat, longitud: lon, ubicacion: direccion });
+        },
+        () => resolve({ latitud: null, longitud: null, ubicacion: null }),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+      );
+    });
+  };
+
   const submit = useCallback(async (pinValue: string) => {
     if (!pinValue) return;
     setStatus('submitting');
     setMessage('');
     try {
-      const { data, error: rpcErr } = await supabase.rpc('validate_vehicle_pin', { p_pin: pinValue });
-      if (rpcErr || !data?.[0]) {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('kiosk_get_next_fichaje_tipo', { p_pin: pinValue });
+      if (rpcErr || !rpcData || rpcData.length === 0) {
         setStatus('error');
         setMessage('PIN incorrecto. Inténtalo de nuevo.');
         resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
         return;
       }
-      const usuario = data[0] as { id: string; nombre: string };
+
+      const result = rpcData[0] as { empleado_id: string | null; nombre_empleado: string; tipo: 'entrada' | 'salida' };
+      const { empleado_id, nombre_empleado, tipo } = result;
 
       const today = new Date().toISOString().split('T')[0];
-      const { data: todayLogs } = await supabase
-        .from('fichajes')
-        .select('tipo_evento, timestamp')
-        .eq('nombre_empleado', usuario.nombre)
-        .eq('fecha', today)
-        .order('timestamp', { ascending: true });
-
-      const logs = (todayLogs ?? []) as { tipo_evento: string; timestamp: string }[];
-      const lastEvent = logs.length > 0 ? logs[logs.length - 1].tipo_evento : null;
-
-      let tipo: 'entrada' | 'salida';
-      if (!lastEvent || lastEvent === 'salida') {
-        tipo = 'entrada';
-      } else {
-        tipo = 'salida';
-      }
-
-      const { data: emp } = await supabase
-        .from('empleados')
-        .select('id')
-        .eq('user_id', usuario.id)
-        .maybeSingle();
+      const geo = await getLocation();
 
       const { error: insErr } = await supabase.from('fichajes').insert({
-        empleado_id: emp?.id ?? null,
-        nombre_empleado: usuario.nombre,
+        empleado_id: empleado_id ?? null,
+        nombre_empleado,
         fecha: today,
         timestamp: new Date().toISOString(),
         tipo_evento: tipo,
@@ -88,12 +108,15 @@ export default function PinFichajeModule({ onClose }: { onClose?: () => void } =
         user_agent: navigator.userAgent,
         dispositivo: getDeviceInfo(),
         es_manual: false,
+        latitud: geo.latitud,
+        longitud: geo.longitud,
+        ubicacion: geo.ubicacion,
       });
       if (insErr) throw new Error(insErr.message);
 
       setLastEvent(tipo);
       setStatus('success');
-      setMessage(`¡Fichaje registrado, ${usuario.nombre}!`);
+      setMessage(`¡Fichaje registrado, ${nombre_empleado}!`);
       resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
     } catch (err: unknown) {
       setStatus('error');
@@ -296,3 +319,6 @@ function KeypadButton({
     </button>
   );
 }
+
+
+export default PinFichajeModule

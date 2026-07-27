@@ -11,7 +11,16 @@ interface Props {
   currentUserRole: 'admin' | 'rrhh';
 }
 
-const TIPOS_CONTRATO = ['Indefinido', 'Temporal', 'Practicas', 'Obra y Servicio', 'Formacion', 'Relevo', 'Interinidad'];
+const TIPOS_CONTRATO = [
+  'Indefinido ordinario (Tiempo Completo)',
+  'Indefinido fijo-discontinuo (Tiempo Completo)',
+  'Indefinido ordinario (Tiempo Parcial)',
+  'Indefinido fijo-discontinuo (Tiempo Parcial)',
+  'Indefinido de formacion / practicas (Tiempo Completo)',
+  'Indefinido de formacion / practicas (Tiempo Parcial)',
+  'Temporal eventual por circunstancias de la produccion (Completa)',
+  'Temporal eventual por circunstancias de la produccion (Parcial)',
+];
 const TURNOS = ['Manana', 'Tarde', 'Noche', 'Partido', 'Flexible'];
 
 const ESTADOS_CONTRATO: { value: EstadoContrato; label: string; color: string; bg: string; border: string; Icon: LucideIcon }[] = [

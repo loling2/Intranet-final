@@ -1295,7 +1295,7 @@ export default function LoginPage() {
             <button
               onClick={() => setShowVehicleModal(true)}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer hover:opacity-80"
-              style={{ backgroundColor: '#F1F5F9', color: '#334155', border: '1.5px solid #E2E8F0' }}
+              style={{ backgroundColor: '#000000', color: '#FFFFFF', border: '1.5px solid #1E293B' }}
             >
               <Clock size={15} />
               REGISTRO DE JORNADA

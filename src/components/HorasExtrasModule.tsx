@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Timer, Search, RefreshCw, Calendar, Banknote, ChevronDown, ChevronRight, Clock } from 'lucide-react';
+import { Timer, Search, RefreshCw, Calendar, Banknote, ChevronDown, ChevronRight } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface SustRow {
@@ -143,26 +143,8 @@ export default function HorasExtrasModule() {
 
   const employeeList = Array.from(byEmployee.values()).sort((a, b) => b.horasLiquidadas - a.horasLiquidadas);
 
-  const grandLiquidadas = filteredLiq.reduce((acc, l) => acc + l.horas_liquidadas, 0);
-  const grandDebidas = filteredRows.reduce((acc, r) => acc + computeHoras(r), 0);
-  const grandPendientes = Math.max(0, grandDebidas - grandLiquidadas);
-
   return (
     <div className="space-y-4">
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: 'Total liquidadas', value: `${grandLiquidadas.toFixed(1)}h`, color: '#16A34A', bg: '#F0FDF4' },
-          { label: 'Total a pagar', value: `${grandDebidas.toFixed(1)}h`, color: '#D97706', bg: '#FFFBEB' },
-          { label: 'Pendientes de pago', value: `${grandPendientes.toFixed(1)}h`, color: '#DC2626', bg: '#FEF2F2' },
-        ].map((kpi, i) => (
-          <div key={i} className="rounded-xl p-4" style={{ backgroundColor: kpi.bg }}>
-            <p className="text-2xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
-            <p className="text-xs font-medium mt-0.5" style={{ color: kpi.color + 'BB' }}>{kpi.label}</p>
-          </div>
-        ))}
-      </div>
-
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[180px]">
@@ -215,7 +197,6 @@ export default function HorasExtrasModule() {
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
             {employeeList.map((emp) => {
               const isExpanded = expanded.has(emp.sustituto_id);
-              const pendiente = Math.max(0, emp.horasDebidas - emp.horasLiquidadas);
               return (
                 <div key={emp.sustituto_id}>
                   <button
@@ -239,20 +220,10 @@ export default function HorasExtrasModule() {
                         {emp.liquidaciones.length} pago(s) · {emp.horasDebidas.toFixed(1)}h a pagar
                       </p>
                     </div>
-                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    <div className="flex items-center gap-1.5">
                       {emp.horasLiquidadas > 0 && (
                         <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A' }}>
                           {emp.horasLiquidadas.toFixed(1)}h pagadas
-                        </span>
-                      )}
-                      {emp.horasDebidas > 0 && (
-                        <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#FFFBEB', color: '#D97706' }}>
-                          {emp.horasDebidas.toFixed(1)}h totales
-                        </span>
-                      )}
-                      {pendiente > 0 && (
-                        <span className="text-xs px-2 py-1 rounded-lg font-bold" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
-                          {pendiente.toFixed(1)}h pend.
                         </span>
                       )}
                     </div>
@@ -304,14 +275,7 @@ export default function HorasExtrasModule() {
                         <p className="text-xs py-2" style={{ color: '#94A3B8' }}>Sin pagos registrados aún.</p>
                       )}
 
-                      {pendiente > 0 && (
-                        <div className="rounded-lg px-3 py-2 flex items-center gap-2" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
-                          <Clock size={12} style={{ color: '#DC2626' }} />
-                          <p className="text-xs font-medium" style={{ color: '#DC2626' }}>
-                            Quedan {pendiente.toFixed(1)}h pendientes de pago
-                          </p>
-                        </div>
-                      )}
+
                     </div>
                   )}
                 </div>

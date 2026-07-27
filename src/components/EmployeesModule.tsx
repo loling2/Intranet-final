@@ -20,6 +20,8 @@ const TIPOS_CONTRATO = [
   '230 - Indefinido de formacion / practicas (Tiempo Parcial)',
   '410 - Temporal eventual por circunstancias de la produccion (Completa)',
   '510 - Temporal eventual por circunstancias de la produccion (Parcial)',
+  '402 - Temporal por obra o servicio determinado',
+  '405 - Temporal de fomento de empleo / insercion',
 ];
 const TURNOS = ['Manana', 'Tarde', 'Noche', 'Partido', 'Flexible'];
 

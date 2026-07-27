@@ -152,12 +152,6 @@ export default function SustitucionesModule() {
   }
 
   const filtered = rows.filter((s) => {
-    // Hide rows linked to a baja that has been descontada or finalized
-    if (s.baja && (s.baja.descontado || s.baja.estado === 'finalizada')) return false;
-    // Hide sustitutos whose paid hours are fully liquidated
-    const pagadas = horasPagadasPorSustituto.get(s.sustituto_id) ?? 0;
-    const liquidadas = liquidadasPorSustituto.get(s.sustituto_id) ?? 0;
-    if (pagadas > 0 && liquidadas >= pagadas) return false;
     if (search) {
       const q = search.toLowerCase();
       if (!s.sustituto_nombre.toLowerCase().includes(q) && !s.empleado_nombre.toLowerCase().includes(q)) return false;
@@ -489,9 +483,10 @@ export default function SustitucionesModule() {
                   {[
                     { label: 'Persona a sustituir', w: '170px' },
                     { label: 'Fecha', w: '90px' },
+                    { label: 'Tipo', w: '100px' },
                     { label: 'Días descontar', w: '80px' },
                     { label: 'Justif.', w: '60px' },
-                    { label: 'Persona sustituta', w: '160px' },
+                    { label: 'Persona sustituta', w: '170px' },
                     { label: 'H. pagar', w: '70px' },
                     { label: 'H. compensar', w: '75px' },
                     { label: 'H. nocturnidad', w: '85px' },
@@ -521,8 +516,16 @@ export default function SustitucionesModule() {
                         <span className="text-xs font-semibold" style={{ color: '#1E293B' }}>{s.empleado_nombre}</span>
                       </td>
                       {/* Fecha */}
-                      <td className="px-3 py-2.5 border-b text-xs font-mono" style={{ borderColor: '#F1F5F9', color: '#64748B' }}>
-                        {s.fecha_inicio}
+                      <td className="px-3 py-2.5 border-b" style={{ borderColor: '#F1F5F9' }}>
+                        <span className="text-xs font-mono" style={{ color: '#64748B' }}>{s.fecha_inicio}</span>
+                        {s.notas && <p className="text-[10px] mt-0.5 truncate max-w-[84px]" style={{ color: '#94A3B8' }} title={s.notas}>{s.notas}</p>}
+                      </td>
+                      {/* Tipo cobertura */}
+                      <td className="px-3 py-2.5 border-b text-center" style={{ borderColor: '#F1F5F9' }}>
+                        {s.tipo_cobertura === 'pagar' && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#DCFCE7', color: '#15803D' }}>Pagar</span>}
+                        {s.tipo_cobertura === 'compensar' && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEF9C3', color: '#854D0E' }}>Compensar</span>}
+                        {s.tipo_cobertura === 'otro' && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>{s.motivo_otro || 'Otro'}</span>}
+                        {!s.tipo_cobertura && <span className="text-xs" style={{ color: '#CBD5E1' }}>—</span>}
                       </td>
                       {/* Días a descontar */}
                       <td className="px-3 py-2.5 border-b text-center" style={{ borderColor: '#F1F5F9' }}>
@@ -557,7 +560,14 @@ export default function SustitucionesModule() {
                             style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>
                             {s.sustituto_nombre.charAt(0).toUpperCase()}
                           </div>
-                          <span className="text-xs font-medium" style={{ color: '#1E293B' }}>{s.sustituto_nombre}</span>
+                          <div>
+                            <span className="text-xs font-medium block" style={{ color: '#1E293B' }}>{s.sustituto_nombre}</span>
+                            {s.turno && (
+                              <span className="text-[10px] font-semibold capitalize" style={{ color: s.turno === 'noche' ? '#7C3AED' : s.turno === 'tarde' ? '#EA580C' : '#D97706' }}>
+                                {s.turno === 'noche' ? '🌙' : s.turno === 'tarde' ? '🌅' : '☀️'} {s.turno}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
                       {/* H. pagar */}

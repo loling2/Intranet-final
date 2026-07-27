@@ -12,14 +12,14 @@ interface Props {
 }
 
 const TIPOS_CONTRATO = [
-  'Indefinido ordinario (Tiempo Completo)',
-  'Indefinido fijo-discontinuo (Tiempo Completo)',
-  'Indefinido ordinario (Tiempo Parcial)',
-  'Indefinido fijo-discontinuo (Tiempo Parcial)',
-  'Indefinido de formacion / practicas (Tiempo Completo)',
-  'Indefinido de formacion / practicas (Tiempo Parcial)',
-  'Temporal eventual por circunstancias de la produccion (Completa)',
-  'Temporal eventual por circunstancias de la produccion (Parcial)',
+  '100 - Indefinido ordinario (Tiempo Completo)',
+  '189 - Indefinido fijo-discontinuo (Tiempo Completo)',
+  '200 - Indefinido ordinario (Tiempo Parcial)',
+  '289 - Indefinido fijo-discontinuo (Tiempo Parcial)',
+  '130 - Indefinido de formacion / practicas (Tiempo Completo)',
+  '230 - Indefinido de formacion / practicas (Tiempo Parcial)',
+  '410 - Temporal eventual por circunstancias de la produccion (Completa)',
+  '510 - Temporal eventual por circunstancias de la produccion (Parcial)',
 ];
 const TURNOS = ['Manana', 'Tarde', 'Noche', 'Partido', 'Flexible'];
 

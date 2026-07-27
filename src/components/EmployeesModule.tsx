@@ -212,12 +212,12 @@ function hrRowToEmpleado(r: Record<string, string>, sociedadId: string): Record<
   const tipoContrato = get('Codigo Contrato', 'Tipo Contrato', 'codigo_contrato', 'tipo_contrato');
   const fechaAlta = parseDate(get('Fecha de alta en compania', 'Fecha Alta', 'fecha_de_alta_en_compania', 'fecha_alta', 'fecha_de_alta'));
   const fechaNacimiento = parseDate(get('Fecha Nacimiento', 'fecha_nacimiento'));
-  const telefono = get('Telefono 1', 'Telefono', 'telefono_1', 'telefono');
+  const telefono = get('Telefono 1', 'Telefono', 'telefono_1', 'telefono').slice(0, 30);
   const email = get('E-mail personal', 'Email', 'email_personal', 'email').toLowerCase();
   const convenio = get('Convenio', 'convenio');
   const localidad = get('Localidad', 'localidad');
   const direccion = get('Direccion Completa', 'Direccion', 'direccion_completa', 'direccion');
-  const codigoPostal = get('Codigo Postal', 'codigo_postal');
+  const codigoPostal = get('Codigo Postal', 'codigo_postal').slice(0, 10);
   const sexo = get('Sexo', 'sexo');
 
   const payload: Record<string, string | null> = {

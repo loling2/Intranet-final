@@ -7,7 +7,7 @@ const RESET_DELAY_MS = 2500;
 
 type Status = 'idle' | 'submitting' | 'success' | 'error';
 
-export default function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
+function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
   const [pin, setPin] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('');
@@ -321,4 +321,4 @@ function KeypadButton({
 }
 
 
-export default PinFichajeModule
+export default PinFichajeModule;

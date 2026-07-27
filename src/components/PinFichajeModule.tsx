@@ -154,12 +154,12 @@ export default function PinFichajeModule({ onClose }: { onClose?: () => void } =
   const displayDots = Array.from({ length: PIN_LENGTH }, (_, i) => i < pin.length);
 
   return (
-    <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center" style={{ backgroundColor: '#000000' }}>
+    <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center px-4 py-6 overflow-y-auto" style={{ backgroundColor: '#000000' }}>
       {/* Close button (hidden in kiosk mode) */}
       {onClose && (
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors"
+          className="absolute top-4 right-4 w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors"
           style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#FFFFFF' }}
           title="Salir"
         >
@@ -168,28 +168,28 @@ export default function PinFichajeModule({ onClose }: { onClose?: () => void } =
       )}
 
       {/* Header clock */}
-      <div className="text-center mb-8 select-none">
-        <div className="flex items-center justify-center gap-3 mb-2">
-          <Fingerprint size={22} style={{ color: '#22D3EE' }} />
-          <h1 className="text-lg font-semibold uppercase tracking-[0.3em]" style={{ color: '#E2E8F0' }}>
+      <div className="text-center mb-4 sm:mb-6 md:mb-8 select-none">
+        <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2">
+          <Fingerprint size={18} style={{ color: '#22D3EE' }} />
+          <h1 className="text-xs sm:text-lg font-semibold uppercase tracking-[0.2em] sm:tracking-[0.3em]" style={{ color: '#E2E8F0' }}>
             Control de Presencia
           </h1>
         </div>
-        <p className="text-6xl font-mono font-bold tracking-wider" style={{ color: '#FFFFFF', lineHeight: 1.1 }}>
+        <p className="text-4xl sm:text-5xl md:text-6xl font-mono font-bold tracking-wider" style={{ color: '#FFFFFF', lineHeight: 1.1 }}>
           {timeStr}
         </p>
-        <p className="text-sm mt-2 capitalize" style={{ color: '#64748B' }}>
+        <p className="text-xs sm:text-sm mt-1 sm:mt-2 capitalize" style={{ color: '#64748B' }}>
           {dateStr}
         </p>
       </div>
 
       {/* PIN display */}
-      <div className="mb-8 select-none">
-        <div className="flex gap-4 justify-center">
+      <div className="mb-4 sm:mb-6 md:mb-8 select-none">
+        <div className="flex gap-3 sm:gap-4 justify-center">
           {displayDots.map((filled, i) => (
             <div
               key={i}
-              className="w-5 h-5 rounded-full transition-all duration-150"
+              className="w-4 h-4 sm:w-5 sm:h-5 rounded-full transition-all duration-150"
               style={{
                 backgroundColor: filled ? '#22D3EE' : 'rgba(255,255,255,0.15)',
                 boxShadow: filled ? '0 0 12px rgba(34,211,238,0.6)' : 'none',
@@ -198,13 +198,13 @@ export default function PinFichajeModule({ onClose }: { onClose?: () => void } =
             />
           ))}
         </div>
-        <p className="text-center text-xs mt-3 uppercase tracking-widest" style={{ color: '#475569' }}>
+        <p className="text-center text-xs mt-2 sm:mt-3 uppercase tracking-widest" style={{ color: '#475569' }}>
           Introduce tu PIN
         </p>
       </div>
 
       {/* Status message */}
-      <div className="h-16 mb-6 flex items-center justify-center">
+      <div className="h-12 sm:h-16 mb-4 sm:mb-6 flex items-center justify-center">
         {status === 'success' && (
           <div className="flex items-center gap-3 px-6 py-3 rounded-2xl animate-[fadeIn_0.2s_ease-out]" style={{ backgroundColor: 'rgba(22,163,74,0.15)', border: '1px solid rgba(22,163,74,0.4)' }}>
             {lastEvent === 'entrada' ? <LogIn size={20} style={{ color: '#22C55E' }} /> : <LogOut size={20} style={{ color: '#22C55E' }} />}
@@ -225,13 +225,14 @@ export default function PinFichajeModule({ onClose }: { onClose?: () => void } =
       </div>
 
       {/* Numeric keypad 3x4 */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
         {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
           <KeypadButton key={d} label={d} onClick={() => appendDigit(d)} disabled={status === 'submitting' || status === 'success'} />
         ))}
         <KeypadButton
           label=""
-          icon={<Delete size={26} />}
+          icon={<Delete size={20} />}
+          iconDesktop={<Delete size={26} />}
           onClick={deleteDigit}
           disabled={status === 'submitting' || status === 'success'}
           variant="secondary"
@@ -243,7 +244,8 @@ export default function PinFichajeModule({ onClose }: { onClose?: () => void } =
         />
         <KeypadButton
           label=""
-          icon={<Check size={26} />}
+          icon={<Check size={20} />}
+          iconDesktop={<Check size={26} />}
           onClick={confirm}
           disabled={status === 'submitting' || status === 'success' || pin.length < 4}
           variant="confirm"
@@ -251,7 +253,7 @@ export default function PinFichajeModule({ onClose }: { onClose?: () => void } =
       </div>
 
       {/* Footer hint */}
-      <p className="absolute bottom-6 text-center text-xs" style={{ color: '#334155' }}>
+      <p className="absolute bottom-3 sm:bottom-6 text-center text-[10px] sm:text-xs" style={{ color: '#334155' }}>
         Teclado físico habilitado{onClose ? ' · ESC para salir' : ''}
       </p>
     </div>
@@ -261,17 +263,19 @@ export default function PinFichajeModule({ onClose }: { onClose?: () => void } =
 function KeypadButton({
   label,
   icon,
+  iconDesktop,
   onClick,
   disabled,
   variant = 'default',
 }: {
   label: string;
   icon?: React.ReactNode;
+  iconDesktop?: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
   variant?: 'default' | 'secondary' | 'confirm';
 }) {
-  const base = 'w-20 h-20 sm:w-24 sm:h-24 rounded-2xl flex items-center justify-center cursor-pointer transition-all duration-150 select-none active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed';
+  const base = 'w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-2xl flex items-center justify-center cursor-pointer transition-all duration-150 select-none active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed';
   let style: React.CSSProperties;
   if (variant === 'confirm') {
     style = { backgroundColor: 'rgba(22,163,74,0.18)', border: '1px solid rgba(22,163,74,0.5)', color: '#22C55E' };
@@ -287,7 +291,14 @@ function KeypadButton({
       onClick={onClick}
       disabled={disabled}
     >
-      {icon ?? <span className="text-3xl font-light">{label}</span>}
+      {icon ? (
+        <>
+          <span className="sm:hidden">{icon}</span>
+          <span className="hidden sm:flex">{iconDesktop ?? icon}</span>
+        </>
+      ) : (
+        <span className="text-2xl sm:text-3xl font-light">{label}</span>
+      )}
     </button>
   );
 }

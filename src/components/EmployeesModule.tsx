@@ -1085,7 +1085,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     setShowForm(true);
   };
 
-  const openEdit = (emp: Empleado) => {
+  const openEdit = async (emp: Empleado) => {
     setEditingId(emp.id);
     setForm(formFromEmpleado(emp));
     setShowForm(true);
@@ -1093,6 +1093,8 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     setTimeout(() => {
       document.getElementById(`edit-form-${emp.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
+    const { data } = await supabase.from('empleados').select('*').eq('id', emp.id).maybeSingle();
+    if (data) setForm(formFromEmpleado(data as Empleado));
   };
 
   const cancelForm = () => {

@@ -1295,7 +1295,17 @@ function VitalyTab() {
       setSaving(false);
       return;
     }
-    setRows((prev) => prev.filter((r) => !(r.id === row.id && draftEstado === 'activo')));
+    if (draftEstado === 'activo') {
+      setRows((prev) => prev.filter((r) => r.id !== row.id));
+    } else {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === row.id
+            ? { ...r, vitaly_estado: draftEstado, vitaly_motivo: payload.vitaly_motivo as string | null }
+            : r
+        )
+      );
+    }
     cancelEdit();
     setSaving(false);
   };

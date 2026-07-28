@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Users, UserPlus, Search, Mail, CheckCircle2,
   CreditCard as Edit2, Key, X, Eye, EyeOff, AlertCircle,
-  RefreshCw, Hash, UserCheck, Send, FileText, UserCog, Trash2,
+  RefreshCw, Hash, UserCheck, Send, FileText, UserCog, Trash2, KeyRound,
 } from 'lucide-react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './components/Pagination';
 import { supabase, UserProfile, AppRole, Empleado } from './supabaseClient';
@@ -45,6 +45,18 @@ async function callManageUser(action: string, userId: string, payload: Record<st
 
 function generatePin() {
   return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+function generateRandomPassword(length = 12): string {
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const digits = '23456789';
+  const symbols = '!@#$%&*?';
+  const all = lower + upper + digits + symbols;
+  const pick = (set: string) => set[Math.floor(Math.random() * set.length)];
+  let pwd = [pick(upper), pick(lower), pick(digits), pick(symbols)].join('');
+  for (let i = pwd.length; i < length; i++) pwd += pick(all);
+  return pwd.split('').sort(() => Math.random() - 0.5).join('');
 }
 
 // ─── Invite Modal ────────────────────────────────────────────────────────────
@@ -967,6 +979,7 @@ function SendEmailModal({ user, onClose }: SendEmailModalProps) {
   const [loading, setLoading]       = useState(true);
   const [plantillaId, setPlantillaId] = useState('');
   const [cuentaId, setCuentaId]     = useState('');
+  const [autoPassword, setAutoPassword] = useState(true);
   const [password, setPassword]     = useState('');
   const [empresa, setEmpresa]       = useState('');
   const [sending, setSending]       = useState(false);
@@ -991,6 +1004,28 @@ function SendEmailModal({ user, onClose }: SendEmailModalProps) {
     try {
       const session = (await supabase.auth.getSession()).data.session;
       const token   = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      let finalPassword = password;
+
+      // Auto-generate a random password and set it on the user's account
+      if (autoPassword) {
+        finalPassword = generateRandomPassword();
+        const pwdResp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-user`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+              'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ action: 'set_password', userId: user.id, password: finalPassword }),
+          }
+        );
+        const pwdBody = await pwdResp.json().catch(() => ({}));
+        if (!pwdResp.ok) throw new Error(pwdBody.error ?? 'Error al asignar la contrasena');
+      }
+
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`,
         {
@@ -1007,7 +1042,7 @@ function SendEmailModal({ user, onClose }: SendEmailModalProps) {
             variables: {
               nombre:     user.nombre,
               email:      user.email,
-              password:   password || '(ver con tu administrador)',
+              password:   finalPassword || '(ver con tu administrador)',
               url_acceso: window.location.origin,
               empresa:    empresa || 'la empresa',
             },
@@ -1095,17 +1130,31 @@ function SendEmailModal({ user, onClose }: SendEmailModalProps) {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
-                  Contraseña a incluir <span className="normal-case font-normal" style={{ color: '#94A3B8' }}>(variable {`{{password}}`})</span>
+                <label className="flex items-center gap-2 text-xs font-semibold mb-1.5 uppercase tracking-wider cursor-pointer" style={{ color: '#64748B' }}>
+                  <input
+                    type="checkbox"
+                    checked={autoPassword}
+                    onChange={(e) => setAutoPassword(e.target.checked)}
+                    className="w-4 h-4 rounded cursor-pointer"
+                    style={{ accentColor: '#0369A1' }}
+                  />
+                  Generar contrasena aleatoria automaticamente
                 </label>
-                <input
-                  type="text"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Contraseña temporal del usuario"
-                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                  style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }}
-                />
+                {autoPassword ? (
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', color: '#0369A1' }}>
+                    <KeyRound size={13} />
+                    Se generara una contrasena aleatoria y se asignara al usuario al enviar el correo.
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Contrasena temporal del usuario"
+                    className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                    style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }}
+                  />
+                )}
               </div>
 
               <div>

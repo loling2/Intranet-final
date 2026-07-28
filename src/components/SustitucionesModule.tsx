@@ -181,9 +181,9 @@ export default function SustitucionesModule() {
     return true;
   });
 
-  const totalHorasPagar = filtered.filter((s) => s.tipo_cobertura === 'pagar').reduce((acc, s) => acc + computeHoras(s), 0);
-  const totalHorasCompensar = filtered.filter((s) => s.tipo_cobertura === 'compensar').reduce((acc, s) => acc + computeHoras(s), 0);
-  const totalDiasDescontar = filtered.reduce((acc, s) => {
+  const totalHorasPagar = filtered.filter((s) => s.tipo_cobertura === 'pagar' && !s.horas_liquidadas).reduce((acc, s) => acc + computeHoras(s), 0);
+  const totalHorasCompensar = filtered.filter((s) => s.tipo_cobertura === 'compensar' && !s.horas_liquidadas).reduce((acc, s) => acc + computeHoras(s), 0);
+  const totalDiasDescontar = filtered.filter((s) => !s.dias_descontados).reduce((acc, s) => {
     const bajaDesc = computeBajaDiasDescontar(s.baja);
     return acc + (bajaDesc ?? s.dias_a_descontar ?? 0);
   }, 0);
@@ -686,20 +686,30 @@ export default function SustitucionesModule() {
                 </button>
               </div>
               <div className="p-5 space-y-4 overflow-y-auto flex-1">
-                {/* Info resumen */}
-                <div className="rounded-lg px-4 py-3" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-                  <p className="text-sm font-semibold" style={{ color: '#0C4A6E' }}>{s.sustituto_nombre}</p>
-                  <p className="text-xs mt-0.5" style={{ color: '#0369A1' }}>
-                    {horas}h · {s.empleado_nombre} · {s.fecha_inicio}
-                  </p>
+                {/* Info resumen — ambas personas */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                    <p className="text-[9px] font-bold uppercase tracking-wide mb-0.5" style={{ color: '#DC2626' }}>Persona a sustituir</p>
+                    <p className="text-xs font-semibold leading-tight" style={{ color: '#1E293B' }}>{s.empleado_nombre}</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: '#94A3B8' }}>Se le descuentan los días</p>
+                  </div>
+                  <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                    <p className="text-[9px] font-bold uppercase tracking-wide mb-0.5" style={{ color: '#0369A1' }}>Persona sustituta</p>
+                    <p className="text-xs font-semibold leading-tight" style={{ color: '#1E293B' }}>{s.sustituto_nombre}</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: '#94A3B8' }}>Se le pagan las horas</p>
+                  </div>
                 </div>
+                <p className="text-[10px] text-center" style={{ color: '#94A3B8' }}>{s.fecha_inicio} · {horas}h</p>
 
-                {/* Sección 1: Liquidar horas */}
+                {/* Sección 1: Liquidar horas — cobro al sustituto */}
                 <div className="rounded-xl overflow-hidden" style={{ border: `1.5px solid ${horasHechas ? '#BBF7D0' : '#FDE68A'}`, backgroundColor: horasHechas ? '#F0FDF4' : '#FFFBEB' }}>
                   <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: `1px solid ${horasHechas ? '#BBF7D0' : '#FDE68A'}` }}>
                     <div className="flex items-center gap-2">
                       <Banknote size={14} style={{ color: horasHechas ? '#16A34A' : '#D97706' }} />
-                      <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: horasHechas ? '#15803D' : '#92400E' }}>Liquidar horas</span>
+                      <div>
+                        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: horasHechas ? '#15803D' : '#92400E' }}>Pagar horas a sustituta</span>
+                        <p className="text-[10px] leading-tight" style={{ color: horasHechas ? '#16A34A' : '#D97706' }}>{s.sustituto_nombre}</p>
+                      </div>
                     </div>
                     {horasHechas ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1" style={{ backgroundColor: '#16A34A', color: '#fff' }}>
@@ -764,13 +774,16 @@ export default function SustitucionesModule() {
                   )}
                 </div>
 
-                {/* Sección 2: Descontar días (solo si hay días) */}
+                {/* Sección 2: Descontar días — al sustituido */}
                 {hayDias && (
-                  <div className="rounded-xl overflow-hidden" style={{ border: `1.5px solid ${diasHechos ? '#BBF7D0' : '#E2E8F0'}`, backgroundColor: diasHechos ? '#F0FDF4' : '#FAFBFC' }}>
-                    <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: `1px solid ${diasHechos ? '#BBF7D0' : '#E2E8F0'}` }}>
+                  <div className="rounded-xl overflow-hidden" style={{ border: `1.5px solid ${diasHechos ? '#BBF7D0' : '#FECACA'}`, backgroundColor: diasHechos ? '#F0FDF4' : '#FEF2F2' }}>
+                    <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: `1px solid ${diasHechos ? '#BBF7D0' : '#FECACA'}` }}>
                       <div className="flex items-center gap-2">
-                        <CreditCard size={14} style={{ color: diasHechos ? '#16A34A' : '#64748B' }} />
-                        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: diasHechos ? '#15803D' : '#1E293B' }}>Descontar días</span>
+                        <CreditCard size={14} style={{ color: diasHechos ? '#16A34A' : '#DC2626' }} />
+                        <div>
+                          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: diasHechos ? '#15803D' : '#991B1B' }}>Descontar días al sustituido</span>
+                          <p className="text-[10px] leading-tight" style={{ color: diasHechos ? '#16A34A' : '#DC2626' }}>{s.empleado_nombre}</p>
+                        </div>
                       </div>
                       {diasHechos ? (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1" style={{ backgroundColor: '#16A34A', color: '#fff' }}>
@@ -783,7 +796,7 @@ export default function SustitucionesModule() {
                     {!diasHechos && (
                       <div className="p-3 space-y-3">
                         <p className="text-[11px]" style={{ color: '#64748B' }}>
-                          Se descontarán <strong style={{ color: '#15803D' }}>{dias} día{dias !== 1 ? 's' : ''}</strong> del balance del trabajador.
+                          Se descontarán <strong style={{ color: '#DC2626' }}>{dias} día{dias !== 1 ? 's' : ''}</strong> del balance de <strong>{s.empleado_nombre}</strong>.
                         </p>
                         <div>
                           <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Descripción del descuento</label>

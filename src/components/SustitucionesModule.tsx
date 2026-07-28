@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserCheck, Search, RefreshCw, Calendar, Moon, Star, Plus, X, Pencil, Trash2, CheckCircle2, Sun, Sunset, CheckSquare, Square, Banknote, CreditCard, ArrowRight } from 'lucide-react';
+import { UserCheck, Search, RefreshCw, Calendar, Moon, Star, Plus, X, Pencil, Trash2, CheckCircle2, Sun, Sunset, CheckSquare, Square, Banknote, CreditCard, Check } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface BajaInfo {
@@ -35,6 +35,9 @@ interface SustitucionRow {
   dias_a_descontar: number | null;
   tiene_justificante: boolean | null;
   finalizado: boolean | null;
+  horas_liquidadas: boolean;
+  dias_descontados: boolean;
+  descripcion_descuento: string | null;
   empleado_nombre: string;
   baja: BajaInfo | null;
 }
@@ -110,19 +113,16 @@ export default function SustitucionesModule() {
   const [editError, setEditError] = useState('');
   const [liquidaciones, setLiquidaciones] = useState<{ sustituto_id: string; horas_liquidadas: number }[]>([]);
 
-  // Choice modal (liquidar vs descontar) when clicking the green check
-  const [choiceTarget, setChoiceTarget] = useState<SustitucionRow | null>(null);
-
-  // Liquidar modal
-  const [liquidarTarget, setLiquidarTarget] = useState<{ sustituto_id: string; sustituto_nombre: string; pendiente: number } | null>(null);
+  // Unified finalizar modal
+  const [finalizarTarget, setFinalizarTarget] = useState<SustitucionRow | null>(null);
   const [liquidarHoras, setLiquidarHoras] = useState(0);
   const [liquidarNotas, setLiquidarNotas] = useState('');
   const [savingLiquidar, setSavingLiquidar] = useState(false);
-
-  // Descontar modal
-  const [descontarTarget, setDescontarTarget] = useState<{ sustId: string; sustituto_nombre: string; diasADescontar: number } | null>(null);
-  const [descontarDescripcion, setDescontarDescripcion] = useState('');
+  const [descontarDesc, setDescontarDesc] = useState('');
   const [savingDescontar, setSavingDescontar] = useState(false);
+  // local done flags (reset when modal opens)
+  const [horasHechas, setHorasHechas] = useState(false);
+  const [diasHechos, setDiasHechos] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -142,6 +142,9 @@ export default function SustitucionesModule() {
           ...s,
           baja_id: s.baja_id ?? null,
           dias_a_descontar: s.dias_a_descontar ?? null,
+          horas_liquidadas: s.horas_liquidadas ?? false,
+          dias_descontados: s.dias_descontados ?? false,
+          descripcion_descuento: s.descripcion_descuento ?? null,
           tiene_justificante: s.tiene_justificante ?? false,
           empleado_nombre: baja ? (baja.empleado_nombre ?? '—') : 'Sustitución directa',
           baja,
@@ -625,7 +628,19 @@ export default function SustitucionesModule() {
                       {/* Actions */}
                       <td className="px-3 py-2.5 border-b" style={{ borderColor: '#F1F5F9' }}>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => setChoiceTarget(s)}
+                          <button onClick={() => {
+                            const horas = computeHoras(s);
+                            const yaLiquidadas = liquidadasPorSustituto.get(s.sustituto_id) ?? 0;
+                            const pagadas = horasPagadasPorSustituto.get(s.sustituto_id) ?? 0;
+                            const pendiente = Math.max(0, pagadas - yaLiquidadas);
+                            const dias = s.dias_a_descontar ?? computeBajaDiasDescontar(s.baja) ?? 0;
+                            setFinalizarTarget(s);
+                            setLiquidarHoras(pendiente);
+                            setLiquidarNotas('');
+                            setDescontarDesc('');
+                            setHorasHechas(s.horas_liquidadas ?? false);
+                            setDiasHechos((s.dias_descontados ?? false) || dias === 0);
+                          }}
                             className="w-6 h-6 rounded flex items-center justify-center cursor-pointer hover:bg-emerald-50"
                             style={{ color: '#16A34A' }} title="Liquidar / descontar">
                             <CheckCircle2 size={12} />
@@ -651,205 +666,187 @@ export default function SustitucionesModule() {
         )}
       </div>
 
-      {/* Choice modal: Liquidar or Descontar */}
-      {choiceTarget && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-          <div className="bg-white rounded-2xl max-w-md w-full mx-4 shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0C4A6E, #0369A1)' }}>
-              <h2 className="text-white font-semibold text-sm flex items-center gap-2"><CheckCircle2 size={15} /> Finalizar sustitución</h2>
-              <button onClick={() => setChoiceTarget(null)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff' }}>
-                <X size={15} />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              <div className="rounded-lg px-4 py-3" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-                <p className="text-sm font-semibold" style={{ color: '#0C4A6E' }}>{choiceTarget.sustituto_nombre}</p>
-                <p className="text-xs mt-0.5" style={{ color: '#0369A1' }}>
-                  {computeHoras(choiceTarget)}h · {choiceTarget.empleado_nombre} · {choiceTarget.fecha_inicio}
-                </p>
-              </div>
-              <p className="text-xs text-center" style={{ color: '#64748B' }}>¿Qué deseas hacer con esta sustitución?</p>
-              <div className="grid grid-cols-1 gap-2.5">
-                <button onClick={() => {
-                  const horas = computeHoras(choiceTarget);
-                  const yaLiquidadas = liquidadasPorSustituto.get(choiceTarget.sustituto_id) ?? 0;
-                  const pagadas = horasPagadasPorSustituto.get(choiceTarget.sustituto_id) ?? 0;
-                  const pendiente = Math.max(0, pagadas - yaLiquidadas);
-                  setChoiceTarget(null);
-                  setLiquidarTarget({ sustituto_id: choiceTarget.sustituto_id, sustituto_nombre: choiceTarget.sustituto_nombre, pendiente });
-                  setLiquidarHoras(pendiente);
-                  setLiquidarNotas('');
-                }} className="flex items-center gap-3 px-4 py-3.5 rounded-xl cursor-pointer transition-all hover:opacity-90" style={{ backgroundColor: '#FFFBEB', border: '1.5px solid #FDE68A' }}>
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#D97706' }}>
-                    <Banknote size={16} className="text-white" />
-                  </div>
-                  <div className="text-left flex-1">
-                    <p className="text-sm font-semibold" style={{ color: '#92400E' }}>Liquidar horas</p>
-                    <p className="text-[11px]" style={{ color: '#B45309' }}>Registrar pago de horas al sustituto</p>
-                  </div>
-                  <ArrowRight size={14} style={{ color: '#D97706' }} />
-                </button>
-                <button onClick={() => {
-                  const dias = choiceTarget.dias_a_descontar ?? computeBajaDiasDescontar(choiceTarget.baja) ?? 0;
-                  setChoiceTarget(null);
-                  setDescontarTarget({ sustId: choiceTarget.id, sustituto_nombre: choiceTarget.sustituto_nombre, diasADescontar: dias });
-                  setDescontarDescripcion('');
-                }} className="flex items-center gap-3 px-4 py-3.5 rounded-xl cursor-pointer transition-all hover:opacity-90" style={{ backgroundColor: '#F0FDF4', border: '1.5px solid #BBF7D0' }}>
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#16A34A' }}>
-                    <CreditCard size={16} className="text-white" />
-                  </div>
-                  <div className="text-left flex-1">
-                    <p className="text-sm font-semibold" style={{ color: '#15803D' }}>Descontar</p>
-                    <p className="text-[11px]" style={{ color: '#16A34A' }}>Marcar como descontado del balance</p>
-                  </div>
-                  <ArrowRight size={14} style={{ color: '#16A34A' }} />
+      {/* Unified Finalizar modal: liquidar horas + descontar días together */}
+      {finalizarTarget && (() => {
+        const s = finalizarTarget;
+        const horas = computeHoras(s);
+        const yaLiquidadas = liquidadasPorSustituto.get(s.sustituto_id) ?? 0;
+        const pagadas = horasPagadasPorSustituto.get(s.sustituto_id) ?? 0;
+        const pendiente = Math.max(0, pagadas - yaLiquidadas);
+        const dias = s.dias_a_descontar ?? computeBajaDiasDescontar(s.baja) ?? 0;
+        const hayDias = dias > 0;
+        const todoHecho = horasHechas && diasHechos;
+        return (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+            <div className="bg-white rounded-2xl max-w-lg w-full mx-4 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+              <div className="px-6 py-4 flex items-center justify-between flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0C4A6E, #0369A1)' }}>
+                <h2 className="text-white font-semibold text-sm flex items-center gap-2"><CheckCircle2 size={15} /> Finalizar sustitución</h2>
+                <button onClick={() => setFinalizarTarget(null)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff' }}>
+                  <X size={15} />
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Liquidar modal */}
-      {liquidarTarget && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-          <div className="bg-white rounded-2xl max-w-md w-full mx-4 shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #92400E, #D97706)' }}>
-              <h2 className="text-white font-semibold text-sm flex items-center gap-2"><Banknote size={15} /> Liquidar horas</h2>
-              <button onClick={() => setLiquidarTarget(null)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff' }}>
-                <X size={15} />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              <div className="rounded-lg px-4 py-3" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-                <p className="text-sm font-semibold" style={{ color: '#92400E' }}>{liquidarTarget.sustituto_nombre}</p>
-                <p className="text-xs mt-0.5" style={{ color: '#D97706' }}>Horas pendientes: <strong>{liquidarTarget.pendiente}h</strong></p>
-              </div>
-              <div>
-                <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Horas a liquidar *</label>
-                <input type="number" min={0} max={liquidarTarget.pendiente} step={0.5} value={liquidarHoras || ''}
-                  onChange={(e) => setLiquidarHoras(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                  style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB', color: '#92400E', fontWeight: 700 }} />
-                <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
-                  Pendientes restantes: <span className="font-semibold" style={{ color: '#DC2626' }}>{Math.max(0, liquidarTarget.pendiente - (liquidarHoras || 0)).toFixed(1)}h</span>
-                  {' → '}
-                  Liquidadas: <span className="font-semibold" style={{ color: '#16A34A' }}>{(liquidarHoras || 0).toFixed(1)}h</span>
-                </p>
-              </div>
-              <div>
-                <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Notas (opcional)</label>
-                <input type="text" value={liquidarNotas} onChange={(e) => setLiquidarNotas(e.target.value)}
-                  placeholder="Ej. Pago noviembre 2026"
-                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                  style={{ borderColor: '#E2E8F0', color: '#1E293B' }} />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button onClick={() => setLiquidarTarget(null)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold cursor-pointer"
-                  style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
-                  Cancelar
-                </button>
-                <button onClick={async () => {
-                  if (!liquidarTarget) return;
-                  if (!liquidarHoras || liquidarHoras <= 0) return;
-                  if (liquidarHoras > liquidarTarget.pendiente) return;
-                  setSavingLiquidar(true);
-                  try {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const userId = session?.user?.id ?? null;
-                    const { error: insErr } = await supabase.from('liquidaciones_horas').insert({
-                      sustituto_id: liquidarTarget.sustituto_id,
-                      sustituto_nombre: liquidarTarget.sustituto_nombre,
-                      horas_liquidadas: liquidarHoras,
-                      fecha: new Date().toISOString().slice(0, 10),
-                      notas: liquidarNotas.trim() || null,
-                      created_by: userId,
-                    });
-                    if (insErr) throw insErr;
-                    setLiquidarTarget(null);
-                    await load();
-                  } catch (err: unknown) {
-                    console.error(err);
-                  } finally {
-                    setSavingLiquidar(false);
-                  }
-                }} disabled={savingLiquidar || !liquidarHoras || liquidarHoras <= 0 || liquidarHoras > liquidarTarget.pendiente}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
-                  style={{ backgroundColor: '#D97706' }}>
-                  {savingLiquidar ? <RefreshCw size={14} className="animate-spin" /> : <Banknote size={14} />}
-                  {savingLiquidar ? 'Liquidando...' : 'Liquidar horas'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Descontar modal */}
-      {descontarTarget && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-          <div className="bg-white rounded-2xl max-w-md w-full mx-4 shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #15803D, #16A34A)' }}>
-              <h2 className="text-white font-semibold text-sm flex items-center gap-2"><CreditCard size={15} /> Descontar sustitución</h2>
-              <button onClick={() => setDescontarTarget(null)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff' }}>
-                <X size={15} />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              <div className="rounded-lg px-4 py-3" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                <p className="text-sm font-semibold" style={{ color: '#15803D' }}>{descontarTarget.sustituto_nombre}</p>
-                {descontarTarget.diasADescontar > 0 ? (
-                  <p className="text-xs mt-0.5" style={{ color: '#16A34A' }}>
-                    Se descontarán <strong>{descontarTarget.diasADescontar} día{descontarTarget.diasADescontar !== 1 ? 's' : ''}</strong> del balance.
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                {/* Info resumen */}
+                <div className="rounded-lg px-4 py-3" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                  <p className="text-sm font-semibold" style={{ color: '#0C4A6E' }}>{s.sustituto_nombre}</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#0369A1' }}>
+                    {horas}h · {s.empleado_nombre} · {s.fecha_inicio}
                   </p>
-                ) : (
-                  <p className="text-xs mt-0.5" style={{ color: '#16A34A' }}>No hay días configurados para descontar. Se marcará como finalizada.</p>
+                </div>
+
+                {/* Sección 1: Liquidar horas */}
+                <div className="rounded-xl overflow-hidden" style={{ border: `1.5px solid ${horasHechas ? '#BBF7D0' : '#FDE68A'}`, backgroundColor: horasHechas ? '#F0FDF4' : '#FFFBEB' }}>
+                  <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: `1px solid ${horasHechas ? '#BBF7D0' : '#FDE68A'}` }}>
+                    <div className="flex items-center gap-2">
+                      <Banknote size={14} style={{ color: horasHechas ? '#16A34A' : '#D97706' }} />
+                      <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: horasHechas ? '#15803D' : '#92400E' }}>Liquidar horas</span>
+                    </div>
+                    {horasHechas ? (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1" style={{ backgroundColor: '#16A34A', color: '#fff' }}>
+                        <Check size={10} /> Hecho
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-semibold" style={{ color: '#D97706' }}>{pendiente}h pendientes</span>
+                    )}
+                  </div>
+                  {!horasHechas && (
+                    <div className="p-3 space-y-3">
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Horas a liquidar</label>
+                        <input type="number" min={0} max={pendiente} step={0.5} value={liquidarHoras || ''}
+                          onChange={(e) => setLiquidarHoras(parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                          style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB', color: '#92400E', fontWeight: 700 }} />
+                        <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
+                          Pendientes: <span className="font-semibold" style={{ color: '#DC2626' }}>{Math.max(0, pendiente - (liquidarHoras || 0)).toFixed(1)}h</span>
+                          {' → '}
+                          Liquidadas: <span className="font-semibold" style={{ color: '#16A34A' }}>{(liquidarHoras || 0).toFixed(1)}h</span>
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Notas (opcional)</label>
+                        <input type="text" value={liquidarNotas} onChange={(e) => setLiquidarNotas(e.target.value)}
+                          placeholder="Ej. Pago noviembre 2026"
+                          className="w-full px-3 py-2 rounded-lg text-xs border outline-none"
+                          style={{ borderColor: '#E2E8F0', color: '#1E293B' }} />
+                      </div>
+                      <button onClick={async () => {
+                        if (!liquidarHoras || liquidarHoras <= 0 || liquidarHoras > pendiente) return;
+                        setSavingLiquidar(true);
+                        try {
+                          const { data: { session } } = await supabase.auth.getSession();
+                          const userId = session?.user?.id ?? null;
+                          const { error: insErr } = await supabase.from('liquidaciones_horas').insert({
+                            sustituto_id: s.sustituto_id,
+                            sustituto_nombre: s.sustituto_nombre,
+                            horas_liquidadas: liquidarHoras,
+                            fecha: new Date().toISOString().slice(0, 10),
+                            notas: liquidarNotas.trim() || null,
+                            created_by: userId,
+                          });
+                          if (insErr) throw insErr;
+                          const { error: updErr } = await supabase.from('sustituciones').update({ horas_liquidadas: true }).eq('id', s.id);
+                          if (updErr) throw updErr;
+                          setHorasHechas(true);
+                          await load();
+                        } catch (err: unknown) {
+                          console.error(err);
+                        } finally {
+                          setSavingLiquidar(false);
+                        }
+                      }} disabled={savingLiquidar || !liquidarHoras || liquidarHoras <= 0 || liquidarHoras > pendiente}
+                        className="w-full py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
+                        style={{ backgroundColor: '#D97706' }}>
+                        {savingLiquidar ? <RefreshCw size={14} className="animate-spin" /> : <Banknote size={14} />}
+                        {savingLiquidar ? 'Liquidando...' : 'Liquidar horas'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Sección 2: Descontar días (solo si hay días) */}
+                {hayDias && (
+                  <div className="rounded-xl overflow-hidden" style={{ border: `1.5px solid ${diasHechos ? '#BBF7D0' : '#E2E8F0'}`, backgroundColor: diasHechos ? '#F0FDF4' : '#FAFBFC' }}>
+                    <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: `1px solid ${diasHechos ? '#BBF7D0' : '#E2E8F0'}` }}>
+                      <div className="flex items-center gap-2">
+                        <CreditCard size={14} style={{ color: diasHechos ? '#16A34A' : '#64748B' }} />
+                        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: diasHechos ? '#15803D' : '#1E293B' }}>Descontar días</span>
+                      </div>
+                      {diasHechos ? (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1" style={{ backgroundColor: '#16A34A', color: '#fff' }}>
+                          <Check size={10} /> Hecho
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-semibold" style={{ color: '#DC2626' }}>{dias} día{dias !== 1 ? 's' : ''} pendiente{dias !== 1 ? 's' : ''}</span>
+                      )}
+                    </div>
+                    {!diasHechos && (
+                      <div className="p-3 space-y-3">
+                        <p className="text-[11px]" style={{ color: '#64748B' }}>
+                          Se descontarán <strong style={{ color: '#15803D' }}>{dias} día{dias !== 1 ? 's' : ''}</strong> del balance del trabajador.
+                        </p>
+                        <div>
+                          <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: '#64748B' }}>Descripción del descuento</label>
+                          <input type="text" value={descontarDesc} onChange={(e) => setDescontarDesc(e.target.value)}
+                            placeholder="Ej. Nómina de junio" autoFocus
+                            className="w-full px-3 py-2 rounded-lg text-xs border outline-none"
+                            style={{ borderColor: '#BBF7D0', backgroundColor: '#F0FDF4', color: '#15803D', fontWeight: 600 }} />
+                        </div>
+                        <button onClick={async () => {
+                          if (!descontarDesc.trim()) return;
+                          setSavingDescontar(true);
+                          try {
+                            const { error: updErr } = await supabase.from('sustituciones')
+                              .update({ dias_descontados: true, descripcion_descuento: descontarDesc.trim() })
+                              .eq('id', s.id);
+                            if (updErr) throw updErr;
+                            setDiasHechos(true);
+                            await load();
+                          } catch (err: unknown) {
+                            console.error(err);
+                          } finally {
+                            setSavingDescontar(false);
+                          }
+                        }} disabled={savingDescontar || !descontarDesc.trim()}
+                          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
+                          style={{ backgroundColor: '#16A34A' }}>
+                          {savingDescontar ? <RefreshCw size={14} className="animate-spin" /> : <CreditCard size={14} />}
+                          {savingDescontar ? 'Descontando...' : 'Descontar días'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!hayDias && (
+                  <p className="text-[11px] text-center" style={{ color: '#94A3B8' }}>No hay días configurados para descontar en esta sustitución.</p>
                 )}
               </div>
-              <div>
-                <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Descripción del descuento *</label>
-                <input type="text" value={descontarDescripcion} onChange={(e) => setDescontarDescripcion(e.target.value)}
-                  placeholder="Ej. Nómina de junio" autoFocus
-                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                  style={{ borderColor: '#BBF7D0', backgroundColor: '#F0FDF4', color: '#15803D', fontWeight: 600 }} />
-                <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
-                  Indica el motivo o referencia del descuento. Se guardará junto al registro.
-                </p>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button onClick={() => setDescontarTarget(null)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold cursor-pointer"
+
+              {/* Footer: Cerrar + Finalizar (solo cuando todo hecho) */}
+              <div className="px-5 py-3 flex gap-2 flex-shrink-0" style={{ borderTop: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+                <button onClick={() => setFinalizarTarget(null)}
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer"
                   style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
-                  Cancelar
+                  Cerrar
                 </button>
                 <button onClick={async () => {
-                  if (!descontarTarget) return;
-                  if (!descontarDescripcion.trim()) return;
-                  setSavingDescontar(true);
-                  try {
-                    const { error: updErr } = await supabase.from('sustituciones')
-                      .update({ finalizado: true, finalizado_at: new Date().toISOString(), notas: descontarDescripcion.trim() })
-                      .eq('id', descontarTarget.sustId);
-                    if (updErr) throw updErr;
-                    setDescontarTarget(null);
-                    await load();
-                  } catch (err: unknown) {
-                    console.error(err);
-                  } finally {
-                    setSavingDescontar(false);
-                  }
-                }} disabled={savingDescontar || !descontarDescripcion.trim()}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
-                  style={{ backgroundColor: '#16A34A' }}>
-                  {savingDescontar ? <RefreshCw size={14} className="animate-spin" /> : <CreditCard size={14} />}
-                  {savingDescontar ? 'Descontando...' : 'Descontar'}
+                  if (!todoHecho) return;
+                  const { error: updErr } = await supabase.from('sustituciones')
+                    .update({ finalizado: true, finalizado_at: new Date().toISOString() })
+                    .eq('id', s.id);
+                  if (!updErr) { setFinalizarTarget(null); await load(); }
+                }} disabled={!todoHecho}
+                  className="ml-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center gap-2"
+                  style={{ backgroundColor: todoHecho ? '#16A34A' : '#94A3B8' }}>
+                  <CheckCircle2 size={14} />
+                  Finalizar
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Edit modal */}
       {editingRow && editForm && (

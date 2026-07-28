@@ -154,15 +154,19 @@ Deno.serve(async (req: Request) => {
         .eq("email", normalizedEmail)
         .maybeSingle();
 
-      // Also look up the auth user
-      const { data: userList, error: userErr } = await admin.auth.admin.listUsers();
+      // Look up the auth user via user_profiles (avoids listUsers pagination issues)
+      const { data: profile } = await admin
+        .from("user_profiles")
+        .select("id, email, role")
+        .eq("email", normalizedEmail)
+        .maybeSingle();
+
       let userId: string | null = null;
-      if (!userErr && userList?.users) {
-        const found = userList.users.find((u) => u.email?.toLowerCase() === normalizedEmail);
-        if (found) userId = found.id;
+      if (profile?.id) {
+        userId = profile.id;
       }
 
-      // Only proceed if the email exists in empleados AND in auth
+      // Only proceed if the email exists in empleados AND in auth (user_profiles)
       const emailExistsInEmpleados = !!empleado;
       const emailExistsInAuth = !!userId;
 
@@ -329,18 +333,32 @@ async function sendSmtp(opts: {
     const enc = new TextEncoder();
     const dec = new TextDecoder();
 
-    const read = async (): Promise<string> => {
+    // Read full SMTP response (may span multiple packets)
+    const readResponse = async (): Promise<string> => {
+      let result = "";
       const buf = new Uint8Array(4096);
-      const n = await conn.read(buf);
-      return n ? dec.decode(buf.subarray(0, n)) : "";
+      // Read until we get a line with a status code followed by space (not dash)
+      // Multi-line SMTP responses use dash for continuation: "250-SIZE", "250 HELP"
+      for (let i = 0; i < 10; i++) {
+        const n = await conn.read(buf);
+        if (!n) break;
+        result += dec.decode(buf.subarray(0, n));
+        // Check if the last line ends with a status code + space (end of response)
+        const lines = result.split("\r\n").filter(Boolean);
+        const lastLine = lines[lines.length - 1];
+        if (lastLine && /^\d{3} /.test(lastLine)) break;
+        // If no more data available, break
+        if (n < buf.length) break;
+      }
+      return result;
     };
 
     const cmd = async (line: string): Promise<string> => {
       await conn.write(enc.encode(line + "\r\n"));
-      return await read();
+      return await readResponse();
     };
 
-    await read();
+    await readResponse();
     await cmd("EHLO localhost");
 
     if (useStartTLS) {

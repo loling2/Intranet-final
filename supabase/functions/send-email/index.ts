@@ -88,6 +88,7 @@ Deno.serve(async (req: Request) => {
       to: to_email,
       subject: asunto,
       text: cuerpo,
+      html: buildAccessHtml(asunto, cuerpo, variables),
     });
 
     if (!smtpResp.ok) {
@@ -102,6 +103,74 @@ Deno.serve(async (req: Request) => {
 
 // ─── Minimal SMTP client using Deno TCP ───────────────────────────────────────
 
+function buildAccessHtml(subject: string, textBody: string, vars: Record<string, string>): string {
+  const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const escapePlain = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>");
+
+  const urlAcceso = vars.url_acceso || "";
+  const email = escapeHtml(vars.email || "");
+  const password = escapeHtml(vars.password || "");
+  const nombre = escapeHtml(vars.nombre || "");
+  const empresa = escapeHtml(vars.empresa || "la empresa");
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin:0;padding:0;background:#F1F5F9;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="520" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+          <tr>
+            <td style="background:linear-gradient(135deg,#0C4A6E,#0369A1);padding:32px 40px;text-align:center;">
+              <p style="margin:0;font-size:22px;font-weight:700;color:#FFFFFF;letter-spacing:-0.5px;">Portal de Empleado</p>
+              <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.75);">${escapeHtml(subject)}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:36px 40px;">
+              <p style="margin:0 0 16px;font-size:15px;color:#1E293B;font-weight:600;">Hola${nombre ? ", " + nombre : ""},</p>
+              <p style="margin:0 0 24px;font-size:14px;color:#475569;line-height:1.6;">
+                ${escapePlain(textBody)}
+              </p>
+              ${urlAcceso ? `
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="padding:8px 0 28px;">
+                    <a href="${escapeHtml(urlAcceso)}"
+                       style="display:inline-block;background:linear-gradient(135deg,#0C4A6E,#0369A1);color:#FFFFFF;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:10px;letter-spacing:0.3px;">
+                      Acceder al portal
+                    </a>
+                  </td>
+                </tr>
+              </table>` : ""}
+              ${(email || password) ? `
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:24px;">
+                ${email ? `<tr><td style="padding:12px 16px;border-bottom:1px solid #E2E8F0;"><span style="font-size:12px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.5px;">Correo</span><br/><span style="font-size:14px;color:#1E293B;font-weight:600;">${email}</span></td></tr>` : ""}
+                ${password ? `<tr><td style="padding:12px 16px;"><span style="font-size:12px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.5px;">Contraseña</span><br/><span style="font-size:14px;color:#1E293B;font-weight:600;font-family:monospace;">${password}</span></td></tr>` : ""}
+              </table>` : ""}
+              <p style="margin:0;font-size:13px;color:#94A3B8;line-height:1.5;">
+                Por favor, cambia tu contraseña después de iniciar sesión.<br/>Si no esperabas este correo, puedes ignorarlo.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:20px 40px;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#94A3B8;">Este correo ha sido enviado automáticamente por ${empresa}. Por favor, no respondas a este mensaje.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
 async function sendSmtp(opts: {
   host: string;
   port: number;
@@ -112,6 +181,7 @@ async function sendSmtp(opts: {
   to: string;
   subject: string;
   text: string;
+  html?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   try {
     const useSSL = opts.security === "SSL";
@@ -127,19 +197,29 @@ async function sendSmtp(opts: {
     const enc = new TextEncoder();
     const dec = new TextDecoder();
 
-    const read = async (): Promise<string> => {
+    // Read full SMTP response (may span multiple packets)
+    const readResponse = async (): Promise<string> => {
+      let result = "";
       const buf = new Uint8Array(4096);
-      const n = await conn.read(buf);
-      return n ? dec.decode(buf.subarray(0, n)) : "";
+      for (let i = 0; i < 10; i++) {
+        const n = await conn.read(buf);
+        if (!n) break;
+        result += dec.decode(buf.subarray(0, n));
+        const lines = result.split("\r\n").filter(Boolean);
+        const lastLine = lines[lines.length - 1];
+        if (lastLine && /^\d{3} /.test(lastLine)) break;
+        if (n < buf.length) break;
+      }
+      return result;
     };
 
     const cmd = async (line: string): Promise<string> => {
       await conn.write(enc.encode(line + "\r\n"));
-      return await read();
+      return await readResponse();
     };
 
     // Greeting
-    await read();
+    await readResponse();
     await cmd(`EHLO localhost`);
 
     if (useStartTLS) {
@@ -161,21 +241,47 @@ async function sendSmtp(opts: {
 
     const boundary = crypto.randomUUID().replace(/-/g, "");
     const date = new Date().toUTCString();
-    const message = [
-      `From: ${opts.from}`,
-      `To: ${opts.to}`,
-      `Subject: ${opts.subject}`,
-      `Date: ${date}`,
-      `MIME-Version: 1.0`,
-      `Content-Type: text/plain; charset=UTF-8`,
-      ``,
-      opts.text,
-      ``,
-      `.`,
-    ].join("\r\n");
 
-    // suppress unused boundary warning
-    void boundary;
+    let message: string;
+    if (opts.html) {
+      message = [
+        `From: ${opts.from}`,
+        `To: ${opts.to}`,
+        `Subject: ${opts.subject}`,
+        `Date: ${date}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: multipart/alternative; boundary="${boundary}"`,
+        ``,
+        `--${boundary}`,
+        `Content-Type: text/plain; charset=UTF-8`,
+        `Content-Transfer-Encoding: 7bit`,
+        ``,
+        opts.text,
+        ``,
+        `--${boundary}`,
+        `Content-Type: text/html; charset=UTF-8`,
+        `Content-Transfer-Encoding: 7bit`,
+        ``,
+        opts.html,
+        ``,
+        `--${boundary}--`,
+        ``,
+        `.`,
+      ].join("\r\n");
+    } else {
+      message = [
+        `From: ${opts.from}`,
+        `To: ${opts.to}`,
+        `Subject: ${opts.subject}`,
+        `Date: ${date}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: text/plain; charset=UTF-8`,
+        ``,
+        opts.text,
+        ``,
+        `.`,
+      ].join("\r\n");
+    }
 
     const dataResp = await cmd(message);
     if (!dataResp.startsWith("250")) throw new Error("DATA failed: " + dataResp);

@@ -67,6 +67,14 @@ Deno.serve(async (req: Request) => {
       .eq("id", userId)
       .maybeSingle();
 
+    // Block login for deactivated users
+    if (profile && profile.activo === false) {
+      return new Response(
+        JSON.stringify({ error: "Tu acceso ha sido desactivado. Contacta con RRHH." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify({
         userId,

@@ -965,7 +965,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSociedad, setFilterSociedad] = useState('');
-  const [filterActivo, setFilterActivo] = useState('');
+  const [filterActivo, setFilterActivo] = useState<'activo' | 'inactivo'>('activo');
   const [page, setPage] = useState(1);
 
   const [showForm, setShowForm] = useState(false);
@@ -1501,16 +1501,28 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               <option value="">Todas las sociedades</option>
               {sociedades.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
             </select>
-            <select
-              value={filterActivo}
-              onChange={(e) => setFilterActivo(e.target.value)}
-              className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
-              style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
-            >
-              <option value="">Todos</option>
-              <option value="activo">Activos</option>
-              <option value="inactivo">Inactivos</option>
-            </select>
+            <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
+              <button
+                onClick={() => setFilterActivo('activo')}
+                className="px-3 py-2 text-xs font-semibold cursor-pointer transition-all duration-150"
+                style={{
+                  backgroundColor: filterActivo === 'activo' ? '#0369A1' : '#F8FAFC',
+                  color: filterActivo === 'activo' ? '#FFFFFF' : '#64748B',
+                }}
+              >
+                Activos
+              </button>
+              <button
+                onClick={() => setFilterActivo('inactivo')}
+                className="px-3 py-2 text-xs font-semibold cursor-pointer transition-all duration-150"
+                style={{
+                  backgroundColor: filterActivo === 'inactivo' ? '#B91C1C' : '#F8FAFC',
+                  color: filterActivo === 'inactivo' ? '#FFFFFF' : '#64748B',
+                }}
+              >
+                Bajas
+              </button>
+            </div>
             <button
               onClick={() => setShowImport(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 hover:opacity-90"

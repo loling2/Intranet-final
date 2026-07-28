@@ -27,6 +27,8 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
   }, []);
 
   // Pre-fetch geolocation on mount so it's ready before the user enters their PIN
+  const fetchGeoRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     if (!navigator.geolocation) {
       setGpsStatus('unsupported');
@@ -75,12 +77,17 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 },
       );
     };
+    fetchGeoRef.current = fetchGeo;
     fetchGeo();
     const refreshInterval = setInterval(fetchGeo, 60000);
     return () => {
       cancelled = true;
       clearInterval(refreshInterval);
     };
+  }, []);
+
+  const retryGeo = useCallback(() => {
+    fetchGeoRef.current();
   }, []);
 
   const reset = useCallback(() => {
@@ -105,49 +112,59 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
 
   const submit = useCallback(async (pinValue: string) => {
     if (!pinValue) return;
+
+    // Require location before allowing fichaje
+    if (gpsStatus !== 'ready') {
+      setStatus('error');
+      setMessage('Esperando ubicación GPS... Activa el permiso de ubicación para fichar.');
+      resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
+      return;
+    }
+
+    const geo = cachedGeo.current;
+    if (geo.latitud === null || geo.longitud === null) {
+      setStatus('error');
+      setMessage('No se pudo obtener la ubicación. Activa el GPS e inténtalo de nuevo.');
+      resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
+      return;
+    }
+
     setStatus('submitting');
     setMessage('');
     try {
-      const { data: rpcData, error: rpcErr } = await supabase.rpc('kiosk_get_next_fichaje_tipo', { p_pin: pinValue });
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('kiosk_register_fichaje', {
+        p_pin: pinValue,
+        p_latitud: geo.latitud,
+        p_longitud: geo.longitud,
+        p_ubicacion: geo.ubicacion,
+        p_dispositivo: getDeviceInfo(),
+        p_user_agent: navigator.userAgent,
+      });
       if (rpcErr || !rpcData || rpcData.length === 0) {
         setStatus('error');
-        setMessage('PIN incorrecto. Inténtalo de nuevo.');
+        setMessage('Error al registrar el fichaje.');
         resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
         return;
       }
 
-      const result = rpcData[0] as { empleado_id: string | null; nombre_empleado: string; tipo: 'entrada' | 'salida' };
-      const { empleado_id, nombre_empleado, tipo } = result;
+      const result = rpcData[0] as { success: boolean; tipo: 'entrada' | 'salida'; nombre_empleado: string; error_msg: string | null };
+      if (!result.success) {
+        setStatus('error');
+        setMessage(result.error_msg ?? 'PIN incorrecto. Inténtalo de nuevo.');
+        resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
+        return;
+      }
 
-      const today = new Date().toISOString().split('T')[0];
-      const geo = cachedGeo.current;
-
-      const { error: insErr } = await supabase.from('fichajes').insert({
-        empleado_id: empleado_id ?? null,
-        nombre_empleado,
-        fecha: today,
-        timestamp: new Date().toISOString(),
-        tipo_evento: tipo,
-        metodo: 'pin',
-        user_agent: navigator.userAgent,
-        dispositivo: getDeviceInfo(),
-        es_manual: false,
-        latitud: geo.latitud,
-        longitud: geo.longitud,
-        ubicacion: geo.ubicacion,
-      });
-      if (insErr) throw new Error(insErr.message);
-
-      setLastEvent(tipo);
+      setLastEvent(result.tipo);
       setStatus('success');
-      setMessage(`¡Fichaje registrado, ${nombre_empleado}!`);
+      setMessage(`¡Fichaje registrado, ${result.nombre_empleado}!`);
       resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
     } catch (err: unknown) {
       setStatus('error');
       setMessage(err instanceof Error ? err.message : 'Error al registrar el fichaje');
       resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
     }
-  }, [reset]);
+  }, [reset, gpsStatus]);
 
   const appendDigit = (d: string) => {
     if (status === 'submitting' || status === 'success') return;
@@ -308,10 +325,15 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
           </span>
         )}
         {(gpsStatus === 'denied' || gpsStatus === 'unsupported') && (
-          <span className="flex items-center gap-1.5" style={{ color: '#475569' }}>
+          <button
+            onClick={() => { setGpsStatus('searching'); retryGeo(); }}
+            className="flex items-center gap-1.5 cursor-pointer transition-colors hover:opacity-80"
+            style={{ color: '#F59E0B' }}
+            title="Reintentar obtener ubicación"
+          >
             <MapPin size={12} />
-            Ubicación no disponible
-          </span>
+            Ubicación no disponible — pulsar para reintentar
+          </button>
         )}
       </div>
 

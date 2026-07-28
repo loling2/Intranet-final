@@ -125,7 +125,7 @@ Deno.serve(async (req: Request) => {
 
     // ── action: request ────────────────────────────────────────────────────
     if (action === "request") {
-      const { email } = body as { email?: string };
+      const { email, app_url: bodyAppUrl } = body as { email?: string; app_url?: string };
       if (!email || !email.trim()) {
         return json({ error: "El correo es obligatorio" }, 400);
       }
@@ -225,9 +225,11 @@ Deno.serve(async (req: Request) => {
         const configuredUrl = appUrlSetting?.value?.trim();
         const origin = req.headers.get("origin") ?? req.headers.get("referer") ?? "";
         const isWebcontainer = origin.includes("webcontainer-api.io") || origin.includes("localhost");
-        const baseUrl = (configuredUrl && !isWebcontainer) ? configuredUrl
-          : (origin && !isWebcontainer) ? origin.split("/").slice(0, 3).join("/")
-          : configuredUrl || "https://portal.example.com";
+        const originBase = origin ? origin.split("/").slice(0, 3).join("/") : "";
+        const baseUrl = (bodyAppUrl && !bodyAppUrl.includes("localhost") && !bodyAppUrl.includes("webcontainer-api.io")) ? bodyAppUrl
+          : (configuredUrl && !isWebcontainer) ? configuredUrl
+          : (origin && !isWebcontainer) ? originBase
+          : configuredUrl || originBase || "https://portal.example.com";
         const resetUrl = `${baseUrl}/?reset_token=${token}&email=${encodeURIComponent(normalizedEmail)}`;
 
         // Fetch active SMTP account

@@ -1332,7 +1332,7 @@ function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
           'Authorization': `Bearer ${anonKey}`,
           'Apikey': anonKey,
         },
-        body: JSON.stringify({ action: 'request', email: email.trim().toLowerCase() }),
+        body: JSON.stringify({ action: 'request', email: email.trim().toLowerCase(), app_url: window.location.origin }),
       });
       const body = await resp.json().catch(() => ({}));
       if (!resp.ok) {

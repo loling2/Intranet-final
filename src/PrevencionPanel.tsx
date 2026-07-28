@@ -1172,6 +1172,30 @@ function ReconocimientoMedicoTab() {
           })}
         </div>
       )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40"
+            style={{ backgroundColor: '#F1F5F9', color: '#0369A1', border: '1px solid #E2E8F0' }}
+          >
+            Anterior
+          </button>
+          <span className="text-sm" style={{ color: '#64748B' }}>
+            Pagina {page + 1} de {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-40"
+            style={{ backgroundColor: '#F1F5F9', color: '#0369A1', border: '1px solid #E2E8F0' }}
+          >
+            Siguiente
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1187,17 +1211,19 @@ type VitalyEstado = 'inactivo' | 'pendiente' | 'activo';
 interface VitalyRow {
   id: string;
   nombre: string;
-  apellidos: string | null;
   dni: string | null;
   puesto: string | null;
   vitaly_estado: string;
   vitaly_motivo: string | null;
 }
 
+const VITALY_PAGE_SIZE = 30;
+
 function VitalyTab() {
   const [rows, setRows] = useState<VitalyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftEstado, setDraftEstado] = useState<VitalyEstado>('inactivo');
   const [draftMotivo, setDraftMotivo] = useState('');
@@ -1209,7 +1235,7 @@ function VitalyTab() {
     setError(null);
     const { data, error } = await supabase
       .from('empleados')
-      .select('id, nombre, apellidos, dni, puesto, vitaly_estado, vitaly_motivo')
+      .select('id, nombre, dni, puesto, vitaly_estado, vitaly_motivo')
       .in('vitaly_estado', ['inactivo', 'pendiente'])
       .order('nombre', { ascending: true });
     if (error) {
@@ -1221,19 +1247,21 @@ function VitalyTab() {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(0); }, [search]);
 
   const filtered = rows.filter((e) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
-      `${e.nombre} ${e.apellidos ?? ''}`.toLowerCase().includes(q) ||
+      (e.nombre ?? '').toLowerCase().includes(q) ||
       (e.dni ?? '').toLowerCase().includes(q) ||
       (e.puesto ?? '').toLowerCase().includes(q)
     );
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / VITALY_PAGE_SIZE));
+  const paginated = filtered.slice(page * VITALY_PAGE_SIZE, (page + 1) * VITALY_PAGE_SIZE);
 
   const startEdit = (row: VitalyRow) => {
     setEditingId(row.id);
@@ -1267,7 +1295,7 @@ function VitalyTab() {
       setSaving(false);
       return;
     }
-    setRows((prev) => prev.filter((r) => r.id !== row.id || draftEstado !== 'activo'));
+    setRows((prev) => prev.filter((r) => !(r.id === row.id && draftEstado === 'activo')));
     cancelEdit();
     setSaving(false);
   };
@@ -1328,7 +1356,7 @@ function VitalyTab() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map((emp) => {
+          {paginated.map((emp) => {
             const badge = estadoBadge(emp.vitaly_estado);
             const isEditing = editingId === emp.id;
             return (
@@ -1341,7 +1369,7 @@ function VitalyTab() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold" style={{ color: '#0F172A' }}>
-                        {emp.nombre} {emp.apellidos ?? ''}
+                        {emp.nombre}
                       </p>
                       <span
                         className="text-xs px-2 py-0.5 rounded-full font-medium"

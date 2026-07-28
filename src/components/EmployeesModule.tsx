@@ -1357,7 +1357,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     return true;
   });
 
-  const EMP_PAGE_SIZE = 25;
+  const EMP_PAGE_SIZE = 30;
   const empTotalPages = calcTotalPages(filtered.length, EMP_PAGE_SIZE);
   const empSafePage = Math.min(page, empTotalPages);
   const pagedEmpleados = paginate(filtered, empSafePage, EMP_PAGE_SIZE);

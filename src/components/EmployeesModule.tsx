@@ -1472,6 +1472,31 @@ export default function EmployeesModule({ currentUserRole }: Props) {
 
       {/* Header + filters */}
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        {/* Activos / Bajas tabs */}
+        <div className="px-6 pt-4 flex items-center gap-2">
+          <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
+            <button
+              onClick={() => setFilterActivo('activo')}
+              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all duration-150"
+              style={{
+                backgroundColor: filterActivo === 'activo' ? '#0369A1' : '#F8FAFC',
+                color: filterActivo === 'activo' ? '#FFFFFF' : '#64748B',
+              }}
+            >
+              Activos
+            </button>
+            <button
+              onClick={() => setFilterActivo('inactivo')}
+              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all duration-150"
+              style={{
+                backgroundColor: filterActivo === 'inactivo' ? '#B91C1C' : '#F8FAFC',
+                color: filterActivo === 'inactivo' ? '#FFFFFF' : '#64748B',
+              }}
+            >
+              Bajas
+            </button>
+          </div>
+        </div>
         <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3" style={{ borderBottom: '1px solid #E2E8F0' }}>
           <div className="flex items-center gap-2">
             <Users size={16} style={{ color: '#0369A1' }} />
@@ -1501,28 +1526,6 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               <option value="">Todas las sociedades</option>
               {sociedades.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
             </select>
-            <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
-              <button
-                onClick={() => setFilterActivo('activo')}
-                className="px-3 py-2 text-xs font-semibold cursor-pointer transition-all duration-150"
-                style={{
-                  backgroundColor: filterActivo === 'activo' ? '#0369A1' : '#F8FAFC',
-                  color: filterActivo === 'activo' ? '#FFFFFF' : '#64748B',
-                }}
-              >
-                Activos
-              </button>
-              <button
-                onClick={() => setFilterActivo('inactivo')}
-                className="px-3 py-2 text-xs font-semibold cursor-pointer transition-all duration-150"
-                style={{
-                  backgroundColor: filterActivo === 'inactivo' ? '#B91C1C' : '#F8FAFC',
-                  color: filterActivo === 'inactivo' ? '#FFFFFF' : '#64748B',
-                }}
-              >
-                Bajas
-              </button>
-            </div>
             <button
               onClick={() => setShowImport(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 hover:opacity-90"

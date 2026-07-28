@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Clock, Search, RefreshCw, Download, FileText, Calendar,
-  AlertTriangle, LogIn, LogOut, ChevronDown, ChevronUp,
+  AlertTriangle, LogIn, LogOut, ChevronDown, ChevronUp, MapPin,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
@@ -381,6 +381,27 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
+function UbicacionCell({ value }: { value: string | null }) {
+  if (!value) return <span style={{ color: '#CBD5E1' }}>—</span>;
+  const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(value)}`;
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="truncate max-w-[130px]" title={value} style={{ color: '#64748B' }}>{value}</span>
+      <a
+        href={mapsUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Ver en Google Maps"
+        className="flex-shrink-0 rounded p-0.5 transition-colors hover:bg-blue-50"
+        style={{ color: '#3B82F6' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <MapPin size={14} />
+      </a>
+    </span>
+  );
+}
+
 type ViewMode = 'resumen' | 'eventos';
 type PeriodFilter = 'hoy' | 'semana' | 'mes' | 'personalizado';
 
@@ -721,7 +742,7 @@ export default function FichajesModule() {
                             {r.duracion_neta === null && <span style={{ color: '#CBD5E1' }}>—</span>}
                           </td>
                           <td className="px-4 py-3 text-xs max-w-[140px] truncate" style={{ color: '#64748B' }} title={r.dispositivo ?? ''}>{r.dispositivo ?? '—'}</td>
-                          <td className="px-4 py-3 text-xs max-w-[140px] truncate" style={{ color: '#64748B' }} title={r.ubicacion ?? ''}>{r.ubicacion ?? '—'}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: '#64748B' }}><UbicacionCell value={r.ubicacion} /></td>
                         </tr>
                       );
                     })}
@@ -769,7 +790,7 @@ export default function FichajesModule() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-xs max-w-[160px] truncate" style={{ color: '#64748B' }} title={f.dispositivo ?? ''}>{f.dispositivo ?? '—'}</td>
-                          <td className="px-4 py-3 text-xs max-w-[160px] truncate" style={{ color: '#64748B' }} title={f.ubicacion ?? ''}>{f.ubicacion ?? '—'}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: '#64748B' }}><UbicacionCell value={f.ubicacion} /></td>
                           <td className="px-4 py-3 text-xs" style={{ color: '#94A3B8' }}>{f.nota_correccion ?? '—'}</td>
                         </tr>
                       );

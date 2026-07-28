@@ -215,8 +215,19 @@ Deno.serve(async (req: Request) => {
           expires_at: expiresAt.toISOString(),
         });
 
+        // Determine the app URL: prefer configured app_url, fall back to origin header
+        const { data: appUrlSetting } = await admin
+          .from("ui_settings")
+          .select("value")
+          .eq("key", "app_url")
+          .maybeSingle();
+
+        const configuredUrl = appUrlSetting?.value?.trim();
         const origin = req.headers.get("origin") ?? req.headers.get("referer") ?? "";
-        const baseUrl = origin ? origin.split("/").slice(0, 3).join("/") : "https://portal.example.com";
+        const isWebcontainer = origin.includes("webcontainer-api.io") || origin.includes("localhost");
+        const baseUrl = (configuredUrl && !isWebcontainer) ? configuredUrl
+          : (origin && !isWebcontainer) ? origin.split("/").slice(0, 3).join("/")
+          : configuredUrl || "https://portal.example.com";
         const resetUrl = `${baseUrl}/?reset_token=${token}&email=${encodeURIComponent(normalizedEmail)}`;
 
         // Fetch active SMTP account

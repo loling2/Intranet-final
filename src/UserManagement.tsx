@@ -1007,25 +1007,13 @@ function SendEmailModal({ user, onClose }: SendEmailModalProps) {
 
       let finalPassword = password;
 
-      // Auto-generate a random password and set it on the user's account
+      // Auto-generate a random password
       if (autoPassword) {
         finalPassword = generateRandomPassword();
-        const pwdResp = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-user`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`,
-              'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            },
-            body: JSON.stringify({ action: 'set_password', userId: user.id, password: finalPassword }),
-          }
-        );
-        const pwdBody = await pwdResp.json().catch(() => ({}));
-        if (!pwdResp.ok) throw new Error(pwdBody.error ?? 'Error al asignar la contrasena');
       }
 
+      // Send the email FIRST (before changing the password, which could
+      // invalidate the current session if the admin is sending to themselves)
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`,
         {
@@ -1051,6 +1039,25 @@ function SendEmailModal({ user, onClose }: SendEmailModalProps) {
       );
       const body = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(body.error ?? `Error ${resp.status}`);
+
+      // Now set the password on the user's account (after email is sent)
+      if (autoPassword || password) {
+        const pwdResp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-user`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+              'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ action: 'set_password', userId: user.id, password: finalPassword }),
+          }
+        );
+        const pwdBody = await pwdResp.json().catch(() => ({}));
+        if (!pwdResp.ok) throw new Error(pwdBody.error ?? 'Error al asignar la contrasena');
+      }
+
       setDone(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al enviar el correo');

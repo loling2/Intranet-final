@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2, HeartPulse } from 'lucide-react';
+import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2, HeartPulse, Activity } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
 import SocietySwitcher from './SocietySwitcher';
@@ -13,7 +13,7 @@ interface Props {
   onNavigateEmployee?: () => void;
 }
 
-type PrevTab = 'empleados' | 'documentos' | 'trazabilidad' | 'departamentos' | 'reconocimiento';
+type PrevTab = 'empleados' | 'documentos' | 'trazabilidad' | 'departamentos' | 'reconocimiento' | 'vitaly';
 
 // Colors per prevention tag category
 const TAG_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -43,6 +43,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
     { id: 'trazabilidad',  label: 'Trazabilidad',        icon: CheckCircle2 },
     { id: 'departamentos', label: 'Departamentos PRL',   icon: Building2 },
     { id: 'reconocimiento', label: 'Reconocimiento Medico', icon: HeartPulse },
+    { id: 'vitaly',          label: 'Vitaly',                 icon: Activity },
   ];
 
   return (
@@ -140,6 +141,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
         {activeTab === 'trazabilidad' && <TrazabilidadModule />}
         {activeTab === 'departamentos' && <DepartamentosPrlTab />}
         {activeTab === 'reconocimiento' && <ReconocimientoMedicoTab />}
+        {activeTab === 'vitaly' && <VitalyTab />}
       </div>
     </div>
   );
@@ -1176,3 +1178,274 @@ function ReconocimientoMedicoTab() {
 
 // Exported icon for use in other components if needed
 export { Upload };
+
+// ============================================================
+// Vitaly tab — manage Vitaly onboarding status per employee
+// ============================================================
+type VitalyEstado = 'inactivo' | 'pendiente' | 'activo';
+
+interface VitalyRow {
+  id: string;
+  nombre: string;
+  apellidos: string | null;
+  dni: string | null;
+  puesto: string | null;
+  vitaly_estado: string;
+  vitaly_motivo: string | null;
+}
+
+function VitalyTab() {
+  const [rows, setRows] = useState<VitalyRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftEstado, setDraftEstado] = useState<VitalyEstado>('inactivo');
+  const [draftMotivo, setDraftMotivo] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { data, error } = await supabase
+      .from('empleados')
+      .select('id, nombre, apellidos, dni, puesto, vitaly_estado, vitaly_motivo')
+      .in('vitaly_estado', ['inactivo', 'pendiente'])
+      .order('nombre', { ascending: true });
+    if (error) {
+      setError(error.message);
+      setRows([]);
+    } else {
+      setRows((data ?? []) as VitalyRow[]);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const filtered = rows.filter((e) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      `${e.nombre} ${e.apellidos ?? ''}`.toLowerCase().includes(q) ||
+      (e.dni ?? '').toLowerCase().includes(q) ||
+      (e.puesto ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  const startEdit = (row: VitalyRow) => {
+    setEditingId(row.id);
+    setDraftEstado((row.vitaly_estado as VitalyEstado) ?? 'inactivo');
+    setDraftMotivo(row.vitaly_motivo ?? '');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setDraftEstado('inactivo');
+    setDraftMotivo('');
+  };
+
+  const save = async (row: VitalyRow) => {
+    setSaving(true);
+    setError(null);
+    const payload: Record<string, unknown> = { vitaly_estado: draftEstado };
+    if (draftEstado === 'pendiente') {
+      payload.vitaly_motivo = draftMotivo.trim() || null;
+    } else if (draftEstado === 'activo') {
+      payload.vitaly_motivo = null;
+    } else {
+      payload.vitaly_motivo = null;
+    }
+    const { error: updError } = await supabase
+      .from('empleados')
+      .update(payload)
+      .eq('id', row.id);
+    if (updError) {
+      setError(updError.message);
+      setSaving(false);
+      return;
+    }
+    setRows((prev) => prev.filter((r) => r.id !== row.id || draftEstado !== 'activo'));
+    cancelEdit();
+    setSaving(false);
+  };
+
+  const estadoBadge = (estado: string) => {
+    switch (estado) {
+      case 'pendiente':
+        return { label: 'Pendiente', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' };
+      case 'activo':
+        return { label: 'Activo', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' };
+      default:
+        return { label: 'Inactivo', color: '#475569', bg: '#F1F5F9', border: '#CBD5E1' };
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 className="text-lg font-semibold" style={{ color: '#0F172A' }}>Vitaly</h3>
+          <p className="text-sm" style={{ color: '#64748B' }}>
+            Empleados pendientes de activacion en Vitaly. Al pasar a activo, desaparecen de esta lista.
+          </p>
+        </div>
+        <button
+          onClick={load}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
+          style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}
+        >
+          <RefreshCw className="w-4 h-4" /> Actualizar
+        </button>
+      </div>
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: '#94A3B8' }} />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nombre, DNI o puesto..."
+          className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm"
+          style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#0F172A' }}
+        />
+      </div>
+
+      {error && (
+        <div className="flex items-start gap-2 p-3 rounded-lg" style={{ backgroundColor: '#FEE2E2', border: '1px solid #FECACA' }}>
+          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#B91C1C' }} />
+          <p className="text-sm" style={{ color: '#B91C1C' }}>{error}</p>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm" style={{ color: '#64748B' }}>Cargando empleados...</p>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-10 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+          <Activity className="w-8 h-8 mx-auto mb-2" style={{ color: '#CBD5E1' }} />
+          <p className="text-sm" style={{ color: '#64748B' }}>No hay empleados pendientes de Vitaly</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((emp) => {
+            const badge = estadoBadge(emp.vitaly_estado);
+            const isEditing = editingId === emp.id;
+            return (
+              <div
+                key={emp.id}
+                className="rounded-xl p-4"
+                style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
+              >
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold" style={{ color: '#0F172A' }}>
+                        {emp.nombre} {emp.apellidos ?? ''}
+                      </p>
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full font-medium"
+                        style={{ backgroundColor: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}
+                      >
+                        {badge.label}
+                      </span>
+                    </div>
+                    <div className="flex gap-4 mt-1 text-xs flex-wrap" style={{ color: '#64748B' }}>
+                      {emp.dni && <span>DNI: {emp.dni}</span>}
+                      {emp.puesto && <span>Puesto: {emp.puesto}</span>}
+                    </div>
+                    {emp.vitaly_motivo && !isEditing && (
+                      <p className="text-xs mt-1" style={{ color: '#475569' }}>
+                        Motivo: {emp.vitaly_motivo}
+                      </p>
+                    )}
+                  </div>
+
+                  {!isEditing && (
+                    <button
+                      onClick={() => startEdit(emp)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                      style={{ backgroundColor: '#F1F5F9', color: '#0369A1', border: '1px solid #E2E8F0' }}
+                    >
+                      Gestionar
+                    </button>
+                  )}
+                </div>
+
+                {isEditing && (
+                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid #E2E8F0' }}>
+                    <p className="text-xs font-medium mb-2" style={{ color: '#64748B' }}>Cambiar estado de Vitaly</p>
+                    <div className="flex gap-2 flex-wrap mb-3">
+                      {([
+                        { value: 'inactivo', label: 'Inactivo', color: '#475569', bg: '#F1F5F9', border: '#CBD5E1' },
+                        { value: 'pendiente', label: 'Pendiente', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' },
+                        { value: 'activo', label: 'Activo', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' },
+                      ] as const).map(({ value, label, color, bg, border }) => {
+                        const isActive = draftEstado === value;
+                        return (
+                          <button
+                            key={value}
+                            onClick={() => setDraftEstado(value as VitalyEstado)}
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all"
+                            style={{
+                              backgroundColor: isActive ? bg : '#FFFFFF',
+                              color: isActive ? color : '#94A3B8',
+                              border: `1.5px solid ${isActive ? border : '#E2E8F0'}`,
+                            }}
+                          >
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: isActive ? border : '#CBD5E1' }} />
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {draftEstado === 'pendiente' && (
+                      <div className="mb-3">
+                        <label className="text-xs font-medium block mb-1" style={{ color: '#64748B' }}>
+                          Motivo (obligatorio)
+                        </label>
+                        <textarea
+                          value={draftMotivo}
+                          onChange={(e) => setDraftMotivo(e.target.value)}
+                          placeholder="Ej: pendiente de crear puesto..."
+                          rows={2}
+                          className="w-full px-3 py-2 rounded-lg text-sm"
+                          style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#0F172A' }}
+                        />
+                      </div>
+                    )}
+
+                    {draftEstado === 'activo' && (
+                      <p className="text-xs mb-3" style={{ color: '#15803D' }}>
+                        Al activar, el empleado desaparecera de esta lista y aparecera como activo en Empleados.
+                      </p>
+                    )}
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => save(emp)}
+                        disabled={saving || (draftEstado === 'pendiente' && !draftMotivo.trim())}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+                        style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}
+                      >
+                        {saving ? 'Guardando...' : 'Guardar'}
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="px-4 py-2 rounded-lg text-sm font-medium"
+                        style={{ backgroundColor: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0' }}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

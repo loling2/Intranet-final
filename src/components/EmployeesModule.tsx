@@ -69,6 +69,8 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   prl_evaluacion_riesgos: false,
   prl_medidas_emergencia: false,
   prl_plan_prevencion: false,
+  vitaly_estado: 'inactivo',
+  vitaly_motivo: null,
 };
 
 function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
@@ -110,6 +112,8 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     prl_evaluacion_riesgos: e.prl_evaluacion_riesgos ?? false,
     prl_medidas_emergencia: e.prl_medidas_emergencia ?? false,
     prl_plan_prevencion: e.prl_plan_prevencion ?? false,
+    vitaly_estado: e.vitaly_estado ?? 'inactivo',
+    vitaly_motivo: e.vitaly_motivo ?? null,
   };
 }
 
@@ -1599,6 +1603,41 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                   </p>
                 )}
               </div>
+
+              {/* Vitaly status (read-only mirror, managed from Prevencion) */}
+              <div>
+                <p className="text-xs font-medium mb-1.5" style={{ color: '#64748B' }}>Vitaly</p>
+                <div className="flex gap-2 flex-wrap">
+                  {([
+                    { value: 'inactivo', label: 'Inactivo', color: '#475569', bg: '#F1F5F9', border: '#CBD5E1' },
+                    { value: 'pendiente', label: 'Pendiente', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' },
+                    { value: 'activo', label: 'Activo', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' },
+                  ] as const).map(({ value, label, color, bg, border }) => {
+                    const isActive = (form.vitaly_estado ?? 'inactivo') === value;
+                    return (
+                      <span
+                        key={value}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold"
+                        style={{
+                          backgroundColor: isActive ? bg : '#FFFFFF',
+                          color: isActive ? color : '#CBD5E1',
+                          border: `1.5px solid ${isActive ? border : '#E2E8F0'}`,
+                        }}
+                      >
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+                <p className="text-xs mt-2" style={{ color: '#94A3B8' }}>
+                  El estado de Vitaly se gestiona desde el panel de Prevencion. Los nuevos empleados siempre empiezan inactivos.
+                </p>
+                {form.vitaly_motivo && (
+                  <p className="text-xs mt-1" style={{ color: '#64748B' }}>
+                    Motivo: {form.vitaly_motivo}
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Section: Datos personales */}
@@ -1903,6 +1942,12 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         {!emp.activo && (
                           <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F1F5F9', color: '#94A3B8', border: '1px solid #E2E8F0' }}>Inactivo</span>
                         )}
+                        {emp.vitaly_estado === 'activo' && (
+                          <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#DCFCE7', color: '#15803D', border: '1px solid #22C55E' }}>Vitaly: Activo</span>
+                        )}
+                        {emp.vitaly_estado === 'pendiente' && (
+                          <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEF3C7', color: '#B45309', border: '1px solid #F59E0B' }}>Vitaly: Pendiente</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                         {emp.email && <p className="text-xs" style={{ color: '#94A3B8' }}>{emp.email}</p>}
@@ -2043,6 +2088,46 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                             </p>
                           )}
                         </div>
+                      </div>
+
+                      {/* Section: Vitaly (read-only mirror, managed from Prevencion) */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 rounded-xl p-3" style={{ backgroundColor: '#F1F5F9', border: '1px solid #E2E8F0' }}>
+                        <div>
+                          <p className="text-xs font-medium mb-1.5" style={{ color: '#64748B' }}>Vitaly</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {([
+                              { value: 'inactivo', label: 'Inactivo', color: '#475569', bg: '#F1F5F9', border: '#CBD5E1' },
+                              { value: 'pendiente', label: 'Pendiente', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' },
+                              { value: 'activo', label: 'Activo', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' },
+                            ] as const).map(({ value, label, color, bg, border }) => {
+                              const isActive = (form.vitaly_estado ?? 'inactivo') === value;
+                              return (
+                                <span
+                                  key={value}
+                                  className="px-3 py-2 rounded-lg text-xs font-semibold"
+                                  style={{
+                                    backgroundColor: isActive ? bg : '#FFFFFF',
+                                    color: isActive ? color : '#CBD5E1',
+                                    border: `1.5px solid ${isActive ? border : '#E2E8F0'}`,
+                                  }}
+                                >
+                                  {label}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <p className="text-xs mt-2" style={{ color: '#94A3B8' }}>
+                            El estado de Vitaly se gestiona desde el panel de Prevencion.
+                          </p>
+                        </div>
+                        {form.vitaly_motivo && (
+                          <div>
+                            <p className="text-xs font-medium mb-1.5" style={{ color: '#64748B' }}>Motivo Vitaly</p>
+                            <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFFFFF', color: '#475569', border: '1px solid #E2E8F0' }}>
+                              {form.vitaly_motivo}
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       {/* Section: Datos personales */}

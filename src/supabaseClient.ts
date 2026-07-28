@@ -116,6 +116,8 @@ export interface Empleado {
   prl_evaluacion_riesgos: boolean;
   prl_medidas_emergencia: boolean;
   prl_plan_prevencion: boolean;
+  vitaly_estado: string;
+  vitaly_motivo: string | null;
   created_at: string;
   updated_at: string;
 }

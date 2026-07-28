@@ -226,10 +226,10 @@ Deno.serve(async (req: Request) => {
         const origin = req.headers.get("origin") ?? req.headers.get("referer") ?? "";
         const isWebcontainer = origin.includes("webcontainer-api.io") || origin.includes("localhost");
         const originBase = origin ? origin.split("/").slice(0, 3).join("/") : "";
-        const baseUrl = (bodyAppUrl && !bodyAppUrl.includes("localhost") && !bodyAppUrl.includes("webcontainer-api.io")) ? bodyAppUrl
-          : (configuredUrl && !isWebcontainer) ? configuredUrl
+        const baseUrl = (configuredUrl) ? configuredUrl
+          : (bodyAppUrl && !bodyAppUrl.includes("localhost") && !bodyAppUrl.includes("webcontainer-api.io")) ? bodyAppUrl
           : (origin && !isWebcontainer) ? originBase
-          : configuredUrl || originBase || "https://portal.example.com";
+          : originBase || "https://portal.example.com";
         const resetUrl = `${baseUrl}/?reset_token=${token}&email=${encodeURIComponent(normalizedEmail)}`;
 
         // Fetch active SMTP account

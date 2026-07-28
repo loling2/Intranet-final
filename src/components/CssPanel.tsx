@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Upload, Palette, CheckCircle2, AlertCircle, RefreshCw, Image as ImageIcon, X } from 'lucide-react';
+import { Upload, Palette, CheckCircle2, AlertCircle, RefreshCw, Image as ImageIcon, X, Globe } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { societies as staticSocieties } from '../themes';
 
@@ -26,6 +26,11 @@ export default function CssPanel() {
   const [colorError, setColorError] = useState('');
   const [overrides, setOverrides] = useState<Record<string, SocietyColorOverride>>({});
 
+  const [appUrl, setAppUrl] = useState('');
+  const [appUrlSaving, setAppUrlSaving] = useState(false);
+  const [appUrlSuccess, setAppUrlSuccess] = useState(false);
+  const [appUrlError, setAppUrlError] = useState('');
+
   useEffect(() => {
     supabase
       .from('ui_settings')
@@ -40,6 +45,9 @@ export default function CssPanel() {
         if (!data) return;
         const bg = data.find((r) => r.key === 'login_background');
         if (bg) setBgImage(bg.value);
+
+        const urlSetting = data.find((r) => r.key === 'app_url');
+        if (urlSetting) setAppUrl(urlSetting.value);
 
         const map: Record<string, SocietyColorOverride> = {};
         for (const row of data) {
@@ -127,6 +135,27 @@ export default function CssPanel() {
     setOverrides((prev) => { const next = { ...prev }; delete next[societyId]; return next; });
   };
 
+  const handleSaveAppUrl = async () => {
+    setAppUrlError('');
+    setAppUrlSuccess(false);
+    setAppUrlSaving(true);
+    try {
+      const trimmed = appUrl.trim().replace(/\/$/, '');
+      if (trimmed && !trimmed.startsWith('http')) throw new Error('La URL debe empezar por https://');
+      const { error } = await supabase
+        .from('ui_settings')
+        .upsert({ key: 'app_url', value: trimmed, updated_at: new Date().toISOString() });
+      if (error) throw new Error(error.message);
+      setAppUrl(trimmed);
+      setAppUrlSuccess(true);
+      setTimeout(() => setAppUrlSuccess(false), 3000);
+    } catch (err) {
+      setAppUrlError(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setAppUrlSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Login Background */}
@@ -186,6 +215,55 @@ export default function CssPanel() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* App URL */}
+      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        <div className="px-6 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}>
+            <Globe size={18} style={{ color: '#2563EB' }} />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm" style={{ color: '#0F172A' }}>URL de la Aplicacion</h3>
+            <p className="text-xs" style={{ color: '#64748B' }}>Direccion publica donde esta publicada la app. Se usa en los correos de recuperacion de contrasena</p>
+          </div>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              value={appUrl}
+              onChange={(e) => setAppUrl(e.target.value)}
+              placeholder="https://tu-app.netlify.app"
+              className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none font-mono"
+              style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+            />
+            <button
+              onClick={handleSaveAppUrl}
+              disabled={appUrlSaving}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center gap-2 transition-all duration-150 hover:opacity-90"
+              style={{ backgroundColor: '#2563EB' }}
+            >
+              {appUrlSaving ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+              Guardar
+            </button>
+          </div>
+          <p className="text-xs" style={{ color: '#94A3B8' }}>
+            Si la app no esta publicada todavia, deja este campo vacio. Una vez publicada, copia aqui la URL y los correos de recuperacion apuntaran directamente a tu app.
+          </p>
+          {appUrlSuccess && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+              <CheckCircle2 size={14} style={{ color: '#16A34A' }} />
+              <p className="text-xs font-medium" style={{ color: '#15803D' }}>URL guardada correctamente</p>
+            </div>
+          )}
+          {appUrlError && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+              <AlertCircle size={14} style={{ color: '#DC2626' }} />
+              <p className="text-xs" style={{ color: '#DC2626' }}>{appUrlError}</p>
+            </div>
+          )}
         </div>
       </div>
 

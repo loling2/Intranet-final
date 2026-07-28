@@ -2025,8 +2025,8 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         <button onClick={cancelForm} className="cursor-pointer" style={{ color: '#94A3B8' }}><X size={16} /></button>
                       </div>
 
-                      {/* Section: Estado + Reconocimiento medico (top) */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 rounded-xl p-3" style={{ backgroundColor: '#F1F5F9', border: '1px solid #E2E8F0' }}>
+                      {/* Section: Estado + Reconocimiento medico + Vitaly (top) */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 rounded-xl p-3" style={{ backgroundColor: '#F1F5F9', border: '1px solid #E2E8F0' }}>
                         <FormField label="Estado">
                           <div className="flex gap-2">
                             <button
@@ -2090,10 +2090,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                             </p>
                           )}
                         </div>
-                      </div>
 
-                      {/* Section: Vitaly (read-only mirror, managed from Prevencion) */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 rounded-xl p-3" style={{ backgroundColor: '#F1F5F9', border: '1px solid #E2E8F0' }}>
                         <div>
                           <p className="text-xs font-medium mb-1.5" style={{ color: '#64748B' }}>Vitaly</p>
                           <div className="flex gap-2 flex-wrap">
@@ -2121,15 +2118,12 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                           <p className="text-xs mt-2" style={{ color: '#94A3B8' }}>
                             El estado de Vitaly se gestiona desde el panel de Prevencion.
                           </p>
-                        </div>
-                        {form.vitaly_motivo && (
-                          <div>
-                            <p className="text-xs font-medium mb-1.5" style={{ color: '#64748B' }}>Motivo Vitaly</p>
-                            <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFFFFF', color: '#475569', border: '1px solid #E2E8F0' }}>
-                              {form.vitaly_motivo}
+                          {form.vitaly_motivo && (
+                            <p className="text-xs mt-1" style={{ color: '#64748B' }}>
+                              Motivo: {form.vitaly_motivo}
                             </p>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
 
                       {/* Section: Datos personales */}

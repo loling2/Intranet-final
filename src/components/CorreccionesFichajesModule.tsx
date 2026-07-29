@@ -98,13 +98,59 @@ export default function CorreccionesFichajesModule() {
         .eq('id', c.id);
       if (updErr) throw updErr;
 
-      // If approved and there are proposed times, update the underlying fichaje(s)
-      if (respuestaModal.accion === 'aprobar' && c.fichaje_id) {
-        // Update the fichaje's nota_correccion with the approved correction
-        await supabase
-          .from('fichajes')
-          .update({ nota_correccion: `Corrección aprobada por ${validadorNombre}: ${c.motivo}` })
-          .eq('id', c.fichaje_id);
+      // If approved, apply the corrected times to the underlying fichaje rows.
+      // The original `timestamp` is NEVER touched — we write to `timestamp_corregido`.
+      if (respuestaModal.accion === 'aprobar') {
+        const notaAprobacion = `Corrección aprobada por ${validadorNombre}: ${c.motivo}`;
+        const baseUpdate = {
+          nota_correccion: notaAprobacion,
+          motivo_correccion: c.motivo,
+          corregido_por: validadorNombre,
+          corregido_at: new Date().toISOString(),
+        };
+
+        // The correction request stores entrada_propuesta / salida_propuesta.
+        // We need to find the original entrada and salida fichaje rows for that
+        // date+employee and stamp the corrected time on each one individually.
+        if (c.entrada_propuesta || c.salida_propuesta) {
+          // Fetch today's fichajes for this employee to find entrada/salida rows
+          const { data: dayFichajes } = await supabase
+            .from('fichajes')
+            .select('id, tipo_evento, timestamp')
+            .eq('nombre_empleado', c.nombre_empleado)
+            .eq('fecha', c.fecha)
+            .order('timestamp', { ascending: true });
+
+          const rows = (dayFichajes ?? []) as { id: string; tipo_evento: string; timestamp: string }[];
+
+          if (c.entrada_propuesta) {
+            const entradaRow = rows.find((r) => r.tipo_evento === 'entrada');
+            if (entradaRow) {
+              await supabase
+                .from('fichajes')
+                .update({ ...baseUpdate, timestamp_corregido: c.entrada_propuesta })
+                .eq('id', entradaRow.id);
+            }
+          }
+
+          if (c.salida_propuesta) {
+            const salidaRow = [...rows].reverse().find((r) => r.tipo_evento === 'salida');
+            if (salidaRow) {
+              await supabase
+                .from('fichajes')
+                .update({ ...baseUpdate, timestamp_corregido: c.salida_propuesta })
+                .eq('id', salidaRow.id);
+            }
+          }
+        }
+
+        // Also keep the legacy single-fichaje_id update as a fallback note
+        if (c.fichaje_id) {
+          await supabase
+            .from('fichajes')
+            .update({ nota_correccion: notaAprobacion })
+            .eq('id', c.fichaje_id);
+        }
       }
 
       setRespuestaModal(null);

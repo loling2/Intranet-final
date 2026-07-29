@@ -14,19 +14,28 @@ interface Fichaje {
   nombre_empleado: string;
   fecha: string;
   timestamp: string;
-  tipo_evento: 'entrada' | 'salida' | 'pausa_inicio' | 'pausa_fin' | 'permiso';
+  tipo_evento: 'entrada' | 'salida' | 'pausa_inicio' | 'pausa_fin' | 'permiso' | 'permiso_fin';
   dispositivo: string | null;
   ubicacion: string | null;
   nota_correccion: string | null;
+  timestamp_corregido: string | null;
+  motivo_correccion: string | null;
 }
 
 interface JornadaResumen {
   fecha: string;
   entrada: string | null;
   salida: string | null;
+  entrada_original: string | null;
+  salida_original: string | null;
+  entrada_corregida: boolean;
+  salida_corregida: boolean;
+  motivo_correccion: string | null;
   pausa_inicio: string | null;
   pausa_fin: string | null;
   permiso: string | null;
+  permiso_fin: string | null;
+  duracion_permiso: number | null;
   duracion_bruta: number | null;
   duracion_neta: number | null;
   empleado_id: string | null;
@@ -105,17 +114,23 @@ function incidentType(minutes: number | null): 'excess' | 'deficit' | null {
   return null;
 }
 
+function effectiveTs(f: Fichaje): string {
+  return f.timestamp_corregido ?? f.timestamp;
+}
+
 function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
-  type Entry = { r: JornadaResumen; entradas: { ts: string; id: string }[]; salidas: { ts: string; id: string }[] };
+  type Entry = { r: JornadaResumen; entradas: { ts: string; id: string; corregida: boolean }[]; salidas: { ts: string; id: string; corregida: boolean }[] };
   const map = new Map<string, Entry>();
-  const sorted = [...fichajes].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const sorted = [...fichajes].sort((a, b) => effectiveTs(a).localeCompare(effectiveTs(b)));
   for (const f of sorted) {
     const key = f.fecha;
     if (!map.has(key)) {
       map.set(key, {
         r: {
           fecha: f.fecha,
-          entrada: null, salida: null, pausa_inicio: null, pausa_fin: null, permiso: null,
+          entrada: null, salida: null, entrada_original: null, salida_original: null,
+          entrada_corregida: false, salida_corregida: false, motivo_correccion: null,
+          pausa_inicio: null, pausa_fin: null, permiso: null, permiso_fin: null, duracion_permiso: null,
           duracion_bruta: null, duracion_neta: null,
           empleado_id: f.empleado_id,
           fichaje_entrada_id: null, fichaje_salida_id: null,
@@ -126,22 +141,30 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
     }
     const entry = map.get(key)!;
     const r = entry.r;
-    if (f.tipo_evento === 'entrada') entry.entradas.push({ ts: f.timestamp, id: f.id });
-    if (f.tipo_evento === 'salida') entry.salidas.push({ ts: f.timestamp, id: f.id });
-    if (f.tipo_evento === 'pausa_inicio' && !r.pausa_inicio) r.pausa_inicio = f.timestamp;
-    if (f.tipo_evento === 'pausa_fin' && !r.pausa_fin) r.pausa_fin = f.timestamp;
-    if (f.tipo_evento === 'permiso' && !r.permiso) r.permiso = f.timestamp;
+    const eff = effectiveTs(f);
+    const corregida = !!f.timestamp_corregido;
+    if (f.tipo_evento === 'entrada') entry.entradas.push({ ts: eff, id: f.id, corregida });
+    if (f.tipo_evento === 'salida') entry.salidas.push({ ts: eff, id: f.id, corregida });
+    if (f.tipo_evento === 'pausa_inicio' && !r.pausa_inicio) r.pausa_inicio = eff;
+    if (f.tipo_evento === 'pausa_fin' && !r.pausa_fin) r.pausa_fin = eff;
+    if (f.tipo_evento === 'permiso' && !r.permiso) r.permiso = eff;
+    if (f.tipo_evento === 'permiso_fin' && !r.permiso_fin) r.permiso_fin = eff;
+    if (corregida && f.motivo_correccion && !r.motivo_correccion) r.motivo_correccion = f.motivo_correccion;
   }
   for (const { r, entradas, salidas } of map.values()) {
     if (entradas.length > 0) {
       r.entrada = entradas[0].ts;
+      r.entrada_original = fichajes.find((f) => f.id === entradas[0].id)?.timestamp ?? null;
+      r.entrada_corregida = entradas[0].corregida;
       r.fichaje_entrada_id = entradas[0].id;
     }
     if (salidas.length > 0) {
       r.salida = salidas[salidas.length - 1].ts;
+      r.salida_original = fichajes.find((f) => f.id === salidas[salidas.length - 1].id)?.timestamp ?? null;
+      r.salida_corregida = salidas[salidas.length - 1].corregida;
       r.fichaje_salida_id = salidas[salidas.length - 1].id;
     }
-    // Sum hours from all entrada/salida pairs
+    // Sum hours from all entrada/salida pairs using effective (corrected) times
     let total = 0;
     const pairs = Math.min(entradas.length, salidas.length);
     for (let i = 0; i < pairs; i++) {
@@ -150,6 +173,11 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
     }
     r.duracion_neta = pairs > 0 ? total : null;
     r.duracion_bruta = r.duracion_neta;
+    // Compute permiso duration if both start and end exist
+    if (r.permiso && r.permiso_fin) {
+      const pDiff = new Date(r.permiso_fin).getTime() - new Date(r.permiso).getTime();
+      r.duracion_permiso = pDiff > 0 ? Math.round(pDiff / 60000) : 0;
+    }
   }
   return Array.from(map.values()).map((e) => e.r).sort((a, b) => b.fecha.localeCompare(a.fecha));
 }
@@ -186,9 +214,10 @@ function exportPDF(
     return `
       <tr>
         <td>${r.fecha}</td>
-        <td style="color:#16A34A">${formatTime(r.entrada)}</td>
-        <td style="color:#DC2626">${formatTime(r.salida)}</td>
+        <td style="color:#16A34A">${formatTime(r.entrada)}${r.entrada_corregida ? ' <span title="Original: ' + formatTime(r.entrada_original) + '" style="font-size:10px;background:#F0FDF4;color:#16A34A;border:1px solid #BBF7D0;border-radius:3px;padding:0 2px">corr.</span>' : ''}</td>
+        <td style="color:#DC2626">${formatTime(r.salida)}${r.salida_corregida ? ' <span title="Original: ' + formatTime(r.salida_original) + '" style="font-size:10px;background:#F0FDF4;color:#16A34A;border:1px solid #BBF7D0;border-radius:3px;padding:0 2px">corr.</span>' : ''}</td>
         <td style="font-weight:bold">${formatDuration(r.duracion_neta)}</td>
+        <td style="color:#7C3AED">${r.permiso ? formatTime(r.permiso) + (r.permiso_fin ? ' → ' + formatTime(r.permiso_fin) : '') + (r.duracion_permiso != null ? ' (' + formatDuration(r.duracion_permiso) + ')' : '') : '—'}</td>
         <td style="font-weight:bold;color:${incidentColor}">${incidentLabel}</td>
       </tr>`;
   }).join('');
@@ -237,7 +266,7 @@ function exportPDF(
 <h2>Resumen diario</h2>
 <table>
 <thead><tr>
-  <th>Fecha</th><th>Entrada</th><th>Salida</th><th>Horas Totales</th><th>Incidencia</th>
+  <th>Fecha</th><th>Entrada</th><th>Salida</th><th>Horas Totales</th><th>Permiso</th><th>Incidencia</th>
 </tr></thead>
 <tbody>${rowsHtml}</tbody>
 </table>
@@ -654,7 +683,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
             <table className="w-full text-sm" style={{ minWidth: '760px' }}>
               <thead>
                 <tr style={{ backgroundColor: theme.bg, borderBottom: `1px solid ${theme.border}` }}>
-                  {['Fecha', 'Entrada', 'Salida', 'Horas Totales', 'Incidencia', 'Acción'].map((h) => (
+                  {['Fecha', 'Entrada', 'Salida', 'Horas Totales', 'Permiso', 'Incidencia', 'Acción'].map((h) => (
                     <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: theme.textSecondary }}>{h}</th>
                   ))}
                 </tr>
@@ -666,8 +695,27 @@ export default function MisFichajesView({ theme, userId }: Props) {
                   return (
                     <tr key={i} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 text-xs font-medium" style={{ color: theme.textPrimary }}>{r.fecha}</td>
-                      <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.entrada ? '#16A34A' : '#CBD5E1' }}>{formatTime(r.entrada)}</td>
-                      <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.salida ? '#DC2626' : '#CBD5E1' }}>{formatTime(r.salida)}</td>
+                      <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.entrada ? '#16A34A' : '#CBD5E1' }}>
+                        {formatTime(r.entrada)}
+                        {r.entrada_corregida && (
+                          <span className="ml-1 inline-flex items-center px-1 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }} title={`Original: ${formatTime(r.entrada_original)}`}>corr.</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.salida ? '#DC2626' : '#CBD5E1' }}>
+                        {formatTime(r.salida)}
+                        {r.salida_corregida && (
+                          <span className="ml-1 inline-flex items-center px-1 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }} title={`Original: ${formatTime(r.salida_original)}`}>corr.</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs" style={{ color: '#7C3AED' }}>
+                        {r.permiso ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span>{formatTime(r.permiso)}</span>
+                            {r.permiso_fin && <span style={{ color: '#6D28D9' }}>→ {formatTime(r.permiso_fin)}</span>}
+                            {r.duracion_permiso != null && <span className="text-[10px]">{formatDuration(r.duracion_permiso)}</span>}
+                          </div>
+                        ) : <span style={{ color: '#CBD5E1' }}>—</span>}
+                      </td>
                       <td className="px-4 py-3 text-sm font-bold" style={{ color: r.duracion_neta !== null ? (inc ? '#DC2626' : theme.primary) : '#CBD5E1' }}>
                         {formatDuration(r.duracion_neta)}
                       </td>

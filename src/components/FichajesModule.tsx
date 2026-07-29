@@ -15,13 +15,17 @@ interface Fichaje {
   nombre_empleado: string;
   fecha: string;
   timestamp: string;
-  tipo_evento: 'entrada' | 'salida' | 'pausa_inicio' | 'pausa_fin' | 'permiso';
+  tipo_evento: 'entrada' | 'salida' | 'pausa_inicio' | 'pausa_fin' | 'permiso' | 'permiso_fin';
   metodo: string | null;
   es_manual: boolean;
   nota_correccion: string | null;
   ubicacion: string | null;
   dispositivo: string | null;
   user_agent: string | null;
+  timestamp_corregido: string | null;
+  motivo_correccion: string | null;
+  corregido_por: string | null;
+  corregido_at: string | null;
 }
 
 interface JornadaResumen {
@@ -29,9 +33,16 @@ interface JornadaResumen {
   fecha: string;
   entrada: string | null;
   salida: string | null;
+  entrada_original: string | null;
+  salida_original: string | null;
+  entrada_corregida: boolean;
+  salida_corregida: boolean;
+  motivo_correccion: string | null;
   pausa_inicio: string | null;
   pausa_fin: string | null;
   permiso: string | null;
+  permiso_fin: string | null;
+  duracion_permiso: number | null;
   duracion_bruta: number | null;
   duracion_neta: number | null;
   dispositivo: string | null;
@@ -58,7 +69,13 @@ const TIPO_LABELS: Record<string, { label: string; color: string; bg: string; bo
   pausa_inicio: { label: 'Descanso',      color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
   pausa_fin:    { label: 'Fin descanso',  color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
   permiso:      { label: 'Permiso',       color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
+  permiso_fin:  { label: 'Fin permiso',   color: '#6D28D9', bg: '#EDE9FE', border: '#C4B5FD' },
 };
+
+// Returns the effective timestamp: corrected time if it exists, else original
+function effectiveTs(f: Fichaje): string {
+  return f.timestamp_corregido ?? f.timestamp;
+}
 
 const NORMAL_HOURS_MIN = 6 * 60;  // 6 hours in minutes
 const NORMAL_HOURS_MAX = 8 * 60;  // 8 hours in minutes
@@ -90,16 +107,18 @@ function incidentType(minutes: number | null): 'excess' | 'deficit' | null {
 }
 
 function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
-  type Entry = { r: JornadaResumen; entradas: string[]; salidas: string[] };
+  type Entry = { r: JornadaResumen; entradas: { eff: string; orig: string; corregida: boolean }[]; salidas: { eff: string; orig: string; corregida: boolean }[] };
   const map = new Map<string, Entry>();
-  const sorted = [...fichajes].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const sorted = [...fichajes].sort((a, b) => effectiveTs(a).localeCompare(effectiveTs(b)));
   for (const f of sorted) {
     const key = `${f.nombre_empleado}|${f.fecha}`;
     if (!map.has(key)) {
       map.set(key, {
         r: {
           nombre: f.nombre_empleado, fecha: f.fecha,
-          entrada: null, salida: null, pausa_inicio: null, pausa_fin: null, permiso: null,
+          entrada: null, salida: null, entrada_original: null, salida_original: null,
+          entrada_corregida: false, salida_corregida: false, motivo_correccion: null,
+          pausa_inicio: null, pausa_fin: null, permiso: null, permiso_fin: null, duracion_permiso: null,
           duracion_bruta: null, duracion_neta: null,
           dispositivo: f.dispositivo ?? null, ubicacion: f.ubicacion ?? null,
           empleado_id: f.empleado_id,
@@ -110,26 +129,43 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
     }
     const entry = map.get(key)!;
     const r = entry.r;
-    if (f.tipo_evento === 'entrada') entry.entradas.push(f.timestamp);
-    if (f.tipo_evento === 'salida') entry.salidas.push(f.timestamp);
-    if (f.tipo_evento === 'pausa_inicio' && !r.pausa_inicio) r.pausa_inicio = f.timestamp;
-    if (f.tipo_evento === 'pausa_fin' && !r.pausa_fin) r.pausa_fin = f.timestamp;
-    if (f.tipo_evento === 'permiso' && !r.permiso) r.permiso = f.timestamp;
+    const eff = effectiveTs(f);
+    const corregida = !!f.timestamp_corregido;
+    if (f.tipo_evento === 'entrada') entry.entradas.push({ eff, orig: f.timestamp, corregida });
+    if (f.tipo_evento === 'salida') entry.salidas.push({ eff, orig: f.timestamp, corregida });
+    if (f.tipo_evento === 'pausa_inicio' && !r.pausa_inicio) r.pausa_inicio = eff;
+    if (f.tipo_evento === 'pausa_fin' && !r.pausa_fin) r.pausa_fin = eff;
+    if (f.tipo_evento === 'permiso' && !r.permiso) r.permiso = eff;
+    if (f.tipo_evento === 'permiso_fin' && !r.permiso_fin) r.permiso_fin = eff;
+    if (corregida && f.motivo_correccion && !r.motivo_correccion) r.motivo_correccion = f.motivo_correccion;
     if (!r.dispositivo && f.dispositivo) r.dispositivo = f.dispositivo;
     if (!r.ubicacion && f.ubicacion) r.ubicacion = f.ubicacion;
   }
   for (const { r, entradas, salidas } of map.values()) {
-    if (entradas.length > 0) r.entrada = entradas[0];
-    if (salidas.length > 0) r.salida = salidas[salidas.length - 1];
-    // Sum hours from all entrada/salida pairs
+    if (entradas.length > 0) {
+      r.entrada = entradas[0].eff;
+      r.entrada_original = entradas[0].orig;
+      r.entrada_corregida = entradas[0].corregida;
+    }
+    if (salidas.length > 0) {
+      r.salida = salidas[salidas.length - 1].eff;
+      r.salida_original = salidas[salidas.length - 1].orig;
+      r.salida_corregida = salidas[salidas.length - 1].corregida;
+    }
+    // Sum hours from all entrada/salida pairs using effective (corrected) times
     let total = 0;
     const pairs = Math.min(entradas.length, salidas.length);
     for (let i = 0; i < pairs; i++) {
-      const diff = new Date(salidas[i]).getTime() - new Date(entradas[i]).getTime();
+      const diff = new Date(salidas[i].eff).getTime() - new Date(entradas[i].eff).getTime();
       if (diff > 0) total += Math.round(diff / 60000);
     }
     r.duracion_neta = pairs > 0 ? total : null;
     r.duracion_bruta = r.duracion_neta;
+    // Compute permiso duration if both start and end exist
+    if (r.permiso && r.permiso_fin) {
+      const pDiff = new Date(r.permiso_fin).getTime() - new Date(r.permiso).getTime();
+      r.duracion_permiso = pDiff > 0 ? Math.round(pDiff / 60000) : 0;
+    }
   }
   return Array.from(map.values()).map((e) => e.r).sort((a, b) => {
     const d = b.fecha.localeCompare(a.fecha);
@@ -259,9 +295,13 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
   const canEntrada = !lastEvent || lastEvent === 'salida';
   const canSalida = lastEvent === 'entrada';
 
-  // Calculate total worked minutes from pairs
-  const entradas = relevantLogs.filter((f) => f.tipo_evento === 'entrada').map((f) => f.timestamp);
-  const salidas = relevantLogs.filter((f) => f.tipo_evento === 'salida').map((f) => f.timestamp);
+  // Permiso state: if the last permiso event has no matching permiso_fin, we're "in permiso"
+  const permisoLogs = todayLogs.filter((f) => f.tipo_evento === 'permiso' || f.tipo_evento === 'permiso_fin');
+  const inPermiso = permisoLogs.length > 0 && permisoLogs[permisoLogs.length - 1].tipo_evento === 'permiso';
+
+  // Calculate total worked minutes from pairs (using corrected time if available)
+  const entradas = relevantLogs.filter((f) => f.tipo_evento === 'entrada').map((f) => f.timestamp_corregido ?? f.timestamp);
+  const salidas = relevantLogs.filter((f) => f.tipo_evento === 'salida').map((f) => f.timestamp_corregido ?? f.timestamp);
   let totalMinHoy = 0;
   const pairs = Math.min(entradas.length, salidas.length);
   for (let i = 0; i < pairs; i++) {
@@ -269,7 +309,18 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
     if (diff > 0) totalMinHoy += Math.round(diff / 60000);
   }
 
-  const handleClock = async (tipo: 'entrada' | 'salida') => {
+  // Calculate permiso minutes if both start and end exist
+  let totalMinPermiso = 0;
+  const permisoInicio = permisoLogs.find((f) => f.tipo_evento === 'permiso');
+  const permisoFin = permisoLogs.find((f) => f.tipo_evento === 'permiso_fin');
+  if (permisoInicio && permisoFin) {
+    const effInicio = permisoInicio.timestamp_corregido ?? permisoInicio.timestamp;
+    const effFin = permisoFin.timestamp_corregido ?? permisoFin.timestamp;
+    const pDiff = new Date(effFin).getTime() - new Date(effInicio).getTime();
+    if (pDiff > 0) totalMinPermiso = Math.round(pDiff / 60000);
+  }
+
+  const handleClock = async (tipo: 'entrada' | 'salida' | 'permiso' | 'permiso_fin') => {
     setError(''); setSuccess('');
     if (tipo === 'entrada' && !canEntrada) {
       setError('Debes fichar la salida antes de registrar una nueva entrada.');
@@ -277,6 +328,14 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
     }
     if (tipo === 'salida' && !canSalida) {
       setError('Debes fichar la entrada antes de registrar la salida.');
+      return;
+    }
+    if (tipo === 'permiso' && inPermiso) {
+      setError('Ya tienes un permiso en curso. Ficha el fin del permiso primero.');
+      return;
+    }
+    if (tipo === 'permiso_fin' && !inPermiso) {
+      setError('No hay un permiso en curso para finalizar.');
       return;
     }
     setLoading(true);
@@ -295,7 +354,8 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
         es_manual: false,
       });
       if (insErr) throw insErr;
-      setSuccess(`Fichaje de ${tipo === 'entrada' ? 'entrada' : 'salida'} registrado.`);
+      const tipoLabel = tipo === 'entrada' ? 'entrada' : tipo === 'salida' ? 'salida' : tipo === 'permiso' ? 'inicio de permiso' : 'fin de permiso';
+      setSuccess(`Fichaje de ${tipoLabel} registrado.`);
       await loadToday();
       onChanged();
     } catch (err: unknown) {
@@ -309,11 +369,18 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
     <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-bold" style={{ color: '#0F172A' }}>Mi Fichaje de Hoy</h3>
-        {totalMinHoy > 0 && (
-          <span className="text-xs font-bold px-2.5 py-1 rounded-lg" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>
-            {formatDuration(totalMinHoy)} trabajadas
-          </span>
-        )}
+        <div className="flex gap-2">
+          {totalMinPermiso > 0 && (
+            <span className="text-xs font-bold px-2.5 py-1 rounded-lg" style={{ backgroundColor: '#F5F3FF', color: '#7C3AED' }}>
+              {formatDuration(totalMinPermiso)} permiso
+            </span>
+          )}
+          {totalMinHoy > 0 && (
+            <span className="text-xs font-bold px-2.5 py-1 rounded-lg" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>
+              {formatDuration(totalMinHoy)} trabajadas
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Timeline of today's fichajes */}
@@ -330,11 +397,14 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
                 : <LogOut size={11} style={{ color: '#DC2626' }} />}
               <span className="text-xs font-mono font-bold"
                 style={{ color: f.tipo_evento === 'entrada' ? '#16A34A' : '#DC2626' }}>
-                {formatTime(f.timestamp)}
+                {formatTime(f.timestamp_corregido ?? f.timestamp)}
+                {f.timestamp_corregido && (
+                  <span className="ml-1 inline-flex items-center px-1 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }} title={`Original: ${formatTime(f.timestamp)}`}>corr.</span>
+                )}
               </span>
               {i > 0 && i % 2 === 1 && (
                 <span className="text-xs ml-1" style={{ color: '#94A3B8' }}>
-                  ({formatDuration(Math.round((new Date(f.timestamp).getTime() - new Date(relevantLogs[i - 1].timestamp).getTime()) / 60000))})
+                  ({formatDuration(Math.round((new Date(f.timestamp_corregido ?? f.timestamp).getTime() - new Date(relevantLogs[i - 1].timestamp_corregido ?? relevantLogs[i - 1].timestamp).getTime()) / 60000))})
                 </span>
               )}
             </div>
@@ -375,6 +445,17 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
           Fichar Salida
         </button>
       </div>
+      <button
+        onClick={() => handleClock(inPermiso ? 'permiso_fin' : 'permiso')}
+        disabled={loading}
+        className="w-full mt-2 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{
+          backgroundColor: inPermiso ? '#6D28D9' : '#7C3AED',
+          color: '#FFFFFF',
+        }}
+      >
+        {inPermiso ? 'Finalizar Permiso' : 'Fichar Permiso'}
+      </button>
     </div>
   );
 }
@@ -632,7 +713,8 @@ export default function FichajesModule() {
               <option value="salida">Salida</option>
               <option value="pausa_inicio">Descanso</option>
               <option value="pausa_fin">Fin descanso</option>
-              <option value="permiso">Permiso</option>
+              <option value="permiso">Permiso (inicio)</option>
+              <option value="permiso_fin">Permiso (fin)</option>
             </select>
           )}
 
@@ -695,7 +777,7 @@ export default function FichajesModule() {
                 <table className="w-full text-sm" style={{ minWidth: '1000px' }}>
                   <thead>
                     <tr style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                      {['Empleado', 'Fecha', 'Entrada', 'Salida', 'Pausa', 'Permiso', 'Horas Totales', 'Estado', 'Dispositivo', 'Ubicación'].map((h) => (
+                      {['Empleado', 'Fecha', 'Entrada', 'Salida', 'Pausa', 'Permiso', 'Horas Totales', 'Estado', 'Corr.', 'Dispositivo', 'Ubicación'].map((h) => (
                         <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>{h}</th>
                       ))}
                     </tr>
@@ -710,14 +792,34 @@ export default function FichajesModule() {
                         <tr key={i} className="hover:bg-slate-50 transition-colors">
                           <td className="px-4 py-3 font-semibold" style={{ color: '#1E293B' }}>{r.nombre}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: '#475569' }}>{r.fecha}</td>
-                          <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.entrada ? '#16A34A' : '#CBD5E1' }}>{formatTime(r.entrada)}</td>
-                          <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.salida ? '#DC2626' : '#CBD5E1' }}>{formatTime(r.salida)}</td>
+                          <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.entrada ? '#16A34A' : '#CBD5E1' }}>
+                            {formatTime(r.entrada)}
+                            {r.entrada_corregida && (
+                              <span className="ml-1 inline-flex items-center px-1 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }} title={`Original: ${formatTime(r.entrada_original)}`}>corr.</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.salida ? '#DC2626' : '#CBD5E1' }}>
+                            {formatTime(r.salida)}
+                            {r.salida_corregida && (
+                              <span className="ml-1 inline-flex items-center px-1 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }} title={`Original: ${formatTime(r.salida_original)}`}>corr.</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-xs font-mono" style={{ color: '#D97706' }}>{formatDuration(pausaMin)}</td>
                           <td className="px-4 py-3">
                             {r.permiso ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#F5F3FF', color: '#7C3AED', border: '1px solid #DDD6FE' }}>
-                                {formatTime(r.permiso)}
-                              </span>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#F5F3FF', color: '#7C3AED', border: '1px solid #DDD6FE' }}>
+                                  {formatTime(r.permiso)}
+                                </span>
+                                {r.permiso_fin && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#EDE9FE', color: '#6D28D9', border: '1px solid #C4B5FD' }}>
+                                    → {formatTime(r.permiso_fin)}
+                                  </span>
+                                )}
+                                {r.duracion_permiso != null && (
+                                  <span className="text-[10px]" style={{ color: '#7C3AED' }}>{formatDuration(r.duracion_permiso)}</span>
+                                )}
+                              </div>
                             ) : <span style={{ color: '#CBD5E1' }}>—</span>}
                           </td>
                           <td className="px-4 py-3 text-sm font-bold" style={{ color: r.duracion_neta !== null ? (inc ? '#DC2626' : '#0369A1') : '#CBD5E1' }}>
@@ -740,6 +842,13 @@ export default function FichajesModule() {
                               </span>
                             )}
                             {r.duracion_neta === null && <span style={{ color: '#CBD5E1' }}>—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-xs" style={{ color: '#64748B' }}>
+                            {(r.entrada_corregida || r.salida_corregida) ? (
+                              <span title={r.motivo_correccion ?? ''} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                                Sí
+                              </span>
+                            ) : <span style={{ color: '#CBD5E1' }}>—</span>}
                           </td>
                           <td className="px-4 py-3 text-xs max-w-[140px] truncate" style={{ color: '#64748B' }} title={r.dispositivo ?? ''}>{r.dispositivo ?? '—'}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: '#64748B' }}><UbicacionCell value={r.ubicacion} /></td>
@@ -781,7 +890,12 @@ export default function FichajesModule() {
                           </td>
                           <td className="px-4 py-3">
                             <p className="text-xs font-mono" style={{ color: '#475569' }}>{f.fecha}</p>
-                            <p className="text-xs font-mono font-bold" style={{ color: '#1E293B' }}>{formatTime(f.timestamp)}</p>
+                            <p className="text-xs font-mono font-bold" style={{ color: '#1E293B' }}>
+                              {formatTime(f.timestamp_corregido ?? f.timestamp)}
+                              {f.timestamp_corregido && (
+                                <span className="ml-1 inline-flex items-center px-1 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }} title={`Original: ${formatTime(f.timestamp)}`}>corr.</span>
+                              )}
+                            </p>
                           </td>
                           <td className="px-4 py-3">
                             <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-semibold"

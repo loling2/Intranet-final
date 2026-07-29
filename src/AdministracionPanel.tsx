@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { LogOut, Receipt, Building2, CircleUser as UserCircle, KeyRound } from 'lucide-react';
+import { LogOut, Receipt, Building2, CircleUser as UserCircle, KeyRound, HelpCircle } from 'lucide-react';
 import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
 import FacturasModule from './components/FacturasModule';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import HelpPanel from './components/HelpPanel';
 
 interface Props {
   email: string;
@@ -13,6 +14,7 @@ interface Props {
 
 export default function AdministracionPanel({ email, onLogout, onNavigateEmployee }: Props) {
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [activeTab, setActiveTab] = useState<'facturas' | 'ayuda'>('facturas');
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
@@ -64,7 +66,33 @@ export default function AdministracionPanel({ email, onLogout, onNavigateEmploye
 
       {/* Content */}
       <main className="max-w-screen-xl mx-auto px-6 py-8">
-        <FacturasModule isAdmin={true} />
+        {/* Tab Navigation */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setActiveTab('facturas')}
+            className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+            style={{
+              backgroundColor: activeTab === 'facturas' ? '#0C4A6E' : '#FFFFFF',
+              color: activeTab === 'facturas' ? '#FFFFFF' : '#475569',
+              border: `1px solid ${activeTab === 'facturas' ? '#0C4A6E' : '#E2E8F0'}`,
+            }}
+          >
+            <Receipt size={14} className="inline mr-1.5" /> Facturas
+          </button>
+          <button
+            onClick={() => setActiveTab('ayuda')}
+            className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+            style={{
+              backgroundColor: activeTab === 'ayuda' ? '#0C4A6E' : '#FFFFFF',
+              color: activeTab === 'ayuda' ? '#FFFFFF' : '#475569',
+              border: `1px solid ${activeTab === 'ayuda' ? '#0C4A6E' : '#E2E8F0'}`,
+            }}
+          >
+            <HelpCircle size={14} className="inline mr-1.5" /> Ayuda
+          </button>
+        </div>
+        {activeTab === 'facturas' && <FacturasModule isAdmin={true} />}
+        {activeTab === 'ayuda' && <HelpPanel currentProfileName="Administración" accentColor="#0C4A6E" />}
       </main>
     </div>
   );

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2, HeartPulse, Activity } from 'lucide-react';
+import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2, HeartPulse, Activity, HelpCircle } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
 import SocietySwitcher from './SocietySwitcher';
 import PrlDocsModule from './components/PrlDocsModule';
 import TrazabilidadModule from './components/TrazabilidadModule';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import HelpPanel from './components/HelpPanel';
 
 interface Props {
   email: string;
@@ -13,7 +14,7 @@ interface Props {
   onNavigateEmployee?: () => void;
 }
 
-type PrevTab = 'empleados' | 'documentos' | 'trazabilidad' | 'departamentos' | 'reconocimiento' | 'vitaly';
+type PrevTab = 'empleados' | 'documentos' | 'trazabilidad' | 'departamentos' | 'reconocimiento' | 'vitaly' | 'ayuda';
 
 // Colors per prevention tag category
 const TAG_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -44,6 +45,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
     { id: 'departamentos', label: 'Departamentos PRL',   icon: Building2 },
     { id: 'reconocimiento', label: 'Reconocimiento Medico', icon: HeartPulse },
     { id: 'vitaly',          label: 'Vitaly',                 icon: Activity },
+    { id: 'ayuda',            label: 'Ayuda',                   icon: HelpCircle },
   ];
 
   return (
@@ -142,6 +144,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
         {activeTab === 'departamentos' && <DepartamentosPrlTab />}
         {activeTab === 'reconocimiento' && <ReconocimientoMedicoTab />}
         {activeTab === 'vitaly' && <VitalyTab />}
+        {activeTab === 'ayuda' && <HelpPanel currentProfileName="Prevención" accentColor="#065F46" />}
       </div>
     </div>
   );

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck } from 'lucide-react';
+import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck, HelpCircle } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import HelpPanel from './components/HelpPanel';
 
 interface Props {
   email: string;
@@ -54,7 +55,7 @@ interface Asignacion {
   fecha_realizacion: string | null;
 }
 
-type Tab = 'examenes' | 'asignaciones';
+type Tab = 'examenes' | 'asignaciones' | 'ayuda';
 
 const estadoConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
   pendiente: { label: 'Pendiente', color: '#64748B', bg: '#F8FAFC', border: '#E2E8F0' },
@@ -334,6 +335,7 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee }: 
   const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
     { id: 'examenes', label: 'Examenes', icon: ClipboardCheck },
     { id: 'asignaciones', label: 'Asignaciones', icon: UserCheck },
+    { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
   ];
 
   return (
@@ -436,6 +438,9 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee }: 
         )}
 
         {/* ── Tab: Examenes ── */}
+        {activeTab === 'ayuda' && (
+          <HelpPanel currentProfileName="Formación" accentColor="#0D9488" />
+        )}
         {activeTab === 'examenes' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">

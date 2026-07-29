@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
@@ -26,6 +26,7 @@ import ChangePasswordModal from './components/ChangePasswordModal';
 import ChangePinModal from './components/ChangePinModal';
 import IncidenciasModule from './components/IncidenciasModule';
 import MisFichajesView from './components/MisFichajesView';
+import HelpPanel from './components/HelpPanel';
 
 const iconMap: Record<string, LucideIcon> = {
   'building-2': Building2,
@@ -2236,6 +2237,7 @@ useEffect(() => {
     { id: 'formacion', label: 'Formacion', icon: GraduationCap },
     { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },
     { id: 'fichajes', label: 'Fichajes', icon: Clock },
+    { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
   ];
 
   const [formacionSubTab, setFormacionSubTab] = useState<'examenes' | 'certificados'>('examenes');
@@ -2586,6 +2588,10 @@ useEffect(() => {
 
         {activeTab === 'fichajes' && (
           <MisFichajesView theme={theme} userId={currentUserId} />
+        )}
+
+        {activeTab === 'ayuda' && (
+          <HelpPanel currentProfileName="Empleado" accentColor={theme.primary} />
         )}
       </main>
     </div>

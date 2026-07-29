@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   LogOut, ShieldCheck, Upload, FileText, Download, Trash2, RefreshCw,
   File, Image as ImageIcon, FileSpreadsheet, X, ZoomIn, Globe, Building2,
-  CheckCircle2, AlertCircle, Calendar, User as UserIcon,
+  CheckCircle2, AlertCircle, Calendar, User as UserIcon, HelpCircle,
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { uploadToWasabiKey, deleteFromWasabi, getWasabiBlobUrl, downloadFromWasabi } from './lib/wasabi';
 import { SocietyProvider } from './context/SocietyContext';
 import { AuthProvider } from './context/AuthContext';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import HelpPanel from './components/HelpPanel';
 import { societies } from './themes';
 
 interface Props {
@@ -58,7 +59,7 @@ function formatSize(bytes: number) {
 }
 
 export default function CalidadPanel({ email, onLogout, onNavigateEmployee }: Props) {
-  const [activeTab, setActiveTab] = useState<'documentos' | 'subir'>('documentos');
+  const [activeTab, setActiveTab] = useState<'documentos' | 'subir' | 'ayuda'>('documentos');
   const [docs, setDocs] = useState<CalidadDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -266,11 +267,25 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee }: Pr
               >
                 <Upload size={14} /> Subir Documentos
               </button>
+              <button
+                onClick={() => setActiveTab('ayuda')}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all duration-200 flex items-center gap-2"
+                style={{
+                  backgroundColor: activeTab === 'ayuda' ? '#0369A1' : '#FFFFFF',
+                  color: activeTab === 'ayuda' ? '#FFFFFF' : '#475569',
+                  border: `1px solid ${activeTab === 'ayuda' ? '#0369A1' : '#E2E8F0'}`,
+                }}
+              >
+                <HelpCircle size={14} /> Ayuda
+              </button>
             </div>
           </div>
 
           {/* Content */}
           <main className="max-w-screen-xl mx-auto px-6 py-6">
+            {activeTab === 'ayuda' && (
+              <HelpPanel currentProfileName="Calidad" accentColor="#0369A1" />
+            )}
             {activeTab === 'documentos' && (
               <div>
                 {/* Filters */}

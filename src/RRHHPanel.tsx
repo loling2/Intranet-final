@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound, AlertCircle, Menu, BedSingle, UserCog } from 'lucide-react';
+import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound, AlertCircle, Menu, BedSingle, UserCog, HelpCircle } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { mockVacations, mockCertificates, mockExams, mockDocuments } from './mockData';
 import UserManagement from './UserManagement';
@@ -20,6 +20,7 @@ import FichajesModule from './components/FichajesModule';
 import CorreccionesFichajesModule from './components/CorreccionesFichajesModule';
 import BajasModule from './components/BajasModule';
 import SupervisorEmpleados from './components/SupervisorEmpleados';
+import HelpPanel from './components/HelpPanel';
 
 import { supabase } from './supabaseClient';
 
@@ -33,7 +34,7 @@ interface Props {
   onNavigateEmployee?: () => void;
 }
 
-type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'facturas' | 'incidencias' | 'fichajes' | 'bajas' | 'supervisor-empleados';
+type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'facturas' | 'incidencias' | 'fichajes' | 'bajas' | 'supervisor-empleados' | 'ayuda';
 
 export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, role, onNavigateEmployee }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
@@ -126,9 +127,10 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     { id: 'fichajes', label: 'Fichajes', icon: Clock },
     { id: 'bajas', label: 'Bajas/Ausencias', icon: BedSingle },
     { id: 'supervisor-empleados', label: 'Empleados Asignados', icon: UserCog },
+    { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
   ];
 
-  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'vacations', 'certificates', 'exams', 'facturas', 'bajas', 'supervisor-empleados'];
+  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'vacations', 'certificates', 'exams', 'facturas', 'bajas', 'supervisor-empleados', 'ayuda'];
 
   const tabs = enabledTabIds !== null
     ? allTabs.filter(t => enabledTabIds.has(t.id))
@@ -287,6 +289,11 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
             );
           })}
         </div>
+
+        {/* Help Tab */}
+        {activeTab === 'ayuda' && (
+          <HelpPanel currentProfileName={isSupervisor ? 'Supervisor' : 'RRHH'} accentColor="#0369A1" />
+        )}
 
         {/* Overview */}
         {activeTab === 'overview' && (

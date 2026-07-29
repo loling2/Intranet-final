@@ -3,7 +3,7 @@ import {
   Shield, Users, Building2, Laptop, FileText, Palmtree, Award,
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
   Eye, Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette,
-  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock, Mail, Menu,
+  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock, Mail, Menu, HelpCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { validUsers } from './mockData';
@@ -24,6 +24,7 @@ import DepartamentosModule from './components/DepartamentosModule';
 import EmailModule from './components/EmailModule';
 import FichajesModule from './components/FichajesModule';
 import RoleTabPermissionsManager from './components/RoleTabPermissionsManager';
+import HelpPanel from './components/HelpPanel';
 import { useSociety } from './context/SocietyContext';
 import { supabase } from './supabaseClient';
 import type { Centro } from './supabaseClient';
@@ -35,7 +36,7 @@ interface Props {
   onImpersonate?: (userId: string, societyId: string | null) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'ayuda';
 
 export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -132,6 +133,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     { id: 'incidencias',  label: 'Incidencias',           icon: AlertCircle },
     { id: 'fichajes',     label: 'Fichajes',              icon: Clock },
     { id: 'permissions',  label: 'Permisos de Perfiles',  icon: Lock },
+    { id: 'ayuda',         label: 'Ayuda',                 icon: HelpCircle },
   ];
 
   return (
@@ -256,6 +258,11 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
             );
           })}
         </div>
+
+        {/* Help Tab */}
+        {activeTab === 'ayuda' && (
+          <HelpPanel currentProfileName="Admin" accentColor="#0F172A" />
+        )}
 
         {/* Overview Tab */}
         {activeTab === 'overview' && (

@@ -134,43 +134,31 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
     if (!r.ubicacion && f.ubicacion) r.ubicacion = f.ubicacion;
   }
 
-  // Pair entrada/salida chronologically: walk through all events in time order,
-  // open a session on 'entrada', close it on the next 'salida'.
   for (const [key, r] of map.entries()) {
     const dayEvents = sorted
       .filter((f) => `${f.nombre_empleado}|${f.fecha}` === key && (f.tipo_evento === 'entrada' || f.tipo_evento === 'salida'))
       .map((f) => ({ tipo: f.tipo_evento, eff: effectiveTs(f), orig: f.timestamp, id: f.id, corregida: !!f.timestamp_corregido }));
 
-    let total = 0;
-    let openEntrada: { eff: string; orig: string; id: string; corregida: boolean } | null = null;
-    let firstEntrada: { eff: string; orig: string; id: string; corregida: boolean } | null = null;
-    let lastSalida: { eff: string; orig: string; id: string; corregida: boolean } | null = null;
-    let pairs = 0;
+    const entradas = dayEvents.filter((ev) => ev.tipo === 'entrada').sort((a, b) => a.eff.localeCompare(b.eff));
+    const salidas = dayEvents.filter((ev) => ev.tipo === 'salida').sort((a, b) => b.eff.localeCompare(a.eff));
 
-    for (const ev of dayEvents) {
-      if (ev.tipo === 'entrada') {
-        openEntrada = { eff: ev.eff, orig: ev.orig, id: ev.id, corregida: ev.corregida };
-        if (!firstEntrada) firstEntrada = openEntrada;
-      } else if (ev.tipo === 'salida' && openEntrada) {
-        const diff = new Date(ev.eff).getTime() - new Date(openEntrada.eff).getTime();
-        if (diff > 0) total += Math.round(diff / 60000);
-        pairs++;
-        lastSalida = { eff: ev.eff, orig: ev.orig, id: ev.id, corregida: ev.corregida };
-        openEntrada = null;
-      }
-    }
+    const firstEntrada = entradas[0] ?? null;
+    const lastSalida = salidas[0] ?? null; // sorted desc → [0] is latest
 
     if (firstEntrada) {
       r.entrada = firstEntrada.eff;
-      r.entrada_original = firstEntrada.orig;
+      r.entrada_original = firstEntrada.corregida ? firstEntrada.orig : null;
       r.entrada_corregida = firstEntrada.corregida;
     }
     if (lastSalida) {
       r.salida = lastSalida.eff;
-      r.salida_original = lastSalida.orig;
+      r.salida_original = lastSalida.corregida ? lastSalida.orig : null;
       r.salida_corregida = lastSalida.corregida;
     }
-    r.duracion_neta = pairs > 0 ? total : null;
+    if (firstEntrada && lastSalida) {
+      const diff = new Date(lastSalida.eff).getTime() - new Date(firstEntrada.eff).getTime();
+      r.duracion_neta = diff > 0 ? Math.round(diff / 60000) : null;
+    }
     r.duracion_bruta = r.duracion_neta;
     if (r.permiso && r.permiso_fin) {
       const pDiff = new Date(r.permiso_fin).getTime() - new Date(r.permiso).getTime();
@@ -803,16 +791,24 @@ export default function FichajesModule() {
                           <td className="px-4 py-3 font-semibold" style={{ color: '#1E293B' }}>{r.nombre}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: '#475569' }}>{r.fecha}</td>
                           <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.entrada ? '#16A34A' : '#CBD5E1' }}>
-                            {formatTime(r.entrada)}
-                            {r.entrada_corregida && (
-                              <span className="ml-1 inline-flex items-center px-1 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }} title={`Original: ${formatTime(r.entrada_original)}`}>corr.</span>
-                            )}
+                            <div className="flex flex-col gap-0.5">
+                              <span>{formatTime(r.entrada)}</span>
+                              {r.entrada_corregida && (
+                                <span className="text-[10px] font-normal" style={{ color: '#94A3B8' }}>
+                                  <s>{formatTime(r.entrada_original)}</s>
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.salida ? '#DC2626' : '#CBD5E1' }}>
-                            {formatTime(r.salida)}
-                            {r.salida_corregida && (
-                              <span className="ml-1 inline-flex items-center px-1 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }} title={`Original: ${formatTime(r.salida_original)}`}>corr.</span>
-                            )}
+                            <div className="flex flex-col gap-0.5">
+                              <span>{formatTime(r.salida)}</span>
+                              {r.salida_corregida && (
+                                <span className="text-[10px] font-normal" style={{ color: '#94A3B8' }}>
+                                  <s>{formatTime(r.salida_original)}</s>
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-xs font-mono" style={{ color: '#D97706' }}>{formatDuration(pausaMin)}</td>
                           <td className="px-4 py-3">

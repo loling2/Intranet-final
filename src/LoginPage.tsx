@@ -2230,6 +2230,7 @@ useEffect(() => {
 
   const tabs = [
     { id: 'resumen', label: 'Resumen', icon: FileText },
+    { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
     { id: 'nominas', label: 'Mis Nominas', icon: Zap },
     { id: 'misdocumentos', label: 'Mis Documentos', icon: FileText },
     { id: 'calidad', label: 'Calidad', icon: ShieldCheck },
@@ -2237,7 +2238,6 @@ useEffect(() => {
     { id: 'formacion', label: 'Formacion', icon: GraduationCap },
     { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },
     { id: 'fichajes', label: 'Fichajes', icon: Clock },
-    { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
   ];
 
   const [formacionSubTab, setFormacionSubTab] = useState<'examenes' | 'certificados'>('examenes');
@@ -2456,9 +2456,13 @@ useEffect(() => {
                 onClick={() => handleTabClick(tab.id)}
                 className="relative flex-shrink-0 sm:flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 cursor-pointer whitespace-nowrap"
                 style={{
-                  backgroundColor: isActive ? theme.primary : 'transparent',
-                  color: isActive ? '#FFFFFF' : theme.textSecondary,
-                  boxShadow: isActive ? `0 2px 8px ${theme.primary}30` : 'none',
+                  backgroundColor: isActive
+                    ? (tab.id === 'ayuda' ? '#0F172A' : theme.primary)
+                    : (tab.id === 'ayuda' ? '#000000' : 'transparent'),
+                  color: isActive
+                    ? '#FFFFFF'
+                    : (tab.id === 'ayuda' ? '#FFFFFF' : theme.textSecondary),
+                  boxShadow: isActive ? (tab.id === 'ayuda' ? '0 2px 8px rgba(0,0,0,0.4)' : `0 2px 8px ${theme.primary}30`) : 'none',
                 }}
               >
                 <TabIcon size={15} />

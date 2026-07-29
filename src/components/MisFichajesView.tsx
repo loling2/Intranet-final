@@ -99,7 +99,7 @@ function formatDuration(minutes: number | null) {
   if (minutes === null || minutes < 0) return '—';
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  return `${h}h ${m}m`;
 }
 
 function isIncident(minutes: number | null) {
@@ -119,67 +119,80 @@ function effectiveTs(f: Fichaje): string {
 }
 
 function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
-  type Entry = { r: JornadaResumen; entradas: { ts: string; id: string; corregida: boolean }[]; salidas: { ts: string; id: string; corregida: boolean }[] };
-  const map = new Map<string, Entry>();
+  const map = new Map<string, JornadaResumen>();
   const sorted = [...fichajes].sort((a, b) => effectiveTs(a).localeCompare(effectiveTs(b)));
   for (const f of sorted) {
     const key = f.fecha;
     if (!map.has(key)) {
       map.set(key, {
-        r: {
-          fecha: f.fecha,
-          entrada: null, salida: null, entrada_original: null, salida_original: null,
-          entrada_corregida: false, salida_corregida: false, motivo_correccion: null,
-          pausa_inicio: null, pausa_fin: null, permiso: null, permiso_fin: null, duracion_permiso: null,
-          duracion_bruta: null, duracion_neta: null,
-          empleado_id: f.empleado_id,
-          fichaje_entrada_id: null, fichaje_salida_id: null,
-        },
-        entradas: [],
-        salidas: [],
+        fecha: f.fecha,
+        entrada: null, salida: null, entrada_original: null, salida_original: null,
+        entrada_corregida: false, salida_corregida: false, motivo_correccion: null,
+        pausa_inicio: null, pausa_fin: null, permiso: null, permiso_fin: null, duracion_permiso: null,
+        duracion_bruta: null, duracion_neta: null,
+        empleado_id: f.empleado_id,
+        fichaje_entrada_id: null, fichaje_salida_id: null,
       });
     }
-    const entry = map.get(key)!;
-    const r = entry.r;
+    const r = map.get(key)!;
     const eff = effectiveTs(f);
     const corregida = !!f.timestamp_corregido;
-    if (f.tipo_evento === 'entrada') entry.entradas.push({ ts: eff, id: f.id, corregida });
-    if (f.tipo_evento === 'salida') entry.salidas.push({ ts: eff, id: f.id, corregida });
     if (f.tipo_evento === 'pausa_inicio' && !r.pausa_inicio) r.pausa_inicio = eff;
     if (f.tipo_evento === 'pausa_fin' && !r.pausa_fin) r.pausa_fin = eff;
     if (f.tipo_evento === 'permiso' && !r.permiso) r.permiso = eff;
     if (f.tipo_evento === 'permiso_fin' && !r.permiso_fin) r.permiso_fin = eff;
     if (corregida && f.motivo_correccion && !r.motivo_correccion) r.motivo_correccion = f.motivo_correccion;
   }
-  for (const { r, entradas, salidas } of map.values()) {
-    if (entradas.length > 0) {
-      r.entrada = entradas[0].ts;
-      r.entrada_original = fichajes.find((f) => f.id === entradas[0].id)?.timestamp ?? null;
-      r.entrada_corregida = entradas[0].corregida;
-      r.fichaje_entrada_id = entradas[0].id;
-    }
-    if (salidas.length > 0) {
-      r.salida = salidas[salidas.length - 1].ts;
-      r.salida_original = fichajes.find((f) => f.id === salidas[salidas.length - 1].id)?.timestamp ?? null;
-      r.salida_corregida = salidas[salidas.length - 1].corregida;
-      r.fichaje_salida_id = salidas[salidas.length - 1].id;
-    }
-    // Sum hours from all entrada/salida pairs using effective (corrected) times
+
+  // Pair entrada/salida chronologically: walk through all events in time order,
+  // open a session on 'entrada', close it on the next 'salida'.
+  for (const [key, r] of map.entries()) {
+    const dayEvents = sorted
+      .filter((f) => f.fecha === key && (f.tipo_evento === 'entrada' || f.tipo_evento === 'salida'))
+      .map((f) => ({ tipo: f.tipo_evento, eff: effectiveTs(f), orig: f.timestamp, id: f.id, corregida: !!f.timestamp_corregido }));
+
     let total = 0;
-    const pairs = Math.min(entradas.length, salidas.length);
-    for (let i = 0; i < pairs; i++) {
-      const diff = new Date(salidas[i].ts).getTime() - new Date(entradas[i].ts).getTime();
-      if (diff > 0) total += Math.round(diff / 60000);
+    let openEntrada: { eff: string; orig: string; id: string; corregida: boolean } | null = null;
+    let firstEntrada: { eff: string; orig: string; id: string; corregida: boolean } | null = null;
+    let lastSalida: { eff: string; orig: string; id: string; corregida: boolean } | null = null;
+    let pairs = 0;
+
+    for (const ev of dayEvents) {
+      if (ev.tipo === 'entrada') {
+        if (openEntrada) {
+          // Previous entrada never got a salida — skip it, start new session
+        }
+        openEntrada = { eff: ev.eff, orig: ev.orig, id: ev.id, corregida: ev.corregida };
+        if (!firstEntrada) firstEntrada = openEntrada;
+      } else if (ev.tipo === 'salida' && openEntrada) {
+        const diff = new Date(ev.eff).getTime() - new Date(openEntrada.eff).getTime();
+        if (diff > 0) total += Math.round(diff / 60000);
+        pairs++;
+        lastSalida = { eff: ev.eff, orig: ev.orig, id: ev.id, corregida: ev.corregida };
+        openEntrada = null;
+      }
+    }
+
+    if (firstEntrada) {
+      r.entrada = firstEntrada.eff;
+      r.entrada_original = firstEntrada.orig;
+      r.entrada_corregida = firstEntrada.corregida;
+      r.fichaje_entrada_id = firstEntrada.id;
+    }
+    if (lastSalida) {
+      r.salida = lastSalida.eff;
+      r.salida_original = lastSalida.orig;
+      r.salida_corregida = lastSalida.corregida;
+      r.fichaje_salida_id = lastSalida.id;
     }
     r.duracion_neta = pairs > 0 ? total : null;
     r.duracion_bruta = r.duracion_neta;
-    // Compute permiso duration if both start and end exist
     if (r.permiso && r.permiso_fin) {
       const pDiff = new Date(r.permiso_fin).getTime() - new Date(r.permiso).getTime();
       r.duracion_permiso = pDiff > 0 ? Math.round(pDiff / 60000) : 0;
     }
   }
-  return Array.from(map.values()).map((e) => e.r).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  return Array.from(map.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
 }
 
 function toLocalDatetimeInputValue(iso: string | null): string {
@@ -288,11 +301,12 @@ ${corrHtml}
 
 interface CorrectionModalProps {
   jornada: JornadaResumen;
+  nombreEmpleado: string;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function CorrectionModal({ jornada, onClose, onSaved }: CorrectionModalProps) {
+function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: CorrectionModalProps) {
   const [entradaProp, setEntradaProp] = useState(toLocalDatetimeInputValue(jornada.entrada));
   const [salidaProp, setSalidaProp] = useState(toLocalDatetimeInputValue(jornada.salida));
   const [motivo, setMotivo] = useState('');
@@ -312,7 +326,7 @@ function CorrectionModal({ jornada, onClose, onSaved }: CorrectionModalProps) {
         fichaje_id: jornada.fichaje_salida_id ?? jornada.fichaje_entrada_id,
         empleado_id: jornada.empleado_id,
         user_id: user.id,
-        nombre_empleado: '',
+        nombre_empleado: nombreEmpleado,
         fecha: jornada.fecha,
         entrada_original: jornada.entrada,
         salida_original: jornada.salida,
@@ -683,7 +697,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
             <table className="w-full text-sm" style={{ minWidth: '760px' }}>
               <thead>
                 <tr style={{ backgroundColor: theme.bg, borderBottom: `1px solid ${theme.border}` }}>
-                  {['Fecha', 'Entrada', 'Salida', 'Horas Totales', 'Permiso', 'Incidencia', 'Acción'].map((h) => (
+                  {['Fecha', 'Entrada', 'Salida', 'Permiso', 'Horas Totales', 'Incidencia', 'Acción'].map((h) => (
                     <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: theme.textSecondary }}>{h}</th>
                   ))}
                 </tr>
@@ -691,7 +705,9 @@ export default function MisFichajesView({ theme, userId }: Props) {
               <tbody className="divide-y" style={{ borderColor: theme.border }}>
                 {resumenes.map((r, i) => {
                   const inc = incidentType(r.duracion_neta);
-                  const hasPeticion = correcciones.some((c) => c.fecha === r.fecha);
+                  const corrForDate = correcciones.filter((c) => c.fecha === r.fecha);
+                  const hasPendiente = corrForDate.some((c) => c.estado === 'pendiente');
+                  const hasAprobada = corrForDate.some((c) => c.estado === 'aprobada');
                   return (
                     <tr key={i} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 text-xs font-medium" style={{ color: theme.textPrimary }}>{r.fecha}</td>
@@ -738,7 +754,11 @@ export default function MisFichajesView({ theme, userId }: Props) {
                         {r.duracion_neta === null && <span style={{ color: '#CBD5E1' }}>—</span>}
                       </td>
                       <td className="px-4 py-3">
-                        {hasPeticion ? (
+                        {hasAprobada ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                            <CheckCircle2 size={11} /> Resuelta
+                          </span>
+                        ) : hasPendiente ? (
                           <span className="text-xs font-medium" style={{ color: '#D97706' }}>
                             Petición enviada
                           </span>
@@ -872,6 +892,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
       {correctionTarget && (
         <CorrectionModal
           jornada={correctionTarget}
+          nombreEmpleado={nombreEmpleado}
           onClose={() => setCorrectionTarget(null)}
           onSaved={loadData}
         />

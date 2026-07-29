@@ -91,7 +91,7 @@ function formatDuration(minutes: number | null) {
   if (minutes === null || minutes < 0) return '—';
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  return `${h}h ${m}m`;
 }
 
 function isIncident(minutes: number | null) {
@@ -107,32 +107,24 @@ function incidentType(minutes: number | null): 'excess' | 'deficit' | null {
 }
 
 function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
-  type Entry = { r: JornadaResumen; entradas: { eff: string; orig: string; corregida: boolean }[]; salidas: { eff: string; orig: string; corregida: boolean }[] };
-  const map = new Map<string, Entry>();
+  const map = new Map<string, JornadaResumen>();
   const sorted = [...fichajes].sort((a, b) => effectiveTs(a).localeCompare(effectiveTs(b)));
   for (const f of sorted) {
     const key = `${f.nombre_empleado}|${f.fecha}`;
     if (!map.has(key)) {
       map.set(key, {
-        r: {
-          nombre: f.nombre_empleado, fecha: f.fecha,
-          entrada: null, salida: null, entrada_original: null, salida_original: null,
-          entrada_corregida: false, salida_corregida: false, motivo_correccion: null,
-          pausa_inicio: null, pausa_fin: null, permiso: null, permiso_fin: null, duracion_permiso: null,
-          duracion_bruta: null, duracion_neta: null,
-          dispositivo: f.dispositivo ?? null, ubicacion: f.ubicacion ?? null,
-          empleado_id: f.empleado_id,
-        },
-        entradas: [],
-        salidas: [],
+        nombre: f.nombre_empleado, fecha: f.fecha,
+        entrada: null, salida: null, entrada_original: null, salida_original: null,
+        entrada_corregida: false, salida_corregida: false, motivo_correccion: null,
+        pausa_inicio: null, pausa_fin: null, permiso: null, permiso_fin: null, duracion_permiso: null,
+        duracion_bruta: null, duracion_neta: null,
+        dispositivo: f.dispositivo ?? null, ubicacion: f.ubicacion ?? null,
+        empleado_id: f.empleado_id,
       });
     }
-    const entry = map.get(key)!;
-    const r = entry.r;
+    const r = map.get(key)!;
     const eff = effectiveTs(f);
     const corregida = !!f.timestamp_corregido;
-    if (f.tipo_evento === 'entrada') entry.entradas.push({ eff, orig: f.timestamp, corregida });
-    if (f.tipo_evento === 'salida') entry.salidas.push({ eff, orig: f.timestamp, corregida });
     if (f.tipo_evento === 'pausa_inicio' && !r.pausa_inicio) r.pausa_inicio = eff;
     if (f.tipo_evento === 'pausa_fin' && !r.pausa_fin) r.pausa_fin = eff;
     if (f.tipo_evento === 'permiso' && !r.permiso) r.permiso = eff;
@@ -141,33 +133,51 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
     if (!r.dispositivo && f.dispositivo) r.dispositivo = f.dispositivo;
     if (!r.ubicacion && f.ubicacion) r.ubicacion = f.ubicacion;
   }
-  for (const { r, entradas, salidas } of map.values()) {
-    if (entradas.length > 0) {
-      r.entrada = entradas[0].eff;
-      r.entrada_original = entradas[0].orig;
-      r.entrada_corregida = entradas[0].corregida;
-    }
-    if (salidas.length > 0) {
-      r.salida = salidas[salidas.length - 1].eff;
-      r.salida_original = salidas[salidas.length - 1].orig;
-      r.salida_corregida = salidas[salidas.length - 1].corregida;
-    }
-    // Sum hours from all entrada/salida pairs using effective (corrected) times
+
+  // Pair entrada/salida chronologically: walk through all events in time order,
+  // open a session on 'entrada', close it on the next 'salida'.
+  for (const [key, r] of map.entries()) {
+    const dayEvents = sorted
+      .filter((f) => `${f.nombre_empleado}|${f.fecha}` === key && (f.tipo_evento === 'entrada' || f.tipo_evento === 'salida'))
+      .map((f) => ({ tipo: f.tipo_evento, eff: effectiveTs(f), orig: f.timestamp, id: f.id, corregida: !!f.timestamp_corregido }));
+
     let total = 0;
-    const pairs = Math.min(entradas.length, salidas.length);
-    for (let i = 0; i < pairs; i++) {
-      const diff = new Date(salidas[i].eff).getTime() - new Date(entradas[i].eff).getTime();
-      if (diff > 0) total += Math.round(diff / 60000);
+    let openEntrada: { eff: string; orig: string; id: string; corregida: boolean } | null = null;
+    let firstEntrada: { eff: string; orig: string; id: string; corregida: boolean } | null = null;
+    let lastSalida: { eff: string; orig: string; id: string; corregida: boolean } | null = null;
+    let pairs = 0;
+
+    for (const ev of dayEvents) {
+      if (ev.tipo === 'entrada') {
+        openEntrada = { eff: ev.eff, orig: ev.orig, id: ev.id, corregida: ev.corregida };
+        if (!firstEntrada) firstEntrada = openEntrada;
+      } else if (ev.tipo === 'salida' && openEntrada) {
+        const diff = new Date(ev.eff).getTime() - new Date(openEntrada.eff).getTime();
+        if (diff > 0) total += Math.round(diff / 60000);
+        pairs++;
+        lastSalida = { eff: ev.eff, orig: ev.orig, id: ev.id, corregida: ev.corregida };
+        openEntrada = null;
+      }
+    }
+
+    if (firstEntrada) {
+      r.entrada = firstEntrada.eff;
+      r.entrada_original = firstEntrada.orig;
+      r.entrada_corregida = firstEntrada.corregida;
+    }
+    if (lastSalida) {
+      r.salida = lastSalida.eff;
+      r.salida_original = lastSalida.orig;
+      r.salida_corregida = lastSalida.corregida;
     }
     r.duracion_neta = pairs > 0 ? total : null;
     r.duracion_bruta = r.duracion_neta;
-    // Compute permiso duration if both start and end exist
     if (r.permiso && r.permiso_fin) {
       const pDiff = new Date(r.permiso_fin).getTime() - new Date(r.permiso).getTime();
       r.duracion_permiso = pDiff > 0 ? Math.round(pDiff / 60000) : 0;
     }
   }
-  return Array.from(map.values()).map((e) => e.r).sort((a, b) => {
+  return Array.from(map.values()).sort((a, b) => {
     const d = b.fecha.localeCompare(a.fecha);
     return d !== 0 ? d : a.nombre.localeCompare(b.nombre);
   });

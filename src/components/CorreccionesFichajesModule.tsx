@@ -238,7 +238,7 @@ export default function CorreccionesFichajesModule() {
               const estadoColor = c.estado === 'aprobada' ? '#16A34A' : c.estado === 'rechazada' ? '#DC2626' : '#D97706';
               const estadoBg = c.estado === 'aprobada' ? '#F0FDF4' : c.estado === 'rechazada' ? '#FEF2F2' : '#FFFBEB';
               const estadoBorder = c.estado === 'aprobada' ? '#BBF7D0' : c.estado === 'rechazada' ? '#FECACA' : '#FDE68A';
-              const estadoLabel = c.estado.charAt(0).toUpperCase() + c.estado.slice(1);
+              const estadoLabel = c.estado === 'aprobada' ? 'Resuelta' : c.estado === 'rechazada' ? 'Rechazada' : 'Pendiente';
               return (
                 <div key={c.id} className="px-5 py-4">
                   <div className="flex items-start justify-between gap-3 mb-3">

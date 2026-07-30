@@ -8,6 +8,7 @@ import {
 import { supabase } from '../supabaseClient';
 import type { Dispositivo, Empleado, Centro } from '../supabaseClient';
 import { societies } from '../themes';
+import { useAuth } from '../context/AuthContext';
 
 const TIPOS = ['Portatil', 'Sobremesa', 'Monitor', 'Movil', 'Tablet', 'Periferico', 'VoIP', 'Otro'];
 
@@ -168,12 +169,14 @@ function DeviceModal({
   centros,
   onClose,
   onSaved,
+  currentUserNombre,
 }: {
   existing?: Dispositivo | null;
   empleados: Empleado[];
   centros: Centro[];
   onClose: () => void;
   onSaved: () => void;
+  currentUserNombre: string;
 }) {
   const [form, setForm] = useState<FormState>(
     existing
@@ -266,7 +269,7 @@ function DeviceModal({
             accion,
             estado_anterior: String(prevEstado),
             estado_nuevo: String(newEstado),
-            realizado_por: '',
+            realizado_por: currentUserNombre,
           });
         }
       } else {
@@ -281,7 +284,7 @@ function DeviceModal({
             accion: 'asignado',
             estado_anterior: null,
             estado_nuevo: String(payload.estado_id),
-            realizado_por: '',
+            realizado_por: currentUserNombre,
           });
         }
       }
@@ -863,6 +866,8 @@ function DeviceHistoryModal({ device, onClose }: { device: Dispositivo; onClose:
 // ── Main DevicesModule ────────────────────────────────────────────────────────
 
 export default function DevicesModule() {
+  const { profile } = useAuth();
+  const currentUserNombre = profile ? `${profile.nombre || ''}${profile.apellidos ? ' ' + profile.apellidos : ''}`.trim() || profile.email || '' : '';
   const [devices, setDevices] = useState<Dispositivo[]>([]);
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [centros, setCentros] = useState<Centro[]>([]);
@@ -972,10 +977,10 @@ const totalActivos =
   return (
     <div className="space-y-4">
       {showCreate && (
-        <DeviceModal empleados={empleados} centros={centros} onClose={() => setShowCreate(false)} onSaved={() => { loadDevices(); flash('Dispositivo creado correctamente'); }} />
+        <DeviceModal empleados={empleados} centros={centros} currentUserNombre={currentUserNombre} onClose={() => setShowCreate(false)} onSaved={() => { loadDevices(); flash('Dispositivo creado correctamente'); }} />
       )}
       {editing && (
-        <DeviceModal existing={editing} empleados={empleados} centros={centros} onClose={() => setEditing(null)} onSaved={() => { loadDevices(); flash('Dispositivo actualizado'); }} />
+        <DeviceModal existing={editing} empleados={empleados} centros={centros} currentUserNombre={currentUserNombre} onClose={() => setEditing(null)} onSaved={() => { loadDevices(); flash('Dispositivo actualizado'); }} />
       )}
       {deleteTarget && (
         <ConfirmDelete name={deleteTarget.marca_modelo} onConfirm={handleDelete} onClose={() => setDeleteTarget(null)} loading={deleting} />

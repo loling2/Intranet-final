@@ -681,6 +681,12 @@ export default function VacationsModule({ role }: Props) {
   const [requests, setRequests] = useState<VacationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+
+  const showToast = (type: 'success' | 'error', msg: string) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const loadRequests = useCallback(async () => {
     setLoading(true);
@@ -698,7 +704,10 @@ export default function VacationsModule({ role }: Props) {
   useEffect(() => { loadRequests(); }, [loadRequests]);
 
   const handleSubmitRequest = async (from: string, to: string, motivo: string, dias: number) => {
-    if (!profile) return;
+    if (!profile) {
+      showToast('error', 'No se pudo cargar tu perfil. Recarga la pagina e intenta de nuevo.');
+      return;
+    }
     setSubmitting(true);
     try {
       const { error } = await supabase.from('vacation_requests').insert({
@@ -713,16 +722,21 @@ export default function VacationsModule({ role }: Props) {
       });
       if (error) throw error;
 
-      await writeAuditLog({
+      writeAuditLog({
         evento: 'vacation_request_submitted',
         descripcion: `Solicitud de vacaciones enviada por ${profile.nombre}. ${from} - ${to} (${dias}d)`,
         autor: profile,
         entidad: 'vacation_request',
         metadata: { desde: from, hasta: to, dias, motivo },
         society_id: activeSocietyId,
-      });
+      }).catch(() => { /* audit log is best-effort; never block submit */ });
 
       await loadRequests();
+      showToast('success', 'Solicitud enviada. RRHH revisara tu peticion.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al enviar la solicitud';
+      showToast('error', msg);
+      throw err;
     } finally {
       setSubmitting(false);
     }
@@ -737,8 +751,42 @@ export default function VacationsModule({ role }: Props) {
   }
 
   if (role === 'employee') {
-    return <EmployeeCalendar requests={requests} onSubmit={handleSubmitRequest} loading={submitting} />;
+    return (
+      <>
+        {toast && (
+          <div
+            className="fixed top-4 right-4 z-[300] px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm font-medium animate-[slideIn_0.2s_ease-out]"
+            style={{
+              backgroundColor: toast.type === 'success' ? '#F0FDF4' : '#FEF2F2',
+              border: `1px solid ${toast.type === 'success' ? '#BBF7D0' : '#FECACA'}`,
+              color: toast.type === 'success' ? '#15803D' : '#DC2626',
+            }}
+          >
+            {toast.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+            {toast.msg}
+          </div>
+        )}
+        <EmployeeCalendar requests={requests} onSubmit={handleSubmitRequest} loading={submitting} />
+      </>
+    );
   }
 
-  return <RRHHVacationsManager requests={requests} onRefresh={loadRequests} role={role} />;
+  return (
+    <>
+      {toast && (
+        <div
+          className="fixed top-4 right-4 z-[300] px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm font-medium animate-[slideIn_0.2s_ease-out]"
+          style={{
+            backgroundColor: toast.type === 'success' ? '#F0FDF4' : '#FEF2F2',
+            border: `1px solid ${toast.type === 'success' ? '#BBF7D0' : '#FECACA'}`,
+            color: toast.type === 'success' ? '#15803D' : '#DC2626',
+          }}
+        >
+          {toast.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+          {toast.msg}
+        </div>
+      )}
+      <RRHHVacationsManager requests={requests} onRefresh={loadRequests} role={role} />
+    </>
+  );
 }

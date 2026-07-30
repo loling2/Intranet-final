@@ -2495,38 +2495,26 @@ useEffect(() => {
 
         {/* Tab Content */}
         {activeTab === 'resumen' && (
-          <>
-            {/* Quick Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-              {[
-                { label: 'Documentos', value: '—', color: theme.primary },
-                { label: 'Dispositivos', value: activeDeviceCount ?? '—', color: '#22C55E' },
-                { label: 'Docs. Prevencion', value: '—', color: '#065F46' },
-                { label: 'Certificados', value: certificates.length, color: theme.primary },
-              ].map((stat, i) => (
-                <div
-                  key={i}
-                  className="rounded-xl p-4 transition-all duration-300"
-                  style={{
-                    backgroundColor: theme.bgCard,
-                    border: `1px solid ${theme.border}`,
-                  }}
-                >
-                  <p className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</p>
-                  <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>{stat.label}</p>
-                </div>
-              ))}
+          <div className="flex flex-col gap-6">
+
+            {/* Fila 1: Calidad · Dispositivos · Vehículo Fichado */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <CalidadDocsCard theme={theme} societyId={theme.id} mini />
+              <DevicesCard theme={theme} userId={currentUserId} />
+              <VehicleCard vehicle={assignedVehicle} />
             </div>
 
-            {/* Main Cards */}
-           <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-              <CalidadDocsCard theme={theme} societyId={theme.id} mini />
-              <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
-              <DevicesCard theme={theme} userId={currentUserId} />
-              <PrevencionDocsCard theme={theme} userEmail={email} />
-             <VehicleCard vehicle={assignedVehicle} />
+            {/* Fila 2: Documentos PRL (ancho completo, cards por sociedad dentro) */}
+            <div>
+              <PrevencionDocsCard theme={theme} userEmail={email} fullWidth />
             </div>
-          </>
+
+            {/* Fila 3: Modales / documentos adicionales */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+              <DocumentsCard theme={theme} userEmail={email} userId={currentUserId} societyId={theme.id} />
+            </div>
+
+          </div>
         )}
 
         {activeTab === 'nominas' && (

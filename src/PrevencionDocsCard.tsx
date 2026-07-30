@@ -25,6 +25,7 @@ interface GroupedDocs {
 interface Props {
   theme: SocietyTheme;
   userEmail?: string;
+  fullWidth?: boolean;
 }
 
 // ── Preview Modal ─────────────────────────────────────────────────────────────
@@ -127,7 +128,7 @@ function PreviewModal({ doc, onClose, getUrl }: {
 
 // ── Main Card ─────────────────────────────────────────────────────────────────
 
-export default function PrevencionDocsCard({ theme }: Props) {
+export default function PrevencionDocsCard({ theme, fullWidth }: Props) {
   const [groups, setGroups] = useState<GroupedDocs[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewDoc, setPreviewDoc] = useState<PrevDoc | null>(null);
@@ -245,7 +246,7 @@ export default function PrevencionDocsCard({ theme }: Props) {
               <p className="text-xs mt-0.5" style={{ color: theme.textSecondary, opacity: 0.6 }}>Tu responsable de PRL los subira aqui</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className={fullWidth ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3" : "space-y-3"}>
               {groups.map((group) => {
                 const isOpen = expandedSocieties.has(group.society_id);
                 return (

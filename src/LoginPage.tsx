@@ -26,6 +26,7 @@ import ChangePasswordModal from './components/ChangePasswordModal';
 import ChangePinModal from './components/ChangePinModal';
 import IncidenciasModule from './components/IncidenciasModule';
 import MisFichajesView from './components/MisFichajesView';
+import VacationsModule from './components/VacationsModule';
 import HelpPanel from './components/HelpPanel';
 
 const iconMap: Record<string, LucideIcon> = {
@@ -2230,7 +2231,6 @@ useEffect(() => {
 
   const tabs = [
     { id: 'resumen', label: 'Resumen', icon: FileText },
-    { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
     { id: 'nominas', label: 'Mis Nominas', icon: Zap },
     { id: 'misdocumentos', label: 'Mis Documentos', icon: FileText },
     { id: 'calidad', label: 'Calidad', icon: ShieldCheck },
@@ -2238,6 +2238,7 @@ useEffect(() => {
     { id: 'formacion', label: 'Formacion', icon: GraduationCap },
     { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },
     { id: 'fichajes', label: 'Fichajes', icon: Clock },
+    { id: 'vacaciones', label: 'Vacaciones', icon: Plane },
   ];
 
   const [formacionSubTab, setFormacionSubTab] = useState<'examenes' | 'certificados'>('examenes');
@@ -2438,6 +2439,22 @@ useEffect(() => {
           )}
         </div>
 
+        {/* Ayuda button above tabs */}
+        <div className="mb-3">
+          <button
+            onClick={() => handleTabClick('ayuda')}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-all duration-200"
+            style={{
+              backgroundColor: activeTab === 'ayuda' ? '#374151' : '#000000',
+              color: '#FFFFFF',
+              boxShadow: activeTab === 'ayuda' ? '0 2px 10px rgba(0,0,0,0.5)' : '0 1px 4px rgba(0,0,0,0.3)',
+            }}
+          >
+            <HelpCircle size={15} />
+            <span>Ayuda</span>
+          </button>
+        </div>
+
         {/* Tab Navigation */}
         <div
           className="flex gap-1 p-1 rounded-xl mb-6 sm:mb-8 overflow-x-auto"
@@ -2456,13 +2473,9 @@ useEffect(() => {
                 onClick={() => handleTabClick(tab.id)}
                 className="relative flex-shrink-0 sm:flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 cursor-pointer whitespace-nowrap"
                 style={{
-                  backgroundColor: isActive
-                    ? (tab.id === 'ayuda' ? '#0F172A' : theme.primary)
-                    : (tab.id === 'ayuda' ? '#000000' : 'transparent'),
-                  color: isActive
-                    ? '#FFFFFF'
-                    : (tab.id === 'ayuda' ? '#FFFFFF' : theme.textSecondary),
-                  boxShadow: isActive ? (tab.id === 'ayuda' ? '0 2px 8px rgba(0,0,0,0.4)' : `0 2px 8px ${theme.primary}30`) : 'none',
+                  backgroundColor: isActive ? theme.primary : 'transparent',
+                  color: isActive ? '#FFFFFF' : theme.textSecondary,
+                  boxShadow: isActive ? `0 2px 8px ${theme.primary}30` : 'none',
                 }}
               >
                 <TabIcon size={15} />
@@ -2592,6 +2605,10 @@ useEffect(() => {
 
         {activeTab === 'fichajes' && (
           <MisFichajesView theme={theme} userId={currentUserId} />
+        )}
+
+        {activeTab === 'vacaciones' && (
+          <VacationsModule role="employee" />
         )}
 
         {activeTab === 'ayuda' && (

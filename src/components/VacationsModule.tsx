@@ -124,6 +124,97 @@ function DenyModal({ onConfirm, onClose, loading }: { onConfirm: (comment: strin
   );
 }
 
+// ─── Mini month calendar ──────────────────────────────────────────────────────
+
+const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const DAY_NAMES_SHORT = ['L','M','X','J','V','S','D'];
+
+function MiniMonth({
+  year, month, approvedDates, pendingDates, deniedDates,
+  rangeStart, rangeEnd, hoverDate,
+  onDayClick, onDayHover,
+}: {
+  year: number; month: number;
+  approvedDates: Set<string>; pendingDates: Set<string>; deniedDates: Set<string>;
+  rangeStart: string | null; rangeEnd: string | null; hoverDate: string | null;
+  onDayClick: (d: string) => void; onDayHover: (d: string | null) => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const days = daysInMonth(year, month);
+  const firstDay = (firstDayOfMonth(year, month) + 6) % 7;
+
+  const effectiveEnd = rangeEnd ?? hoverDate;
+
+  return (
+    <div className="rounded-xl p-3" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+      <p className="text-center text-xs font-bold mb-2" style={{ color: '#0F172A' }}>
+        {MONTH_NAMES[month]}
+      </p>
+      <div className="grid grid-cols-7 gap-0.5 mb-1">
+        {DAY_NAMES_SHORT.map((d) => (
+          <div key={d} className="text-center" style={{ fontSize: '9px', color: '#94A3B8', fontWeight: 600 }}>{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-0.5">
+        {Array.from({ length: firstDay }).map((_, i) => <div key={`e-${i}`} />)}
+        {Array.from({ length: days }).map((_, i) => {
+          const d = dateStr(year, month, i + 1);
+          const isPast = d < today;
+          const isToday = d === today;
+          const isApproved = approvedDates.has(d);
+          const isPending = pendingDates.has(d);
+          const isDenied = deniedDates.has(d);
+          const isStart = d === rangeStart;
+          const isEnd = d === rangeEnd;
+          const inPreview = rangeStart && effectiveEnd && !rangeEnd
+            ? (d > rangeStart && d <= effectiveEnd)
+            : false;
+          const inRange = rangeStart && rangeEnd
+            ? (d > rangeStart && d < rangeEnd)
+            : false;
+          const isWeekend = [5, 6].includes((new Date(d + 'T12:00:00').getDay() + 6) % 7);
+
+          let bg = 'transparent';
+          let color = isPast ? '#D1D5DB' : isWeekend ? '#94A3B8' : '#374151';
+          let borderColor = 'transparent';
+          let borderRadius = '4px';
+
+          if (isDenied && !isStart && !isEnd) { bg = '#FEE2E2'; color = '#EF4444'; }
+          if (isApproved && !isStart && !isEnd) { bg = '#DCFCE7'; color = '#16A34A'; }
+          if (isPending && !isStart && !isEnd) { bg = '#FEF9C3'; color = '#CA8A04'; }
+          if (inRange) { bg = '#DBEAFE'; color = '#1D4ED8'; borderRadius = '0'; }
+          if (inPreview) { bg = '#EFF6FF'; color = '#3B82F6'; borderRadius = '0'; }
+          if (isStart) { bg = '#0369A1'; color = '#FFFFFF'; borderRadius = rangeEnd || effectiveEnd ? '4px 0 0 4px' : '4px'; }
+          if (isEnd) { bg = '#0369A1'; color = '#FFFFFF'; borderRadius = '0 4px 4px 0'; }
+          if (isToday && !isStart && !isEnd) { borderColor = '#0369A1'; }
+
+          return (
+            <button
+              key={d}
+              onClick={() => !isPast && onDayClick(d)}
+              onMouseEnter={() => !isPast && onDayHover(d)}
+              onMouseLeave={() => onDayHover(null)}
+              disabled={isPast}
+              className="flex items-center justify-center transition-all duration-75 disabled:cursor-default cursor-pointer"
+              style={{
+                height: '18px',
+                fontSize: '9px',
+                fontWeight: isStart || isEnd ? 700 : 500,
+                backgroundColor: bg,
+                color,
+                border: `1px solid ${borderColor}`,
+                borderRadius,
+              }}
+            >
+              {i + 1}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Employee calendar view ───────────────────────────────────────────────────
 
 function EmployeeCalendar({ requests, onSubmit, loading }: {
@@ -133,44 +224,41 @@ function EmployeeCalendar({ requests, onSubmit, loading }: {
 }) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
   const [rangeStart, setRangeStart] = useState<string | null>(null);
   const [rangeEnd, setRangeEnd] = useState<string | null>(null);
+  const [hoverDate, setHoverDate] = useState<string | null>(null);
   const [motivo, setMotivo] = useState('');
   const [submitError, setSubmitError] = useState('');
 
-  const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); };
-  const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1); };
-
   const approvedDates = new Set<string>();
   const pendingDates = new Set<string>();
+  const deniedDates = new Set<string>();
   requests.forEach((r) => {
-    const cur = new Date(r.fecha_inicio);
-    const end = new Date(r.fecha_fin);
+    const cur = new Date(r.fecha_inicio + 'T12:00:00');
+    const end = new Date(r.fecha_fin + 'T12:00:00');
     while (cur <= end) {
       const s = cur.toISOString().slice(0, 10);
       if (r.estado === 'aprobada') approvedDates.add(s);
-      if (r.estado === 'pendiente') pendingDates.add(s);
+      else if (r.estado === 'pendiente') pendingDates.add(s);
+      else if (r.estado === 'denegada') deniedDates.add(s);
       cur.setDate(cur.getDate() + 1);
     }
   });
 
-  const days = daysInMonth(year, month);
-  const firstDay = (firstDayOfMonth(year, month) + 6) % 7; // Monday-based
+  const approvedDays = requests.filter(r => r.estado === 'aprobada').reduce((acc, r) => acc + r.dias, 0);
+  const pendingDays = requests.filter(r => r.estado === 'pendiente').reduce((acc, r) => acc + r.dias, 0);
 
   const handleDayClick = (d: string) => {
-    const today_str = new Date().toISOString().slice(0, 10);
-    if (d < today_str) return;
     if (!rangeStart || (rangeStart && rangeEnd)) {
       setRangeStart(d);
       setRangeEnd(null);
+      setHoverDate(null);
     } else {
       if (d < rangeStart) { setRangeStart(d); setRangeEnd(null); }
       else setRangeEnd(d);
     }
   };
 
-  const isInRange = (d: string) => rangeStart && rangeEnd && d >= rangeStart && d <= rangeEnd;
   const dias = rangeStart && rangeEnd ? countWorkdays(rangeStart, rangeEnd) : 0;
 
   const handleSubmit = async () => {
@@ -182,97 +270,81 @@ function EmployeeCalendar({ requests, onSubmit, loading }: {
       await onSubmit(rangeStart, rangeEnd, motivo, dias);
       setRangeStart(null);
       setRangeEnd(null);
+      setHoverDate(null);
       setMotivo('');
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Error al enviar');
     }
   };
 
-  const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-  const dayNames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
-
   return (
-    <div className="space-y-6">
-      {/* Calendar */}
-      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-        <div className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #E2E8F0' }}>
-          <div className="flex items-center gap-2">
-            <Calendar size={16} style={{ color: '#0369A1' }} />
-            <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Seleccionar Periodo de Vacaciones</h3>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={prevMonth} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-colors" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-              <ChevronLeft size={14} style={{ color: '#64748B' }} />
-            </button>
-            <span className="text-sm font-semibold min-w-[120px] text-center" style={{ color: '#1E293B' }}>
-              {monthNames[month]} {year}
-            </span>
-            <button onClick={nextMonth} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-colors" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-              <ChevronRight size={14} style={{ color: '#64748B' }} />
-            </button>
-          </div>
+    <div className="space-y-5">
+      {/* Header: year nav + stats */}
+      <div className="rounded-2xl px-5 py-4 flex flex-wrap items-center justify-between gap-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setYear(y => y - 1)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors"
+            style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}
+          >
+            <ChevronLeft size={15} style={{ color: '#64748B' }} />
+          </button>
+          <span className="text-xl font-bold" style={{ color: '#0F172A' }}>{year}</span>
+          <button
+            onClick={() => setYear(y => y + 1)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors"
+            style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}
+          >
+            <ChevronRight size={15} style={{ color: '#64748B' }} />
+          </button>
         </div>
 
-        <div className="p-5">
-          <div className="grid grid-cols-7 gap-1 mb-2">
-            {dayNames.map((d) => (
-              <div key={d} className="text-center text-xs font-semibold py-1" style={{ color: '#94A3B8' }}>{d}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {Array.from({ length: firstDay }).map((_, i) => <div key={`e-${i}`} />)}
-            {Array.from({ length: days }).map((_, i) => {
-              const d = dateStr(year, month, i + 1);
-              const isToday = d === today.toISOString().slice(0, 10);
-              const isPast = d < today.toISOString().slice(0, 10);
-              const isStart = d === rangeStart;
-              const isEnd = d === rangeEnd;
-              const inRange = isInRange(d);
-              const isApproved = approvedDates.has(d);
-              const isPending = pendingDates.has(d);
-              const isWeekend = [5, 6].includes((new Date(d).getDay() + 6) % 7);
+        <div className="flex items-center gap-3 flex-wrap">
+          {[
+            { label: 'Aprobados', days: approvedDays, bg: '#DCFCE7', color: '#16A34A', dot: '#16A34A' },
+            { label: 'Pendientes', days: pendingDays, bg: '#FEF9C3', color: '#CA8A04', dot: '#CA8A04' },
+          ].map(s => (
+            <div key={s.label} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ backgroundColor: s.bg }}>
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.dot }} />
+              <span className="text-xs font-semibold" style={{ color: s.color }}>{s.days}d {s.label}</span>
+            </div>
+          ))}
 
-              let bg = 'transparent';
-              let color = isPast ? '#CBD5E1' : isWeekend ? '#94A3B8' : '#1E293B';
-              let border = 'transparent';
-
-              if (isApproved) { bg = '#F0FDF4'; color = '#16A34A'; border = '#BBF7D0'; }
-              if (isPending) { bg = '#FFFBEB'; color = '#D97706'; border = '#FDE68A'; }
-              if (isStart || isEnd) { bg = '#0369A1'; color = '#FFFFFF'; border = '#0369A1'; }
-              else if (inRange) { bg = '#DBEAFE'; color = '#1E40AF'; border = '#BFDBFE'; }
-              if (isToday && !isStart && !isEnd && !inRange) { border = '#0369A1'; }
-
-              return (
-                <button
-                  key={d}
-                  onClick={() => !isPast && handleDayClick(d)}
-                  disabled={isPast}
-                  className="aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-all duration-100 cursor-pointer disabled:cursor-default"
-                  style={{ backgroundColor: bg, color, border: `1px solid ${border}` }}
-                >
-                  {i + 1}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Legend */}
-          <div className="flex items-center gap-4 mt-4 flex-wrap">
+          <div className="flex items-center gap-3 text-xs flex-wrap">
             {[
-              { label: 'Aprobada', bg: '#F0FDF4', border: '#BBF7D0', color: '#16A34A' },
-              { label: 'Pendiente', bg: '#FFFBEB', border: '#FDE68A', color: '#D97706' },
-              { label: 'Seleccion', bg: '#DBEAFE', border: '#BFDBFE', color: '#1E40AF' },
-            ].map((l) => (
-              <div key={l.label} className="flex items-center gap-1.5">
-                <div className="w-4 h-4 rounded" style={{ backgroundColor: l.bg, border: `1px solid ${l.border}` }} />
-                <span className="text-xs" style={{ color: '#64748B' }}>{l.label}</span>
+              { label: 'Aprobada', bg: '#DCFCE7', border: '#BBF7D0', color: '#16A34A' },
+              { label: 'Pendiente', bg: '#FEF9C3', border: '#FDE68A', color: '#CA8A04' },
+              { label: 'Seleccion', bg: '#DBEAFE', border: '#BFDBFE', color: '#1D4ED8' },
+            ].map(l => (
+              <div key={l.label} className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: l.bg, border: `1px solid ${l.border}` }} />
+                <span style={{ color: '#64748B' }}>{l.label}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Request form */}
+      {/* 12 mini calendars */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 1fr))' }}>
+        {Array.from({ length: 12 }).map((_, m) => (
+          <MiniMonth
+            key={m}
+            year={year}
+            month={m}
+            approvedDates={approvedDates}
+            pendingDates={pendingDates}
+            deniedDates={deniedDates}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            hoverDate={!rangeEnd ? hoverDate : null}
+            onDayClick={handleDayClick}
+            onDayHover={setHoverDate}
+          />
+        ))}
+      </div>
+
+      {/* Request form — appears when a range is selected */}
       {rangeStart && (
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
           <div className="px-6 py-4" style={{ borderBottom: '1px solid #E2E8F0' }}>
@@ -313,7 +385,11 @@ function EmployeeCalendar({ requests, onSubmit, loading }: {
               </div>
             )}
             <div className="flex gap-3">
-              <button onClick={() => { setRangeStart(null); setRangeEnd(null); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
+              <button
+                onClick={() => { setRangeStart(null); setRangeEnd(null); }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer"
+                style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}
+              >
                 Cancelar
               </button>
               <button
@@ -330,7 +406,7 @@ function EmployeeCalendar({ requests, onSubmit, loading }: {
         </div>
       )}
 
-      {/* My requests */}
+      {/* My requests list */}
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
         <div className="px-6 py-4" style={{ borderBottom: '1px solid #E2E8F0' }}>
           <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Mis Solicitudes</h3>
@@ -343,10 +419,10 @@ function EmployeeCalendar({ requests, onSubmit, loading }: {
           ) : (
             requests.map((r) => {
               const sc = r.estado === 'aprobada'
-                ? { bg: '#F0FDF4', text: '#16A34A', border: '#BBF7D0', Icon: CheckCircle2 }
+                ? { bg: '#DCFCE7', text: '#16A34A', border: '#BBF7D0', Icon: CheckCircle2 }
                 : r.estado === 'pendiente'
-                ? { bg: '#FFFBEB', text: '#D97706', border: '#FDE68A', Icon: Clock }
-                : { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA', Icon: XCircle };
+                ? { bg: '#FEF9C3', text: '#CA8A04', border: '#FDE68A', Icon: Clock }
+                : { bg: '#FEE2E2', text: '#DC2626', border: '#FECACA', Icon: XCircle };
               return (
                 <div key={r.id} className="px-6 py-4 flex items-start gap-3">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: sc.bg }}>
@@ -369,7 +445,7 @@ function EmployeeCalendar({ requests, onSubmit, loading }: {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer"
-                        style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}
+                        style={{ backgroundColor: '#DCFCE7', border: '1px solid #BBF7D0' }}
                         title="Descargar carta de vacaciones"
                       >
                         <Download size={13} style={{ color: '#16A34A' }} />

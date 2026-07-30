@@ -3,7 +3,7 @@ import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination
 import {
   Laptop, Smartphone, Monitor, Headphones, Tablet, Phone,
   Plus, Search, Pencil, Trash2, X, RefreshCw, AlertCircle,
-  CheckCircle2, ChevronDown, Settings, MapPin, FileText, Euro, Printer,
+  CheckCircle2, ChevronDown, Settings, MapPin, FileText, Euro, Printer, History,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import type { Dispositivo, Empleado, Centro } from '../supabaseClient';
@@ -243,9 +243,47 @@ function DeviceModal({
       if (existing) {
         const { error: err } = await supabase.from('dispositivos').update(payload).eq('id', existing.id);
         if (err) throw err;
+
+        const prevEmpId = existing.empleado_id || '';
+        const newEmpId = (payload.empleado_id as string) || '';
+        const prevEstado = existing.estado_id;
+        const newEstado = payload.estado_id;
+
+        let accion: string | null = null;
+        if (newEstado === 3 && prevEstado !== 3) {
+          accion = 'liberado';
+        } else if (newEmpId && !prevEmpId) {
+          accion = 'asignado';
+        } else if (newEmpId && prevEmpId && newEmpId !== prevEmpId) {
+          accion = 'transferido';
+        }
+
+        if (accion) {
+          await supabase.from('dispositivos_historial').insert({
+            dispositivo_id: existing.id,
+            empleado_id: newEmpId || null,
+            empleado_nombre: payload.usuario_asignado_nombre || '',
+            accion,
+            estado_anterior: String(prevEstado),
+            estado_nuevo: String(newEstado),
+            realizado_por: '',
+          });
+        }
       } else {
-        const { error: err } = await supabase.from('dispositivos').insert(payload);
+        const { data: inserted, error: err } = await supabase.from('dispositivos').insert(payload).select('id').single();
         if (err) throw err;
+
+        if (inserted && payload.empleado_id) {
+          await supabase.from('dispositivos_historial').insert({
+            dispositivo_id: inserted.id,
+            empleado_id: payload.empleado_id,
+            empleado_nombre: payload.usuario_asignado_nombre || '',
+            accion: 'asignado',
+            estado_anterior: null,
+            estado_nuevo: String(payload.estado_id),
+            realizado_por: '',
+          });
+        }
       }
       onSaved();
       onClose();
@@ -715,6 +753,113 @@ function DeliveryDocModal({ device, empleados, onClose }: {
   );
 }
 
+// ── Device History Modal ────────────────────────────────────────────────────
+
+interface HistorialEntry {
+  id: string;
+  dispositivo_id: string;
+  empleado_id: string | null;
+  empleado_nombre: string;
+  accion: string;
+  estado_anterior: string | null;
+  estado_nuevo: string | null;
+  realizado_por: string;
+  created_at: string;
+}
+
+function DeviceHistoryModal({ device, onClose }: { device: Dispositivo; onClose: () => void }) {
+  const [entries, setEntries] = useState<HistorialEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from('dispositivos_historial')
+        .select('*')
+        .eq('dispositivo_id', device.id)
+        .order('created_at', { ascending: false });
+      if (!error && data) setEntries(data as HistorialEntry[]);
+      setLoading(false);
+    })();
+  }, [device.id]);
+
+  const accionLabel: Record<string, string> = {
+    asignado: 'Asignado a',
+    liberado: 'Liberado de',
+    transferido: 'Transferido a',
+  };
+  const accionColor: Record<string, string> = {
+    asignado: '#065F46',
+    liberado: '#DC2626',
+    transferido: '#1D4ED8',
+  };
+  const accionBg: Record<string, string> = {
+    asignado: '#ECFDF5',
+    liberado: '#FEF2F2',
+    transferido: '#EFF6FF',
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      <div className="w-full max-w-2xl rounded-2xl shadow-2xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        <div className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #E2E8F0' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#FEF3C7' }}>
+              <History size={18} style={{ color: '#D97706' }} />
+            </div>
+            <div>
+              <h3 className="font-semibold" style={{ color: '#0F172A' }}>Historial de asignaciones</h3>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>{device.marca_modelo}</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors">
+            <X size={16} style={{ color: '#64748B' }} />
+          </button>
+        </div>
+
+        <div className="p-6 max-h-[60vh] overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <RefreshCw size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
+            </div>
+          ) : entries.length === 0 ? (
+            <div className="flex flex-col items-center py-12">
+              <History size={32} style={{ color: '#CBD5E1' }} />
+              <p className="text-sm mt-3" style={{ color: '#64748B' }}>No hay registros de asignaciones</p>
+              <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Cuando se asigne o libere este dispositivo, aparecerá aquí</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {entries.map((entry, idx) => (
+                <div key={entry.id} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: accionBg[entry.accion] || '#F1F5F9' }}>
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accionColor[entry.accion] || '#94A3B8' }} />
+                    </div>
+                    {idx < entries.length - 1 && <div className="w-0.5 flex-1 mt-1" style={{ backgroundColor: '#E2E8F0' }} />}
+                  </div>
+                  <div className="flex-1 pb-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium" style={{ color: accionColor[entry.accion] || '#1E293B' }}>
+                        {accionLabel[entry.accion] || entry.accion}
+                      </span>
+                      <span className="text-xs" style={{ color: '#94A3B8' }}>{formatDate(entry.created_at)}</span>
+                    </div>
+                    <p className="text-sm mt-0.5" style={{ color: '#334155' }}>{entry.empleado_nombre || 'Sin asignar'}</p>
+                    {entry.realizado_por && (
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Por {entry.realizado_por}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main DevicesModule ────────────────────────────────────────────────────────
 
 export default function DevicesModule() {
@@ -733,6 +878,7 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<Dispositivo | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deliveryDevice, setDeliveryDevice] = useState<Dispositivo | null>(null);
+  const [historyDevice, setHistoryDevice] = useState<Dispositivo | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -836,6 +982,9 @@ const totalActivos =
       )}
       {deliveryDevice && (
         <DeliveryDocModal device={deliveryDevice} empleados={empleados} onClose={() => setDeliveryDevice(null)} />
+      )}
+      {historyDevice && (
+        <DeviceHistoryModal device={historyDevice} onClose={() => setHistoryDevice(null)} />
       )}
 
       {/* Header */}
@@ -1075,6 +1224,9 @@ const totalActivos =
                     </button>
                     <button type="button" onClick={() => setDeliveryDevice(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors" style={{ color: '#94A3B8' }} title="Generar acta de entrega">
                       <FileText size={13} />
+                    </button>
+                    <button type="button" onClick={() => setHistoryDevice(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-amber-50 transition-colors" style={{ color: '#94A3B8' }} title="Historial de asignaciones">
+                      <History size={13} />
                     </button>
                     <button type="button" onClick={() => setDeleteTarget(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors" style={{ color: '#CBD5E1' }} title="Eliminar">
                       <Trash2 size={13} />

@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   CheckCircle2, XCircle, Clock, Download, FileText,
-  RefreshCw, AlertCircle, Calendar, ChevronLeft, ChevronRight, X, Search, Archive
+  RefreshCw, AlertCircle, Calendar, ChevronLeft, ChevronRight, X, Search, Archive, Upload, BadgeCheck
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { useSociety } from '../context/SocietyContext';
 import { writeAuditLog } from '../lib/auditLog';
-import { uploadVacacionesLetter, downloadFromWasabi } from '../lib/wasabi';
+import { uploadVacacionesLetter, uploadFirmadaLetter, downloadFromWasabi } from '../lib/wasabi';
 import { AppRole } from '../context/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -27,6 +27,11 @@ interface VacationRequest {
   revisado_por: string | null;
   revisado_por_nombre: string | null;
   documento_path: string | null;
+  carta_descargada_at: string | null;
+  carta_descargada_por_nombre: string | null;
+  carta_firmada_path: string | null;
+  carta_firmada_at: string | null;
+  carta_firmada_por_nombre: string | null;
   created_at: string;
 }
 
@@ -615,15 +620,16 @@ function EmployeeCalendar({ requests, onSubmit, loading }: {
 
 // ─── Historial de cartas firmadas ─────────────────────────────────────────────
 
-function VacationsHistoryView({ requests }: { requests: VacationRequest[] }) {
+function VacationsHistoryView({ requests, onRefresh }: { requests: VacationRequest[]; onRefresh: () => void }) {
+  const { profile } = useAuth();
   const [search, setSearch] = useState('');
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
 
   const approved = requests.filter((r) => r.estado === 'aprobada' && r.documento_path);
   const lower = search.toLowerCase();
   const filtered = approved.filter((r) => !lower || r.employee_nombre.toLowerCase().includes(lower));
 
-  // Group by employee name
   const byEmployee: Record<string, VacationRequest[]> = {};
   for (const r of filtered) {
     if (!byEmployee[r.employee_nombre]) byEmployee[r.employee_nombre] = [];
@@ -633,9 +639,67 @@ function VacationsHistoryView({ requests }: { requests: VacationRequest[] }) {
   const handleDownload = async (r: VacationRequest) => {
     if (!r.documento_path) return;
     setDownloading(r.id);
-    const ext = r.documento_path.split('/').pop() ?? `vacaciones_${r.fecha_inicio}.pdf`;
-    await downloadFromWasabi(r.documento_path, ext);
-    setDownloading(null);
+    try {
+      const ext = r.documento_path.split('/').pop() ?? `vacaciones_${r.fecha_inicio}.pdf`;
+      await downloadFromWasabi(r.documento_path, ext);
+      if (!r.carta_descargada_at) {
+        await supabase.from('vacation_requests').update({
+          carta_descargada_at: new Date().toISOString(),
+          carta_descargada_por_nombre: profile?.nombre ?? '',
+        }).eq('id', r.id);
+        onRefresh();
+      }
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const handleDownloadFirmada = async (r: VacationRequest) => {
+    if (!r.carta_firmada_path) return;
+    setDownloading(`firmada-${r.id}`);
+    try {
+      const ext = r.carta_firmada_path.split('/').pop() ?? `firmada_${r.fecha_inicio}.pdf`;
+      await downloadFromWasabi(r.carta_firmada_path, ext);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const handleUploadFirmada = async (r: VacationRequest, file: File) => {
+    if (!file || file.type !== 'application/pdf') {
+      alert('Por favor selecciona un archivo PDF.');
+      return;
+    }
+    setUploading(r.id);
+    try {
+      // Derive DNI and nombre from the documento_path key or employee name
+      const pathParts = r.documento_path?.split('/') ?? [];
+      // key format: rrhh/privado/{DNI}-{Nombre}/Vacaciones/{filename}
+      const folderPart = pathParts[2] ?? '';
+      const dashIdx = folderPart.indexOf('-');
+      const dni = dashIdx > -1 ? folderPart.slice(0, dashIdx) : 'SINDNI';
+      const nombreSafe = dashIdx > -1 ? folderPart.slice(dashIdx + 1) : folderPart;
+      const anio = r.fecha_inicio.slice(0, 4);
+
+      const key = await uploadFirmadaLetter(file, dni, nombreSafe.replace(/-/g, ' '), anio, r.fecha_inicio);
+      await supabase.from('vacation_requests').update({
+        carta_firmada_path: key,
+        carta_firmada_at: new Date().toISOString(),
+        carta_firmada_por_nombre: profile?.nombre ?? '',
+      }).eq('id', r.id);
+      onRefresh();
+    } catch (e) {
+      alert('Error al subir la carta firmada. Inténtalo de nuevo.');
+      console.error(e);
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  const fmtDate = (s: string | null) => {
+    if (!s) return null;
+    const d = new Date(s);
+    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
   };
 
   return (
@@ -655,52 +719,129 @@ function VacationsHistoryView({ requests }: { requests: VacationRequest[] }) {
         <div className="text-center py-12">
           <Archive size={24} className="mx-auto mb-2" style={{ color: '#CBD5E1' }} />
           <p className="text-sm" style={{ color: '#94A3B8' }}>
-            {search ? 'No se encontraron resultados' : 'No hay cartas firmadas aún'}
+            {search ? 'No se encontraron resultados' : 'No hay cartas aprobadas aún'}
           </p>
         </div>
       ) : (
-        Object.entries(byEmployee).sort(([a], [b]) => a.localeCompare(b)).map(([nombre, reqs]) => (
-          <div key={nombre} className="rounded-2xl overflow-hidden" style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF' }}>
-            <div className="px-5 py-3 flex items-center gap-2" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>
-                {nombre.charAt(0)}
+        Object.entries(byEmployee).sort(([a], [b]) => a.localeCompare(b)).map(([nombre, reqs]) => {
+          const signedCount = reqs.filter((r) => r.carta_firmada_path).length;
+          return (
+            <div key={nombre} className="rounded-2xl overflow-hidden" style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF' }}>
+              <div className="px-5 py-3 flex items-center gap-2" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>
+                  {nombre.charAt(0)}
+                </div>
+                <span className="text-sm font-semibold" style={{ color: '#1E293B' }}>{nombre}</span>
+                <div className="ml-auto flex items-center gap-2">
+                  {signedCount > 0 && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold flex items-center gap-1" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                      <BadgeCheck size={11} />
+                      {signedCount} firmada{signedCount !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E0F2FE', color: '#0369A1' }}>
+                    {reqs.length} carta{reqs.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
               </div>
-              <span className="text-sm font-semibold" style={{ color: '#1E293B' }}>{nombre}</span>
-              <span className="ml-auto text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E0F2FE', color: '#0369A1' }}>
-                {reqs.length} carta{reqs.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-            <div className="divide-y" style={{ borderColor: '#F8FAFC' }}>
-              {reqs.sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio)).map((r) => {
-                const anio = r.fecha_inicio.slice(0, 4);
-                const isLoading = downloading === r.id;
-                return (
-                  <div key={r.id} className="px-5 py-3 flex items-center gap-4">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium" style={{ color: '#1E293B' }}>
-                        {r.fecha_inicio} &rarr; {r.fecha_fin}
-                      </p>
-                      <p className="text-xs" style={{ color: '#64748B' }}>
-                        {r.dias} días · Año {anio}
-                        {r.revisado_por_nombre && ` · Aprobado por ${r.revisado_por_nombre}`}
-                      </p>
+
+              <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
+                {reqs.sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio)).map((r) => {
+                  const anio = r.fecha_inicio.slice(0, 4);
+                  const isLoadingDown = downloading === r.id;
+                  const isLoadingFirmada = downloading === `firmada-${r.id}`;
+                  const isUpLoading = uploading === r.id;
+                  const hasFirmada = !!r.carta_firmada_path;
+
+                  return (
+                    <div key={r.id} className="px-5 py-4 space-y-3">
+                      {/* Row 1: period info */}
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>
+                            {r.fecha_inicio} &rarr; {r.fecha_fin}
+                          </p>
+                          <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
+                            {r.dias} días · Año {anio}
+                            {r.revisado_por_nombre && ` · Aprobado por ${r.revisado_por_nombre}`}
+                          </p>
+                        </div>
+
+                        {/* Status chips */}
+                        <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
+                          {r.carta_descargada_at ? (
+                            <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>
+                              <Download size={10} />
+                              {fmtDate(r.carta_descargada_at)}
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F1F5F9', color: '#94A3B8' }}>
+                              No descargada
+                            </span>
+                          )}
+                          {hasFirmada && (
+                            <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                              <BadgeCheck size={10} />
+                              Firmada {fmtDate(r.carta_firmada_at)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Row 2: action buttons */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Download original */}
+                        <button
+                          onClick={() => handleDownload(r)}
+                          disabled={isLoadingDown}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60"
+                          style={{ backgroundColor: '#F8FAFC', color: '#1E293B', border: '1px solid #E2E8F0' }}
+                          title="Descargar carta original"
+                        >
+                          {isLoadingDown ? <RefreshCw size={12} className="animate-spin" /> : <Download size={12} />}
+                          Carta original
+                        </button>
+
+                        {/* Upload signed */}
+                        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${isUpLoading ? 'opacity-60 pointer-events-none' : ''}`}
+                          style={{ backgroundColor: hasFirmada ? '#F8FAFC' : '#FEF3C7', color: hasFirmada ? '#64748B' : '#92400E', border: `1px solid ${hasFirmada ? '#E2E8F0' : '#FDE68A'}` }}
+                          title={hasFirmada ? 'Sustituir carta firmada' : 'Subir carta firmada'}
+                        >
+                          {isUpLoading ? <RefreshCw size={12} className="animate-spin" /> : <Upload size={12} />}
+                          {hasFirmada ? 'Reemplazar firmada' : 'Subir firmada'}
+                          <input
+                            type="file"
+                            accept="application/pdf"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleUploadFirmada(r, f);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+
+                        {/* Download signed */}
+                        {hasFirmada && (
+                          <button
+                            onClick={() => handleDownloadFirmada(r)}
+                            disabled={isLoadingFirmada}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60"
+                            style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
+                            title="Descargar carta firmada"
+                          >
+                            {isLoadingFirmada ? <RefreshCw size={12} className="animate-spin" /> : <BadgeCheck size={12} />}
+                            Descargar firmada
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <button
-                      onClick={() => handleDownload(r)}
-                      disabled={isLoading}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60"
-                      style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
-                      title="Descargar carta de vacaciones"
-                    >
-                      {isLoading ? <RefreshCw size={12} className="animate-spin" /> : <Download size={12} />}
-                      Descargar
-                    </button>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))
+          );
+        })
       )}
     </div>
   );
@@ -806,6 +947,24 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
 
       setDenyTarget(null);
       onRefresh();
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDownloadTracked = async (r: VacationRequest) => {
+    if (!r.documento_path) return;
+    setActionLoading(r.id);
+    try {
+      const filename = r.documento_path.split('/').pop() ?? `vacaciones_${r.fecha_inicio}.pdf`;
+      await downloadFromWasabi(r.documento_path, filename);
+      if (!r.carta_descargada_at) {
+        await supabase.from('vacation_requests').update({
+          carta_descargada_at: new Date().toISOString(),
+          carta_descargada_por_nombre: profile?.nombre ?? '',
+        }).eq('id', r.id);
+        onRefresh();
+      }
     } finally {
       setActionLoading(null);
     }
@@ -925,15 +1084,23 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
                           </>
                         )}
                         {r.estado === 'aprobada' && r.documento_path ? (
-                          <button
-                            onClick={() => downloadFromWasabi(r.documento_path!, r.documento_path!.split('/').pop() ?? `vacaciones_${r.fecha_inicio}.pdf`)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
-                            style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
-                            title="Descargar carta"
-                          >
-                            <FileText size={12} />
-                            PDF
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleDownloadTracked(r)}
+                              disabled={isLoading}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60"
+                              style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
+                              title={r.carta_descargada_at ? `Descargado el ${new Date(r.carta_descargada_at).toLocaleDateString()}` : 'Descargar carta'}
+                            >
+                              <FileText size={12} />
+                              PDF
+                            </button>
+                            {r.carta_firmada_path && (
+                              <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }} title={`Firmada el ${new Date(r.carta_firmada_at!).toLocaleDateString()}`}>
+                                <BadgeCheck size={12} />
+                              </span>
+                            )}
+                          </div>
                         ) : r.estado !== 'pendiente' ? (
                           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs opacity-30" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
                             <Download size={12} />
@@ -950,7 +1117,7 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
         )}
 
         {/* Historial tab */}
-        {tab === 'historial' && <VacationsHistoryView requests={requests} />}
+        {tab === 'historial' && <VacationsHistoryView requests={requests} onRefresh={onRefresh} />}
       </div>
     </>
   );

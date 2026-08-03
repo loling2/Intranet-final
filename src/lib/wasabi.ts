@@ -361,6 +361,27 @@ export async function uploadVacacionesLetter(
   return key;
 }
 
+// Upload a signed vacation letter to rrhh/privado/<dni>-<nombre>/Vacaciones/firmadas/<...>-FIRMADA.pdf
+export async function uploadFirmadaLetter(
+  blob: Blob, dni: string, nombre: string, anio: string, fechaInicio: string
+): Promise<string> {
+  const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
+  const safe = sanitizePath(nombre);
+  const firmadaFolder = `rrhh/privado/${dni}-${safe}/Vacaciones/firmadas/`;
+  const check = await wasabiClient.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: firmadaFolder, MaxKeys: 1 }));
+  if (!check.Contents?.length) {
+    await wasabiClient.send(new PutObjectCommand({ Bucket: bucket, Key: `${firmadaFolder}.keep`, Body: new Uint8Array(0), ContentType: 'application/octet-stream', ContentLength: 0 }));
+  }
+  const fileName = `${dni}-${safe}-Vacaciones-${anio}-${fechaInicio}-FIRMADA.pdf`;
+  const key = `${firmadaFolder}${fileName}`;
+  const bytes = await blob.arrayBuffer();
+  await wasabiClient.send(new PutObjectCommand({
+    Bucket: bucket, Key: key,
+    Body: new Uint8Array(bytes), ContentType: 'application/pdf', ContentLength: blob.size,
+  }));
+  return key;
+}
+
 // Download a file by key via the edge-function proxy (avoids browser CORS on direct S3 calls)
 export async function downloadFromWasabi(key: string, filename: string): Promise<void> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;

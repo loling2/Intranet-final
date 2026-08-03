@@ -256,7 +256,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
         </div>
         {/* Desktop: Horizontal tabs */}
         <div
-          className="hidden md:flex gap-1 p-1 rounded-xl mb-8 overflow-x-auto"
+          className="hidden md:flex flex-wrap gap-1 p-1 rounded-xl mb-8"
           style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
         >
           {tabs.map((tab) => {

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   CheckCircle2, XCircle, Clock, Download, FileText,
-  RefreshCw, AlertCircle, Calendar, ChevronLeft, ChevronRight, X, Search, Archive, Upload, BadgeCheck
+  RefreshCw, AlertCircle, Calendar, ChevronLeft, ChevronRight, X, Search, Archive, Upload, BadgeCheck,
+  Pencil, Check, ChevronDown, ChevronUp, BarChart2, Building2, MapPin, User
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { supabase } from '../supabaseClient';
@@ -847,6 +848,358 @@ function VacationsHistoryView({ requests, onRefresh }: { requests: VacationReque
   );
 }
 
+// ─── Balance de vacaciones ────────────────────────────────────────────────────
+
+interface EmployeeBalance {
+  id: string;
+  nombre: string;
+  dni: string | null;
+  centro_trabajo: string | null;
+  id_sociedad: string | null;
+  user_id: string | null;
+  diasTotales: number;
+  diasDisfrutados: number;
+  diasPendientes: number;
+  vacaciones: { id: string; fecha_inicio: string; fecha_fin: string; dias: number }[];
+}
+
+function VacationBalanceView() {
+  const { societies } = useSociety();
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(currentYear);
+  const [filterSociety, setFilterSociety] = useState('');
+  const [filterCentro, setFilterCentro] = useState('');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [employees, setEmployees] = useState<EmployeeBalance[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState(30);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  useEffect(() => { loadData(); }, [year]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [{ data: emps }, { data: bals }, { data: vacs }] = await Promise.all([
+        supabase.from('empleados').select('id, nombre, dni, centro_trabajo, id_sociedad, user_id').eq('activo', true).order('nombre'),
+        supabase.from('vacation_balances').select('employee_id, dias_totales').eq('year', year),
+        supabase.from('vacation_requests').select('id, employee_id, dias, fecha_inicio, fecha_fin').eq('estado', 'aprobada').gte('fecha_inicio', `${year}-01-01`).lte('fecha_inicio', `${year}-12-31`),
+      ]);
+      const merged: EmployeeBalance[] = (emps ?? []).map((emp) => {
+        const bal = (bals ?? []).find((b) => b.employee_id === emp.id);
+        const empVac = (vacs ?? []).filter((v) => v.employee_id === emp.user_id);
+        const diasDisfrutados = empVac.reduce((s, v) => s + (v.dias ?? 0), 0);
+        const diasTotales = bal?.dias_totales ?? 30;
+        return {
+          id: emp.id,
+          nombre: emp.nombre ?? '—',
+          dni: emp.dni,
+          centro_trabajo: emp.centro_trabajo,
+          id_sociedad: emp.id_sociedad,
+          user_id: emp.user_id,
+          diasTotales,
+          diasDisfrutados,
+          diasPendientes: Math.max(0, diasTotales - diasDisfrutados),
+          vacaciones: empVac.sort((a, b) => a.fecha_inicio.localeCompare(b.fecha_inicio)),
+        };
+      });
+      setEmployees(merged);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveBalance = async (emp: EmployeeBalance) => {
+    setSavingId(emp.id);
+    try {
+      await supabase.from('vacation_balances').upsert({
+        employee_id: emp.id,
+        society_id: emp.id_sociedad ?? '',
+        year,
+        dias_totales: editValue,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'employee_id,year' });
+      setEditingId(null);
+      await loadData();
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const centros = [...new Set((employees).map((e) => e.centro_trabajo).filter(Boolean) as string[])].sort();
+
+  const filtered = employees.filter((e) => {
+    if (filterSociety && String(e.id_sociedad) !== filterSociety) return false;
+    if (filterCentro && e.centro_trabajo !== filterCentro) return false;
+    if (search && !e.nombre.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const totalDisfrutados = filtered.reduce((s, e) => s + e.diasDisfrutados, 0);
+  const conVacaciones = filtered.filter((e) => e.diasDisfrutados > 0).length;
+  const sinVacaciones = filtered.filter((e) => e.diasDisfrutados === 0).length;
+
+  const pct = (used: number, total: number) => Math.min(100, total > 0 ? Math.round((used / total) * 100) : 0);
+  const barColor = (p: number) => p >= 100 ? '#DC2626' : p >= 75 ? '#F59E0B' : '#2563EB';
+
+  const inputStyle = { backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' };
+  const selectStyle = `px-3 py-2 rounded-xl text-sm outline-none cursor-pointer`;
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <select value={year} onChange={(e) => setYear(+e.target.value)} className={selectStyle} style={inputStyle}>
+          {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
+        <select value={filterSociety} onChange={(e) => setFilterSociety(e.target.value)} className={selectStyle} style={inputStyle}>
+          <option value="">Todas las empresas</option>
+          {societies.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+        </select>
+        <select value={filterCentro} onChange={(e) => setFilterCentro(e.target.value)} className={selectStyle} style={inputStyle}>
+          <option value="">Todos los centros</option>
+          {centros.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar empleado..."
+            className="w-full pl-9 pr-4 py-2 rounded-xl text-sm outline-none"
+            style={inputStyle}
+          />
+        </div>
+        <button
+          onClick={loadData}
+          className="p-2 rounded-xl cursor-pointer"
+          style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}
+          title="Actualizar"
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Trabajadores', value: filtered.length, icon: User, bg: '#EFF6FF', color: '#1D4ED8' },
+          { label: 'Con vacaciones', value: conVacaciones, icon: BarChart2, bg: '#F0FDF4', color: '#16A34A' },
+          { label: 'Sin disfrutar', value: sinVacaciones, icon: Calendar, bg: '#FFF7ED', color: '#C2410C' },
+        ].map(({ label, value, icon: Icon, bg, color }) => (
+          <div key={label} className="rounded-2xl px-4 py-3 flex items-center gap-3" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bg }}>
+              <Icon size={16} style={{ color }} />
+            </div>
+            <div>
+              <p className="text-xl font-bold" style={{ color: '#1E293B' }}>{value}</p>
+              <p className="text-xs" style={{ color: '#64748B' }}>{label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Employee table */}
+      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        {/* Table header */}
+        <div className="hidden md:grid px-5 py-3 gap-4 text-xs font-semibold uppercase tracking-wide"
+          style={{ color: '#94A3B8', borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', gridTemplateColumns: '2fr 1fr 1fr 80px 80px 80px 2fr' }}>
+          <span>Empleado</span>
+          <span>Empresa</span>
+          <span>Centro</span>
+          <span className="text-center">Días total</span>
+          <span className="text-center">Disfrutados</span>
+          <span className="text-center">Pendientes</span>
+          <span>Progreso</span>
+        </div>
+
+        {loading ? (
+          <div className="py-12 flex items-center justify-center gap-2" style={{ color: '#94A3B8' }}>
+            <RefreshCw size={16} className="animate-spin" />
+            <span className="text-sm">Cargando...</span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-12 text-center">
+            <BarChart2 size={24} className="mx-auto mb-2" style={{ color: '#CBD5E1' }} />
+            <p className="text-sm" style={{ color: '#94A3B8' }}>No hay empleados</p>
+          </div>
+        ) : (
+          <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
+            {filtered.map((emp) => {
+              const p = pct(emp.diasDisfrutados, emp.diasTotales);
+              const bc = barColor(p);
+              const isExpanded = expandedId === emp.id;
+              const isEditing = editingId === emp.id;
+              const isSaving = savingId === emp.id;
+              const societyName = societies.find((s) => s.id === String(emp.id_sociedad))?.nombre ?? '—';
+
+              return (
+                <div key={emp.id}>
+                  {/* Row */}
+                  <div
+                    className="px-5 py-3 gap-4 items-center cursor-pointer transition-colors hover:bg-slate-50 flex flex-col md:grid"
+                    style={{ gridTemplateColumns: '2fr 1fr 1fr 80px 80px 80px 2fr' }}
+                    onClick={() => {
+                      if (isEditing) return;
+                      setExpandedId(isExpanded ? null : emp.id);
+                    }}
+                  >
+                    {/* Empleado */}
+                    <div className="w-full flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>
+                        {emp.nombre.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: '#1E293B' }}>{emp.nombre}</p>
+                        {emp.dni && <p className="text-xs" style={{ color: '#94A3B8' }}>{emp.dni}</p>}
+                      </div>
+                      {isExpanded ? <ChevronUp size={14} className="ml-auto flex-shrink-0" style={{ color: '#94A3B8' }} /> : <ChevronDown size={14} className="ml-auto flex-shrink-0" style={{ color: '#CBD5E1' }} />}
+                    </div>
+
+                    {/* Empresa */}
+                    <div className="hidden md:flex items-center gap-1">
+                      <Building2 size={11} style={{ color: '#CBD5E1' }} />
+                      <span className="text-xs truncate" style={{ color: '#64748B' }}>{societyName}</span>
+                    </div>
+
+                    {/* Centro */}
+                    <div className="hidden md:flex items-center gap-1">
+                      <MapPin size={11} style={{ color: '#CBD5E1' }} />
+                      <span className="text-xs truncate" style={{ color: '#64748B' }}>{emp.centro_trabajo || '—'}</span>
+                    </div>
+
+                    {/* Días total — editable */}
+                    <div className="hidden md:flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      {isEditing ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={0}
+                            max={365}
+                            value={editValue}
+                            onChange={(e) => setEditValue(+e.target.value)}
+                            className="w-12 text-center text-sm rounded-lg outline-none"
+                            style={{ border: '1px solid #BFDBFE', backgroundColor: '#EFF6FF', color: '#1D4ED8' }}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => saveBalance(emp)}
+                            disabled={isSaving}
+                            className="w-6 h-6 rounded-md flex items-center justify-center cursor-pointer"
+                            style={{ backgroundColor: '#F0FDF4', color: '#16A34A' }}
+                          >
+                            {isSaving ? <RefreshCw size={10} className="animate-spin" /> : <Check size={10} />}
+                          </button>
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="w-6 h-6 rounded-md flex items-center justify-center cursor-pointer"
+                            style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}
+                          >
+                            <X size={10} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 group">
+                          <span className="text-sm font-semibold" style={{ color: '#1E293B' }}>{emp.diasTotales}</span>
+                          <button
+                            onClick={() => { setEditingId(emp.id); setEditValue(emp.diasTotales); }}
+                            className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center cursor-pointer transition-opacity"
+                            style={{ color: '#94A3B8' }}
+                            title="Editar días totales"
+                          >
+                            <Pencil size={10} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Disfrutados */}
+                    <div className="hidden md:flex items-center justify-center">
+                      <span className="text-sm font-bold" style={{ color: emp.diasDisfrutados > emp.diasTotales ? '#DC2626' : '#1E293B' }}>
+                        {emp.diasDisfrutados}
+                      </span>
+                    </div>
+
+                    {/* Pendientes */}
+                    <div className="hidden md:flex items-center justify-center">
+                      <span className={`text-sm font-bold px-2 py-0.5 rounded-lg`}
+                        style={{ backgroundColor: emp.diasPendientes === 0 ? '#FEF2F2' : '#F0FDF4', color: emp.diasPendientes === 0 ? '#DC2626' : '#16A34A' }}>
+                        {emp.diasPendientes}
+                      </span>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="hidden md:flex items-center gap-2">
+                      <div className="flex-1 h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: '#F1F5F9' }}>
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${p}%`, backgroundColor: bc }}
+                        />
+                      </div>
+                      <span className="text-xs w-8 text-right flex-shrink-0" style={{ color: bc }}>{p}%</span>
+                    </div>
+
+                    {/* Mobile summary row */}
+                    <div className="md:hidden flex items-center gap-3 text-xs w-full">
+                      <span style={{ color: '#64748B' }}>{societyName} · {emp.centro_trabajo || '—'}</span>
+                      <span className="ml-auto font-bold" style={{ color: '#1E293B' }}>{emp.diasDisfrutados}/{emp.diasTotales} días</span>
+                      <span style={{ color: emp.diasPendientes === 0 ? '#DC2626' : '#16A34A' }}>{emp.diasPendientes} pend.</span>
+                    </div>
+                  </div>
+
+                  {/* Expanded: vacation detail */}
+                  {isExpanded && (
+                    <div className="px-5 pb-4" style={{ backgroundColor: '#FAFBFF', borderTop: '1px solid #F1F5F9' }}>
+                      <p className="text-xs font-semibold mt-3 mb-2" style={{ color: '#94A3B8' }}>PERÍODOS DE VACACIONES {year}</p>
+                      {emp.vacaciones.length === 0 ? (
+                        <p className="text-xs" style={{ color: '#CBD5E1' }}>Sin vacaciones registradas este año</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {emp.vacaciones.map((v, i) => (
+                            <div key={v.id} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                              <span className="text-xs font-semibold w-5 text-center" style={{ color: '#94A3B8' }}>{i + 1}</span>
+                              <Calendar size={12} style={{ color: '#CBD5E1' }} />
+                              <span className="text-xs flex-1" style={{ color: '#374151' }}>{v.fecha_inicio} &rarr; {v.fecha_fin}</span>
+                              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>
+                                {v.dias} día{v.dias !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          ))}
+                          <div className="flex justify-end pt-1">
+                            <span className="text-xs font-semibold" style={{ color: '#64748B' }}>
+                              Total: {emp.diasDisfrutados} de {emp.diasTotales} días · Restan {emp.diasPendientes}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Totals footer */}
+            {filtered.length > 0 && (
+              <div className="px-5 py-3 flex justify-end gap-6" style={{ backgroundColor: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
+                <span className="text-xs" style={{ color: '#64748B' }}>
+                  Total días disfrutados: <strong style={{ color: '#1E293B' }}>{totalDisfrutados}</strong>
+                </span>
+                <span className="text-xs" style={{ color: '#64748B' }}>
+                  Media por empleado: <strong style={{ color: '#1E293B' }}>{filtered.length > 0 ? (totalDisfrutados / filtered.length).toFixed(1) : 0}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── HR manager ───────────────────────────────────────────────────────────────
 
 function RRHHVacationsManager({ requests, onRefresh, role }: {
@@ -858,7 +1211,7 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
   const [denyTarget, setDenyTarget] = useState<VacationRequest | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState('');
-  const [tab, setTab] = useState<'solicitudes' | 'historial'>('solicitudes');
+  const [tab, setTab] = useState<'solicitudes' | 'historial' | 'balance'>('solicitudes');
 
   const handleApprove = async (req: VacationRequest) => {
     if (!profile) return;
@@ -988,8 +1341,9 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
         <div className="flex rounded-xl p-1 gap-1" style={{ backgroundColor: '#F1F5F9' }}>
           {([
             { key: 'solicitudes', label: 'Solicitudes', badge: pending },
-            { key: 'historial', label: 'Historial de Cartas', badge: approvedWithDoc, Icon: Archive },
-          ] as { key: 'solicitudes' | 'historial'; label: string; badge: number; Icon?: typeof Archive }[]).map(({ key, label, badge }) => {
+            { key: 'historial', label: 'Historial de Cartas', badge: approvedWithDoc },
+            { key: 'balance', label: 'Balance de Vacaciones', badge: 0 },
+          ] as { key: 'solicitudes' | 'historial' | 'balance'; label: string; badge: number }[]).map(({ key, label, badge }) => {
             const active = tab === key;
             return (
               <button
@@ -1118,6 +1472,9 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
 
         {/* Historial tab */}
         {tab === 'historial' && <VacationsHistoryView requests={requests} onRefresh={onRefresh} />}
+
+        {/* Balance tab */}
+        {tab === 'balance' && <VacationBalanceView />}
       </div>
     </>
   );

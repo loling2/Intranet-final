@@ -74,7 +74,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
 
   // Load tab permissions from DB for the current role
   useEffect(() => {
-    const effectiveRole = isSupervisor ? 'supervisor' : (role ?? 'rrhh');
+    const effectiveRole = isSupervisor ? 'supervisor' : (isAdmin ? 'rrhh' : (role ?? 'rrhh'));
     supabase
       .from('role_tab_permissions')
       .select('tab_id, enabled')
@@ -133,7 +133,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
   const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'vacations', 'certificates', 'exams', 'facturas', 'bajas', 'supervisor-empleados', 'ayuda'];
 
   const tabs = enabledTabIds !== null
-    ? allTabs.filter(t => enabledTabIds.has(t.id))
+    ? allTabs.filter(t => t.id === 'ayuda' || enabledTabIds.has(t.id))
     : isSupervisor
       ? allTabs.filter(t => supervisorTabIds.includes(t.id))
       : allTabs;

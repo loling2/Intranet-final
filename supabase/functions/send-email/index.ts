@@ -51,30 +51,47 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Acceso denegado" }, 403);
     }
 
-    const { plantilla_id, cuenta_id, to_email, variables } =
-      (await req.json()) as {
-        plantilla_id: string;
-        cuenta_id: string;
-        to_email: string;
-        variables: Record<string, string>;
-      };
+    const {
+      plantilla_id,
+      cuenta_id,
+      to_email,
+      variables,
+      html_override,
+      subject_override,
+    } = (await req.json()) as {
+      plantilla_id: string;
+      cuenta_id: string;
+      to_email: string;
+      variables: Record<string, string>;
+      html_override?: string;
+      subject_override?: string;
+    };
 
-    if (!plantilla_id || !cuenta_id || !to_email) {
+    if (!cuenta_id || !to_email) {
       return json({ error: "Faltan parametros requeridos" }, 400);
     }
 
-    // Fetch plantilla and cuenta
+    // Fetch plantilla (optional when html_override is provided) and cuenta
     const [{ data: plantilla }, { data: cuenta }] = await Promise.all([
-      supabaseAdmin.from("email_plantillas").select("*").eq("id", plantilla_id).maybeSingle(),
+      plantilla_id
+        ? supabaseAdmin.from("email_plantillas").select("*").eq("id", plantilla_id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
       supabaseAdmin.from("email_cuentas").select("*").eq("id", cuenta_id).maybeSingle(),
     ]);
 
-    if (!plantilla) return json({ error: "Plantilla no encontrada" }, 404);
+    if (!plantilla && !html_override) return json({ error: "Plantilla no encontrada" }, 404);
     if (!cuenta) return json({ error: "Cuenta SMTP no encontrada" }, 404);
     if (!cuenta.activo) return json({ error: "La cuenta SMTP esta inactiva" }, 400);
 
-    const asunto = applyVariables(plantilla.asunto, variables);
-    const cuerpo = applyVariables(plantilla.cuerpo, variables);
+    const asunto = subject_override
+      ? subject_override
+      : applyVariables(plantilla!.asunto, variables);
+    const cuerpo = plantilla
+      ? applyVariables(plantilla.cuerpo, variables)
+      : "Informe de incidencias de fichaje.";
+    const htmlBody = html_override
+      ? html_override
+      : buildAccessHtml(asunto, cuerpo, variables);
 
     // Send via SMTP using fetch to a simple SMTP-over-HTTP approach
     // We use the nodemailer-compatible approach via Deno's TCP
@@ -88,7 +105,7 @@ Deno.serve(async (req: Request) => {
       to: to_email,
       subject: asunto,
       text: cuerpo,
-      html: buildAccessHtml(asunto, cuerpo, variables),
+      html: htmlBody,
     });
 
     if (!smtpResp.ok) {

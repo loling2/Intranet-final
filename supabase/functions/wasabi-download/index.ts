@@ -23,10 +23,10 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const endpoint = Deno.env.get("VITE_WASABI_ENDPOINT") ?? "";
-    const bucket = Deno.env.get("VITE_WASABI_BUCKET_NAME") ?? "";
-    const accessKey = Deno.env.get("VITE_WASABI_ACCESS_KEY") ?? "";
-    const secretKey = Deno.env.get("VITE_WASABI_SECRET_KEY") ?? "";
+    const endpoint = Deno.env.get("VITE_WASABI_ENDPOINT") || Deno.env.get("WASABI_ENDPOINT") || "";
+    const bucket = Deno.env.get("VITE_WASABI_BUCKET_NAME") || Deno.env.get("WASABI_BUCKET_NAME") || "";
+    const accessKey = Deno.env.get("VITE_WASABI_ACCESS_KEY") || Deno.env.get("WASABI_ACCESS_KEY") || "";
+    const secretKey = Deno.env.get("VITE_WASABI_SECRET_KEY") || Deno.env.get("WASABI_SECRET_KEY") || "";
 
     const aws = new AwsClient({
       accessKeyId: accessKey,

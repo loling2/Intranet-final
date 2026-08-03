@@ -1989,11 +1989,11 @@ function MisNominasView({ theme, userId: propUserId }: { theme: SocietyTheme; us
                   <span className="text-xs font-bold uppercase tracking-wider" style={{ color: theme.primary }}>{anio}</span>
                   <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: theme.bg, color: theme.textSecondary }}>{rows.length}</span>
                 </div>
-                <div className="divide-y" style={{ borderColor: theme.border }}>
-                  {[...rows].sort((a, b) => b.mes - a.mes).map((n) => {
+                <div>
+                  {[...rows].sort((a, b) => b.mes - a.mes || (a.sociedad_nombre ?? '').localeCompare(b.sociedad_nombre ?? '')).map((n, idx) => {
                     const isInProgress = downloading.has(n.id);
                     return (
-                      <div key={n.id} className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors">
+                      <div key={n.id} className="flex items-center gap-4 px-5 py-4 transition-colors" style={{ borderTop: idx === 0 ? 'none' : `1px solid ${theme.border}`, backgroundColor: theme.bgCard }}>
                         <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: theme.primaryLight, border: `1px solid ${theme.border}` }}>
                           <FileText size={16} style={{ color: theme.primary }} />
                         </div>

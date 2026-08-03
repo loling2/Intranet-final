@@ -108,16 +108,8 @@ export async function uploadBytesToWasabi(bytes: Uint8Array, key: string, conten
 export async function getWasabiBlobUrl(key: string): Promise<string> {
   const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
   const resp = await wasabiClient.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  const stream = resp.Body as ReadableStream;
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let done = false;
-  while (!done) {
-    const { value, done: d } = await reader.read();
-    if (value) chunks.push(value);
-    done = d;
-  }
-  const blob = new Blob(chunks as BlobPart[], { type: resp.ContentType ?? 'application/octet-stream' });
+  const bytes = await resp.Body!.transformToByteArray();
+  const blob = new Blob([bytes], { type: resp.ContentType ?? 'application/octet-stream' });
   return URL.createObjectURL(blob);
 }
 
@@ -341,22 +333,58 @@ export async function uploadPnrJustificante(file: File, dni: string, nombre: str
   return key;
 }
 
-// Download a file by key and trigger browser download
-export async function downloadFromWasabi(key: string, filename: string): Promise<void> {
+function sanitizePath(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+}
+
+// Upload a vacation letter to rrhh/privado/<dni>-<nombre>/Vacaciones/<dni>-<nombre>-Vacaciones-<año>-<fechaInicio>.pdf
+export async function uploadVacacionesLetter(
+  blob: Blob, dni: string, nombre: string, anio: string, fechaInicio: string
+): Promise<string> {
   const bucket = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
-  const resp = await wasabiClient.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  const stream = resp.Body as ReadableStream;
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let done = false;
-  while (!done) {
-    const { value, done: d } = await reader.read();
-    if (value) chunks.push(value);
-    done = d;
+  const safe = sanitizePath(nombre);
+  const employeeFolder = `rrhh/privado/${dni}-${safe}/`;
+  const vacFolder = `${employeeFolder}Vacaciones/`;
+  for (const fk of [employeeFolder, vacFolder]) {
+    const check = await wasabiClient.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: fk, MaxKeys: 1 }));
+    if (!check.Contents?.length) {
+      await wasabiClient.send(new PutObjectCommand({ Bucket: bucket, Key: `${fk}.keep`, Body: new Uint8Array(0), ContentType: 'application/octet-stream', ContentLength: 0 }));
+    }
   }
-  const blob = new Blob(chunks as BlobPart[], { type: resp.ContentType ?? 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
+  const fileName = `${dni}-${safe}-Vacaciones-${anio}-${fechaInicio}.pdf`;
+  const key = `${vacFolder}${fileName}`;
+  const bytes = await blob.arrayBuffer();
+  await wasabiClient.send(new PutObjectCommand({
+    Bucket: bucket, Key: key,
+    Body: new Uint8Array(bytes), ContentType: 'application/pdf', ContentLength: blob.size,
+  }));
+  return key;
+}
+
+// Download a file by key via the edge-function proxy (avoids browser CORS on direct S3 calls)
+export async function downloadFromWasabi(key: string, filename: string): Promise<void> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+  const url = `${supabaseUrl}/functions/v1/wasabi-download?key=${encodeURIComponent(key)}`;
+
+  const resp = await fetch(url, {
+    headers: { Authorization: `Bearer ${anonKey}`, Apikey: anonKey },
+  });
+
+  if (!resp.ok) {
+    throw new Error(`Error al descargar el archivo (${resp.status})`);
+  }
+
+  const blob = await resp.blob();
+  const ext = filename.split('.').pop()?.toLowerCase();
+  const mimeByExt: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
+  const finalBlob = new Blob([blob], { type: mimeByExt[ext ?? ''] ?? blob.type ?? 'application/octet-stream' });
+  const blobUrl = URL.createObjectURL(finalBlob);
   const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
 }

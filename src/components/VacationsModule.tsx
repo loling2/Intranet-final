@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   CheckCircle2, XCircle, Clock, Download, FileText,
-  RefreshCw, AlertCircle, Calendar, ChevronLeft, ChevronRight, X
+  RefreshCw, AlertCircle, Calendar, ChevronLeft, ChevronRight, X, Search, Archive
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { useSociety } from '../context/SocietyContext';
 import { writeAuditLog } from '../lib/auditLog';
-import { uploadToWasabi } from '../lib/wasabi';
+import { uploadVacacionesLetter, downloadFromWasabi } from '../lib/wasabi';
 import { AppRole } from '../context/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -56,26 +57,176 @@ function countWorkdays(from: string, to: string): number {
   return count;
 }
 
-function generateVacationPDF(req: VacationRequest): Blob {
-  const content = `CARTA DE VACACIONES
+interface VacationEmployeeData {
+  nombre: string;
+  dni: string | null;
+  puesto: string | null;
+  centro_trabajo: string | null;
+}
 
-Estimado/a ${req.employee_nombre},
+function generateVacationPDF(req: VacationRequest, employeeData: VacationEmployeeData, isApproved = true): Blob {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const marginX = 20;
+  let y = 20;
+  const fechaGen = new Date().toLocaleDateString('es-ES');
 
-Nos complace comunicarle que su solicitud de vacaciones ha sido APROBADA.
+  // ── Title ──
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text('DOCUMENTO DE SOLICITUD Y APROBACIÓN DE VACACIONES', pageW / 2, y, { align: 'center' });
+  y += 2;
+  doc.setLineWidth(0.5);
+  doc.line(marginX, y + 2, pageW - marginX, y + 2);
+  y += 10;
 
-Periodo: ${req.fecha_inicio} a ${req.fecha_fin}
-Dias laborables: ${req.dias}
-Motivo: ${req.motivo}
+  // ── Section 1: Datos de la empresa y del trabajador ──
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('1. DATOS DE LA EMPRESA Y DEL TRABAJADOR', marginX, y);
+  y += 8;
 
-Esta carta certifica la aprobacion formal de su periodo vacacional.
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  const lineH = 7;
 
-Firmado por: ${req.revisado_por_nombre ?? 'RRHH'}
-Fecha de aprobacion: ${new Date().toLocaleDateString('es-ES')}
+  doc.setFont('helvetica', 'bold');
+  doc.text('Razón Social de la Empresa:', marginX, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text('APEDECA', marginX + 55, y);
+  y += lineH;
 
----
-Documento generado automaticamente por el Portal del Empleado.
-`;
-  return new Blob([content], { type: 'text/plain;charset=utf-8' });
+  doc.setFont('helvetica', 'bold');
+  doc.text('Nombre y Apellidos del Trabajador/a:', marginX, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(employeeData.nombre || req.employee_nombre, marginX + 70, y);
+  y += lineH;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('DNI/NIE:', marginX, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(employeeData.dni || '—', marginX + 25, y);
+  y += lineH;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Puesto de Trabajo:', marginX, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(employeeData.puesto || '—', marginX + 40, y);
+  y += lineH;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Departamento / Centro:', marginX, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(employeeData.centro_trabajo || '—', marginX + 50, y);
+  y += lineH;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Fecha de generación del documento:', marginX, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(fechaGen, marginX + 65, y);
+  y += 10;
+
+  // ── Section 2: Periodo de vacaciones ──
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('2. PERIODO DE VACACIONES SOLICITADO', marginX, y);
+  y += 8;
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Fecha de inicio (primer día de disfrute):', marginX, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(req.fecha_inicio, marginX + 70, y);
+  y += lineH;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Fecha de fin (último día de disfrute):', marginX, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(req.fecha_fin, marginX + 65, y);
+  y += lineH;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Número total de días laborables solicitados:', marginX, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${req.dias} días`, marginX + 75, y);
+  y += lineH;
+
+  if (req.motivo) {
+    doc.setFont('helvetica', 'bold');
+    doc.text('Observaciones / Comentarios:', marginX, y);
+    y += lineH - 2;
+    doc.setFont('helvetica', 'normal');
+    const motivoLines = doc.splitTextToSize(req.motivo, pageW - marginX * 2);
+    doc.text(motivoLines, marginX, y);
+    y += motivoLines.length * 5 + 4;
+  }
+  y += 6;
+
+  // ── Section 3: Conformidad y firmas ──
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('3. CONFORMIDAD Y FIRMAS', marginX, y);
+  y += 8;
+
+  // Worker declaration
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  const declWorker = 'Por parte del Trabajador/a: Declaro haber solicitado el periodo vacacional indicado conforme a la normativa interna de la empresa y los acuerdos aplicables.';
+  const declWorkerLines = doc.splitTextToSize(declWorker, pageW - marginX * 2);
+  doc.text(declWorkerLines, marginX, y);
+  y += declWorkerLines.length * 5 + 4;
+
+  // Company declaration
+  doc.setFontSize(9);
+  const estadoText = isApproved ? 'APRUEBA' : 'DENIEGA';
+  const declCompany = `Por parte de la Empresa (Recursos Humanos / Dirección): Se ${estadoText} el periodo de vacaciones solicitado por el trabajador en las fechas indicadas.`;
+  const declCompanyLines = doc.splitTextToSize(declCompany, pageW - marginX * 2);
+  doc.text(declCompanyLines, marginX, y);
+  y += declCompanyLines.length * 5 + 8;
+
+  // Side-by-side: Worker signature (left) | Company stamp + signature (right)
+  const colW = (pageW - marginX * 2 - 10) / 2;
+  const leftX = marginX;
+  const rightX = marginX + colW + 10;
+  const boxH = 35;
+
+  // Left column — Worker signature
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('Firma del Trabajador/a:', leftX, y);
+  y += 2;
+  doc.setLineWidth(0.3);
+  doc.setDrawColor(0);
+  doc.line(leftX, y + boxH - 2, leftX + colW, y + boxH - 2);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text('Firma', leftX, y + boxH + 3);
+
+  // Right column — Company stamp + signature
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('Firma y Sello de la Empresa:', rightX, y);
+  doc.setLineWidth(0.3);
+  doc.setDrawColor(150);
+  doc.roundedRect(rightX, y + 2, colW, boxH - 6, 2, 2);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(180);
+  doc.text('[ Espacio reservado para sello ]', rightX + colW / 2, y + 2 + (boxH - 6) / 2, { align: 'center' });
+  doc.setTextColor(0);
+  doc.setDrawColor(0);
+  doc.line(rightX, y + boxH - 2, rightX + colW, y + boxH - 2);
+  doc.text('Firma', rightX, y + boxH + 3);
+
+  y += boxH + 10;
+
+  // Footer
+  doc.setFontSize(8);
+  doc.setTextColor(120);
+  doc.text('Documento generado automáticamente por el Portal del Empleado.', pageW / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+  doc.setTextColor(0);
+
+  return doc.output('blob');
 }
 
 // ─── Denial modal ─────────────────────────────────────────────────────────────
@@ -440,16 +591,14 @@ function EmployeeCalendar({ requests, onSubmit, loading }: {
                       {r.estado}
                     </span>
                     {r.estado === 'aprobada' && r.documento_path && (
-                      <a
-                        href={`${import.meta.env.VITE_WASABI_ENDPOINT}/${import.meta.env.VITE_WASABI_BUCKET_NAME}/${r.documento_path}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => downloadFromWasabi(r.documento_path!, `vacaciones_${r.employee_nombre}_${r.fecha_inicio}.pdf`)}
                         className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer"
                         style={{ backgroundColor: '#DCFCE7', border: '1px solid #BBF7D0' }}
                         title="Descargar carta de vacaciones"
                       >
                         <Download size={13} style={{ color: '#16A34A' }} />
-                      </a>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -464,6 +613,101 @@ function EmployeeCalendar({ requests, onSubmit, loading }: {
 
 // ─── RRHH management view ─────────────────────────────────────────────────────
 
+// ─── Historial de cartas firmadas ─────────────────────────────────────────────
+
+function VacationsHistoryView({ requests }: { requests: VacationRequest[] }) {
+  const [search, setSearch] = useState('');
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  const approved = requests.filter((r) => r.estado === 'aprobada' && r.documento_path);
+  const lower = search.toLowerCase();
+  const filtered = approved.filter((r) => !lower || r.employee_nombre.toLowerCase().includes(lower));
+
+  // Group by employee name
+  const byEmployee: Record<string, VacationRequest[]> = {};
+  for (const r of filtered) {
+    if (!byEmployee[r.employee_nombre]) byEmployee[r.employee_nombre] = [];
+    byEmployee[r.employee_nombre].push(r);
+  }
+
+  const handleDownload = async (r: VacationRequest) => {
+    if (!r.documento_path) return;
+    setDownloading(r.id);
+    const ext = r.documento_path.split('/').pop() ?? `vacaciones_${r.fecha_inicio}.pdf`;
+    await downloadFromWasabi(r.documento_path, ext);
+    setDownloading(null);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar empleado..."
+          className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
+          style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
+        />
+      </div>
+
+      {Object.keys(byEmployee).length === 0 ? (
+        <div className="text-center py-12">
+          <Archive size={24} className="mx-auto mb-2" style={{ color: '#CBD5E1' }} />
+          <p className="text-sm" style={{ color: '#94A3B8' }}>
+            {search ? 'No se encontraron resultados' : 'No hay cartas firmadas aún'}
+          </p>
+        </div>
+      ) : (
+        Object.entries(byEmployee).sort(([a], [b]) => a.localeCompare(b)).map(([nombre, reqs]) => (
+          <div key={nombre} className="rounded-2xl overflow-hidden" style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF' }}>
+            <div className="px-5 py-3 flex items-center gap-2" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>
+                {nombre.charAt(0)}
+              </div>
+              <span className="text-sm font-semibold" style={{ color: '#1E293B' }}>{nombre}</span>
+              <span className="ml-auto text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E0F2FE', color: '#0369A1' }}>
+                {reqs.length} carta{reqs.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="divide-y" style={{ borderColor: '#F8FAFC' }}>
+              {reqs.sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio)).map((r) => {
+                const anio = r.fecha_inicio.slice(0, 4);
+                const isLoading = downloading === r.id;
+                return (
+                  <div key={r.id} className="px-5 py-3 flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium" style={{ color: '#1E293B' }}>
+                        {r.fecha_inicio} &rarr; {r.fecha_fin}
+                      </p>
+                      <p className="text-xs" style={{ color: '#64748B' }}>
+                        {r.dias} días · Año {anio}
+                        {r.revisado_por_nombre && ` · Aprobado por ${r.revisado_por_nombre}`}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleDownload(r)}
+                      disabled={isLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60"
+                      style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
+                      title="Descargar carta de vacaciones"
+                    >
+                      {isLoading ? <RefreshCw size={12} className="animate-spin" /> : <Download size={12} />}
+                      Descargar
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// ─── HR manager ───────────────────────────────────────────────────────────────
+
 function RRHHVacationsManager({ requests, onRefresh, role }: {
   requests: VacationRequest[];
   onRefresh: () => void;
@@ -473,15 +717,34 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
   const [denyTarget, setDenyTarget] = useState<VacationRequest | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState('');
+  const [tab, setTab] = useState<'solicitudes' | 'historial'>('solicitudes');
 
   const handleApprove = async (req: VacationRequest) => {
     if (!profile) return;
     setActionLoading(req.id);
     try {
-      const pdfBlob = generateVacationPDF(req);
-      const pdfFile = new File([pdfBlob], `vacaciones_${req.employee_nombre}_${req.fecha_inicio}.txt`, { type: 'text/plain' });
-      const pdfPath = `empleados/${req.employee_id}/privada/carta_vacaciones_${req.id}.txt`;
-      await uploadToWasabi(pdfFile, pdfPath);
+      const { data: emp } = await supabase
+        .from('empleados')
+        .select('nombre, dni, puesto, centro_trabajo')
+        .eq('user_id', req.employee_id)
+        .single();
+
+      const employeeData: VacationEmployeeData = {
+        nombre: emp?.nombre || req.employee_nombre,
+        dni: emp?.dni ?? null,
+        puesto: emp?.puesto ?? null,
+        centro_trabajo: emp?.centro_trabajo ?? null,
+      };
+
+      const pdfBlob = generateVacationPDF(req, employeeData, true);
+      const anio = req.fecha_inicio.slice(0, 4);
+      const pdfPath = await uploadVacacionesLetter(
+        pdfBlob,
+        emp?.dni || 'SINDNI',
+        employeeData.nombre,
+        anio,
+        req.fecha_inicio,
+      );
 
       await supabase.from('employee_documents').upsert({
         employee_id: req.employee_id,
@@ -489,7 +752,7 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
         folder: 'privada',
         nombre: `Carta de Vacaciones ${req.fecha_inicio} - ${req.fecha_fin}`,
         storage_path: pdfPath,
-        mime_type: 'text/plain',
+        mime_type: 'application/pdf',
         size_bytes: pdfBlob.size,
         subido_por: profile.id,
         subido_por_nombre: profile.nombre,
@@ -550,6 +813,7 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
 
   const filtered = requests.filter((r) => !filterStatus || r.estado === filterStatus);
   const pending = requests.filter((r) => r.estado === 'pendiente').length;
+  const approvedWithDoc = requests.filter((r) => r.estado === 'aprobada' && r.documento_path).length;
 
   return (
     <>
@@ -560,110 +824,133 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
           onClose={() => setDenyTarget(null)}
         />
       )}
-      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-        <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3" style={{ borderBottom: '1px solid #E2E8F0' }}>
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Gestion de Vacaciones</h3>
-            {pending > 0 && (
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
-                {pending} pendiente{pending > 1 ? 's' : ''}
-              </span>
-            )}
-          </div>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-1.5 rounded-lg text-xs outline-none cursor-pointer"
-            style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
-          >
-            <option value="">Todos</option>
-            <option value="pendiente">Pendiente</option>
-            <option value="aprobada">Aprobada</option>
-            <option value="denegada">Denegada</option>
-          </select>
+      <div className="space-y-4">
+        {/* Tab navigation */}
+        <div className="flex rounded-xl p-1 gap-1" style={{ backgroundColor: '#F1F5F9' }}>
+          {([
+            { key: 'solicitudes', label: 'Solicitudes', badge: pending },
+            { key: 'historial', label: 'Historial de Cartas', badge: approvedWithDoc, Icon: Archive },
+          ] as { key: 'solicitudes' | 'historial'; label: string; badge: number; Icon?: typeof Archive }[]).map(({ key, label, badge }) => {
+            const active = tab === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer"
+                style={{
+                  backgroundColor: active ? '#FFFFFF' : 'transparent',
+                  color: active ? '#1E293B' : '#64748B',
+                  boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                }}
+              >
+                {label}
+                {badge > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: active ? '#DBEAFE' : '#E2E8F0', color: active ? '#1D4ED8' : '#64748B' }}>
+                    {badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
-        <div className="divide-y" style={{ borderColor: '#F8FAFC' }}>
-          {filtered.length === 0 ? (
-            <div className="px-6 py-10 text-center">
-              <CheckCircle2 size={24} className="mx-auto mb-2" style={{ color: '#16A34A' }} />
-              <p className="text-sm" style={{ color: '#94A3B8' }}>No hay solicitudes</p>
+        {/* Solicitudes tab */}
+        {tab === 'solicitudes' && (
+          <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+            <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3" style={{ borderBottom: '1px solid #E2E8F0' }}>
+              <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Solicitudes de Vacaciones</h3>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-1.5 rounded-lg text-xs outline-none cursor-pointer"
+                style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
+              >
+                <option value="">Todos los estados</option>
+                <option value="pendiente">Pendiente</option>
+                <option value="aprobada">Aprobada</option>
+                <option value="denegada">Denegada</option>
+              </select>
             </div>
-          ) : (
-            filtered.map((r) => {
-              const sc = r.estado === 'aprobada'
-                ? { bg: '#F0FDF4', text: '#16A34A', border: '#BBF7D0', Icon: CheckCircle2 }
-                : r.estado === 'pendiente'
-                ? { bg: '#DBEAFE', text: '#1D4ED8', border: '#BFDBFE', Icon: Clock }
-                : { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA', Icon: XCircle };
-              const isLoading = actionLoading === r.id;
-              return (
-                <div key={r.id} className="px-6 py-4 flex flex-wrap items-center gap-4">
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: sc.bg }}>
-                    <sc.Icon size={15} style={{ color: sc.text }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{r.employee_nombre}</p>
-                    <p className="text-xs" style={{ color: '#64748B' }}>{r.fecha_inicio} &rarr; {r.fecha_fin} &middot; {r.dias} dias laborables</p>
-                    <p className="text-xs" style={{ color: '#94A3B8' }}>{r.motivo}</p>
-                    {r.comentario_rrhh && (
-                      <p className="text-xs mt-0.5 italic" style={{ color: '#DC2626' }}>Motivo denegacion: {r.comentario_rrhh}</p>
-                    )}
-                  </div>
-                  {/* Actions column */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-md" style={{ backgroundColor: sc.bg, color: sc.text, border: `1px solid ${sc.border}` }}>
-                      {r.estado}
-                    </span>
-                    {r.estado === 'pendiente' && (
-                      <>
-                        <button
-                          onClick={() => handleApprove(r)}
-                          disabled={isLoading}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60"
-                          style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
-                        >
-                          {isLoading ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                          Aceptar
-                        </button>
-                        <button
-                          onClick={() => setDenyTarget(r)}
-                          disabled={isLoading}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60"
-                          style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}
-                        >
-                          <XCircle size={12} />
-                          Denegar
-                        </button>
-                      </>
-                    )}
-                    {r.estado === 'aprobada' && r.documento_path ? (
-                      <a
-                        href={`${import.meta.env.VITE_WASABI_ENDPOINT}/${import.meta.env.VITE_WASABI_BUCKET_NAME}/${r.documento_path}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
-                        style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
-                        title="Descargar carta"
-                      >
-                        <FileText size={12} />
-                        PDF
-                      </a>
-                    ) : r.estado !== 'pendiente' ? (
-                      <div
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs opacity-30"
-                        style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}
-                      >
-                        <Download size={12} />
-                        PDF
-                      </div>
-                    ) : null}
-                  </div>
+            <div className="divide-y" style={{ borderColor: '#F8FAFC' }}>
+              {filtered.length === 0 ? (
+                <div className="px-6 py-10 text-center">
+                  <CheckCircle2 size={24} className="mx-auto mb-2" style={{ color: '#16A34A' }} />
+                  <p className="text-sm" style={{ color: '#94A3B8' }}>No hay solicitudes</p>
                 </div>
-              );
-            })
-          )}
-        </div>
+              ) : (
+                filtered.map((r) => {
+                  const sc = r.estado === 'aprobada'
+                    ? { bg: '#F0FDF4', text: '#16A34A', border: '#BBF7D0', Icon: CheckCircle2 }
+                    : r.estado === 'pendiente'
+                    ? { bg: '#DBEAFE', text: '#1D4ED8', border: '#BFDBFE', Icon: Clock }
+                    : { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA', Icon: XCircle };
+                  const isLoading = actionLoading === r.id;
+                  return (
+                    <div key={r.id} className="px-6 py-4 flex flex-wrap items-center gap-4">
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: sc.bg }}>
+                        <sc.Icon size={15} style={{ color: sc.text }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{r.employee_nombre}</p>
+                        <p className="text-xs" style={{ color: '#64748B' }}>{r.fecha_inicio} &rarr; {r.fecha_fin} &middot; {r.dias} dias laborables</p>
+                        <p className="text-xs" style={{ color: '#94A3B8' }}>{r.motivo}</p>
+                        {r.comentario_rrhh && (
+                          <p className="text-xs mt-0.5 italic" style={{ color: '#DC2626' }}>Motivo denegacion: {r.comentario_rrhh}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs font-semibold px-2.5 py-1 rounded-md" style={{ backgroundColor: sc.bg, color: sc.text, border: `1px solid ${sc.border}` }}>
+                          {r.estado}
+                        </span>
+                        {r.estado === 'pendiente' && (
+                          <>
+                            <button
+                              onClick={() => handleApprove(r)}
+                              disabled={isLoading}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60"
+                              style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
+                            >
+                              {isLoading ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                              Aceptar
+                            </button>
+                            <button
+                              onClick={() => setDenyTarget(r)}
+                              disabled={isLoading}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60"
+                              style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}
+                            >
+                              <XCircle size={12} />
+                              Denegar
+                            </button>
+                          </>
+                        )}
+                        {r.estado === 'aprobada' && r.documento_path ? (
+                          <button
+                            onClick={() => downloadFromWasabi(r.documento_path!, r.documento_path!.split('/').pop() ?? `vacaciones_${r.fecha_inicio}.pdf`)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
+                            style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
+                            title="Descargar carta"
+                          >
+                            <FileText size={12} />
+                            PDF
+                          </button>
+                        ) : r.estado !== 'pendiente' ? (
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs opacity-30" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
+                            <Download size={12} />
+                            PDF
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Historial tab */}
+        {tab === 'historial' && <VacationsHistoryView requests={requests} />}
       </div>
     </>
   );

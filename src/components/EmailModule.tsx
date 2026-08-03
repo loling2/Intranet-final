@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import {
   Mail, Plus, X, Loader2, Pencil, Trash2, Eye, EyeOff,
   Server, Shield, Bell, Check, AlertCircle, ToggleLeft, ToggleRight,
-  FileText, ChevronDown, ChevronUp,
+  FileText, ChevronDown, ChevronUp, Send, Clock,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase } from '../supabaseClient';
@@ -1146,7 +1146,7 @@ function PlantillasSection() {
 
 // ─── Main Module ──────────────────────────────────────────────────────────────
 
-type Section = 'cuentas' | 'notificaciones' | 'plantillas';
+type Section = 'cuentas' | 'notificaciones' | 'plantillas' | 'incidencias';
 
 export default function EmailModule() {
   const [section, setSection] = useState<Section>('cuentas');
@@ -1155,6 +1155,7 @@ export default function EmailModule() {
     { id: 'cuentas',        label: 'Cuentas SMTP',   icon: Server   },
     { id: 'notificaciones', label: 'Notificaciones', icon: Bell     },
     { id: 'plantillas',     label: 'Plantillas',     icon: FileText },
+    { id: 'incidencias',    label: 'Informe Incidencias', icon: Clock },
   ];
 
   return (
@@ -1191,6 +1192,154 @@ export default function EmailModule() {
       {section === 'cuentas' && <CuentasSection />}
       {section === 'notificaciones' && <NotificacionesSection />}
       {section === 'plantillas' && <PlantillasSection />}
+      {section === 'incidencias' && <IncidenciasSection />}
     </div>
+  );
+}
+
+// ─── Incidence Report Section ─────────────────────────────────────────────────
+
+function IncidenciasSection() {
+  const [email, setEmail] = useState('');
+  const [enabled, setEnabled] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [msgType, setMsgType] = useState<'ok' | 'err'>('ok');
+
+  useEffect(() => {
+    (async () => {
+      const [{ data: ed }, { data: en }] = await Promise.all([
+        supabase.from('ui_settings').select('value').eq('key', 'incidence_report_email').maybeSingle(),
+        supabase.from('ui_settings').select('value').eq('key', 'incidence_report_enabled').maybeSingle(),
+      ]);
+      if (ed?.value) setEmail(ed.value);
+      if (en?.value) setEnabled(en.value !== 'false');
+      setLoading(false);
+    })();
+  }, []);
+
+  const showMsg = (text: string, type: 'ok' | 'err') => {
+    setMsg(text); setMsgType(type);
+    setTimeout(() => setMsg(''), 5000);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await Promise.all([
+      supabase.from('ui_settings').upsert({ key: 'incidence_report_email', value: email }, { onConflict: 'key' }),
+      supabase.from('ui_settings').upsert({ key: 'incidence_report_enabled', value: enabled ? 'true' : 'false' }, { onConflict: 'key' }),
+    ]);
+    setSaving(false);
+    showMsg('Configuración guardada.', 'ok');
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    try {
+      const url = (import.meta as any).env?.VITE_SUPABASE_URL;
+      if (!url) { showMsg('No se pudo determinar la URL del servidor.', 'err'); return; }
+      const resp = await fetch(`${url}/functions/v1/incidence-report`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+      });
+      const result = await resp.json();
+      if (result.ok) {
+        showMsg(`Correo de prueba enviado a ${result.recipient}. ${result.total_incidencias} incidencia(s) detectada(s).`, 'ok');
+      } else {
+        showMsg(result.error || 'Error al enviar el correo.', 'err');
+      }
+    } catch {
+      showMsg('Error de conexión con el servidor.', 'err');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 size={26} className="animate-spin" style={{ color: '#0EA5E9' }} />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <p className="text-sm mb-5" style={{ color: '#64748B' }}>
+        El sistema revisa automáticamente los fichajes del día y envía un correo con las incidencias detectadas (menos de 6h o más de 8h trabajadas). El envío se realiza todas las noches a las 22:00.
+      </p>
+
+      <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        <div className="flex items-start gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+            <Clock size={17} style={{ color: '#2563EB' }} />
+          </div>
+          <div>
+            <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>Informe diario de incidencias de fichaje</p>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Envío automático nocturno — 22:00 (hora de Canarias)</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Correo destinatario</label>
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+              <Mail size={15} style={{ color: '#94A3B8' }} />
+              <input
+                type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="informatica@apedeca.es"
+                className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1E293B' }}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => setEnabled(!enabled)}>
+              {enabled
+                ? <ToggleRight size={28} style={{ color: '#0EA5E9' }} />
+                : <ToggleLeft size={28} style={{ color: '#94A3B8' }} />}
+            </button>
+            <span className="text-sm font-medium" style={{ color: '#475569' }}>
+              Envío {enabled ? 'activo' : 'inactivo'}
+            </span>
+          </div>
+        </div>
+
+        {msg && (
+          <div className="mt-4 flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm" style={{
+            backgroundColor: msgType === 'ok' ? '#F0FDF4' : '#FEF2F2',
+            color: msgType === 'ok' ? '#16A34A' : '#B91C1C',
+            border: `1px solid ${msgType === 'ok' ? '#BBF7D0' : '#FECACA'}`,
+          }}>
+            {msgType === 'ok' ? <Check size={14} /> : <AlertCircle size={14} />}
+            {msg}
+          </div>
+        )}
+
+        <div className="flex gap-3 mt-5">
+          <button
+            onClick={handleSave} disabled={saving}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60"
+            style={{ backgroundColor: '#0EA5E9', color: '#FFFFFF' }}
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            Guardar configuración
+          </button>
+          <button
+            onClick={handleTest} disabled={testing}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60"
+            style={{ backgroundColor: '#F0F9FF', color: '#0369A1', border: '1px solid #BAE6FD' }}
+          >
+            {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            Enviar correo de prueba
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-xl px-4 py-3 mt-4 text-xs" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+        <strong>Criterio de incidencias:</strong> Se considera incidencia cuando un empleado ficha menos de 6 horas (déficit) o más de 8 horas (exceso) en un mismo día. El cálculo se realiza entre la primera entrada y la última salida registradas.
+      </div>
+    </>
   );
 }

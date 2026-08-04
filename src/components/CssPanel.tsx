@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Upload, Palette, CheckCircle2, AlertCircle, RefreshCw, Image as ImageIcon, X, Globe } from 'lucide-react';
+import { Upload, Palette, CheckCircle2, AlertCircle, RefreshCw, Image as ImageIcon, X, Globe, Building2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { societies as staticSocieties } from '../themes';
+import { loadSocietyLogos, clearSocietyLogosCache } from '../lib/societyLogos';
 
 interface SocietyColorOverride {
   societyId: string;
@@ -30,6 +31,11 @@ export default function CssPanel() {
   const [appUrlSaving, setAppUrlSaving] = useState(false);
   const [appUrlSuccess, setAppUrlSuccess] = useState(false);
   const [appUrlError, setAppUrlError] = useState('');
+
+  const [logos, setLogos] = useState<Record<string, string>>({});
+  const [logoUploading, setLogoUploading] = useState<string | null>(null);
+  const [logoSuccess, setLogoSuccess] = useState<string | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
@@ -61,7 +67,40 @@ export default function CssPanel() {
         }
         setOverrides(map);
       });
+
+    loadSocietyLogos().then(setLogos);
   }, []);
+
+  const handleLogoUpload = async (societyId: string, file: File) => {
+    setLogoError(null);
+    setLogoSuccess(null);
+    setLogoUploading(societyId);
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png';
+      const path = `ui/logos/${societyId}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('documents')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw new Error(upErr.message);
+
+      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path);
+      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+
+      const { error: saveErr } = await supabase
+        .from('ui_settings')
+        .upsert({ key: `society_logo_${societyId}`, value: publicUrl, updated_at: new Date().toISOString() });
+      if (saveErr) throw new Error(saveErr.message);
+
+      clearSocietyLogosCache();
+      setLogos((prev) => ({ ...prev, [societyId]: publicUrl }));
+      setLogoSuccess(societyId);
+      setTimeout(() => setLogoSuccess(null), 3000);
+    } catch (err) {
+      setLogoError(societyId);
+    } finally {
+      setLogoUploading(null);
+    }
+  };
 
   const handleBgUpload = async (file: File) => {
     setBgError('');
@@ -264,6 +303,74 @@ export default function CssPanel() {
               <p className="text-xs" style={{ color: '#DC2626' }}>{appUrlError}</p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Society Logos */}
+      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        <div className="px-6 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#F0FDF4' }}>
+            <Building2 size={18} style={{ color: '#16A34A' }} />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm" style={{ color: '#0F172A' }}>Logos de Empresas</h3>
+            <p className="text-xs" style={{ color: '#64748B' }}>Sube el logo de cada empresa. Se usara en informes y documentos (entrega de dispositivos, etc.)</p>
+          </div>
+        </div>
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {staticSocieties.map((s) => {
+            const logoUrl = logos[s.id];
+            const isUploading = logoUploading === s.id;
+            const isSuccess = logoSuccess === s.id;
+            const isError = logoError === s.id;
+            return (
+              <div key={s.id} className="rounded-xl overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
+                <div className="px-4 py-3 flex items-center justify-between" style={{ background: `linear-gradient(135deg, ${s.gradientFrom}, ${s.gradientTo})` }}>
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-white font-semibold text-sm">{s.name}</span>
+                  </div>
+                </div>
+                <div className="p-4 flex items-center gap-4" style={{ backgroundColor: '#FFFFFF' }}>
+                  {/* Preview */}
+                  <div className="flex-shrink-0 rounded-xl flex items-center justify-center overflow-hidden" style={{ width: 80, height: 80, border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+                    {logoUrl ? (
+                      <img src={logoUrl} alt={`Logo ${s.name}`} className="w-full h-full object-contain p-1.5" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1" style={{ color: '#CBD5E1' }}>
+                        <ImageIcon size={20} />
+                        <span className="text-[10px]">Sin logo</span>
+                      </div>
+                    )}
+                  </div>
+                  {/* Upload */}
+                  <div className="flex-1 space-y-2">
+                    <label className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 ${isUploading ? 'opacity-60 pointer-events-none' : 'hover:opacity-90'}`}
+                      style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
+                    >
+                      {isUploading ? <RefreshCw size={12} className="animate-spin" /> : <Upload size={12} />}
+                      {logoUrl ? 'Cambiar logo' : 'Subir logo'}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                        className="hidden"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleLogoUpload(s.id, f); e.target.value = ''; }}
+                      />
+                    </label>
+                    {isSuccess && (
+                      <p className="text-xs flex items-center gap-1" style={{ color: '#16A34A' }}>
+                        <CheckCircle2 size={11} /> Logo actualizado
+                      </p>
+                    )}
+                    {isError && (
+                      <p className="text-xs flex items-center gap-1" style={{ color: '#DC2626' }}>
+                        <AlertCircle size={11} /> Error al subir
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

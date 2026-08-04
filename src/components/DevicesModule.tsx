@@ -9,6 +9,7 @@ import { supabase } from '../supabaseClient';
 import type { Dispositivo, Empleado, Centro } from '../supabaseClient';
 import { societies } from '../themes';
 import { useAuth } from '../context/AuthContext';
+import { getSocietyLogo } from '../lib/societyLogos';
 
 const TIPOS = ['Portatil', 'Sobremesa', 'Monitor', 'Movil', 'Tablet', 'Periferico', 'VoIP', 'Otro'];
 
@@ -634,6 +635,19 @@ function DeliveryDocModal({ device, empleados, onClose }: {
     ? `${device.valor_estimado.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`
     : '—';
 
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const society = societies.find((s) => s.id === device.society_id);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!device.society_id) return;
+      const url = await getSocietyLogo(device.society_id);
+      if (active) setLogoUrl(url);
+    })();
+    return () => { active = false; };
+  }, [device.society_id]);
+
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
       <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
@@ -663,10 +677,16 @@ function DeliveryDocModal({ device, empleados, onClose }: {
 
         {/* Printable document body */}
         <div className="flex-1 overflow-y-auto p-8" id="delivery-doc-print">
-          {/* Document title */}
-          <div className="text-center mb-6">
-            <h1 className="text-xl font-bold uppercase tracking-wider" style={{ color: '#0F172A' }}>Acta de Entrega de Equipos</h1>
-            <div className="mt-2 mx-auto" style={{ width: 60, height: 3, backgroundColor: '#0F172A' }} />
+          {/* Logo + company name header */}
+          <div className="flex items-center justify-center gap-4 mb-6">
+            {logoUrl && (
+              <img src={logoUrl} alt={society?.name ?? 'Logo'} style={{ maxHeight: 60, maxWidth: 180, objectFit: 'contain' }} />
+            )}
+            <div className="text-center">
+              <h1 className="text-xl font-bold uppercase tracking-wider" style={{ color: '#0F172A' }}>Acta de Entrega de Equipos</h1>
+              <p className="text-sm font-semibold mt-1" style={{ color: society?.primary ?? '#0F172A' }}>{society?.name ?? ''}</p>
+              <div className="mt-2 mx-auto" style={{ width: 60, height: 3, backgroundColor: '#0F172A' }} />
+            </div>
           </div>
 
           {/* Date */}

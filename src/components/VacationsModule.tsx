@@ -10,6 +10,8 @@ import { useAuth } from '../context/AuthContext';
 import { useSociety } from '../context/SocietyContext';
 import { writeAuditLog } from '../lib/auditLog';
 import { uploadVacacionesLetter, uploadFirmadaLetter, downloadFromWasabi } from '../lib/wasabi';
+import { getSocietyLogo } from '../lib/societyLogos';
+import { societies } from '../themes';
 import { AppRole } from '../context/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -70,12 +72,35 @@ interface VacationEmployeeData {
   centro_trabajo: string | null;
 }
 
-function generateVacationPDF(req: VacationRequest, employeeData: VacationEmployeeData, isApproved = true): Blob {
+function generateVacationPDF(req: VacationRequest, employeeData: VacationEmployeeData, isApproved = true, societyName = '', logoBase64: string | null = null): Blob {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
   const marginX = 20;
   let y = 20;
   const fechaGen = new Date().toLocaleDateString('es-ES');
+
+  // ── Logo + company name header ──
+  if (logoBase64) {
+    try {
+      const maxW = 30;
+      const maxH = 15;
+      const img = new Image();
+      img.src = logoBase64;
+      const ratio = Math.min(maxW / img.width, maxH / img.height);
+      const w = img.width * ratio;
+      const h = img.height * ratio;
+      const x = (pageW - w) / 2;
+      doc.addImage(logoBase64, 'PNG', x, y, w, h);
+      y += h + 3;
+    } catch { /* skip if image fails */ }
+  }
+  if (societyName) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(15, 23, 42);
+    doc.text(societyName, pageW / 2, y, { align: 'center' });
+    y += 6;
+  }
 
   // ── Title ──
   doc.setFont('helvetica', 'bold');
@@ -99,7 +124,7 @@ function generateVacationPDF(req: VacationRequest, employeeData: VacationEmploye
   doc.setFont('helvetica', 'bold');
   doc.text('Razón Social de la Empresa:', marginX, y);
   doc.setFont('helvetica', 'normal');
-  doc.text('APEDECA', marginX + 55, y);
+  doc.text(societyName || '—', marginX + 55, y);
   y += lineH;
 
   doc.setFont('helvetica', 'bold');
@@ -1230,7 +1255,37 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
         centro_trabajo: emp?.centro_trabajo ?? null,
       };
 
-      const pdfBlob = generateVacationPDF(req, employeeData, true);
+      // Fetch society name and logo for the PDF header
+      let societyName = '';
+      let logoBase64: string | null = null;
+      if (req.society_id) {
+        const soc = societies.find((s) => s.id === req.society_id);
+        if (soc) {
+          societyName = soc.name;
+        } else {
+          const { data: socRow } = await supabase
+            .from('sociedades')
+            .select('nombre')
+            .eq('id', req.society_id)
+            .maybeSingle();
+          if (socRow?.nombre) societyName = socRow.nombre;
+        }
+        const logoUrl = await getSocietyLogo(req.society_id);
+        if (logoUrl) {
+          try {
+            const resp = await fetch(logoUrl);
+            const blob = await resp.blob();
+            logoBase64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+          } catch { /* skip logo on error */ }
+        }
+      }
+
+      const pdfBlob = generateVacationPDF(req, employeeData, true, societyName, logoBase64);
       const anio = req.fecha_inicio.slice(0, 4);
       const pdfPath = await uploadVacacionesLetter(
         pdfBlob,

@@ -1244,9 +1244,9 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
     try {
       const { data: emp } = await supabase
         .from('empleados')
-        .select('nombre, dni, puesto, centro_trabajo')
+        .select('nombre, dni, puesto, centro_trabajo, id_sociedad')
         .eq('user_id', req.employee_id)
-        .single();
+        .maybeSingle();
 
       const employeeData: VacationEmployeeData = {
         nombre: emp?.nombre || req.employee_nombre,
@@ -1255,22 +1255,26 @@ function RRHHVacationsManager({ requests, onRefresh, role }: {
         centro_trabajo: emp?.centro_trabajo ?? null,
       };
 
+      // Use the employee's actual society (not the society stored in the request,
+      // which reflects the active tab at the time of submission)
+      const actualSocietyId = emp?.id_sociedad || req.society_id;
+
       // Fetch society name and logo for the PDF header
       let societyName = '';
       let logoBase64: string | null = null;
-      if (req.society_id) {
-        const soc = societies.find((s) => s.id === req.society_id);
+      if (actualSocietyId) {
+        const soc = societies.find((s) => s.id === actualSocietyId);
         if (soc) {
           societyName = soc.name;
         } else {
           const { data: socRow } = await supabase
             .from('sociedades')
             .select('nombre')
-            .eq('id', req.society_id)
+            .eq('id', actualSocietyId)
             .maybeSingle();
           if (socRow?.nombre) societyName = socRow.nombre;
         }
-        const logoUrl = await getSocietyLogo(req.society_id);
+        const logoUrl = await getSocietyLogo(actualSocietyId);
         if (logoUrl) {
           try {
             const resp = await fetch(logoUrl);
@@ -1576,10 +1580,18 @@ export default function VacationsModule({ role }: Props) {
     }
     setSubmitting(true);
     try {
+      // Fetch the employee's actual society from their empleados record
+      const { data: empRow } = await supabase
+        .from('empleados')
+        .select('id_sociedad')
+        .eq('user_id', profile.id)
+        .maybeSingle();
+      const employeeSocietyId = empRow?.id_sociedad ?? activeSocietyId;
+
       const { error } = await supabase.from('vacation_requests').insert({
         employee_id: profile.id,
         employee_nombre: profile.nombre,
-        society_id: activeSocietyId,
+        society_id: employeeSocietyId,
         fecha_inicio: from,
         fecha_fin: to,
         dias,

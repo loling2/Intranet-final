@@ -26,8 +26,6 @@ Deno.serve(async (req: Request) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Allow overriding the target date via query param (?date=YYYY-MM-DD),
-    // otherwise use today.
     const url = new URL(req.url);
     const dateParam = url.searchParams.get("date");
     const targetDate = dateParam || new Date().toISOString().split("T")[0];
@@ -77,51 +75,75 @@ Deno.serve(async (req: Request) => {
     // ── 3. Fetch fichajes for target date ───────────────────────────────────
     const { data: fichajes, error: fichErr } = await supabase
       .from("fichajes")
-      .select("nombre_empleado, fecha, timestamp, timestamp_corregido, tipo_evento")
+      .select("nombre_empleado, fecha, timestamp, timestamp_corregido, tipo_evento, nota_correccion")
       .eq("fecha", targetDate)
       .in("tipo_evento", ["entrada", "salida"])
       .order("timestamp", { ascending: true });
 
     if (fichErr) throw new Error(fichErr.message);
 
-    // ── 4. Compute per-employee durations ──────────────────────────────────
-    const summaries = new Map<string, { entrada: string | null; salida: string | null }>();
+    // ── 4. Compute per-employee durations + detect sin salida ──────────────
+    const summaries = new Map<string, {
+      entrada: string | null;
+      salida: string | null;
+      salidaAuto: boolean;
+    }>();
 
     for (const f of fichajes ?? []) {
       const eff = f.timestamp_corregido ?? f.timestamp;
       const key = f.nombre_empleado;
       if (!summaries.has(key)) {
-        summaries.set(key, { entrada: null, salida: null });
+        summaries.set(key, { entrada: null, salida: null, salidaAuto: false });
       }
       const s = summaries.get(key)!;
       if (f.tipo_evento === "entrada") {
         if (!s.entrada || eff < s.entrada) s.entrada = eff;
       } else if (f.tipo_evento === "salida") {
-        if (!s.salida || eff > s.salida) s.salida = eff;
+        if (!s.salida || eff > s.salida) {
+          s.salida = eff;
+          // Detect auto-close (nota set by system)
+          s.salidaAuto = (f.nota_correccion ?? "").includes("Cierre automático");
+        }
       }
     }
 
     interface Incidencia {
       nombre: string;
-      entrada: string;
-      salida: string;
+      entrada: string | null;
+      salida: string | null;
       duracionMin: number;
-      tipo: "exceso" | "deficit";
+      tipo: "exceso" | "deficit" | "sin_salida";
+      salidaAuto: boolean;
     }
 
     const incidencias: Incidencia[] = [];
 
     for (const [nombre, s] of summaries) {
-      if (!s.entrada || !s.salida) continue;
+      if (!s.entrada) continue;
+
+      if (!s.salida) {
+        // Employee has entrada but no salida yet
+        incidencias.push({
+          nombre,
+          entrada: s.entrada,
+          salida: null,
+          duracionMin: 0,
+          tipo: "sin_salida",
+          salidaAuto: false,
+        });
+        continue;
+      }
+
       const diffMs = new Date(s.salida).getTime() - new Date(s.entrada).getTime();
       const durMin = Math.round(diffMs / 60000);
-      if (durMin > 480 || durMin < 360) {
+      if (durMin > 480 || durMin < 360 || s.salidaAuto) {
         incidencias.push({
           nombre,
           entrada: s.entrada,
           salida: s.salida,
           duracionMin: durMin,
-          tipo: durMin > 480 ? "exceso" : "deficit",
+          tipo: s.salidaAuto ? "sin_salida" : durMin > 480 ? "exceso" : "deficit",
+          salidaAuto: s.salidaAuto,
         });
       }
     }
@@ -133,12 +155,13 @@ Deno.serve(async (req: Request) => {
       const parts = d.split("-");
       return `${parts[2]}/${parts[1]}/${parts[0]}`;
     };
-    const fmtTime = (iso: string) => {
+    const fmtTime = (iso: string | null) => {
+      if (!iso) return "—";
       try {
-        return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", timeZone: "Atlantic/Canary" });
-      } catch {
-        return iso;
-      }
+        return new Date(iso).toLocaleTimeString("es-ES", {
+          hour: "2-digit", minute: "2-digit", timeZone: "Atlantic/Canary"
+        });
+      } catch { return iso; }
     };
     const fmtDur = (min: number) => {
       const h = Math.floor(min / 60);
@@ -158,18 +181,40 @@ Deno.serve(async (req: Request) => {
 <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.75);">${fmtDate(targetDate)}</p>
 </td></tr><tr><td style="padding:36px 40px;text-align:center;">
 <p style="margin:0;font-size:15px;color:#16A34A;font-weight:600;">No hay incidencias hoy</p>
-<p style="margin:8px 0 0;font-size:14px;color:#475569;">Todos los empleados ficharon entre 6 y 8 horas.</p>
+<p style="margin:8px 0 0;font-size:14px;color:#475569;">Todos los empleados ficharon correctamente.</p>
 </td></tr></table></td></tr></table></body></html>`;
     } else {
       const rows = incidencias.map((inc) => {
-        const color = inc.tipo === "exceso" ? "#DC2626" : "#D97706";
-        const label = inc.tipo === "exceso" ? "Exceso (>8h)" : "Déficit (<6h)";
+        let color: string;
+        let label: string;
+        let salidaText: string;
+
+        if (inc.tipo === "sin_salida") {
+          color = "#7C3AED";
+          label = inc.salidaAuto
+            ? "Sin salida (cierre auto)"
+            : "Sin salida registrada";
+          salidaText = inc.salidaAuto ? fmtTime(inc.salida) : "—";
+        } else if (inc.tipo === "exceso") {
+          color = "#DC2626";
+          label = "Exceso (&gt;8h)";
+          salidaText = fmtTime(inc.salida);
+        } else {
+          color = "#D97706";
+          label = "Déficit (&lt;6h)";
+          salidaText = fmtTime(inc.salida);
+        }
+
+        const durText = inc.tipo === "sin_salida" && !inc.salidaAuto
+          ? "—"
+          : fmtDur(inc.duracionMin);
+
         return `<tr>
 <td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;">${inc.nombre}</td>
 <td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;">${fmtDate(targetDate)}</td>
 <td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;color:#16A34A;">${fmtTime(inc.entrada)}</td>
-<td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;color:#DC2626;">${fmtTime(inc.salida)}</td>
-<td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;font-weight:bold;color:${color};">${fmtDur(inc.duracionMin)}</td>
+<td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;color:#DC2626;">${salidaText}</td>
+<td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;font-weight:bold;color:${color};">${durText}</td>
 <td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;font-weight:bold;color:${color};">${label}</td>
 </tr>`;
       }).join("");
@@ -181,7 +226,7 @@ Deno.serve(async (req: Request) => {
 <p style="margin:0;font-size:22px;font-weight:700;color:#FFFFFF;">Informe de Incidencias de Fichaje</p>
 <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.75);">${fmtDate(targetDate)}</p>
 </td></tr><tr><td style="padding:28px 32px;">
-<p style="margin:0 0 16px;font-size:14px;color:#475569;">Se han detectado <strong style="color:#DC2626;">${incidencias.length}</strong> incidencia(s) en los fichajes de hoy:</p>
+<p style="margin:0 0 16px;font-size:14px;color:#475569;">Se han detectado <strong style="color:#DC2626;">${incidencias.length}</strong> incidencia(s) en los fichajes del día:</p>
 <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
 <thead><tr>
 <th style="background:#0F172A;color:#fff;padding:8px;text-align:left;font-size:11px;">Empleado</th>
@@ -191,8 +236,16 @@ Deno.serve(async (req: Request) => {
 <th style="background:#0F172A;color:#fff;padding:8px;text-align:left;font-size:11px;">Horas</th>
 <th style="background:#0F172A;color:#fff;padding:8px;text-align:left;font-size:11px;">Tipo</th>
 </tr></thead><tbody>${rows}</tbody></table>
-<p style="margin:20px 0 0;font-size:12px;color:#94A3B8;">Este informe se genera automáticamente cada noche a las 22:00.</p>
+<div style="margin:16px 0;padding:10px 14px;border-radius:8px;background:#F8F5FF;border-left:3px solid #7C3AED;">
+  <p style="margin:0;font-size:12px;color:#7C3AED;font-weight:600;">Nota sobre cierres automáticos</p>
+  <p style="margin:4px 0 0;font-size:11px;color:#6B7280;">Los fichajes marcados como "cierre automático" se cerraron a las 23:59:59 porque el trabajador no registró la salida. El trabajador debe enviar una solicitud de corrección con su hora real de salida.</p>
+</div>
+<p style="margin:12px 0 0;font-size:11px;color:#94A3B8;">Los fichajes sin salida se cierran automáticamente a las 23:55 cada día.</p>
 </td></tr></table></td></tr></table></body></html>`;
+    }
+
+    if (!enabled) {
+      return json({ ok: true, disabled: true, total_incidencias: incidencias.length });
     }
 
     // ── 6. Send via SMTP ───────────────────────────────────────────────────
@@ -205,7 +258,7 @@ Deno.serve(async (req: Request) => {
       from: cuenta.email,
       to: recipient,
       subject,
-      text: `Informe de Incidencias de Fichaje - ${fmtDate(targetDate)}. Total incidencias: ${incidencias.length}.`,
+      text: `Informe de Incidencias - ${fmtDate(targetDate)}. Total: ${incidencias.length}.`,
       html,
     });
 
@@ -219,19 +272,12 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-// ─── Minimal SMTP client using Deno TCP ───────────────────────────────────────
+// ─── Minimal SMTP client ──────────────────────────────────────────────────────
 
 async function sendSmtp(opts: {
-  host: string;
-  port: number;
-  security: string;
-  user: string;
-  password: string;
-  from: string;
-  to: string;
-  subject: string;
-  text: string;
-  html?: string;
+  host: string; port: number; security: string;
+  user: string; password: string; from: string;
+  to: string; subject: string; text: string; html?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   try {
     const useSSL = opts.security === "SSL";
@@ -292,41 +338,20 @@ async function sendSmtp(opts: {
     let message: string;
     if (opts.html) {
       message = [
-        `From: ${opts.from}`,
-        `To: ${opts.to}`,
-        `Subject: ${opts.subject}`,
-        `Date: ${date}`,
-        `MIME-Version: 1.0`,
-        `Content-Type: multipart/alternative; boundary="${boundary}"`,
-        ``,
-        `--${boundary}`,
-        `Content-Type: text/plain; charset=UTF-8`,
-        `Content-Transfer-Encoding: 7bit`,
-        ``,
-        opts.text,
-        ``,
-        `--${boundary}`,
-        `Content-Type: text/html; charset=UTF-8`,
-        `Content-Transfer-Encoding: 7bit`,
-        ``,
-        opts.html,
-        ``,
-        `--${boundary}--`,
-        ``,
-        `.`,
+        `From: ${opts.from}`, `To: ${opts.to}`, `Subject: ${opts.subject}`,
+        `Date: ${date}`, `MIME-Version: 1.0`,
+        `Content-Type: multipart/alternative; boundary="${boundary}"`, ``,
+        `--${boundary}`, `Content-Type: text/plain; charset=UTF-8`,
+        `Content-Transfer-Encoding: 7bit`, ``, opts.text, ``,
+        `--${boundary}`, `Content-Type: text/html; charset=UTF-8`,
+        `Content-Transfer-Encoding: 7bit`, ``, opts.html, ``,
+        `--${boundary}--`, ``, `.`,
       ].join("\r\n");
     } else {
       message = [
-        `From: ${opts.from}`,
-        `To: ${opts.to}`,
-        `Subject: ${opts.subject}`,
-        `Date: ${date}`,
-        `MIME-Version: 1.0`,
-        `Content-Type: text/plain; charset=UTF-8`,
-        ``,
-        opts.text,
-        ``,
-        `.`,
+        `From: ${opts.from}`, `To: ${opts.to}`, `Subject: ${opts.subject}`,
+        `Date: ${date}`, `MIME-Version: 1.0`,
+        `Content-Type: text/plain; charset=UTF-8`, ``, opts.text, ``, `.`,
       ].join("\r\n");
     }
 

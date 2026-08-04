@@ -1202,6 +1202,7 @@ export default function EmailModule() {
 function IncidenciasSection() {
   const [email, setEmail] = useState('');
   const [enabled, setEnabled] = useState(true);
+  const [hour, setHour] = useState(22);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -1210,12 +1211,14 @@ function IncidenciasSection() {
 
   useEffect(() => {
     (async () => {
-      const [{ data: ed }, { data: en }] = await Promise.all([
+      const [{ data: ed }, { data: en }, { data: hr }] = await Promise.all([
         supabase.from('ui_settings').select('value').eq('key', 'incidence_report_email').maybeSingle(),
         supabase.from('ui_settings').select('value').eq('key', 'incidence_report_enabled').maybeSingle(),
+        supabase.from('ui_settings').select('value').eq('key', 'incidence_report_hour').maybeSingle(),
       ]);
       if (ed?.value) setEmail(ed.value);
       if (en?.value) setEnabled(en.value !== 'false');
+      if (hr?.value) setHour(parseInt(hr.value, 10) || 22);
       setLoading(false);
     })();
   }, []);
@@ -1227,12 +1230,18 @@ function IncidenciasSection() {
 
   const handleSave = async () => {
     setSaving(true);
-    await Promise.all([
-      supabase.from('ui_settings').upsert({ key: 'incidence_report_email', value: email }, { onConflict: 'key' }),
-      supabase.from('ui_settings').upsert({ key: 'incidence_report_enabled', value: enabled ? 'true' : 'false' }, { onConflict: 'key' }),
-    ]);
-    setSaving(false);
-    showMsg('Configuración guardada.', 'ok');
+    try {
+      await Promise.all([
+        supabase.from('ui_settings').upsert({ key: 'incidence_report_email', value: email }, { onConflict: 'key' }),
+        supabase.from('ui_settings').upsert({ key: 'incidence_report_enabled', value: enabled ? 'true' : 'false' }, { onConflict: 'key' }),
+        supabase.rpc('reschedule_incidence_report', { p_hour: hour }),
+      ]);
+      showMsg('Configuración guardada. El informe se enviará a las ' + String(hour).padStart(2, '0') + ':00.', 'ok');
+    } catch {
+      showMsg('Error al guardar la configuración.', 'err');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleTest = async () => {
@@ -1277,7 +1286,7 @@ function IncidenciasSection() {
           </div>
           <div>
             <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>Informe diario de incidencias de fichaje</p>
-            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Envío automático nocturno — 22:00 (hora de Canarias)</p>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Envío automático nocturno — hora configurable (Canarias)</p>
           </div>
         </div>
 
@@ -1292,6 +1301,28 @@ function IncidenciasSection() {
                 className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1E293B' }}
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Hora de envío</label>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+                <Clock size={15} style={{ color: '#94A3B8' }} />
+                <select
+                  value={hour}
+                  onChange={(e) => setHour(parseInt(e.target.value, 10))}
+                  className="text-sm outline-none bg-transparent" style={{ color: '#1E293B' }}
+                >
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
+                  ))}
+                </select>
+              </div>
+              <span className="text-xs" style={{ color: '#64748B' }}>hora de Canarias</span>
+            </div>
+            <p className="text-xs mt-1.5" style={{ color: '#94A3B8' }}>
+              Los fichajes sin salida se cierran automáticamente a las 23:59:59. Si el informe se envía antes, los empleados sin salida aparecerán en él.
+            </p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -1338,7 +1369,7 @@ function IncidenciasSection() {
       </div>
 
       <div className="rounded-xl px-4 py-3 mt-4 text-xs" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
-        <strong>Criterio de incidencias:</strong> Se considera incidencia cuando un empleado ficha menos de 6 horas (déficit) o más de 8 horas (exceso) en un mismo día. El cálculo se realiza entre la primera entrada y la última salida registradas.
+        <strong>Criterios del informe:</strong> Déficit: menos de 6h. Exceso: más de 8h. Sin salida: empleado con entrada pero sin salida registrada (se cierra automáticamente a las 23:59:59). El cierre automático se ejecuta cada día a las 23:55.
       </div>
     </>
   );

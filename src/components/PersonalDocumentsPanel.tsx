@@ -3,8 +3,9 @@ import {
   Search, User, FolderOpen, FileText, Upload, Download, Eye,
   ChevronRight, X, Loader2, AlertCircle, Lock, Globe, Plus,
   UserX, CheckCircle2, UploadCloud, Trash2, FolderPlus, Home,
-  Folder,
+  Folder, Square, CheckSquare, MinusSquare,
 } from 'lucide-react';
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { supabase } from '../supabaseClient';
 import {
   listRrhhEmployeeFiles, ensureRrhhFolder, uploadToWasabiKey,
@@ -132,6 +133,11 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   const [anio, setAnio] = useState(new Date().getFullYear().toString());
   const [mes, setMes] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
 
+  // Multi-selection
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [confirmDeleteSelection, setConfirmDeleteSelection] = useState(false);
+  const [deletingSelection, setDeletingSelection] = useState(false);
+
   // Create folder modal
   const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -161,10 +167,16 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     }
   }, [employeeDni, isRrhh]);
 
-  // Reset subfolder navigation when employee or tab changes
+  // Reset subfolder navigation and selection when employee or tab changes
   useEffect(() => {
     setFolderPath([]);
+    setSelectedKeys(new Set());
   }, [selected, activeFolder]);
+
+  // Clear selection when folder content changes
+  useEffect(() => {
+    setSelectedKeys(new Set());
+  }, [folderPath]);
 
   // Load files when selection, tab or subfolder changes
   useEffect(() => {
@@ -238,6 +250,70 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
       setFolderPath([]);
     } else {
       setFolderPath(prev => prev.slice(0, index + 1));
+    }
+  }
+
+  // ── Multi-selection helpers ─────────────────────────────────────────────
+
+  function toggleKey(key: string) {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    const allKeys = [
+      ...subFolders.map(f => `folder:${f.prefix}`),
+      ...files.map(f => f.key),
+    ];
+    if (selectedKeys.size === allKeys.length) {
+      setSelectedKeys(new Set());
+    } else {
+      setSelectedKeys(new Set(allKeys));
+    }
+  }
+
+  /** Recursively list all object keys under a prefix. */
+  async function listAllKeysUnderPrefix(prefix: string): Promise<string[]> {
+    const keys: string[] = [];
+    let continuationToken: string | undefined;
+    do {
+      const resp = await wasabiClient.send(
+        new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix, ContinuationToken: continuationToken })
+      );
+      for (const obj of resp.Contents ?? []) {
+        if (obj.Key) keys.push(obj.Key);
+      }
+      continuationToken = resp.IsTruncated ? resp.NextContinuationToken : undefined;
+    } while (continuationToken);
+    return keys;
+  }
+
+  async function handleDeleteSelection() {
+    if (!selected || selectedKeys.size === 0) return;
+    setDeletingSelection(true);
+    try {
+      for (const key of selectedKeys) {
+        if (key.startsWith('folder:')) {
+          // Delete all objects under this prefix
+          const prefix = key.slice('folder:'.length);
+          const allKeys = await listAllKeysUnderPrefix(prefix);
+          for (const k of allKeys) {
+            await wasabiClient.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: k }));
+          }
+        } else {
+          await deleteFromWasabi(key);
+        }
+      }
+      setSelectedKeys(new Set());
+      setConfirmDeleteSelection(false);
+      await loadCurrentLevel(selected, activeFolder, folderPath);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDeletingSelection(false);
     }
   }
 
@@ -653,23 +729,35 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
               )}
             </div>
 
-            {/* Folder tabs */}
+            {/* Folder tabs + delete selection button */}
             {!isBaja && (
-              <div className="flex gap-1 px-6 pt-4 pb-2">
-                {(['privado', 'publico'] as FolderType[]).map(f => (
+              <div className="flex items-center justify-between px-6 pt-4 pb-2 gap-3">
+                <div className="flex gap-1">
+                  {(['privado', 'publico'] as FolderType[]).map(f => (
+                    <button
+                      key={f}
+                      onClick={() => setActiveFolder(f)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer"
+                      style={{
+                        backgroundColor: activeFolder === f ? (f === 'privado' ? '#0369A1' : '#0F172A') : '#F1F5F9',
+                        color: activeFolder === f ? '#FFFFFF' : '#475569',
+                      }}
+                    >
+                      {f === 'privado' ? <Lock size={13} /> : <Globe size={13} />}
+                      {f === 'privado' ? 'Privado (documentos)' : 'Nominas'}
+                    </button>
+                  ))}
+                </div>
+                {isRrhh && selectedKeys.size > 0 && (
                   <button
-                    key={f}
-                    onClick={() => setActiveFolder(f)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer"
-                    style={{
-                      backgroundColor: activeFolder === f ? (f === 'privado' ? '#0369A1' : '#0F172A') : '#F1F5F9',
-                      color: activeFolder === f ? '#FFFFFF' : '#475569',
-                    }}
+                    onClick={() => setConfirmDeleteSelection(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
+                    style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1.5px solid #FECACA' }}
                   >
-                    {f === 'privado' ? <Lock size={13} /> : <Globe size={13} />}
-                    {f === 'privado' ? 'Privado (documentos)' : 'Nominas'}
+                    <Trash2 size={14} />
+                    Eliminar selección ({selectedKeys.size})
                   </button>
-                ))}
+                )}
               </div>
             )}
 
@@ -730,73 +818,133 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                 </div>
               ) : (
                 <div className="space-y-1.5 pt-2">
-                  {/* Subfolder rows */}
-                  {subFolders.map(sf => (
-                    <button
-                      key={sf.prefix}
-                      onClick={() => navigateInto(sf)}
-                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-left cursor-pointer hover:shadow-sm"
-                      style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}
-                    >
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: '#FEF3C7' }}>
-                        <Folder size={17} style={{ color: '#D97706' }} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold" style={{ color: '#92400E' }}>{sf.name}</p>
-                        <p className="text-xs" style={{ color: '#B45309' }}>Carpeta</p>
-                      </div>
-                      <ChevronRight size={15} style={{ color: '#D97706' }} />
-                    </button>
-                  ))}
 
-                  {/* File rows */}
-                  {files.map(file => (
-                    <div
-                      key={file.key}
-                      className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors"
-                      style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}
-                    >
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: isBaja ? '#FFF7ED' : '#EFF6FF' }}>
-                        <FileText size={16} style={{ color: isBaja ? '#EA580C' : '#0369A1' }} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{file.name}</p>
-                        <p className="text-xs" style={{ color: '#94A3B8' }}>
-                          {formatSize(file.size)} · {file.lastModified.toLocaleDateString('es-ES')}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <button
-                          onClick={() => handlePreview(file)}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:bg-blue-100"
-                          title="Ver"
-                          style={{ color: '#0369A1' }}
-                        >
-                          <Eye size={15} />
-                        </button>
-                        <button
-                          onClick={() => downloadFromWasabi(file.key, file.name)}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:bg-slate-100"
-                          title="Descargar"
-                          style={{ color: '#475569' }}
-                        >
-                          <Download size={15} />
-                        </button>
-                        {isRrhh && (
+                  {/* Select-all row — only in privado RRHH mode with items */}
+                  {isRrhh && isPrivadoTab && (subFolders.length + files.length) > 0 && (
+                    <div className="flex items-center gap-2 px-2 pb-1">
+                      <button
+                        onClick={toggleAll}
+                        className="flex items-center gap-2 text-xs font-medium cursor-pointer transition-colors px-2 py-1 rounded-lg hover:bg-slate-100"
+                        style={{ color: '#64748B' }}
+                      >
+                        {selectedKeys.size === 0
+                          ? <Square size={14} style={{ color: '#CBD5E1' }} />
+                          : selectedKeys.size === subFolders.length + files.length
+                            ? <CheckSquare size={14} style={{ color: '#0369A1' }} />
+                            : <MinusSquare size={14} style={{ color: '#0369A1' }} />}
+                        {selectedKeys.size === 0 ? 'Seleccionar todo' : `${selectedKeys.size} seleccionado${selectedKeys.size !== 1 ? 's' : ''}`}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Subfolder rows */}
+                  {subFolders.map(sf => {
+                    const folderKey = `folder:${sf.prefix}`;
+                    const isChecked = selectedKeys.has(folderKey);
+                    return (
+                      <div
+                        key={sf.prefix}
+                        className="flex items-center gap-2 rounded-xl transition-all"
+                        style={{
+                          backgroundColor: isChecked ? '#FEF9C3' : '#FFFBEB',
+                          border: `1px solid ${isChecked ? '#FDE047' : '#FDE68A'}`,
+                          outline: isChecked ? '2px solid #FDE047' : 'none',
+                        }}
+                      >
+                        {isRrhh && isPrivadoTab && (
                           <button
-                            onClick={() => setConfirmDelete(file)}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:bg-red-50"
-                            title="Eliminar"
-                            style={{ color: '#DC2626' }}
+                            onClick={() => toggleKey(folderKey)}
+                            className="pl-3 py-3 flex-shrink-0 cursor-pointer"
                           >
-                            <Trash2 size={15} />
+                            {isChecked
+                              ? <CheckSquare size={16} style={{ color: '#0369A1' }} />
+                              : <Square size={16} style={{ color: '#CBD5E1' }} />}
                           </button>
                         )}
+                        <button
+                          onClick={() => navigateInto(sf)}
+                          className="flex-1 flex items-center gap-3 px-3 py-3 text-left cursor-pointer min-w-0"
+                        >
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: '#FEF3C7' }}>
+                            <Folder size={17} style={{ color: '#D97706' }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold" style={{ color: '#92400E' }}>{sf.name}</p>
+                            <p className="text-xs" style={{ color: '#B45309' }}>Carpeta</p>
+                          </div>
+                          <ChevronRight size={15} style={{ color: '#D97706' }} />
+                        </button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
+
+                  {/* File rows */}
+                  {files.map(file => {
+                    const isChecked = selectedKeys.has(file.key);
+                    return (
+                      <div
+                        key={file.key}
+                        className="flex items-center gap-2 rounded-xl transition-all"
+                        style={{
+                          backgroundColor: isChecked ? '#EFF6FF' : '#F8FAFC',
+                          border: `1px solid ${isChecked ? '#BFDBFE' : '#E2E8F0'}`,
+                          outline: isChecked ? '2px solid #BFDBFE' : 'none',
+                        }}
+                      >
+                        {isRrhh && (
+                          <button
+                            onClick={() => toggleKey(file.key)}
+                            className="pl-3 py-3 flex-shrink-0 cursor-pointer"
+                          >
+                            {isChecked
+                              ? <CheckSquare size={16} style={{ color: '#0369A1' }} />
+                              : <Square size={16} style={{ color: '#CBD5E1' }} />}
+                          </button>
+                        )}
+                        <div className="flex-1 flex items-center gap-3 px-3 py-3 min-w-0">
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: isBaja ? '#FFF7ED' : '#EFF6FF' }}>
+                            <FileText size={16} style={{ color: isBaja ? '#EA580C' : '#0369A1' }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{file.name}</p>
+                            <p className="text-xs" style={{ color: '#94A3B8' }}>
+                              {formatSize(file.size)} · {file.lastModified.toLocaleDateString('es-ES')}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => handlePreview(file)}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:bg-blue-100"
+                              title="Ver"
+                              style={{ color: '#0369A1' }}
+                            >
+                              <Eye size={15} />
+                            </button>
+                            <button
+                              onClick={() => downloadFromWasabi(file.key, file.name)}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:bg-slate-100"
+                              title="Descargar"
+                              style={{ color: '#475569' }}
+                            >
+                              <Download size={15} />
+                            </button>
+                            {isRrhh && (
+                              <button
+                                onClick={() => setConfirmDelete(file)}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer hover:bg-red-50"
+                                title="Eliminar"
+                                style={{ color: '#DC2626' }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -913,6 +1061,64 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                 {creatingFolder
                   ? (newFolderGlobal ? 'Creando en todos...' : 'Creando...')
                   : 'Crear carpeta'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ── Delete selection confirmation modal ── */}
+    {confirmDeleteSelection && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
+        <div className="w-full max-w-sm mx-4 rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
+          <div className="px-6 py-4 flex items-center gap-3 border-b" style={{ borderColor: '#FEE2E2', backgroundColor: '#FEF2F2' }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEE2E2' }}>
+              <Trash2 size={16} style={{ color: '#DC2626' }} />
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Eliminar selección</h3>
+              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Esta acción no se puede deshacer</p>
+            </div>
+          </div>
+          <div className="px-6 py-5">
+            <p className="text-sm" style={{ color: '#475569' }}>
+              Vas a eliminar <span className="font-semibold" style={{ color: '#0F172A' }}>{selectedKeys.size} elemento{selectedKeys.size !== 1 ? 's' : ''}</span> de forma permanente.
+              {Array.from(selectedKeys).some(k => k.startsWith('folder:')) && (
+                <span className="block mt-1 text-xs" style={{ color: '#DC2626' }}>
+                  Las carpetas seleccionadas se eliminarán junto con todo su contenido.
+                </span>
+              )}
+            </p>
+            <div className="mt-4 max-h-32 overflow-y-auto space-y-1">
+              {subFolders.filter(f => selectedKeys.has(`folder:${f.prefix}`)).map(f => (
+                <div key={f.prefix} className="flex items-center gap-2 text-xs px-2 py-1 rounded" style={{ backgroundColor: '#FFFBEB', color: '#92400E' }}>
+                  <Folder size={11} /> {f.name}
+                </div>
+              ))}
+              {files.filter(f => selectedKeys.has(f.key)).map(f => (
+                <div key={f.key} className="flex items-center gap-2 text-xs px-2 py-1 rounded" style={{ backgroundColor: '#F8FAFC', color: '#475569' }}>
+                  <FileText size={11} /> {f.name}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-5 justify-end">
+              <button
+                onClick={() => setConfirmDeleteSelection(false)}
+                disabled={deletingSelection}
+                className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: '#F1F5F9', color: '#475569' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteSelection}
+                disabled={deletingSelection}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
+              >
+                {deletingSelection ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {deletingSelection ? 'Eliminando...' : `Eliminar (${selectedKeys.size})`}
               </button>
             </div>
           </div>

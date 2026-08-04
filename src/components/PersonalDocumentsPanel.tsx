@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search, User, FolderOpen, FileText, Upload, Download, Eye,
   ChevronRight, X, Loader2, AlertCircle, Lock, Globe, Plus,
-  UserX, CheckCircle2, UploadCloud, Trash2,
+  UserX, CheckCircle2, UploadCloud, Trash2, FolderPlus, Home,
+  Folder,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import {
@@ -11,7 +12,7 @@ import {
   listBajasEmployeeFiles, deleteFromWasabi,
   type RrhhFile,
 } from '../lib/wasabi';
-import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, PutObjectCommand } from '@aws-sdk/client-s3';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -38,7 +39,13 @@ interface UploadModal {
   mes?: string;
 }
 
-// ─── Wasabi client (local for direct listing) ────────────────────────────────
+// A virtual folder entry shown in the file browser
+interface FolderEntry {
+  name: string;       // display name (last segment)
+  prefix: string;     // full S3 prefix including trailing /
+}
+
+// ─── Wasabi client ────────────────────────────────────────────────────────────
 
 const wasabiClient = new S3Client({
   endpoint: import.meta.env.VITE_WASABI_ENDPOINT as string,
@@ -52,18 +59,40 @@ const wasabiClient = new S3Client({
 
 const BUCKET = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
 
-async function listPrefix(prefix: string): Promise<RrhhFile[]> {
+/** List immediate subdirectories and files under a prefix (one level deep). */
+async function listPrefixOneLevelDeep(prefix: string): Promise<{ folders: FolderEntry[]; files: RrhhFile[] }> {
   const resp = await wasabiClient.send(
-    new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix })
+    new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix, Delimiter: '/' })
   );
-  return (resp.Contents ?? [])
-    .filter(o => o.Key && !o.Key.endsWith('/') && !o.Key.endsWith('.keep'))
+
+  const folders: FolderEntry[] = (resp.CommonPrefixes ?? [])
+    .filter(p => p.Prefix && p.Prefix !== prefix)
+    .map(p => ({
+      prefix: p.Prefix!,
+      name: p.Prefix!.replace(prefix, '').replace(/\/$/, ''),
+    }));
+
+  const files: RrhhFile[] = (resp.Contents ?? [])
+    .filter(o => o.Key && o.Key !== prefix && !o.Key.endsWith('.keep'))
     .map(o => ({
       key: o.Key!,
       name: o.Key!.replace(prefix, ''),
       size: o.Size ?? 0,
       lastModified: o.LastModified ?? new Date(),
     }));
+
+  return { folders, files };
+}
+
+/** Create a folder placeholder in Wasabi. */
+async function createWasabiFolder(folderPrefix: string): Promise<void> {
+  await wasabiClient.send(new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: `${folderPrefix}.keep`,
+    Body: new Uint8Array(0),
+    ContentType: 'application/octet-stream',
+    ContentLength: 0,
+  }));
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -81,8 +110,14 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Employee | null>(null);
   const [activeFolder, setActiveFolder] = useState<FolderType>('privado');
+
+  // Subfolder navigation: array of {name, prefix} segments navigated into
+  const [folderPath, setFolderPath] = useState<FolderEntry[]>([]);
+
+  const [subFolders, setSubFolders] = useState<FolderEntry[]>([]);
   const [files, setFiles] = useState<RrhhFile[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
+
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState('');
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -96,6 +131,14 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   const [isDragging, setIsDragging] = useState(false);
   const [anio, setAnio] = useState(new Date().getFullYear().toString());
   const [mes, setMes] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
+
+  // Create folder modal
+  const [showCreateFolder, setShowCreateFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderGlobal, setNewFolderGlobal] = useState(false);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [createFolderError, setCreateFolderError] = useState('');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
@@ -103,7 +146,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   useEffect(() => {
     if (!isRrhh) return;
     Promise.all([
-      supabase.from('empleados').select('id, nombre, dni, email, id_sociedad, activo').order('nombre'),
+      supabase.from('empleados').select('id, nombre, dni, email, id_sociedad, activo').eq('activo', true).order('nombre'),
       supabase.from('sociedades').select('id, nombre').order('nombre'),
     ]).then(([empRes, socRes]) => {
       setAllEmployees((empRes.data as Employee[]) ?? []);
@@ -118,11 +161,17 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     }
   }, [employeeDni, isRrhh]);
 
-  // Load files when selection changes
+  // Reset subfolder navigation when employee or tab changes
   useEffect(() => {
-    if (!selected?.dni) { setFiles([]); return; }
-    loadFiles(selected, activeFolder);
+    setFolderPath([]);
   }, [selected, activeFolder]);
+
+  // Load files when selection, tab or subfolder changes
+  useEffect(() => {
+    if (!selected?.dni) { setFiles([]); setSubFolders([]); return; }
+    loadCurrentLevel(selected, activeFolder, folderPath);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, activeFolder, folderPath]);
 
   function sanitizeName(nombre: string) {
     return nombre.replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ ]/g, '').trim();
@@ -140,22 +189,35 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     return soc ? slugify(soc.nombre) : 'sin_sociedad';
   }
 
-  async function loadFiles(emp: Employee, folder: FolderType) {
-    if (!emp.dni) { setFiles([]); return; }
+  /** Root prefix for a given employee in the privado folder. */
+  function getRootPrefix(emp: Employee): string {
+    return `rrhh/privado/${emp.dni}-${sanitizeName(emp.nombre)}/`;
+  }
+
+  async function loadCurrentLevel(emp: Employee, folder: FolderType, path: FolderEntry[]) {
+    if (!emp.dni) { setFiles([]); setSubFolders([]); return; }
     setLoadingFiles(true);
     setFiles([]);
+    setSubFolders([]);
     try {
       if (!emp.activo) {
-        // Baja employee — files come from rrhh/bajas/<sociedad>/<dni>-<nombre>/
+        // Baja — flat list, no subfolder navigation
         const slug = getSociedadSlug(emp);
         const result = await listBajasEmployeeFiles(slug, emp.dni, sanitizeName(emp.nombre));
         setFiles(result);
       } else if (folder === 'privado') {
-        const folderKey = `rrhh/privado/${emp.dni}-${sanitizeName(emp.nombre)}/`;
-        await ensureRrhhFolder(folderKey);
-        const result = await listRrhhEmployeeFiles(folderKey);
-        setFiles(result);
+        const rootPrefix = getRootPrefix(emp);
+        await ensureRrhhFolder(rootPrefix);
+
+        const currentPrefix = path.length > 0
+          ? path[path.length - 1].prefix
+          : rootPrefix;
+
+        const { folders, files: fls } = await listPrefixOneLevelDeep(currentPrefix);
+        setSubFolders(folders);
+        setFiles(fls);
       } else {
+        // Nominas — flat list
         const result = await listNominasForDni(emp.dni);
         setFiles(result);
       }
@@ -165,6 +227,89 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
       setLoadingFiles(false);
     }
   }
+
+  function navigateInto(folder: FolderEntry) {
+    setFolderPath(prev => [...prev, folder]);
+  }
+
+  function navigateTo(index: number) {
+    // index === -1 means root
+    if (index === -1) {
+      setFolderPath([]);
+    } else {
+      setFolderPath(prev => prev.slice(0, index + 1));
+    }
+  }
+
+  // ── Create folder ────────────────────────────────────────────────────────
+
+  async function handleCreateFolder() {
+    if (!newFolderName.trim()) { setCreateFolderError('Introduce un nombre para la carpeta'); return; }
+    if (!selected?.dni && !newFolderGlobal) { setCreateFolderError('Selecciona un empleado o marca como global'); return; }
+
+    // Sanitize folder name for S3 key
+    const safeName = newFolderName.trim().replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ._\- ]/g, '').trim();
+    if (!safeName) { setCreateFolderError('Nombre inválido para una carpeta'); return; }
+
+    setCreatingFolder(true);
+    setCreateFolderError('');
+
+    try {
+      if (newFolderGlobal) {
+        // Create this folder (and full path) for every active employee with a DNI
+        const targets = allEmployees.filter(e => e.activo && e.dni);
+        for (const emp of targets) {
+          const rootPrefix = getRootPrefix(emp);
+          // Build the path up to and including the new folder
+          const pathPrefix = folderPath.length > 0
+            ? folderPath[folderPath.length - 1].prefix.replace(rootPrefix, '')
+            : '';
+          // Ensure all ancestor folders exist first
+          if (pathPrefix) {
+            const segments = pathPrefix.split('/').filter(Boolean);
+            let accumulated = rootPrefix;
+            for (const seg of segments) {
+              accumulated += seg + '/';
+              await createWasabiFolder(accumulated);
+            }
+          }
+          const newPrefix = (folderPath.length > 0
+            ? folderPath[folderPath.length - 1].prefix.replace(rootPrefix, '')
+            : '') + safeName + '/';
+          await createWasabiFolder(rootPrefix + newPrefix);
+        }
+        // Also create for the currently selected employee if not already included
+        if (selected?.dni && !targets.find(e => e.dni === selected.dni)) {
+          const rootPrefix = getRootPrefix(selected);
+          const newPrefix = (folderPath.length > 0
+            ? folderPath[folderPath.length - 1].prefix.replace(rootPrefix, '')
+            : '') + safeName + '/';
+          await createWasabiFolder(rootPrefix + newPrefix);
+        }
+      } else if (selected?.dni) {
+        // Create only for the selected employee
+        const rootPrefix = getRootPrefix(selected);
+        const parentPrefix = folderPath.length > 0
+          ? folderPath[folderPath.length - 1].prefix
+          : rootPrefix;
+        await createWasabiFolder(parentPrefix + safeName + '/');
+      }
+
+      setShowCreateFolder(false);
+      setNewFolderName('');
+      setNewFolderGlobal(false);
+      // Reload current level
+      if (selected) {
+        await loadCurrentLevel(selected, activeFolder, folderPath);
+      }
+    } catch (e) {
+      setCreateFolderError(e instanceof Error ? e.message : 'Error al crear la carpeta');
+    } finally {
+      setCreatingFolder(false);
+    }
+  }
+
+  // ── Preview / delete / upload ─────────────────────────────────────────────
 
   async function handlePreview(file: RrhhFile) {
     setLoadingPreview(true);
@@ -185,7 +330,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     try {
       await deleteFromWasabi(file.key);
       setConfirmDelete(null);
-      await loadFiles(selected, activeFolder);
+      await loadCurrentLevel(selected, activeFolder, folderPath);
     } catch (e) {
       console.error(e);
     } finally {
@@ -232,10 +377,13 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     uploadQueue.forEach(f => { progress[f.name] = 'pending'; });
     setUploadProgress({ ...progress });
 
-    let folderKey = '';
+    let destPrefix = '';
     if (uploadModal.folder === 'privado') {
-      folderKey = `rrhh/privado/${selected.dni}-${sanitizeName(selected.nombre)}/`;
-      await ensureRrhhFolder(folderKey);
+      const rootPrefix = getRootPrefix(selected);
+      destPrefix = folderPath.length > 0
+        ? folderPath[folderPath.length - 1].prefix
+        : rootPrefix;
+      await ensureRrhhFolder(destPrefix);
     } else {
       const y = uploadModal.anio ?? anio;
       const m = uploadModal.mes ?? mes;
@@ -249,11 +397,10 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
       try {
         let key: string;
         if (uploadModal.folder === 'privado') {
-          key = `${folderKey}${file.name}`;
+          key = `${destPrefix}${file.name}`;
         } else {
           const y = uploadModal.anio ?? anio;
           const m = uploadModal.mes ?? mes;
-          // For nominas, use dni as filename (last file wins if multiple)
           key = `rrhh/publico/${y}/${m}/${selected.dni}_${file.name}`;
         }
         await uploadToWasabiKey(file, key);
@@ -267,11 +414,10 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     if (anyError) {
       setUploadError('Algunos archivos no se pudieron subir');
     } else {
-      // Send notification to employee for public (nomina) uploads
       if (uploadModal.folder !== 'privado' && selected.dni) {
         const y = uploadModal.anio ?? anio;
         const m = uploadModal.mes ?? mes;
-        const monthNames: Record<string, string> = {
+        const mNames: Record<string, string> = {
           '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril',
           '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto',
           '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre',
@@ -286,7 +432,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
             user_id: emp.user_id,
             tipo: 'nomina',
             titulo: 'Nomina disponible',
-            descripcion: `Tu nomina de ${monthNames[m] ?? m} ${y} ya esta disponible.`,
+            descripcion: `Tu nomina de ${mNames[m] ?? m} ${y} ya esta disponible.`,
             leida: false,
           });
         }
@@ -296,7 +442,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
       setUploadProgress({});
     }
     setUploading(false);
-    await loadFiles(selected, activeFolder);
+    if (selected) await loadCurrentLevel(selected, activeFolder, folderPath);
   }
 
   function closeUploadModal() {
@@ -306,7 +452,8 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     setUploadError('');
   }
 
-  // Filter employees based on view mode, society, and search
+  // ── Filters ───────────────────────────────────────────────────────────────
+
   const employees = allEmployees.filter(e => {
     if (viewMode === 'activos' && !e.activo) return false;
     if (viewMode === 'bajas' && e.activo) return false;
@@ -329,6 +476,13 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   }
 
   const isBaja = selected && !selected.activo;
+  const isPrivadoTab = activeFolder === 'privado' && !isBaja;
+
+  // Current path label for breadcrumb
+  const breadcrumbs: { label: string; index: number }[] = [
+    { label: 'Raiz', index: -1 },
+    ...folderPath.map((f, i) => ({ label: f.name, index: i })),
+  ];
 
   return (
     <>
@@ -449,6 +603,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
           </div>
         ) : (
           <div key={selected.id || selected.dni || 'self'} className="flex-1 flex flex-col min-w-0">
+
             {/* Employee header */}
             <div className="px-6 py-4 border-b flex items-center justify-between gap-4" style={{ borderColor: '#E2E8F0' }}>
               <div className="flex items-center gap-3">
@@ -473,19 +628,32 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                 </div>
               </div>
               {isRrhh && !isBaja && (
-                <button
-                  onClick={() => setUploadModal({ folder: activeFolder, anio, mes })}
-                  disabled={!selected.dni}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer disabled:opacity-50"
-                  style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
-                >
-                  <Upload size={14} />
-                  Subir documento
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Create folder button — only in privado tab */}
+                  {isPrivadoTab && (
+                    <button
+                      onClick={() => { setShowCreateFolder(true); setNewFolderName(''); setNewFolderGlobal(false); setCreateFolderError(''); }}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer"
+                      style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
+                    >
+                      <FolderPlus size={14} />
+                      Crear carpeta
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setUploadModal({ folder: activeFolder, anio, mes })}
+                    disabled={!selected.dni}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer disabled:opacity-50"
+                    style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
+                  >
+                    <Upload size={14} />
+                    Subir documento
+                  </button>
+                </div>
               )}
             </div>
 
-            {/* Folder tabs — hidden for bajas (only show their privado docs) */}
+            {/* Folder tabs */}
             {!isBaja && (
               <div className="flex gap-1 px-6 pt-4 pb-2">
                 {(['privado', 'publico'] as FolderType[]).map(f => (
@@ -515,31 +683,74 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
               </div>
             )}
 
-            {/* Files list */}
+            {/* Breadcrumb — only in privado tab */}
+            {isPrivadoTab && folderPath.length > 0 && (
+              <div className="flex items-center gap-1 px-6 py-2 flex-wrap">
+                {breadcrumbs.map((bc, i) => (
+                  <div key={bc.index} className="flex items-center gap-1">
+                    {i > 0 && <ChevronRight size={12} style={{ color: '#CBD5E1' }} />}
+                    <button
+                      onClick={() => navigateTo(bc.index)}
+                      className="flex items-center gap-1 text-xs font-medium cursor-pointer transition-colors rounded px-1.5 py-0.5 hover:bg-slate-100"
+                      style={{
+                        color: i === breadcrumbs.length - 1 ? '#0369A1' : '#64748B',
+                        fontWeight: i === breadcrumbs.length - 1 ? 600 : 400,
+                      }}
+                    >
+                      {bc.index === -1 && <Home size={11} />}
+                      {bc.label}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Files + folders list */}
             <div className="flex-1 overflow-y-auto px-6 pb-6">
               {loadingFiles ? (
                 <div className="flex items-center justify-center py-16 gap-2" style={{ color: '#94A3B8' }}>
                   <Loader2 size={18} className="animate-spin" /> Cargando...
                 </div>
-              ) : files.length === 0 ? (
+              ) : subFolders.length === 0 && files.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3">
                   <FolderOpen size={32} style={{ color: '#CBD5E1' }} />
                   <p className="text-sm" style={{ color: '#94A3B8' }}>
-                    {isBaja ? 'No hay documentos archivados para este empleado' :
-                     activeFolder === 'privado' ? 'No hay documentos en esta carpeta' : 'No hay nominas registradas'}
+                    {isBaja ? 'No hay documentos archivados' :
+                     activeFolder === 'privado' ? 'Esta carpeta está vacía' : 'No hay nominas registradas'}
                   </p>
-                  {isRrhh && selected.dni && !isBaja && (
+                  {isRrhh && selected.dni && !isBaja && activeFolder === 'privado' && (
                     <button
-                      onClick={() => setUploadModal({ folder: activeFolder, anio, mes })}
+                      onClick={() => { setShowCreateFolder(true); setNewFolderName(''); setNewFolderGlobal(false); setCreateFolderError(''); }}
                       className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer mt-1"
-                      style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}
+                      style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
                     >
-                      <Plus size={12} /> Subir primer documento
+                      <FolderPlus size={12} /> Crear primera carpeta
                     </button>
                   )}
                 </div>
               ) : (
-                <div className="space-y-2 pt-2">
+                <div className="space-y-1.5 pt-2">
+                  {/* Subfolder rows */}
+                  {subFolders.map(sf => (
+                    <button
+                      key={sf.prefix}
+                      onClick={() => navigateInto(sf)}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-left cursor-pointer hover:shadow-sm"
+                      style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}
+                    >
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: '#FEF3C7' }}>
+                        <Folder size={17} style={{ color: '#D97706' }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold" style={{ color: '#92400E' }}>{sf.name}</p>
+                        <p className="text-xs" style={{ color: '#B45309' }}>Carpeta</p>
+                      </div>
+                      <ChevronRight size={15} style={{ color: '#D97706' }} />
+                    </button>
+                  ))}
+
+                  {/* File rows */}
                   {files.map(file => (
                     <div
                       key={file.key}
@@ -592,215 +803,328 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
           </div>
         )}
       </div>
-
     </div>
 
-      {/* ── Delete confirmation modal ── */}
-      {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
-          <div className="w-full max-w-sm mx-4 rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
-            <div className="px-6 py-4 flex items-center gap-3 border-b" style={{ borderColor: '#FEE2E2', backgroundColor: '#FEF2F2' }}>
-              <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEE2E2' }}>
-                <Trash2 size={16} style={{ color: '#DC2626' }} />
+    {/* ── Create Folder Modal ── */}
+    {showCreateFolder && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
+        <div className="w-full max-w-md mx-4 rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
+          <div className="px-6 py-4 flex items-center justify-between border-b" style={{ borderColor: '#E2E8F0', backgroundColor: '#F0FDF4' }}>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#DCFCE7' }}>
+                <FolderPlus size={18} style={{ color: '#16A34A' }} />
               </div>
               <div>
-                <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Eliminar documento</h3>
-                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Esta accion no se puede deshacer</p>
+                <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Crear carpeta</h3>
+                {folderPath.length > 0 && (
+                  <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
+                    Dentro de: {folderPath.map(f => f.name).join(' / ')}
+                  </p>
+                )}
               </div>
             </div>
-            <div className="px-6 py-5">
-              <p className="text-sm" style={{ color: '#475569' }}>
-                Vas a eliminar <span className="font-semibold" style={{ color: '#0F172A' }}>{confirmDelete.name}</span> de forma permanente.
-              </p>
-              <div className="flex gap-2 mt-5 justify-end">
-                <button
-                  onClick={() => setConfirmDelete(null)}
-                  disabled={deleting}
+            <button
+              onClick={() => setShowCreateFolder(false)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-green-100"
+              style={{ color: '#64748B' }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          <div className="px-6 py-5 space-y-5">
+            {/* Folder name */}
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#475569' }}>
+                Nombre de la carpeta
+              </label>
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={e => { setNewFolderName(e.target.value); setCreateFolderError(''); }}
+                onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
+                placeholder="Ej: Vacaciones, Contratos, 2026..."
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ border: `1.5px solid ${createFolderError ? '#FECACA' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                autoFocus
+              />
+            </div>
+
+            {/* Global toggle */}
+            <div
+              className="flex items-start gap-3 p-4 rounded-xl cursor-pointer transition-all select-none"
+              style={{
+                backgroundColor: newFolderGlobal ? '#EFF6FF' : '#F8FAFC',
+                border: `1.5px solid ${newFolderGlobal ? '#BFDBFE' : '#E2E8F0'}`,
+              }}
+              onClick={() => setNewFolderGlobal(v => !v)}
+            >
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 mt-0.5 transition-all"
+                style={{
+                  backgroundColor: newFolderGlobal ? '#0369A1' : '#FFFFFF',
+                  border: `2px solid ${newFolderGlobal ? '#0369A1' : '#CBD5E1'}`,
+                }}
+              >
+                {newFolderGlobal && <CheckCircle2 size={12} style={{ color: '#FFFFFF' }} />}
+              </div>
+              <div>
+                <p className="text-sm font-semibold" style={{ color: newFolderGlobal ? '#0369A1' : '#1E293B' }}>
+                  Crear en todos los empleados (Global)
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
+                  {folderPath.length > 0
+                    ? `Se creará la ruta "${folderPath.map(f => f.name).join(' / ')} / ${newFolderName || '...'}" en todos los empleados activos con DNI.`
+                    : `Se creará la carpeta "${newFolderName || '...'}" en todos los empleados activos con DNI.`
+                  }
+                </p>
+                {newFolderGlobal && (
+                  <div className="flex items-center gap-1.5 mt-2 text-xs" style={{ color: '#0369A1' }}>
+                    <Globe size={11} />
+                    {allEmployees.filter(e => e.activo && e.dni).length} empleados afectados
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {createFolderError && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                <AlertCircle size={13} style={{ color: '#DC2626' }} />
+                <p className="text-xs" style={{ color: '#DC2626' }}>{createFolderError}</p>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setShowCreateFolder(false)}
+                disabled={creatingFolder}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: '#F1F5F9', color: '#475569' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCreateFolder}
+                disabled={creatingFolder || !newFolderName.trim()}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#16A34A' }}
+              >
+                {creatingFolder ? <Loader2 size={14} className="animate-spin" /> : <FolderPlus size={14} />}
+                {creatingFolder
+                  ? (newFolderGlobal ? 'Creando en todos...' : 'Creando...')
+                  : 'Crear carpeta'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ── Delete confirmation modal ── */}
+    {confirmDelete && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
+        <div className="w-full max-w-sm mx-4 rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
+          <div className="px-6 py-4 flex items-center gap-3 border-b" style={{ borderColor: '#FEE2E2', backgroundColor: '#FEF2F2' }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEE2E2' }}>
+              <Trash2 size={16} style={{ color: '#DC2626' }} />
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Eliminar documento</h3>
+              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Esta accion no se puede deshacer</p>
+            </div>
+          </div>
+          <div className="px-6 py-5">
+            <p className="text-sm" style={{ color: '#475569' }}>
+              Vas a eliminar <span className="font-semibold" style={{ color: '#0F172A' }}>{confirmDelete.name}</span> de forma permanente.
+            </p>
+            <div className="flex gap-2 mt-5 justify-end">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+                className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: '#F1F5F9', color: '#475569' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDelete)}
+                disabled={deleting}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
+              >
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {deleting ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ── Upload modal ── */}
+    {uploadModal && selected && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
+        <div className="w-full max-w-lg mx-4 rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
+          <div className="px-6 py-4 flex items-center justify-between border-b" style={{ borderColor: '#E2E8F0' }}>
+            <div>
+              <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>
+                Subir {uploadModal.folder === 'privado' ? 'documentos' : 'nominas'} — {selected.nombre}
+              </h3>
+              {uploadModal.folder === 'privado' && folderPath.length > 0 && (
+                <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
+                  En: {folderPath.map(f => f.name).join(' / ')}
+                </p>
+              )}
+            </div>
+            <button onClick={closeUploadModal} disabled={uploading}
+              className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100">
+              <X size={16} style={{ color: '#64748B' }} />
+            </button>
+          </div>
+
+          <div className="px-6 py-5 space-y-4">
+            {uploadModal.folder === 'publico' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>Año</label>
+                  <input type="number" value={anio} onChange={e => setAnio(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{ border: '1px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>Mes</label>
+                  <select value={mes} onChange={e => setMes(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
+                    style={{ border: '1px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}>
+                    {months.map(m => <option key={m} value={m}>{monthNames[m]} ({m})</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div
+              ref={dropZoneRef}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => !uploading && fileInputRef.current?.click()}
+              className="flex flex-col items-center justify-center gap-3 rounded-xl cursor-pointer transition-all select-none"
+              style={{
+                border: `2px dashed ${isDragging ? '#0369A1' : '#CBD5E1'}`,
+                backgroundColor: isDragging ? '#EFF6FF' : '#F8FAFC',
+                padding: '28px 16px',
+                minHeight: 130,
+              }}
+            >
+              <UploadCloud size={32} style={{ color: isDragging ? '#0369A1' : '#94A3B8' }} />
+              <div className="text-center">
+                <p className="text-sm font-medium" style={{ color: isDragging ? '#0369A1' : '#475569' }}>
+                  {isDragging ? 'Suelta los archivos aqui' : 'Arrastra archivos o haz clic para seleccionar'}
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
+                  {uploadModal.folder === 'publico' ? 'Solo PDF' : 'Cualquier tipo de archivo'} · Multiples archivos permitidos
+                </p>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={uploadModal.folder === 'publico' ? 'application/pdf' : undefined}
+                onChange={handleFileInput}
+                disabled={uploading}
+                className="hidden"
+              />
+            </div>
+
+            {uploadQueue.length > 0 && (
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {uploadQueue.map(file => {
+                  const status = uploadProgress[file.name];
+                  return (
+                    <div key={file.name}
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg"
+                      style={{
+                        backgroundColor: status === 'done' ? '#F0FDF4' : status === 'error' ? '#FEF2F2' : '#F8FAFC',
+                        border: `1px solid ${status === 'done' ? '#BBF7D0' : status === 'error' ? '#FECACA' : '#E2E8F0'}`,
+                      }}>
+                      <FileText size={14} style={{ color: status === 'done' ? '#16A34A' : status === 'error' ? '#DC2626' : '#64748B', flexShrink: 0 }} />
+                      <span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{file.name}</span>
+                      <span className="text-xs flex-shrink-0" style={{ color: '#94A3B8' }}>
+                        {(file.size / 1024).toFixed(0)} KB
+                      </span>
+                      {status === 'pending' && uploading && <Loader2 size={13} className="animate-spin flex-shrink-0" style={{ color: '#0369A1' }} />}
+                      {status === 'done' && <CheckCircle2 size={13} className="flex-shrink-0" style={{ color: '#16A34A' }} />}
+                      {status === 'error' && <AlertCircle size={13} className="flex-shrink-0" style={{ color: '#DC2626' }} />}
+                      {!uploading && !status && (
+                        <button onClick={e => { e.stopPropagation(); removeFromQueue(file.name); }}
+                          className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 hover:bg-slate-200 cursor-pointer">
+                          <X size={11} style={{ color: '#94A3B8' }} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {uploadError && (
+              <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
+                style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
+                <AlertCircle size={13} /> {uploadError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-xs" style={{ color: '#94A3B8' }}>
+                {uploadQueue.length > 0 ? `${uploadQueue.length} archivo${uploadQueue.length !== 1 ? 's' : ''} seleccionado${uploadQueue.length !== 1 ? 's' : ''}` : 'Ningun archivo seleccionado'}
+              </span>
+              <div className="flex gap-2">
+                <button onClick={closeUploadModal} disabled={uploading}
                   className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
-                  style={{ backgroundColor: '#F1F5F9', color: '#475569' }}
-                >
+                  style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
                   Cancelar
                 </button>
                 <button
-                  onClick={() => handleDelete(confirmDelete)}
-                  disabled={deleting}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
-                  style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
+                  onClick={handleUpload}
+                  disabled={uploading || uploadQueue.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50 transition-all"
+                  style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
                 >
-                  {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                  {deleting ? 'Eliminando...' : 'Eliminar'}
+                  {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                  {uploading ? 'Subiendo...' : `Subir${uploadQueue.length > 1 ? ` (${uploadQueue.length})` : ''}`}
                 </button>
               </div>
             </div>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
-      {/* ── Upload modal ── */}
-      {uploadModal && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
-          <div className="w-full max-w-lg mx-4 rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
-            {/* Header */}
-            <div className="px-6 py-4 flex items-center justify-between border-b" style={{ borderColor: '#E2E8F0' }}>
-              <div>
-                <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>
-                  Subir {uploadModal.folder === 'privado' ? 'documentos' : 'nominas'} — {selected.nombre}
-                </h3>
-                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Puedes subir varios archivos a la vez</p>
-              </div>
-              <button onClick={closeUploadModal} disabled={uploading}
-                className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100">
-                <X size={16} style={{ color: '#64748B' }} />
-              </button>
-            </div>
-
-            <div className="px-6 py-5 space-y-4">
-              {/* Year/month selectors for nominas */}
-              {uploadModal.folder === 'publico' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>Ano</label>
-                    <input type="number" value={anio} onChange={e => setAnio(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                      style={{ border: '1px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>Mes</label>
-                    <select value={mes} onChange={e => setMes(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
-                      style={{ border: '1px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}>
-                      {months.map(m => <option key={m} value={m}>{monthNames[m]} ({m})</option>)}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              {/* Drop zone */}
-              <div
-                ref={dropZoneRef}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => !uploading && fileInputRef.current?.click()}
-                className="flex flex-col items-center justify-center gap-3 rounded-xl cursor-pointer transition-all select-none"
-                style={{
-                  border: `2px dashed ${isDragging ? '#0369A1' : '#CBD5E1'}`,
-                  backgroundColor: isDragging ? '#EFF6FF' : '#F8FAFC',
-                  padding: '28px 16px',
-                  minHeight: 130,
-                }}
-              >
-                <UploadCloud size={32} style={{ color: isDragging ? '#0369A1' : '#94A3B8' }} />
-                <div className="text-center">
-                  <p className="text-sm font-medium" style={{ color: isDragging ? '#0369A1' : '#475569' }}>
-                    {isDragging ? 'Suelta los archivos aqui' : 'Arrastra archivos o haz clic para seleccionar'}
-                  </p>
-                  <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
-                    {uploadModal.folder === 'publico' ? 'Solo PDF' : 'Cualquier tipo de archivo'} · Multiples archivos permitidos
-                  </p>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept={uploadModal.folder === 'publico' ? 'application/pdf' : undefined}
-                  onChange={handleFileInput}
-                  disabled={uploading}
-                  className="hidden"
-                />
-              </div>
-
-              {/* Queue list */}
-              {uploadQueue.length > 0 && (
-                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                  {uploadQueue.map(file => {
-                    const status = uploadProgress[file.name];
-                    return (
-                      <div key={file.name}
-                        className="flex items-center gap-3 px-3 py-2 rounded-lg"
-                        style={{
-                          backgroundColor: status === 'done' ? '#F0FDF4' : status === 'error' ? '#FEF2F2' : '#F8FAFC',
-                          border: `1px solid ${status === 'done' ? '#BBF7D0' : status === 'error' ? '#FECACA' : '#E2E8F0'}`,
-                        }}>
-                        <FileText size={14} style={{ color: status === 'done' ? '#16A34A' : status === 'error' ? '#DC2626' : '#64748B', flexShrink: 0 }} />
-                        <span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{file.name}</span>
-                        <span className="text-xs flex-shrink-0" style={{ color: '#94A3B8' }}>
-                          {(file.size / 1024).toFixed(0)} KB
-                        </span>
-                        {status === 'pending' && uploading && <Loader2 size={13} className="animate-spin flex-shrink-0" style={{ color: '#0369A1' }} />}
-                        {status === 'done' && <CheckCircle2 size={13} className="flex-shrink-0" style={{ color: '#16A34A' }} />}
-                        {status === 'error' && <AlertCircle size={13} className="flex-shrink-0" style={{ color: '#DC2626' }} />}
-                        {!uploading && !status && (
-                          <button onClick={e => { e.stopPropagation(); removeFromQueue(file.name); }}
-                            className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 hover:bg-slate-200 cursor-pointer">
-                            <X size={11} style={{ color: '#94A3B8' }} />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {uploadError && (
-                <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
-                  style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
-                  <AlertCircle size={13} /> {uploadError}
-                </div>
-              )}
-
-              {/* Actions */}
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-xs" style={{ color: '#94A3B8' }}>
-                  {uploadQueue.length > 0 ? `${uploadQueue.length} archivo${uploadQueue.length !== 1 ? 's' : ''} seleccionado${uploadQueue.length !== 1 ? 's' : ''}` : 'Ningun archivo seleccionado'}
-                </span>
-                <div className="flex gap-2">
-                  <button onClick={closeUploadModal} disabled={uploading}
-                    className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
-                    style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleUpload}
-                    disabled={uploading || uploadQueue.length === 0}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50 transition-all"
-                    style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
-                  >
-                    {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                    {uploading ? 'Subiendo...' : `Subir${uploadQueue.length > 1 ? ` (${uploadQueue.length})` : ''}`}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+    {/* ── PDF Preview modal ── */}
+    {(previewUrl || loadingPreview) && (
+      <div className="fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}>
+        <div className="flex items-center justify-between px-6 py-3 flex-shrink-0"
+          style={{ backgroundColor: '#0F172A' }}>
+          <p className="text-sm font-medium text-white truncate">{previewName}</p>
+          <button onClick={() => { setPreviewUrl(null); setPreviewName(''); }}
+            className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-white/10">
+            <X size={16} className="text-white" />
+          </button>
         </div>
-      )}
-
-      {/* ── PDF Preview modal ── */}
-      {(previewUrl || loadingPreview) && (
-        <div className="fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}>
-          <div className="flex items-center justify-between px-6 py-3 flex-shrink-0"
-            style={{ backgroundColor: '#0F172A' }}>
-            <p className="text-sm font-medium text-white truncate">{previewName}</p>
-            <button onClick={() => { setPreviewUrl(null); setPreviewName(''); }}
-              className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-white/10">
-              <X size={16} className="text-white" />
-            </button>
+        {loadingPreview ? (
+          <div className="flex-1 flex items-center justify-center gap-2 text-white">
+            <Loader2 size={20} className="animate-spin" /> Cargando documento...
           </div>
-          {loadingPreview ? (
-            <div className="flex-1 flex items-center justify-center gap-2 text-white">
-              <Loader2 size={20} className="animate-spin" /> Cargando documento...
-            </div>
-          ) : (
-            <iframe
-              src={previewUrl!}
-              className="flex-1 w-full"
-              style={{ border: 'none' }}
-              title={previewName}
-            />
-          )}
-        </div>
-      )}
+        ) : (
+          <iframe
+            src={previewUrl!}
+            className="flex-1 w-full"
+            style={{ border: 'none' }}
+            title={previewName}
+          />
+        )}
+      </div>
+    )}
     </>
   );
 }

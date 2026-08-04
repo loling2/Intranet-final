@@ -36,6 +36,7 @@ export default function CssPanel() {
   const [logoUploading, setLogoUploading] = useState<string | null>(null);
   const [logoSuccess, setLogoSuccess] = useState<string | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [logoErrorMsg, setLogoErrorMsg] = useState<string>('');
 
   useEffect(() => {
     supabase
@@ -77,13 +78,13 @@ export default function CssPanel() {
     setLogoUploading(societyId);
     try {
       const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png';
-      const path = `ui/logos/${societyId}.${ext}`;
+      const path = `logos/${societyId}.${ext}`;
       const { error: upErr } = await supabase.storage
-        .from('documents')
+        .from('ui-assets')
         .upload(path, file, { upsert: true, contentType: file.type });
       if (upErr) throw new Error(upErr.message);
 
-      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path);
+      const { data: urlData } = supabase.storage.from('ui-assets').getPublicUrl(path);
       const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
 
       const { error: saveErr } = await supabase
@@ -97,6 +98,7 @@ export default function CssPanel() {
       setTimeout(() => setLogoSuccess(null), 3000);
     } catch (err) {
       setLogoError(societyId);
+      setLogoErrorMsg(err instanceof Error ? err.message : 'Error al subir');
     } finally {
       setLogoUploading(null);
     }
@@ -108,13 +110,13 @@ export default function CssPanel() {
     setBgUploading(true);
     try {
       const ext = file.name.split('.').pop() ?? 'png';
-      const path = `ui/login_bg_${Date.now()}.${ext}`;
+      const path = `login-bg/login_bg_${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage
-        .from('documents')
+        .from('ui-assets')
         .upload(path, file, { upsert: true, contentType: file.type });
       if (upErr) throw new Error(upErr.message);
 
-      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path);
+      const { data: urlData } = supabase.storage.from('ui-assets').getPublicUrl(path);
       const publicUrl = urlData.publicUrl;
 
       const { error: saveErr } = await supabase
@@ -363,7 +365,7 @@ export default function CssPanel() {
                     )}
                     {isError && (
                       <p className="text-xs flex items-center gap-1" style={{ color: '#DC2626' }}>
-                        <AlertCircle size={11} /> Error al subir
+                        <AlertCircle size={11} /> {logoErrorMsg || 'Error al subir'}
                       </p>
                     )}
                   </div>

@@ -190,9 +190,9 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
           </div>
           <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
             <SocietySwitcher textColor="#E0F2FE" bgColor="rgba(255,255,255,0.08)" borderColor="rgba(255,255,255,0.1)" />
-            {/* Kiosk mode button - opens the kiosk screen in a new tab */}
+            {/* Kiosk mode button */}
             <button
-              onClick={() => window.open('#kiosco', '_blank')}
+              onClick={() => { window.location.hash = 'kiosco'; }}
               className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200"
               style={{ backgroundColor: 'rgba(34,211,238,0.12)', color: '#22D3EE', border: '1px solid rgba(34,211,238,0.25)' }}
               title="Abrir pantalla de kiosco de fichaje"

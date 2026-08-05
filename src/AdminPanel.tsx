@@ -3,7 +3,7 @@ import {
   Shield, Users, Building2, Laptop, FileText, Palmtree, Award,
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
   Eye, Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette,
-  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock, Mail, Menu, HelpCircle,
+  MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock, Mail, Menu, HelpCircle, MonitorSmartphone,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { validUsers } from './mockData';
@@ -160,6 +160,15 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
           </div>
           <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
             <SocietySwitcher />
+            <button
+              onClick={() => { window.location.hash = 'kiosco'; }}
+              className="flex items-center gap-1.5 px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-200"
+              style={{ backgroundColor: 'rgba(34,211,238,0.12)', color: '#22D3EE', border: '1px solid rgba(34,211,238,0.25)' }}
+              title="Abrir pantalla de kiosco de fichaje"
+            >
+              <MonitorSmartphone size={13} />
+              <span className="hidden lg:inline">Modo Kiosco</span>
+            </button>
             <button
               onClick={() => onNavigate('rrhh')}
               className="flex items-center gap-1.5 px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-200"

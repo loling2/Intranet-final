@@ -6,6 +6,7 @@ import {
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination';
+import { getOrCreateDeviceKey, getDeviceInfo } from '../lib/deviceKey';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -344,14 +345,19 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
         .eq('user_id', profile.id)
         .maybeSingle();
 
-      const { error: insErr } = await supabase.from('fichajes').insert({
-        nombre_empleado: profile.nombre,
-        empleado_id: emp?.id ?? null,
-        tipo_evento: tipo,
-        metodo: 'web',
-        es_manual: false,
+      const [ubicacion] = await Promise.all([getGeolocation()]);
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('web_register_fichaje', {
+        p_tipo_evento: tipo,
+        p_ubicacion: ubicacion,
+        p_dispositivo: getDeviceInfo(),
+        p_user_agent: navigator.userAgent,
+        p_device_key: getOrCreateDeviceKey(),
+        p_es_manual: false,
       });
-      if (insErr) throw insErr;
+      if (rpcErr || !rpcData || rpcData.length === 0) {
+        const msg = rpcData?.[0]?.error_msg || rpcErr?.message || 'Error al fichar';
+        throw new Error(msg === 'DEVICE_NOT_AUTHORIZED' ? 'Dispositivo no autorizado. Contacta con RRHH para registrar este dispositivo.' : msg);
+      }
       const tipoLabel = tipo === 'entrada' ? 'entrada' : tipo === 'salida' ? 'salida' : tipo === 'permiso' ? 'inicio de permiso' : 'fin de permiso';
       setSuccess(`Fichaje de ${tipoLabel} registrado.`);
       await loadToday();
@@ -483,6 +489,17 @@ function UbicacionCell({ value }: { value: string | null }) {
 
 type ViewMode = 'resumen' | 'eventos';
 type PeriodFilter = 'hoy' | 'semana' | 'mes' | 'personalizado';
+
+const getGeolocation = (): Promise<string | null> =>
+  new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    const timer = setTimeout(() => resolve(null), 4000);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { clearTimeout(timer); resolve(`${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`); },
+      () => { clearTimeout(timer); resolve(null); },
+      { timeout: 4000, maximumAge: 60000 }
+    );
+  });
 
 export default function FichajesModule() {
   const { profile } = useAuth();

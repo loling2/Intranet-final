@@ -124,6 +124,15 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     return `${type} · ${browser} · ${os}`;
   };
 
+  const getDeviceKey = (): string => {
+    let key = localStorage.getItem('app_device_key');
+    if (!key) {
+      key = `web_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      localStorage.setItem('app_device_key', key);
+    }
+    return key;
+  };
+
   const getGeolocation = (): Promise<string | null> =>
     new Promise((resolve) => {
       if (!navigator.geolocation) { resolve(null); return; }
@@ -149,19 +158,18 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 
       const [ubicacion] = await Promise.all([getGeolocation()]);
 
-      const { error: insErr } = await supabase.from('fichajes').insert({
-        empleado_id: usuarioPin.empleado_id ?? null,
-        nombre_empleado: usuarioPin.nombre,
-        fecha: new Date().toISOString().split('T')[0],
-        timestamp: new Date().toISOString(),
-        tipo_evento: tipoEvento,
-        metodo: 'web',
-        user_agent: navigator.userAgent,
-        dispositivo: getDeviceInfo(),
-        ubicacion,
-        es_manual: false,
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('web_register_fichaje', {
+        p_tipo_evento: tipoEvento,
+        p_ubicacion: ubicacion,
+        p_dispositivo: getDeviceInfo(),
+        p_user_agent: navigator.userAgent,
+        p_device_key: getDeviceKey(),
+        p_es_manual: false,
       });
-      if (insErr) throw new Error(insErr.message);
+      if (rpcErr || !rpcData || rpcData.length === 0) {
+        const msg = rpcData?.[0]?.error_msg || rpcErr?.message || 'Error al registrar';
+        throw new Error(msg === 'DEVICE_NOT_AUTHORIZED' ? 'Dispositivo no autorizado. Contacta con RRHH para registrar este dispositivo.' : msg);
+      }
       setDoneMsg(`${tipo === 'entrada' ? 'Entrada' : tipo === 'salida' ? 'Salida' : tipo === 'descanso' ? 'Descanso iniciado' : tipo === 'fin_descanso' ? 'Descanso finalizado' : 'Permiso'} registrado — ${usuarioPin.nombre}`);
       setDoneColor(tipo === 'salida' ? '#DC2626' : '#16A34A');
       setStep('done');
@@ -292,18 +300,18 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     setError('');
     setLoading(true);
     try {
-      const { error: insErr } = await supabase.from('fichajes').insert({
-        empleado_id: usuarioPin?.empleado_id ?? null,
-        nombre_empleado: usuarioPin?.nombre ?? 'Usuario',
-        fecha: new Date().toISOString().split('T')[0],
-        timestamp: new Date().toISOString(),
-        tipo_evento: 'entrada',
-        metodo: 'web',
-        user_agent: navigator.userAgent,
-        es_manual: true,
-        nota_correccion: fichajeNota.trim(),
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('web_register_fichaje', {
+        p_tipo_evento: 'entrada',
+        p_dispositivo: getDeviceInfo(),
+        p_user_agent: navigator.userAgent,
+        p_device_key: getDeviceKey(),
+        p_es_manual: true,
+        p_nota_correccion: fichajeNota.trim(),
       });
-      if (insErr) throw new Error(insErr.message);
+      if (rpcErr || !rpcData || rpcData.length === 0) {
+        const msg = rpcData?.[0]?.error_msg || rpcErr?.message || 'Error al registrar';
+        throw new Error(msg === 'DEVICE_NOT_AUTHORIZED' ? 'Dispositivo no autorizado. Contacta con RRHH para registrar este dispositivo.' : msg);
+      }
       setDoneMsg('Incidencia de fichaje registrada correctamente');
       setDoneColor('#7C3AED');
       setStep('done');

@@ -5,7 +5,7 @@ import { useDeviceAuth } from '../hooks/useDeviceAuth';
 
 const PIN_LENGTH = 6;
 const RESET_DELAY_MS = 2500;
-const ADMIN_SETUP_PASSWORD = import.meta.env.VITE_KIOSK_ADMIN_PASSWORD ?? 'admin1234';
+
 
 type Status = 'idle' | 'submitting' | 'success' | 'error';
 
@@ -20,25 +20,17 @@ function DeviceSetupModal({
   onCancel?: () => void;
   registerDevice: (key: string, site: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
-  const [step, setStep] = useState<'password' | 'setup'>('password');
-  const [password, setPassword] = useState('');
-  const [passwordError, setPasswordError] = useState('');
+  const [step, setStep] = useState<'setup'>('setup');
   const [deviceKey, setDeviceKey] = useState('');
   const [siteName, setSiteName] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  function checkPassword() {
-    if (password === ADMIN_SETUP_PASSWORD) {
-      setStep('setup');
-      setPasswordError('');
-      // Pre-fill a suggested device key
-      const suggested = `tablet_${Date.now().toString(36)}`;
-      setDeviceKey(suggested);
-    } else {
-      setPasswordError('Contraseña incorrecta');
-    }
-  }
+  // Pre-fill a suggested device key
+  useEffect(() => {
+    const suggested = `tablet_${Date.now().toString(36)}`;
+    setDeviceKey(suggested);
+  }, []);
 
   async function save() {
     if (!deviceKey.trim() || !siteName.trim()) {
@@ -68,7 +60,7 @@ function DeviceSetupModal({
             <div>
               <p className="text-sm font-semibold" style={{ color: '#F1F5F9' }}>Configurar dispositivo</p>
               <p className="text-xs" style={{ color: '#475569' }}>
-                {step === 'password' ? 'Verificación de administrador' : 'Datos del dispositivo'}
+                Datos del dispositivo
               </p>
             </div>
           </div>
@@ -81,91 +73,58 @@ function DeviceSetupModal({
         </div>
 
         <div className="px-6 py-5 space-y-4">
-          {step === 'password' ? (
-            <>
-              <p className="text-sm" style={{ color: '#94A3B8' }}>
-                Introduce la contraseña de administrador para vincular este dispositivo.
-              </p>
+          <>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#475569' }}>
+                Código del dispositivo
+              </label>
               <input
-                type="password"
-                value={password}
-                onChange={e => { setPassword(e.target.value); setPasswordError(''); }}
-                onKeyDown={e => e.key === 'Enter' && checkPassword()}
-                placeholder="Contraseña de administrador"
-                className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+                type="text"
+                value={deviceKey}
+                onChange={e => { setDeviceKey(e.target.value); setSaveError(''); }}
+                placeholder="ej: tablet_oficina_bcn_1"
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono"
                 style={{
                   backgroundColor: 'rgba(255,255,255,0.06)',
-                  border: `1px solid ${passwordError ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)'}`,
-                  color: '#F1F5F9',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#22D3EE',
                 }}
                 autoFocus
               />
-              {passwordError && (
-                <div className="flex items-center gap-2 text-xs" style={{ color: '#EF4444' }}>
-                  <AlertCircle size={12} /> {passwordError}
-                </div>
-              )}
-              <button
-                onClick={checkPassword}
-                className="w-full py-3 rounded-xl text-sm font-semibold cursor-pointer transition-all"
-                style={{ backgroundColor: '#22D3EE', color: '#0F172A' }}
-              >
-                Continuar
-              </button>
-            </>
-          ) : (
-            <>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#475569' }}>
-                  Código del dispositivo
-                </label>
-                <input
-                  type="text"
-                  value={deviceKey}
-                  onChange={e => { setDeviceKey(e.target.value); setSaveError(''); }}
-                  placeholder="ej: tablet_oficina_bcn_1"
-                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono"
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    color: '#22D3EE',
-                  }}
-                />
-                <p className="text-xs mt-1" style={{ color: '#475569' }}>Identificador único para esta tablet</p>
+              <p className="text-xs mt-1" style={{ color: '#475569' }}>Identificador único para esta tablet</p>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#475569' }}>
+                Nombre del centro / sede
+              </label>
+              <input
+                type="text"
+                value={siteName}
+                onChange={e => { setSiteName(e.target.value); setSaveError(''); }}
+                placeholder="ej: Oficina Barcelona"
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#F1F5F9',
+                }}
+              />
+            </div>
+            {saveError && (
+              <div className="flex items-center gap-2 text-xs" style={{ color: '#EF4444' }}>
+                <AlertCircle size={12} /> {saveError}
               </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#475569' }}>
-                  Nombre del centro / sede
-                </label>
-                <input
-                  type="text"
-                  value={siteName}
-                  onChange={e => { setSiteName(e.target.value); setSaveError(''); }}
-                  placeholder="ej: Oficina Barcelona"
-                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    color: '#F1F5F9',
-                  }}
-                />
-              </div>
-              {saveError && (
-                <div className="flex items-center gap-2 text-xs" style={{ color: '#EF4444' }}>
-                  <AlertCircle size={12} /> {saveError}
-                </div>
-              )}
-              <button
-                onClick={save}
-                disabled={saving}
-                className="w-full py-3 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-all"
-                style={{ backgroundColor: '#22D3EE', color: '#0F172A' }}
-              >
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Tablet size={14} />}
-                {saving ? 'Registrando...' : 'Registrar dispositivo'}
-              </button>
-            </>
-          )}
+            )}
+            <button
+              onClick={save}
+              disabled={saving}
+              className="w-full py-3 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-all"
+              style={{ backgroundColor: '#22D3EE', color: '#0F172A' }}
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Tablet size={14} />}
+              {saving ? 'Registrando...' : 'Registrar dispositivo'}
+            </button>
+          </>
         </div>
       </div>
     </div>
@@ -186,54 +145,34 @@ function UnauthorizedScreen({
   onAuthorized: () => void;
 }) {
   const [showSetup, setShowSetup] = useState(false);
-  const [tapCount, setTapCount] = useState(0);
-  const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Hidden: tap logo 5 times to reveal setup button
-  function handleLogoTap() {
-    setTapCount(c => {
-      const next = c + 1;
-      if (tapTimer.current) clearTimeout(tapTimer.current);
-      tapTimer.current = setTimeout(() => setTapCount(0), 3000);
-      return next;
-    });
-  }
 
   return (
     <>
       <div className="fixed inset-0 z-[350] flex flex-col items-center justify-center px-6"
         style={{ backgroundColor: '#000000' }}>
         <div className="text-center mb-10">
-          <button onClick={handleLogoTap} className="cursor-pointer select-none">
-            <div className="w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-6"
-              style={{ backgroundColor: 'rgba(239,68,68,0.12)', border: '2px solid rgba(239,68,68,0.3)' }}>
-              <ShieldOff size={48} style={{ color: '#EF4444' }} />
-            </div>
-          </button>
+          <div className="w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-6"
+            style={{ backgroundColor: 'rgba(239,68,68,0.12)', border: '2px solid rgba(239,68,68,0.3)' }}>
+            <ShieldOff size={48} style={{ color: '#EF4444' }} />
+          </div>
           <h1 className="text-2xl font-bold mb-3" style={{ color: '#F1F5F9' }}>
-            {isDisabled ? 'Dispositivo desactivado' : 'Dispositivo no autorizado'}
+            {isDisabled ? 'Dispositivo desactivado' : 'Dispositivo no registrado'}
           </h1>
           <p className="text-sm max-w-xs mx-auto" style={{ color: '#475569', lineHeight: 1.7 }}>
             {isDisabled
-              ? `Este dispositivo (${deviceInfo?.site_name ?? ''}) ha sido desactivado. Contacta con el administrador para reactivarlo.`
-              : 'Este navegador no está registrado como terminal de fichaje autorizado. Solo las tablets configuradas pueden registrar fichajes.'}
+              ? `Este dispositivo (${deviceInfo?.site_name ?? ''}) ha sido desactivado por el administrador.`
+              : 'Este dispositivo no está vinculado como terminal de fichaje. Usa el botón de abajo para registrarlo.'}
           </p>
         </div>
 
-        {tapCount >= 5 && (
+        {!isDisabled && (
           <button
             onClick={() => setShowSetup(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all"
-            style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#64748B' }}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold cursor-pointer transition-all"
+            style={{ backgroundColor: '#22D3EE', color: '#0F172A' }}
           >
-            <Lock size={14} /> Configurar dispositivo
+            <Lock size={15} /> Registrar este dispositivo
           </button>
-        )}
-
-        {tapCount > 0 && tapCount < 5 && (
-          <p className="text-xs mt-4" style={{ color: '#334155' }}>
-            {5 - tapCount} toques más para modo configuración
-          </p>
         )}
       </div>
 

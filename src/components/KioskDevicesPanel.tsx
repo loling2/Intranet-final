@@ -3,6 +3,7 @@ import {
   Tablet, Smartphone, Plus, Power, PowerOff, RefreshCw, Pencil, X, Check,
   Loader2, AlertCircle, Clock, MapPin, ShieldCheck, Copy, CheckCircle2, Search,
   Users, Globe, MonitorSmartphone, Settings2, ChevronDown, ChevronUp,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -468,6 +469,8 @@ function PermissionsTab() {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 25;
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [corpDevices, setCorpDevices] = useState<Record<string, CorporateDevice[]>>({});
@@ -499,6 +502,9 @@ function PermissionsTab() {
   const filtered = empleados.filter(e =>
     !search || e.nombre.toLowerCase().includes(search.toLowerCase())
   );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const counts = {
     kiosk_only: empleados.filter(e => e.fichaje_mode === 'kiosk_only').length,
@@ -527,7 +533,7 @@ function PermissionsTab() {
       <div className="flex items-center gap-2 mb-4">
         <div className="relative flex-1 max-w-sm">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar empleado..." className="w-full pl-7 pr-3 py-2 rounded-lg text-sm outline-none" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }} />
+          <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Buscar empleado..." className="w-full pl-7 pr-3 py-2 rounded-lg text-sm outline-none" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }} />
         </div>
       </div>
 
@@ -538,7 +544,7 @@ function PermissionsTab() {
           <div className="flex flex-col items-center justify-center py-12 gap-3"><Users size={28} style={{ color: '#CBD5E1' }} /><p className="text-sm" style={{ color: '#94A3B8' }}>Sin resultados</p></div>
         ) : (
           <div className="divide-y" style={{ divideColor: '#F1F5F9' }}>
-            {filtered.map(emp => {
+            {paginated.map(emp => {
               const cfg = MODE_CONFIG[emp.fichaje_mode];
               const Icon = cfg.icon;
               const hasCorpDevices = (corpDevices[emp.id] ?? []).length > 0;
@@ -621,6 +627,59 @@ function PermissionsTab() {
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 px-1">
+          <p className="text-xs" style={{ color: '#94A3B8' }}>
+            {((safePage - 1) * PAGE_SIZE) + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} de {filtered.length} empleados
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={safePage === 1}
+              className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer disabled:opacity-40 transition-colors hover:bg-slate-100"
+              style={{ border: '1px solid #E2E8F0', color: '#64748B', backgroundColor: '#F8FAFC' }}
+            >
+              <ChevronLeft size={14} />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+              .reduce<(number | '...')[]>((acc, p, idx, arr) => {
+                if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push('...');
+                acc.push(p);
+                return acc;
+              }, [])
+              .map((p, i) =>
+                p === '...' ? (
+                  <span key={`ellipsis-${i}`} className="w-8 h-8 flex items-center justify-center text-xs" style={{ color: '#94A3B8' }}>…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p as number)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-semibold cursor-pointer transition-colors"
+                    style={{
+                      backgroundColor: safePage === p ? '#0F172A' : '#F8FAFC',
+                      color: safePage === p ? '#FFFFFF' : '#475569',
+                      border: `1px solid ${safePage === p ? '#0F172A' : '#E2E8F0'}`,
+                    }}
+                  >
+                    {p}
+                  </button>
+                )
+              )
+            }
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={safePage === totalPages}
+              className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer disabled:opacity-40 transition-colors hover:bg-slate-100"
+              style={{ border: '1px solid #E2E8F0', color: '#64748B', backgroundColor: '#F8FAFC' }}
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Legend */}
       <div className="mt-4 rounded-xl p-4 space-y-2" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>

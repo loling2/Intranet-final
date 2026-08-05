@@ -23,6 +23,7 @@ import IncidenciasModule from './components/IncidenciasModule';
 import DepartamentosModule from './components/DepartamentosModule';
 import EmailModule from './components/EmailModule';
 import FichajesModule from './components/FichajesModule';
+import KioskDevicesPanel from './components/KioskDevicesPanel';
 import RoleTabPermissionsManager from './components/RoleTabPermissionsManager';
 import HelpPanel from './components/HelpPanel';
 import { useSociety } from './context/SocietyContext';
@@ -36,7 +37,7 @@ interface Props {
   onImpersonate?: (userId: string, societyId: string | null) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'ayuda';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'kiosk-devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'ayuda';
 
 export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -122,6 +123,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     { id: 'vehicles',   label: 'Vehiculos',           icon: Car },
     { id: 'documents',  label: 'Documentos',          icon: FileText },
     { id: 'devices',    label: 'Dispositivos',        icon: Laptop },
+    { id: 'kiosk-devices', label: 'Fichaje y Tablets', icon: MonitorSmartphone },
     { id: 'vacations',  label: 'Vacaciones',          icon: Palmtree },
     { id: 'prevencion', label: 'Prevencion/Calidad',  icon: ShieldCheck },
     { id: 'tags',       label: 'Tags PRL',            icon: Activity },
@@ -595,6 +597,11 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
         {/* Devices Tab */}
         {activeTab === 'devices' && (
           <DevicesModule />
+        )}
+
+        {/* Kiosk Devices Tab - tablets, corporate phones, per-employee permissions */}
+        {activeTab === 'kiosk-devices' && (
+          <KioskDevicesPanel />
         )}
 
         {/* Vehicles Tab - NEW */}

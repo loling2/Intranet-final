@@ -499,6 +499,7 @@ export default function FichajesModule() {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [sociedades, setSociedades] = useState<Sociedad[]>([]);
   const [centros, setCentros] = useState<Centro[]>([]);
+  const [deviceNames, setDeviceNames] = useState<Map<string, string>>(new Map());
   const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState<ViewMode>('resumen');
   const [showIncidentOnly, setShowIncidentOnly] = useState(false);
@@ -514,6 +515,20 @@ export default function FichajesModule() {
       setEmpleados((empData ?? []) as Empleado[]);
       setSociedades((socData ?? []) as Sociedad[]);
       setCentros((cenData ?? []) as Centro[]);
+
+      // Fetch kiosk + corporate device names for display
+      const [{ data: kioskDevs }, { data: corpDevs }] = await Promise.all([
+        supabase.from('kiosk_devices').select('device_key, site_name'),
+        supabase.from('employee_registered_devices').select('device_key, device_label'),
+      ]);
+      const map = new Map<string, string>();
+      for (const d of (kioskDevs ?? []) as { device_key: string; site_name: string }[]) {
+        map.set(d.device_key, d.site_name);
+      }
+      for (const d of (corpDevs ?? []) as { device_key: string; device_label: string }[]) {
+        map.set(d.device_key, d.device_label);
+      }
+      setDeviceNames(map);
     })();
   }, []);
 
@@ -608,6 +623,11 @@ export default function FichajesModule() {
   const filteredCentros = filterSociedad
     ? centros.filter((c) => c.id_sociedad === filterSociedad)
     : centros;
+
+  const deviceLabel = (key: string | null): string => {
+    if (!key) return '—';
+    return deviceNames.get(key) ?? key;
+  };
 
   return (
     <div className="space-y-4">
@@ -856,7 +876,7 @@ export default function FichajesModule() {
                               </span>
                             ) : <span style={{ color: '#CBD5E1' }}>—</span>}
                           </td>
-                          <td className="px-4 py-3 text-xs max-w-[140px] truncate" style={{ color: '#64748B' }} title={r.dispositivo ?? ''}>{r.dispositivo ?? '—'}</td>
+                          <td className="px-4 py-3 text-xs max-w-[140px] truncate" style={{ color: '#64748B' }} title={deviceLabel(r.dispositivo)}>{deviceLabel(r.dispositivo)}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: '#64748B' }}><UbicacionCell value={r.ubicacion} /></td>
                         </tr>
                       );
@@ -909,7 +929,7 @@ export default function FichajesModule() {
                               {tipo.label}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-xs max-w-[160px] truncate" style={{ color: '#64748B' }} title={f.dispositivo ?? ''}>{f.dispositivo ?? '—'}</td>
+                          <td className="px-4 py-3 text-xs max-w-[160px] truncate" style={{ color: '#64748B' }} title={deviceLabel(f.dispositivo)}>{deviceLabel(f.dispositivo)}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: '#64748B' }}><UbicacionCell value={f.ubicacion} /></td>
                           <td className="px-4 py-3 text-xs" style={{ color: '#94A3B8' }}>{f.nota_correccion ?? '—'}</td>
                         </tr>

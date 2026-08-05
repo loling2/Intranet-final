@@ -198,6 +198,7 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
   const [now, setNow] = useState(() => new Date());
   const [lastEvent, setLastEvent] = useState<'entrada' | 'salida' | null>(null);
   const [gpsStatus, setGpsStatus] = useState<'searching' | 'ready' | 'denied' | 'unsupported'>('searching');
+  const [kioskBg, setKioskBg] = useState<string>('');
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cachedGeo = useRef<{ latitud: number | null; longitud: number | null; ubicacion: string | null }>({
     latitud: null, longitud: null, ubicacion: null,
@@ -206,6 +207,17 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    supabase
+      .from('ui_settings')
+      .select('key, value')
+      .eq('key', 'kiosk_background')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.value) setKioskBg(data.value);
+      });
   }, []);
 
   const fetchGeoRef = useRef<() => void>(() => {});
@@ -394,7 +406,11 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
   // ── Authorized: show kiosk ─────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center px-4 py-6 overflow-y-auto" style={{ backgroundColor: '#000000' }}>
+    <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center px-4 py-6 overflow-y-auto"
+      style={kioskBg
+        ? { backgroundImage: `url(${kioskBg})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: '#000000' }
+        : { backgroundColor: '#000000' }}
+    >
       {onClose && (
         <button onClick={onClose}
           className="absolute top-4 right-4 w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors"

@@ -18,6 +18,12 @@ export default function CssPanel() {
   const [bgError, setBgError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [kioskBg, setKioskBg] = useState<string>('');
+  const [kioskBgUploading, setKioskBgUploading] = useState(false);
+  const [kioskBgSuccess, setKioskBgSuccess] = useState(false);
+  const [kioskBgError, setKioskBgError] = useState('');
+  const kioskFileInputRef = useRef<HTMLInputElement>(null);
+
   const [colorModal, setColorModal] = useState<string | null>(null); // societyId
   const [colorPrimary, setColorPrimary] = useState('#0E7C6B');
   const [colorGradFrom, setColorGradFrom] = useState('#0E7C6B');
@@ -52,6 +58,9 @@ export default function CssPanel() {
         if (!data) return;
         const bg = data.find((r) => r.key === 'login_background');
         if (bg) setBgImage(bg.value);
+
+        const kioskBgRow = data.find((r) => r.key === 'kiosk_background');
+        if (kioskBgRow) setKioskBg(kioskBgRow.value);
 
         const urlSetting = data.find((r) => r.key === 'app_url');
         if (urlSetting) setAppUrl(urlSetting.value);
@@ -131,6 +140,50 @@ export default function CssPanel() {
       setBgError(err instanceof Error ? err.message : 'Error al subir imagen');
     } finally {
       setBgUploading(false);
+    }
+  };
+
+  const handleKioskBgUpload = async (file: File) => {
+    setKioskBgError('');
+    setKioskBgSuccess(false);
+    setKioskBgUploading(true);
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png';
+      const path = `kiosk-bg/kiosk_bg_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('ui-assets')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw new Error(upErr.message);
+
+      const { data: urlData } = supabase.storage.from('ui-assets').getPublicUrl(path);
+      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+
+      const { error: saveErr } = await supabase
+        .from('ui_settings')
+        .upsert({ key: 'kiosk_background', value: publicUrl, updated_at: new Date().toISOString() });
+      if (saveErr) throw new Error(saveErr.message);
+
+      setKioskBg(publicUrl);
+      setKioskBgSuccess(true);
+      setTimeout(() => setKioskBgSuccess(false), 3000);
+    } catch (err) {
+      setKioskBgError(err instanceof Error ? err.message : 'Error al subir imagen');
+    } finally {
+      setKioskBgUploading(false);
+    }
+  };
+
+  const handleKioskBgRemove = async () => {
+    setKioskBgError('');
+    try {
+      const { error } = await supabase
+        .from('ui_settings')
+        .delete()
+        .eq('key', 'kiosk_background');
+      if (error) throw new Error(error.message);
+      setKioskBg('');
+    } catch (err) {
+      setKioskBgError(err instanceof Error ? err.message : 'Error al eliminar');
     }
   };
 
@@ -253,6 +306,83 @@ export default function CssPanel() {
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
                 <AlertCircle size={14} style={{ color: '#DC2626' }} />
                 <p className="text-xs" style={{ color: '#DC2626' }}>{bgError}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Kiosk Background */}
+      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        <div className="px-6 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#0F172A' }}>
+            <ImageIcon size={18} style={{ color: '#22D3EE' }} />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm" style={{ color: '#0F172A' }}>Fondo Kiosco</h3>
+            <p className="text-xs" style={{ color: '#64748B' }}>Imagen de fondo para el modo kiosco de fichaje (tablets)</p>
+          </div>
+        </div>
+        <div className="p-6 flex flex-col sm:flex-row items-start gap-6">
+          {/* Preview */}
+          <div className="relative flex-shrink-0 rounded-xl overflow-hidden shadow-md" style={{ width: 200, height: 120, border: '2px solid #E2E8F0', backgroundColor: '#0F172A' }}>
+            {kioskBg ? (
+              <img src={kioskBg} alt="Fondo kiosco" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-2" style={{ color: '#475569' }}>
+                <ImageIcon size={24} />
+                <span className="text-xs">Sin fondo</span>
+              </div>
+            )}
+            <div className="absolute inset-0 flex items-end px-3 py-2" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.5), transparent)' }}>
+              <span className="text-white text-xs font-medium">{kioskBg ? 'Vista previa actual' : 'Fondo negro por defecto'}</span>
+            </div>
+          </div>
+
+          {/* Upload area */}
+          <div className="flex-1 space-y-3">
+            <button
+              onClick={() => kioskFileInputRef.current?.click()}
+              disabled={kioskBgUploading}
+              className="w-full flex flex-col items-center justify-center gap-3 rounded-xl cursor-pointer transition-all duration-200 hover:opacity-80 p-8 disabled:opacity-60"
+              style={{ backgroundColor: '#F8FAFC', border: '2px dashed #CBD5E1' }}
+            >
+              {kioskBgUploading
+                ? <RefreshCw size={24} className="animate-spin" style={{ color: '#64748B' }} />
+                : <Upload size={24} style={{ color: '#64748B' }} />}
+              <div className="text-center">
+                <p className="text-sm font-semibold" style={{ color: '#334155' }}>
+                  {kioskBgUploading ? 'Subiendo imagen...' : 'Fondo Kiosco'}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>PNG, JPG, WEBP — recomendado 1920×1080px</p>
+              </div>
+            </button>
+            <input
+              ref={kioskFileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleKioskBgUpload(f); e.target.value = ''; }}
+            />
+            {kioskBg && (
+              <button
+                onClick={handleKioskBgRemove}
+                className="text-xs font-medium cursor-pointer transition-colors hover:opacity-80 flex items-center gap-1.5"
+                style={{ color: '#DC2626' }}
+              >
+                <X size={12} /> Eliminar fondo y usar color negro
+              </button>
+            )}
+            {kioskBgSuccess && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                <CheckCircle2 size={14} style={{ color: '#16A34A' }} />
+                <p className="text-xs font-medium" style={{ color: '#15803D' }}>Fondo del kiosco actualizado correctamente</p>
+              </div>
+            )}
+            {kioskBgError && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                <AlertCircle size={14} style={{ color: '#DC2626' }} />
+                <p className="text-xs" style={{ color: '#DC2626' }}>{kioskBgError}</p>
               </div>
             )}
           </div>

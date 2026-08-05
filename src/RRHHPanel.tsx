@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound, AlertCircle, Menu, BedSingle, UserCog, HelpCircle, Tablet } from 'lucide-react';
+import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound, AlertCircle, Menu, BedSingle, UserCog, HelpCircle, Tablet, MonitorSmartphone } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { mockVacations, mockCertificates, mockExams, mockDocuments } from './mockData';
 import UserManagement from './UserManagement';
@@ -190,6 +190,16 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
           </div>
           <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
             <SocietySwitcher textColor="#E0F2FE" bgColor="rgba(255,255,255,0.08)" borderColor="rgba(255,255,255,0.1)" />
+            {/* Kiosk mode button - opens the kiosk screen in a new tab */}
+            <button
+              onClick={() => window.open('#kiosco', '_blank')}
+              className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200"
+              style={{ backgroundColor: 'rgba(34,211,238,0.12)', color: '#22D3EE', border: '1px solid rgba(34,211,238,0.25)' }}
+              title="Abrir pantalla de kiosco de fichaje"
+            >
+              <MonitorSmartphone size={12} />
+              <span className="hidden lg:inline">Modo Kiosco</span>
+            </button>
             {isAdmin && onNavigateAdmin && (
               <button
                 onClick={onNavigateAdmin}

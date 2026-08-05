@@ -84,6 +84,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
   const [incidentPlateOptions, setIncidentPlateOptions] = useState<{ matricula: string; marca: string; modelo: string }[]>([]);
   const [incidentPlateDropdownOpen, setIncidentPlateDropdownOpen] = useState(false);
   const [fichajeNota, setFichajeNota] = useState('');
+  const [deviceAuthorized, setDeviceAuthorized] = useState(true);
 
   // ── Plate search helper ──
   const searchPlates = async (query: string, setter: typeof setPlateOptions) => {
@@ -108,6 +109,11 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
       const { data, error: rpcErr } = await supabase.rpc('validate_vehicle_pin', { p_pin: pin.trim() });
       if (rpcErr || !data?.[0]) { setError('PIN incorrecto o no encontrado'); return; }
       setUsuarioPin(data[0]);
+      const { data: devData } = await supabase.rpc('kiosk_check_device_by_profile', {
+        p_device_key: getDeviceKey(),
+        p_user_profile_id: data[0].id,
+      });
+      setDeviceAuthorized(devData?.authorized ?? false);
       setStep('menu');
     } catch { setError('Error al validar PIN'); }
     finally { setLoading(false); }
@@ -411,8 +417,17 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
                 <p className="text-sm font-semibold" style={{ color: '#15803D' }}>{usuarioPin?.nombre}</p>
               </div>
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Selecciona una acción</p>
+              {!deviceAuthorized && (
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                  <AlertCircle size={14} style={{ color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
+                  <p className="text-xs" style={{ color: '#DC2626' }}>Este dispositivo no está autorizado para fichar. Contacta con RRHH para registrarlo. Las demás funciones siguen disponibles.</p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2">
-                {MENU_ACTIONS.map((action) => {
+                {MENU_ACTIONS.filter((action) => {
+                  const isFichaje = ['entrada', 'descanso', 'fin_descanso', 'salida', 'permiso'].includes(action.id);
+                  return !isFichaje || deviceAuthorized;
+                }).map((action) => {
                   const Icon = action.icon;
                   const isFichaje = ['entrada', 'descanso', 'fin_descanso', 'salida', 'permiso'].includes(action.id);
                   return (

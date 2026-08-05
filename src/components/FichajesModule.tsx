@@ -275,6 +275,7 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [deviceAuthorized, setDeviceAuthorized] = useState(true);
 
   const loadToday = useCallback(async () => {
     const today = new Date().toISOString().split('T')[0];
@@ -288,6 +289,17 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
   }, [profile.nombre]);
 
   useEffect(() => { loadToday(); }, [loadToday]);
+
+  // Check device authorization on mount
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.rpc('kiosk_check_device_by_profile', {
+        p_device_key: getOrCreateDeviceKey(),
+        p_user_profile_id: profile.id,
+      });
+      setDeviceAuthorized(data?.authorized ?? false);
+    })();
+  }, [profile.id]);
 
   const relevantLogs = todayLogs.filter((f) => f.tipo_evento === 'entrada' || f.tipo_evento === 'salida');
   const lastEvent = relevantLogs.length > 0 ? relevantLogs[relevantLogs.length - 1].tipo_evento : null;
@@ -429,21 +441,28 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
         </div>
       )}
 
+      {!deviceAuthorized && (
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg mb-3" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+          <AlertTriangle size={13} style={{ color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
+          <p className="text-xs" style={{ color: '#DC2626' }}>Este dispositivo no está autorizado para fichar. Contacta con RRHH para registrar este dispositivo.</p>
+        </div>
+      )}
+
       <div className="flex gap-3">
         <button
           onClick={() => handleClock('entrada')}
-          disabled={loading || !canEntrada}
+          disabled={loading || !canEntrada || !deviceAuthorized}
           className="flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ backgroundColor: canEntrada ? '#16A34A' : '#E2E8F0', color: canEntrada ? '#FFFFFF' : '#94A3B8' }}
+          style={{ backgroundColor: canEntrada && deviceAuthorized ? '#16A34A' : '#E2E8F0', color: canEntrada && deviceAuthorized ? '#FFFFFF' : '#94A3B8' }}
         >
           <LogIn size={14} />
           Fichar Entrada
         </button>
         <button
           onClick={() => handleClock('salida')}
-          disabled={loading || !canSalida}
+          disabled={loading || !canSalida || !deviceAuthorized}
           className="flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ backgroundColor: canSalida ? '#DC2626' : '#E2E8F0', color: canSalida ? '#FFFFFF' : '#94A3B8' }}
+          style={{ backgroundColor: canSalida && deviceAuthorized ? '#DC2626' : '#E2E8F0', color: canSalida && deviceAuthorized ? '#FFFFFF' : '#94A3B8' }}
         >
           <LogOut size={14} />
           Fichar Salida
@@ -451,11 +470,11 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
       </div>
       <button
         onClick={() => handleClock(inPermiso ? 'permiso_fin' : 'permiso')}
-        disabled={loading}
+        disabled={loading || !deviceAuthorized}
         className="w-full mt-2 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         style={{
-          backgroundColor: inPermiso ? '#6D28D9' : '#7C3AED',
-          color: '#FFFFFF',
+          backgroundColor: deviceAuthorized ? (inPermiso ? '#6D28D9' : '#7C3AED') : '#E2E8F0',
+          color: deviceAuthorized ? '#FFFFFF' : '#94A3B8',
         }}
       >
         {inPermiso ? 'Finalizar Permiso' : 'Fichar Permiso'}

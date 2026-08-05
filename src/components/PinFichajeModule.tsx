@@ -1,13 +1,258 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Delete, Check, Fingerprint, LogIn, LogOut, MapPin } from 'lucide-react';
+import { Delete, Check, Fingerprint, LogIn, LogOut, MapPin, ShieldOff, Shield, Lock, Loader2, AlertCircle, Tablet, X } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { useDeviceAuth } from '../hooks/useDeviceAuth';
 
 const PIN_LENGTH = 6;
 const RESET_DELAY_MS = 2500;
+const ADMIN_SETUP_PASSWORD = import.meta.env.VITE_KIOSK_ADMIN_PASSWORD ?? 'admin1234';
 
 type Status = 'idle' | 'submitting' | 'success' | 'error';
 
+// ── Device setup modal ─────────────────────────────────────────────────────
+
+function DeviceSetupModal({
+  onSuccess,
+  onCancel,
+  registerDevice,
+}: {
+  onSuccess: () => void;
+  onCancel?: () => void;
+  registerDevice: (key: string, site: string) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [step, setStep] = useState<'password' | 'setup'>('password');
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [deviceKey, setDeviceKey] = useState('');
+  const [siteName, setSiteName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  function checkPassword() {
+    if (password === ADMIN_SETUP_PASSWORD) {
+      setStep('setup');
+      setPasswordError('');
+      // Pre-fill a suggested device key
+      const suggested = `tablet_${Date.now().toString(36)}`;
+      setDeviceKey(suggested);
+    } else {
+      setPasswordError('Contraseña incorrecta');
+    }
+  }
+
+  async function save() {
+    if (!deviceKey.trim() || !siteName.trim()) {
+      setSaveError('Completa todos los campos');
+      return;
+    }
+    setSaving(true);
+    setSaveError('');
+    const { ok, error } = await registerDevice(deviceKey.trim(), siteName.trim());
+    if (!ok) {
+      setSaveError(error ?? 'Error al registrar el dispositivo');
+      setSaving(false);
+      return;
+    }
+    onSuccess();
+  }
+
+  return (
+    <div className="fixed inset-0 z-[400] flex flex-col items-center justify-center px-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.92)' }}>
+      <div className="w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#0F172A', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="px-6 py-5 border-b flex items-center justify-between" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(34,211,238,0.15)' }}>
+              <Shield size={18} style={{ color: '#22D3EE' }} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: '#F1F5F9' }}>Configurar dispositivo</p>
+              <p className="text-xs" style={{ color: '#475569' }}>
+                {step === 'password' ? 'Verificación de administrador' : 'Datos del dispositivo'}
+              </p>
+            </div>
+          </div>
+          {onCancel && (
+            <button onClick={onCancel} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer"
+              style={{ color: '#475569' }}>
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {step === 'password' ? (
+            <>
+              <p className="text-sm" style={{ color: '#94A3B8' }}>
+                Introduce la contraseña de administrador para vincular este dispositivo.
+              </p>
+              <input
+                type="password"
+                value={password}
+                onChange={e => { setPassword(e.target.value); setPasswordError(''); }}
+                onKeyDown={e => e.key === 'Enter' && checkPassword()}
+                placeholder="Contraseña de administrador"
+                className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${passwordError ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                  color: '#F1F5F9',
+                }}
+                autoFocus
+              />
+              {passwordError && (
+                <div className="flex items-center gap-2 text-xs" style={{ color: '#EF4444' }}>
+                  <AlertCircle size={12} /> {passwordError}
+                </div>
+              )}
+              <button
+                onClick={checkPassword}
+                className="w-full py-3 rounded-xl text-sm font-semibold cursor-pointer transition-all"
+                style={{ backgroundColor: '#22D3EE', color: '#0F172A' }}
+              >
+                Continuar
+              </button>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#475569' }}>
+                  Código del dispositivo
+                </label>
+                <input
+                  type="text"
+                  value={deviceKey}
+                  onChange={e => { setDeviceKey(e.target.value); setSaveError(''); }}
+                  placeholder="ej: tablet_oficina_bcn_1"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    color: '#22D3EE',
+                  }}
+                />
+                <p className="text-xs mt-1" style={{ color: '#475569' }}>Identificador único para esta tablet</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#475569' }}>
+                  Nombre del centro / sede
+                </label>
+                <input
+                  type="text"
+                  value={siteName}
+                  onChange={e => { setSiteName(e.target.value); setSaveError(''); }}
+                  placeholder="ej: Oficina Barcelona"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    color: '#F1F5F9',
+                  }}
+                />
+              </div>
+              {saveError && (
+                <div className="flex items-center gap-2 text-xs" style={{ color: '#EF4444' }}>
+                  <AlertCircle size={12} /> {saveError}
+                </div>
+              )}
+              <button
+                onClick={save}
+                disabled={saving}
+                className="w-full py-3 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-all"
+                style={{ backgroundColor: '#22D3EE', color: '#0F172A' }}
+              >
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Tablet size={14} />}
+                {saving ? 'Registrando...' : 'Registrar dispositivo'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Unauthorized screen ────────────────────────────────────────────────────
+
+function UnauthorizedScreen({
+  isDisabled,
+  deviceInfo,
+  registerDevice,
+  onAuthorized,
+}: {
+  isDisabled: boolean;
+  deviceInfo: { device_key: string; site_name: string } | null;
+  registerDevice: (key: string, site: string) => Promise<{ ok: boolean; error?: string }>;
+  onAuthorized: () => void;
+}) {
+  const [showSetup, setShowSetup] = useState(false);
+  const [tapCount, setTapCount] = useState(0);
+  const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Hidden: tap logo 5 times to reveal setup button
+  function handleLogoTap() {
+    setTapCount(c => {
+      const next = c + 1;
+      if (tapTimer.current) clearTimeout(tapTimer.current);
+      tapTimer.current = setTimeout(() => setTapCount(0), 3000);
+      return next;
+    });
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[350] flex flex-col items-center justify-center px-6"
+        style={{ backgroundColor: '#000000' }}>
+        <div className="text-center mb-10">
+          <button onClick={handleLogoTap} className="cursor-pointer select-none">
+            <div className="w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-6"
+              style={{ backgroundColor: 'rgba(239,68,68,0.12)', border: '2px solid rgba(239,68,68,0.3)' }}>
+              <ShieldOff size={48} style={{ color: '#EF4444' }} />
+            </div>
+          </button>
+          <h1 className="text-2xl font-bold mb-3" style={{ color: '#F1F5F9' }}>
+            {isDisabled ? 'Dispositivo desactivado' : 'Dispositivo no autorizado'}
+          </h1>
+          <p className="text-sm max-w-xs mx-auto" style={{ color: '#475569', lineHeight: 1.7 }}>
+            {isDisabled
+              ? `Este dispositivo (${deviceInfo?.site_name ?? ''}) ha sido desactivado. Contacta con el administrador para reactivarlo.`
+              : 'Este navegador no está registrado como terminal de fichaje autorizado. Solo las tablets configuradas pueden registrar fichajes.'}
+          </p>
+        </div>
+
+        {tapCount >= 5 && (
+          <button
+            onClick={() => setShowSetup(true)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all"
+            style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#64748B' }}
+          >
+            <Lock size={14} /> Configurar dispositivo
+          </button>
+        )}
+
+        {tapCount > 0 && tapCount < 5 && (
+          <p className="text-xs mt-4" style={{ color: '#334155' }}>
+            {5 - tapCount} toques más para modo configuración
+          </p>
+        )}
+      </div>
+
+      {showSetup && (
+        <DeviceSetupModal
+          registerDevice={registerDevice}
+          onSuccess={onAuthorized}
+          onCancel={() => setShowSetup(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// ── Main kiosk PIN module ──────────────────────────────────────────────────
+
 function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
+  const { status: deviceStatus, deviceInfo, validate: validateDevice, registerDevice } = useDeviceAuth();
+
   const [pin, setPin] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('');
@@ -16,9 +261,7 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
   const [gpsStatus, setGpsStatus] = useState<'searching' | 'ready' | 'denied' | 'unsupported'>('searching');
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cachedGeo = useRef<{ latitud: number | null; longitud: number | null; ubicacion: string | null }>({
-    latitud: null,
-    longitud: null,
-    ubicacion: null,
+    latitud: null, longitud: null, ubicacion: null,
   });
 
   useEffect(() => {
@@ -26,18 +269,11 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
     return () => clearInterval(t);
   }, []);
 
-  // Pre-fetch geolocation on mount so it's ready before the user enters their PIN
   const fetchGeoRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setGpsStatus('unsupported');
-      return;
-    }
-    if (typeof window !== 'undefined' && !window.isSecureContext) {
-      setGpsStatus('denied');
-      return;
-    }
+    if (!navigator.geolocation) { setGpsStatus('unsupported'); return; }
+    if (typeof window !== 'undefined' && !window.isSecureContext) { setGpsStatus('denied'); return; }
     let cancelled = false;
     const fetchGeo = () => {
       navigator.geolocation.getCurrentPosition(
@@ -54,48 +290,29 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
             if (res.ok) {
               const data = await res.json();
               const a = data.address || {};
-              const parts = [
-                a.road,
-                a.house_number,
-                a.postcode,
-                a.village || a.town || a.city || a.municipality,
-                a.state,
-              ].filter(Boolean);
+              const parts = [a.road, a.house_number, a.postcode, a.village || a.town || a.city || a.municipality, a.state].filter(Boolean);
               direccion = parts.join(', ') || data.display_name || null;
             }
-          } catch {
-            direccion = null;
-          }
+          } catch { direccion = null; }
           if (cancelled) return;
           cachedGeo.current = { latitud: lat, longitud: lon, ubicacion: direccion };
           setGpsStatus('ready');
         },
-        () => {
-          if (cancelled) return;
-          setGpsStatus('denied');
-        },
+        () => { if (cancelled) return; setGpsStatus('denied'); },
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 },
       );
     };
     fetchGeoRef.current = fetchGeo;
     fetchGeo();
     const refreshInterval = setInterval(fetchGeo, 60000);
-    return () => {
-      cancelled = true;
-      clearInterval(refreshInterval);
-    };
+    return () => { cancelled = true; clearInterval(refreshInterval); };
   }, []);
 
-  const retryGeo = useCallback(() => {
-    fetchGeoRef.current();
-  }, []);
+  const retryGeo = useCallback(() => { fetchGeoRef.current(); }, []);
 
   const reset = useCallback(() => {
     if (resetTimer.current) clearTimeout(resetTimer.current);
-    setPin('');
-    setStatus('idle');
-    setMessage('');
-    setLastEvent(null);
+    setPin(''); setStatus('idle'); setMessage(''); setLastEvent(null);
   }, []);
 
   useEffect(() => () => { if (resetTimer.current) clearTimeout(resetTimer.current); }, []);
@@ -113,7 +330,6 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
   const submit = useCallback(async (pinValue: string) => {
     if (!pinValue) return;
 
-    // Require location before allowing fichaje
     if (gpsStatus !== 'ready') {
       setStatus('error');
       setMessage('Esperando ubicación GPS... Activa el permiso de ubicación para fichar.');
@@ -137,9 +353,11 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
         p_latitud: geo.latitud,
         p_longitud: geo.longitud,
         p_ubicacion: geo.ubicacion,
-        p_dispositivo: getDeviceInfo(),
+        p_dispositivo: deviceInfo ? `${deviceInfo.site_name} · ${getDeviceInfo()}` : getDeviceInfo(),
         p_user_agent: navigator.userAgent,
+        p_device_key: deviceInfo?.device_key ?? null,
       });
+
       if (rpcErr || !rpcData || rpcData.length === 0) {
         setStatus('error');
         setMessage('Error al registrar el fichaje.');
@@ -148,7 +366,13 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
       }
 
       const result = rpcData[0] as { success: boolean; tipo: 'entrada' | 'salida'; nombre_empleado: string; error_msg: string | null };
+
       if (!result.success) {
+        if (result.error_msg === 'DEVICE_NOT_AUTHORIZED') {
+          // Device was deactivated between check and fichaje — re-validate
+          await validateDevice();
+          return;
+        }
         setStatus('error');
         setMessage(result.error_msg ?? 'PIN incorrecto. Inténtalo de nuevo.');
         resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
@@ -164,7 +388,7 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
       setMessage(err instanceof Error ? err.message : 'Error al registrar el fichaje');
       resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
     }
-  }, [reset, gpsStatus]);
+  }, [reset, gpsStatus, deviceInfo, validateDevice]);
 
   const appendDigit = (d: string) => {
     if (status === 'submitting' || status === 'success') return;
@@ -172,9 +396,7 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
     setPin((prev) => {
       if (prev.length >= PIN_LENGTH) return prev;
       const next = prev + d;
-      if (next.length === PIN_LENGTH) {
-        submit(next);
-      }
+      if (next.length === PIN_LENGTH) submit(next);
       return next;
     });
   };
@@ -192,15 +414,10 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key >= '0' && e.key <= '9') {
-        appendDigit(e.key);
-      } else if (e.key === 'Backspace') {
-        deleteDigit();
-      } else if (e.key === 'Enter') {
-        confirm();
-      } else if (e.key === 'Escape' && onClose) {
-        onClose();
-      }
+      if (e.key >= '0' && e.key <= '9') appendDigit(e.key);
+      else if (e.key === 'Backspace') deleteDigit();
+      else if (e.key === 'Enter') confirm();
+      else if (e.key === 'Escape' && onClose) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -208,21 +425,53 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
 
   const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const dateStr = now.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
   const displayDots = Array.from({ length: PIN_LENGTH }, (_, i) => i < pin.length);
+
+  // ── Device checking ────────────────────────────────────────────────────────
+
+  if (deviceStatus === 'checking') {
+    return (
+      <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center"
+        style={{ backgroundColor: '#000000' }}>
+        <div className="flex items-center gap-3" style={{ color: '#475569' }}>
+          <Loader2 size={20} className="animate-spin" />
+          <span className="text-sm">Verificando dispositivo...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (deviceStatus === 'unauthorized' || deviceStatus === 'disabled') {
+    return (
+      <UnauthorizedScreen
+        isDisabled={deviceStatus === 'disabled'}
+        deviceInfo={deviceInfo}
+        registerDevice={registerDevice}
+        onAuthorized={validateDevice}
+      />
+    );
+  }
+
+  // ── Authorized: show kiosk ─────────────────────────────────────────────────
 
   return (
     <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center px-4 py-6 overflow-y-auto" style={{ backgroundColor: '#000000' }}>
-      {/* Close button (hidden in kiosk mode) */}
       {onClose && (
-        <button
-          onClick={onClose}
+        <button onClick={onClose}
           className="absolute top-4 right-4 w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors"
           style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#FFFFFF' }}
-          title="Salir"
-        >
+          title="Salir">
           <span className="text-lg font-light">×</span>
         </button>
+      )}
+
+      {/* Site badge */}
+      {deviceInfo && (
+        <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs"
+          style={{ backgroundColor: 'rgba(34,211,238,0.08)', border: '1px solid rgba(34,211,238,0.2)', color: '#22D3EE' }}>
+          <Tablet size={11} />
+          {deviceInfo.site_name}
+        </div>
       )}
 
       {/* Header clock */}
@@ -245,8 +494,7 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
       <div className="mb-4 sm:mb-6 md:mb-8 select-none">
         <div className="flex gap-3 sm:gap-4 justify-center">
           {displayDots.map((filled, i) => (
-            <div
-              key={i}
+            <div key={i}
               className="w-4 h-4 sm:w-5 sm:h-5 rounded-full transition-all duration-150"
               style={{
                 backgroundColor: filled ? '#22D3EE' : 'rgba(255,255,255,0.15)',
@@ -264,80 +512,62 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
       {/* Status message */}
       <div className="h-12 sm:h-16 mb-4 sm:mb-6 flex items-center justify-center">
         {status === 'success' && (
-          <div className="flex items-center gap-3 px-6 py-3 rounded-2xl animate-[fadeIn_0.2s_ease-out]" style={{ backgroundColor: 'rgba(22,163,74,0.15)', border: '1px solid rgba(22,163,74,0.4)' }}>
+          <div className="flex items-center gap-3 px-6 py-3 rounded-2xl animate-[fadeIn_0.2s_ease-out]"
+            style={{ backgroundColor: 'rgba(22,163,74,0.15)', border: '1px solid rgba(22,163,74,0.4)' }}>
             {lastEvent === 'entrada' ? <LogIn size={20} style={{ color: '#22C55E' }} /> : <LogOut size={20} style={{ color: '#22C55E' }} />}
             <span className="text-base font-semibold" style={{ color: '#22C55E' }}>{message}</span>
           </div>
         )}
         {status === 'error' && (
-          <div className="flex items-center gap-3 px-6 py-3 rounded-2xl animate-[fadeIn_0.2s_ease-out]" style={{ backgroundColor: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.4)' }}>
+          <div className="flex items-center gap-3 px-6 py-3 rounded-2xl animate-[fadeIn_0.2s_ease-out]"
+            style={{ backgroundColor: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.4)' }}>
             <span className="text-base font-semibold" style={{ color: '#EF4444' }}>{message}</span>
           </div>
         )}
         {status === 'submitting' && (
           <div className="flex items-center gap-3">
-            <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(34,211,238,0.2)', borderTopColor: '#22D3EE' }} />
+            <div className="w-5 h-5 rounded-full border-2 animate-spin"
+              style={{ borderColor: 'rgba(34,211,238,0.2)', borderTopColor: '#22D3EE' }} />
             <span className="text-sm" style={{ color: '#64748B' }}>Validando...</span>
           </div>
         )}
       </div>
 
-      {/* Numeric keypad 3x4 */}
+      {/* Keypad */}
       <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
         {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
           <KeypadButton key={d} label={d} onClick={() => appendDigit(d)} disabled={status === 'submitting' || status === 'success'} />
         ))}
-        <KeypadButton
-          label=""
-          icon={<Delete size={20} />}
-          iconDesktop={<Delete size={26} />}
-          onClick={deleteDigit}
-          disabled={status === 'submitting' || status === 'success'}
-          variant="secondary"
-        />
-        <KeypadButton
-          label="0"
-          onClick={() => appendDigit('0')}
-          disabled={status === 'submitting' || status === 'success'}
-        />
-        <KeypadButton
-          label=""
-          icon={<Check size={20} />}
-          iconDesktop={<Check size={26} />}
-          onClick={confirm}
-          disabled={status === 'submitting' || status === 'success' || pin.length < 4}
-          variant="confirm"
-        />
+        <KeypadButton label="" icon={<Delete size={20} />} iconDesktop={<Delete size={26} />}
+          onClick={deleteDigit} disabled={status === 'submitting' || status === 'success'} variant="secondary" />
+        <KeypadButton label="0" onClick={() => appendDigit('0')} disabled={status === 'submitting' || status === 'success'} />
+        <KeypadButton label="" icon={<Check size={20} />} iconDesktop={<Check size={26} />}
+          onClick={confirm} disabled={status === 'submitting' || status === 'success' || pin.length < 4} variant="confirm" />
       </div>
 
-      {/* GPS status indicator */}
+      {/* GPS indicator */}
       <div className="mt-4 sm:mt-6 flex items-center justify-center gap-2 text-[10px] sm:text-xs">
         {gpsStatus === 'ready' && (
           <span className="flex items-center gap-1.5" style={{ color: '#22C55E' }}>
-            <MapPin size={12} />
-            Ubicación lista
+            <MapPin size={12} /> Ubicación lista
           </span>
         )}
         {gpsStatus === 'searching' && (
           <span className="flex items-center gap-1.5" style={{ color: '#64748B' }}>
-            <div className="w-2.5 h-2.5 rounded-full border animate-spin" style={{ borderColor: 'rgba(100,116,139,0.3)', borderTopColor: '#64748B' }} />
+            <div className="w-2.5 h-2.5 rounded-full border animate-spin"
+              style={{ borderColor: 'rgba(100,116,139,0.3)', borderTopColor: '#64748B' }} />
             Obteniendo ubicación...
           </span>
         )}
         {(gpsStatus === 'denied' || gpsStatus === 'unsupported') && (
-          <button
-            onClick={() => { setGpsStatus('searching'); retryGeo(); }}
+          <button onClick={() => { setGpsStatus('searching'); retryGeo(); }}
             className="flex items-center gap-1.5 cursor-pointer transition-colors hover:opacity-80"
-            style={{ color: '#F59E0B' }}
-            title="Reintentar obtener ubicación"
-          >
-            <MapPin size={12} />
-            Ubicación no disponible — pulsar para reintentar
+            style={{ color: '#F59E0B' }} title="Reintentar obtener ubicación">
+            <MapPin size={12} /> Ubicación no disponible — pulsar para reintentar
           </button>
         )}
       </div>
 
-      {/* Footer hint */}
       <p className="absolute bottom-3 sm:bottom-6 text-center text-[10px] sm:text-xs" style={{ color: '#334155' }}>
         Teclado físico habilitado{onClose ? ' · ESC para salir' : ''}
       </p>
@@ -346,12 +576,7 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
 }
 
 function KeypadButton({
-  label,
-  icon,
-  iconDesktop,
-  onClick,
-  disabled,
-  variant = 'default',
+  label, icon, iconDesktop, onClick, disabled, variant = 'default',
 }: {
   label: string;
   icon?: React.ReactNode;
@@ -370,23 +595,14 @@ function KeypadButton({
     style = { backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: '#FFFFFF' };
   }
   return (
-    <button
-      className={base}
-      style={style}
-      onClick={onClick}
-      disabled={disabled}
-    >
+    <button className={base} style={style} onClick={onClick} disabled={disabled}>
       {icon ? (
-        <>
-          <span className="sm:hidden">{icon}</span>
-          <span className="hidden sm:flex">{iconDesktop ?? icon}</span>
-        </>
+        <><span className="sm:hidden">{icon}</span><span className="hidden sm:flex">{iconDesktop ?? icon}</span></>
       ) : (
         <span className="text-2xl sm:text-3xl font-light">{label}</span>
       )}
     </button>
   );
 }
-
 
 export default PinFichajeModule;

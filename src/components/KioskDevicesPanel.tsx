@@ -33,8 +33,6 @@ interface CorporateDevice {
 interface Empleado {
   id: string;
   nombre: string;
-  apellido1?: string;
-  apellido2?: string;
   fichaje_mode: 'kiosk_only' | 'kiosk_or_corporate' | 'any';
 }
 
@@ -296,11 +294,12 @@ function CorporateTab() {
     setLoading(true);
     const [{ data: devs }, { data: emps }] = await Promise.all([
       supabase.from('employee_registered_devices').select('*').order('created_at', { ascending: false }),
-      supabase.from('empleados').select('id, nombre, apellido1, fichaje_mode').eq('activo', true).order('nombre'),
+      supabase.rpc('get_employees_fichaje_modes'),
     ]);
-    const empMap = new Map((emps ?? []).map(e => [e.id, `${e.nombre} ${e.apellido1 ?? ''}`.trim()]));
+    const empList = (emps ?? []) as Empleado[];
+    const empMap = new Map(empList.map(e => [e.id, e.nombre]));
     setDevices(((devs ?? []) as CorporateDevice[]).map(d => ({ ...d, empleado_nombre: empMap.get(d.empleado_id) ?? d.empleado_id })));
-    setEmpleados((emps ?? []) as Empleado[]);
+    setEmpleados(empList);
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
@@ -430,7 +429,7 @@ function CorporateTab() {
                   disabled={!!editId}
                   className="w-full px-3 py-2.5 rounded-xl text-sm outline-none" style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}>
                   <option value="">Seleccionar empleado...</option>
-                  {empleados.map(e => <option key={e.id} value={e.id}>{e.nombre} {e.apellido1 ?? ''}</option>)}
+                  {empleados.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                 </select>
               </div>
               <div>
@@ -476,7 +475,7 @@ function PermissionsTab() {
   async function load() {
     setLoading(true);
     const [{ data: emps }, { data: devs }] = await Promise.all([
-      supabase.from('empleados').select('id, nombre, apellido1, apellido2, fichaje_mode').eq('activo', true).order('nombre'),
+      supabase.rpc('get_employees_fichaje_modes'),
       supabase.from('employee_registered_devices').select('*').eq('is_active', true),
     ]);
     setEmpleados((emps ?? []) as Empleado[]);
@@ -498,7 +497,7 @@ function PermissionsTab() {
   }
 
   const filtered = empleados.filter(e =>
-    !search || `${e.nombre} ${e.apellido1 ?? ''} ${e.apellido2 ?? ''}`.toLowerCase().includes(search.toLowerCase())
+    !search || e.nombre.toLowerCase().includes(search.toLowerCase())
   );
 
   const counts = {
@@ -554,7 +553,7 @@ function PermissionsTab() {
                           {emp.nombre.charAt(0)}
                         </div>
                         <div>
-                          <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>{emp.nombre} {emp.apellido1 ?? ''}</p>
+                          <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>{emp.nombre}</p>
                           <div className="flex items-center gap-1.5 text-xs" style={{ color: cfg.text }}>
                             <Icon size={10} />
                             <span>{cfg.label}</span>

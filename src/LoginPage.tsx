@@ -85,6 +85,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
   const [incidentPlateDropdownOpen, setIncidentPlateDropdownOpen] = useState(false);
   const [fichajeNota, setFichajeNota] = useState('');
   const [deviceAuthorized, setDeviceAuthorized] = useState(true);
+  const [fichajeMode, setFichajeMode] = useState<string>('any');
 
   // ── Plate search helper ──
   const searchPlates = async (query: string, setter: typeof setPlateOptions) => {
@@ -114,6 +115,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
         p_user_profile_id: data[0].id,
       });
       setDeviceAuthorized(devData?.authorized ?? false);
+      setFichajeMode(devData?.mode ?? data[0]?.fichaje_mode ?? 'kiosk_only');
       setStep('menu');
     } catch { setError('Error al validar PIN'); }
     finally { setLoading(false); }
@@ -420,7 +422,13 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
               {!deviceAuthorized && (
                 <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
                   <AlertCircle size={14} style={{ color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
-                  <p className="text-xs" style={{ color: '#DC2626' }}>Este dispositivo no está autorizado para fichar. Contacta con RRHH para registrarlo. Las demás funciones siguen disponibles.</p>
+                  <p className="text-xs" style={{ color: '#DC2626' }}>
+                    {fichajeMode === 'kiosk_only'
+                      ? 'Este empleado solo puede fichar desde un kiosco autorizado. Las demás funciones siguen disponibles.'
+                      : fichajeMode === 'kiosk_or_corporate'
+                      ? 'Este empleado solo puede fichar desde un kiosco o un dispositivo registrado. Las demás funciones siguen disponibles.'
+                      : 'Este dispositivo no está autorizado para fichar. Contacta con RRHH para registrarlo. Las demás funciones siguen disponibles.'}
+                  </p>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-2">

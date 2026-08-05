@@ -26,53 +26,45 @@ Deno.serve(async (req: Request) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    // Accept date from query param OR from POST body
     const url = new URL(req.url);
-    const dateParam = url.searchParams.get("date");
-    const targetDate = dateParam || new Date().toISOString().split("T")[0];
+    let targetDate = url.searchParams.get("date");
+    if (!targetDate && req.method === "POST") {
+      try {
+        const body = await req.json();
+        targetDate = body?.date ?? null;
+      } catch { /* no body */ }
+    }
+    if (!targetDate) {
+      // Default: yesterday (the cron sends at 1 AM for the previous day)
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      targetDate = yesterday.toISOString().split("T")[0];
+    }
 
-    // ── 1. Check if enabled & get recipient ────────────────────────────────
+    // ── 1. Check enabled & recipient ──────────────────────────────────────────
     const { data: enabledSetting } = await supabase
-      .from("ui_settings")
-      .select("value")
-      .eq("key", "incidence_report_enabled")
-      .maybeSingle();
+      .from("ui_settings").select("value").eq("key", "incidence_report_enabled").maybeSingle();
     const enabled = enabledSetting?.value !== "false";
 
     const { data: emailSetting } = await supabase
-      .from("ui_settings")
-      .select("value")
-      .eq("key", "incidence_report_email")
-      .maybeSingle();
+      .from("ui_settings").select("value").eq("key", "incidence_report_email").maybeSingle();
 
     let recipient = emailSetting?.value;
     if (!recipient) {
       const { data: admin } = await supabase
-        .from("user_profiles")
-        .select("email")
-        .eq("role", "admin")
-        .order("created_at")
-        .limit(1)
-        .maybeSingle();
+        .from("user_profiles").select("email").eq("role", "admin")
+        .order("created_at").limit(1).maybeSingle();
       recipient = admin?.email;
     }
+    if (!recipient) return json({ error: "No recipient email configured" }, 400);
 
-    if (!recipient) {
-      return json({ error: "No recipient email configured" }, 400);
-    }
-
-    // ── 2. Get active SMTP account ──────────────────────────────────────────
+    // ── 2. Active SMTP account ────────────────────────────────────────────────
     const { data: cuenta } = await supabase
-      .from("email_cuentas")
-      .select("*")
-      .eq("activo", true)
-      .limit(1)
-      .maybeSingle();
+      .from("email_cuentas").select("*").eq("activo", true).limit(1).maybeSingle();
+    if (!cuenta) return json({ error: "No active SMTP account" }, 400);
 
-    if (!cuenta) {
-      return json({ error: "No active SMTP account" }, 400);
-    }
-
-    // ── 3. Fetch fichajes for target date ───────────────────────────────────
+    // ── 3. Fetch fichajes for target date ─────────────────────────────────────
     const { data: fichajes, error: fichErr } = await supabase
       .from("fichajes")
       .select("nombre_empleado, fecha, timestamp, timestamp_corregido, tipo_evento, nota_correccion")
@@ -82,7 +74,12 @@ Deno.serve(async (req: Request) => {
 
     if (fichErr) throw new Error(fichErr.message);
 
-    // ── 4. Compute per-employee durations + detect sin salida ──────────────
+    // Also fetch total unique employees who worked that day (to show attendance rate)
+    const { data: totalEmps } = await supabase
+      .from("empleados").select("id").eq("activo", true);
+    const totalActive = totalEmps?.length ?? 0;
+
+    // ── 4. Compute summaries ──────────────────────────────────────────────────
     const summaries = new Map<string, {
       entrada: string | null;
       salida: string | null;
@@ -91,17 +88,15 @@ Deno.serve(async (req: Request) => {
 
     for (const f of fichajes ?? []) {
       const eff = f.timestamp_corregido ?? f.timestamp;
-      const key = f.nombre_empleado;
-      if (!summaries.has(key)) {
-        summaries.set(key, { entrada: null, salida: null, salidaAuto: false });
+      if (!summaries.has(f.nombre_empleado)) {
+        summaries.set(f.nombre_empleado, { entrada: null, salida: null, salidaAuto: false });
       }
-      const s = summaries.get(key)!;
+      const s = summaries.get(f.nombre_empleado)!;
       if (f.tipo_evento === "entrada") {
         if (!s.entrada || eff < s.entrada) s.entrada = eff;
       } else if (f.tipo_evento === "salida") {
         if (!s.salida || eff > s.salida) {
           s.salida = eff;
-          // Detect auto-close (nota set by system)
           s.salidaAuto = (f.nota_correccion ?? "").includes("Cierre automático");
         }
       }
@@ -117,138 +112,291 @@ Deno.serve(async (req: Request) => {
     }
 
     const incidencias: Incidencia[] = [];
+    const correctos: string[] = [];
 
     for (const [nombre, s] of summaries) {
       if (!s.entrada) continue;
-
       if (!s.salida) {
-        // Employee has entrada but no salida yet
-        incidencias.push({
-          nombre,
-          entrada: s.entrada,
-          salida: null,
-          duracionMin: 0,
-          tipo: "sin_salida",
-          salidaAuto: false,
-        });
+        incidencias.push({ nombre, entrada: s.entrada, salida: null, duracionMin: 0, tipo: "sin_salida", salidaAuto: false });
         continue;
       }
-
-      const diffMs = new Date(s.salida).getTime() - new Date(s.entrada).getTime();
-      const durMin = Math.round(diffMs / 60000);
+      const durMin = Math.round((new Date(s.salida).getTime() - new Date(s.entrada).getTime()) / 60000);
       if (durMin > 480 || durMin < 360 || s.salidaAuto) {
         incidencias.push({
-          nombre,
-          entrada: s.entrada,
-          salida: s.salida,
-          duracionMin: durMin,
+          nombre, entrada: s.entrada, salida: s.salida, duracionMin: durMin,
           tipo: s.salidaAuto ? "sin_salida" : durMin > 480 ? "exceso" : "deficit",
           salidaAuto: s.salidaAuto,
         });
+      } else {
+        correctos.push(nombre);
       }
     }
 
     incidencias.sort((a, b) => a.nombre.localeCompare(b.nombre));
+    correctos.sort((a, b) => a.localeCompare(b));
 
-    // ── 5. Build HTML email ─────────────────────────────────────────────────
+    const totalFicharon = summaries.size;
+    const totalIncidencias = incidencias.length;
+    const totalCorrectos = correctos.length;
+
+    // ── 5. Build premium HTML email ───────────────────────────────────────────
     const fmtDate = (d: string) => {
-      const parts = d.split("-");
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      const [y, m, day] = d.split("-");
+      const months = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+      return `${parseInt(day)} de ${months[parseInt(m)-1]} de ${y}`;
     };
+    const fmtDateShort = (d: string) => { const [y,m,day]=d.split("-"); return `${day}/${m}/${y}`; };
     const fmtTime = (iso: string | null) => {
       if (!iso) return "—";
       try {
-        return new Date(iso).toLocaleTimeString("es-ES", {
-          hour: "2-digit", minute: "2-digit", timeZone: "Atlantic/Canary"
-        });
+        return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", timeZone: "Atlantic/Canary" });
       } catch { return iso; }
     };
     const fmtDur = (min: number) => {
+      if (!min) return "—";
       const h = Math.floor(min / 60);
       const m = min % 60;
       return `${h}h ${m.toString().padStart(2, "0")}m`;
     };
+    const dayName = (d: string) => {
+      const days = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+      return days[new Date(d + "T12:00:00Z").getUTCDay()];
+    };
 
-    const subject = `Informe Diario de Incidencias - ${fmtDate(targetDate)}`;
+    const typeConfig: Record<string, { label: string; bg: string; text: string; border: string; dot: string }> = {
+      sin_salida: { label: "Sin salida", bg: "#F5F3FF", text: "#7C3AED", border: "#DDD6FE", dot: "#7C3AED" },
+      exceso:     { label: "Exceso +8h",  bg: "#FEF2F2", text: "#DC2626", border: "#FECACA", dot: "#DC2626" },
+      deficit:    { label: "Déficit -6h", bg: "#FFFBEB", text: "#D97706", border: "#FDE68A", dot: "#F59E0B" },
+    };
+
+    const subject = `📋 Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)}`;
+
+    // Stats bar
+    const statsBar = `
+<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 24px;">
+  <tr>
+    <td width="33%" style="padding:0 6px 0 0;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FDF4;border-radius:12px;border:1px solid #BBF7D0;">
+        <tr><td style="padding:16px;text-align:center;">
+          <div style="font-size:28px;font-weight:800;color:#16A34A;line-height:1;">${totalFicharon}</div>
+          <div style="font-size:11px;color:#166534;margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Ficharon</div>
+        </td></tr>
+      </table>
+    </td>
+    <td width="33%" style="padding:0 3px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FDF4;border-radius:12px;border:1px solid #BBF7D0;">
+        <tr><td style="padding:16px;text-align:center;">
+          <div style="font-size:28px;font-weight:800;color:#16A34A;line-height:1;">${totalCorrectos}</div>
+          <div style="font-size:11px;color:#166534;margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Correctos</div>
+        </td></tr>
+      </table>
+    </td>
+    <td width="33%" style="padding:0 0 0 6px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:${totalIncidencias > 0 ? "#FEF2F2" : "#F0FDF4"};border-radius:12px;border:1px solid ${totalIncidencias > 0 ? "#FECACA" : "#BBF7D0"};">
+        <tr><td style="padding:16px;text-align:center;">
+          <div style="font-size:28px;font-weight:800;color:${totalIncidencias > 0 ? "#DC2626" : "#16A34A"};line-height:1;">${totalIncidencias}</div>
+          <div style="font-size:11px;color:${totalIncidencias > 0 ? "#991B1B" : "#166534"};margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Incidencias</div>
+        </td></tr>
+      </table>
+    </td>
+  </tr>
+</table>`;
+
+    let incidenciasBlock = "";
+    if (incidencias.length > 0) {
+      // Group by type
+      const groups: { type: string; items: Incidencia[] }[] = [
+        { type: "sin_salida", items: incidencias.filter(i => i.tipo === "sin_salida") },
+        { type: "exceso",     items: incidencias.filter(i => i.tipo === "exceso") },
+        { type: "deficit",    items: incidencias.filter(i => i.tipo === "deficit") },
+      ].filter(g => g.items.length > 0);
+
+      incidenciasBlock = groups.map(group => {
+        const cfg = typeConfig[group.type];
+        const rows = group.items.map((inc, idx) => {
+          const salidaDisplay = inc.tipo === "sin_salida" && !inc.salidaAuto ? "—" : fmtTime(inc.salida);
+          const durDisplay = inc.tipo === "sin_salida" && !inc.salidaAuto ? "—" : fmtDur(inc.duracionMin);
+          const rowBg = idx % 2 === 0 ? "#FFFFFF" : "#FAFAFA";
+          const autoTag = inc.salidaAuto
+            ? `<span style="display:inline-block;font-size:9px;background:#F5F3FF;color:#7C3AED;border:1px solid #DDD6FE;border-radius:4px;padding:1px 5px;margin-left:4px;font-weight:600;vertical-align:middle;">AUTO</span>`
+            : "";
+          return `
+<tr style="background:${rowBg};">
+  <td style="padding:10px 12px;border-bottom:1px solid #F1F5F9;">
+    <div style="font-size:13px;font-weight:600;color:#0F172A;">${inc.nombre}${autoTag}</div>
+  </td>
+  <td style="padding:10px 12px;border-bottom:1px solid #F1F5F9;text-align:center;">
+    <span style="display:inline-block;background:#F0FDF4;color:#16A34A;border-radius:6px;padding:3px 8px;font-size:12px;font-weight:700;">${fmtTime(inc.entrada)}</span>
+  </td>
+  <td style="padding:10px 12px;border-bottom:1px solid #F1F5F9;text-align:center;">
+    <span style="display:inline-block;background:${inc.tipo==="sin_salida" && !inc.salidaAuto ? "#F8FAFC" : "#FEF2F2"};color:${inc.tipo==="sin_salida" && !inc.salidaAuto ? "#94A3B8" : "#DC2626"};border-radius:6px;padding:3px 8px;font-size:12px;font-weight:700;">${salidaDisplay}</span>
+  </td>
+  <td style="padding:10px 12px;border-bottom:1px solid #F1F5F9;text-align:center;">
+    <span style="display:inline-block;background:${cfg.bg};color:${cfg.text};border-radius:6px;padding:3px 8px;font-size:12px;font-weight:700;">${durDisplay}</span>
+  </td>
+</tr>`;
+        }).join("");
+
+        return `
+<div style="margin-bottom:20px;">
+  <div style="display:flex;align-items:center;margin-bottom:8px;">
+    <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${cfg.dot};margin-right:8px;flex-shrink:0;"></span>
+    <span style="font-size:13px;font-weight:700;color:${cfg.text};text-transform:uppercase;letter-spacing:0.06em;">${cfg.label}</span>
+    <span style="margin-left:8px;display:inline-block;font-size:11px;font-weight:700;background:${cfg.bg};color:${cfg.text};border:1px solid ${cfg.border};border-radius:20px;padding:1px 8px;">${group.items.length}</span>
+  </div>
+  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:10px;overflow:hidden;border:1px solid ${cfg.border};">
+    <thead>
+      <tr style="background:${cfg.bg};">
+        <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:${cfg.text};text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid ${cfg.border};">Empleado</th>
+        <th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:${cfg.text};text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid ${cfg.border};">Entrada</th>
+        <th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:${cfg.text};text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid ${cfg.border};">Salida</th>
+        <th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:${cfg.text};text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid ${cfg.border};">Duración</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+</div>`;
+      }).join("");
+    }
+
+    // Correctos block (compact list)
+    let correctosBlock = "";
+    if (correctos.length > 0) {
+      const items = correctos.map(n =>
+        `<span style="display:inline-block;margin:3px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:20px;padding:4px 12px;font-size:12px;color:#166534;font-weight:600;">${n}</span>`
+      ).join("");
+      correctosBlock = `
+<div style="margin-top:24px;padding:16px 20px;background:#F0FDF4;border-radius:12px;border:1px solid #BBF7D0;">
+  <div style="font-size:12px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">✓ Fichajes correctos (${correctos.length})</div>
+  <div>${items}</div>
+</div>`;
+    }
+
+    // Note block
+    const notaBlock = incidencias.some(i => i.salidaAuto) ? `
+<div style="margin-top:16px;padding:14px 16px;background:#F5F3FF;border-radius:10px;border-left:3px solid #7C3AED;">
+  <div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:4px;">ℹ Cierres automáticos</div>
+  <div style="font-size:11px;color:#5B21B6;line-height:1.6;">Los fichajes marcados como <strong>AUTO</strong> fueron cerrados por el sistema a las 23:59:59 porque el trabajador no registró la salida. Se recomienda revisar y corregir con la hora real de salida.</div>
+</div>` : "";
 
     let html: string;
-    if (incidencias.length === 0) {
-      html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#F1F5F9;font-family:Arial,Helvetica,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:40px 0;"><tr><td align="center">
-<table width="520" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-<tr><td style="background:linear-gradient(135deg,#0C4A6E,#0369A1);padding:32px 40px;text-align:center;">
-<p style="margin:0;font-size:22px;font-weight:700;color:#FFFFFF;">Informe de Incidencias</p>
-<p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.75);">${fmtDate(targetDate)}</p>
-</td></tr><tr><td style="padding:36px 40px;text-align:center;">
-<p style="margin:0;font-size:15px;color:#16A34A;font-weight:600;">No hay incidencias hoy</p>
-<p style="margin:8px 0 0;font-size:14px;color:#475569;">Todos los empleados ficharon correctamente.</p>
-</td></tr></table></td></tr></table></body></html>`;
+
+    if (incidencias.length === 0 && fichajes && fichajes.length > 0) {
+      // All good — clean green report
+      html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Informe de Fichajes</title></head>
+<body style="margin:0;padding:0;background:#F1F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:32px 0;"><tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:560px;">
+  <!-- HEADER -->
+  <tr><td style="background:linear-gradient(135deg,#0C4A6E 0%,#0369A1 60%,#0284C7 100%);padding:32px 36px;text-align:center;">
+    <div style="display:inline-block;background:rgba(255,255,255,0.12);border-radius:12px;padding:10px 18px;margin-bottom:14px;">
+      <span style="font-size:22px;">📋</span>
+    </div>
+    <div style="font-size:22px;font-weight:800;color:#FFFFFF;letter-spacing:-0.3px;">Informe de Fichajes</div>
+    <div style="font-size:13px;color:rgba(255,255,255,0.75);margin-top:6px;font-weight:500;">${dayName(targetDate)}, ${fmtDate(targetDate)}</div>
+  </td></tr>
+  <!-- BODY -->
+  <tr><td style="padding:32px 36px;">
+    ${statsBar}
+    <div style="text-align:center;padding:32px 0;">
+      <div style="display:inline-block;background:#F0FDF4;border-radius:50%;width:64px;height:64px;line-height:64px;font-size:32px;margin-bottom:16px;">✅</div>
+      <div style="font-size:18px;font-weight:700;color:#166534;">Sin incidencias</div>
+      <div style="font-size:13px;color:#475569;margin-top:8px;">Todos los empleados ficharon correctamente.</div>
+    </div>
+    ${correctosBlock}
+  </td></tr>
+  <!-- FOOTER -->
+  <tr><td style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:16px 36px;text-align:center;">
+    <div style="font-size:11px;color:#94A3B8;">Generado automáticamente · ${new Date().toLocaleDateString("es-ES", { day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Atlantic/Canary" })}</div>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+    } else if (fichajes && fichajes.length === 0) {
+      // No fichajes at all
+      html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><title>Informe de Fichajes</title></head>
+<body style="margin:0;padding:0;background:#F1F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:32px 0;"><tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <tr><td style="background:linear-gradient(135deg,#0C4A6E,#0369A1);padding:32px 36px;text-align:center;">
+    <div style="font-size:22px;font-weight:800;color:#FFFFFF;">Informe de Fichajes</div>
+    <div style="font-size:13px;color:rgba(255,255,255,0.75);margin-top:6px;">${dayName(targetDate)}, ${fmtDate(targetDate)}</div>
+  </td></tr>
+  <tr><td style="padding:40px 36px;text-align:center;">
+    <div style="font-size:40px;margin-bottom:16px;">📭</div>
+    <div style="font-size:16px;font-weight:700;color:#475569;">Sin registros</div>
+    <div style="font-size:13px;color:#94A3B8;margin-top:8px;">No hay fichajes registrados para este día.</div>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
     } else {
-      const rows = incidencias.map((inc) => {
-        let color: string;
-        let label: string;
-        let salidaText: string;
+      // Has incidencias
+      html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Informe de Fichajes</title></head>
+<body style="margin:0;padding:0;background:#F1F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:32px 0;"><tr><td align="center">
+<table width="620" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:620px;">
 
-        if (inc.tipo === "sin_salida") {
-          color = "#7C3AED";
-          label = inc.salidaAuto
-            ? "Sin salida (cierre auto)"
-            : "Sin salida registrada";
-          salidaText = inc.salidaAuto ? fmtTime(inc.salida) : "—";
-        } else if (inc.tipo === "exceso") {
-          color = "#DC2626";
-          label = "Exceso (&gt;8h)";
-          salidaText = fmtTime(inc.salida);
-        } else {
-          color = "#D97706";
-          label = "Déficit (&lt;6h)";
-          salidaText = fmtTime(inc.salida);
-        }
+  <!-- HEADER GRADIENT -->
+  <tr><td style="background:linear-gradient(135deg,#0C4A6E 0%,#0369A1 60%,#0284C7 100%);padding:28px 36px 24px;">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td>
+          <div style="font-size:20px;font-weight:800;color:#FFFFFF;letter-spacing:-0.3px;">📋 Informe de Fichajes</div>
+          <div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:4px;font-weight:500;">${dayName(targetDate)}, ${fmtDate(targetDate)}</div>
+        </td>
+        <td align="right">
+          <div style="display:inline-block;background:rgba(239,68,68,0.25);border:1px solid rgba(239,68,68,0.5);border-radius:20px;padding:6px 14px;">
+            <span style="font-size:13px;font-weight:700;color:#FCA5A5;">${totalIncidencias} incidencia${totalIncidencias !== 1 ? "s" : ""}</span>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
 
-        const durText = inc.tipo === "sin_salida" && !inc.salidaAuto
-          ? "—"
-          : fmtDur(inc.duracionMin);
+  <!-- BODY -->
+  <tr><td style="padding:28px 32px;">
 
-        return `<tr>
-<td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;">${inc.nombre}</td>
-<td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;">${fmtDate(targetDate)}</td>
-<td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;color:#16A34A;">${fmtTime(inc.entrada)}</td>
-<td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;color:#DC2626;">${salidaText}</td>
-<td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;font-weight:bold;color:${color};">${durText}</td>
-<td style="padding:6px 8px;border-bottom:1px solid #E2E8F0;font-weight:bold;color:${color};">${label}</td>
-</tr>`;
-      }).join("");
+    <!-- Stats -->
+    ${statsBar}
 
-      html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#F1F5F9;font-family:Arial,Helvetica,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:40px 0;"><tr><td align="center">
-<table width="620" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-<tr><td style="background:linear-gradient(135deg,#0C4A6E,#0369A1);padding:32px 40px;text-align:center;">
-<p style="margin:0;font-size:22px;font-weight:700;color:#FFFFFF;">Informe de Incidencias de Fichaje</p>
-<p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.75);">${fmtDate(targetDate)}</p>
-</td></tr><tr><td style="padding:28px 32px;">
-<p style="margin:0 0 16px;font-size:14px;color:#475569;">Se han detectado <strong style="color:#DC2626;">${incidencias.length}</strong> incidencia(s) en los fichajes del día:</p>
-<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
-<thead><tr>
-<th style="background:#0F172A;color:#fff;padding:8px;text-align:left;font-size:11px;">Empleado</th>
-<th style="background:#0F172A;color:#fff;padding:8px;text-align:left;font-size:11px;">Fecha</th>
-<th style="background:#0F172A;color:#fff;padding:8px;text-align:left;font-size:11px;">Entrada</th>
-<th style="background:#0F172A;color:#fff;padding:8px;text-align:left;font-size:11px;">Salida</th>
-<th style="background:#0F172A;color:#fff;padding:8px;text-align:left;font-size:11px;">Horas</th>
-<th style="background:#0F172A;color:#fff;padding:8px;text-align:left;font-size:11px;">Tipo</th>
-</tr></thead><tbody>${rows}</tbody></table>
-<div style="margin:16px 0;padding:10px 14px;border-radius:8px;background:#F8F5FF;border-left:3px solid #7C3AED;">
-  <p style="margin:0;font-size:12px;color:#7C3AED;font-weight:600;">Nota sobre cierres automáticos</p>
-  <p style="margin:4px 0 0;font-size:11px;color:#6B7280;">Los fichajes marcados como "cierre automático" se cerraron a las 23:59:59 porque el trabajador no registró la salida. El trabajador debe enviar una solicitud de corrección con su hora real de salida.</p>
-</div>
-<p style="margin:12px 0 0;font-size:11px;color:#94A3B8;">Los fichajes sin salida se cierran automáticamente a las 23:55 cada día.</p>
-</td></tr></table></td></tr></table></body></html>`;
+    <!-- Incidencias section header -->
+    <div style="font-size:14px;font-weight:800;color:#0F172A;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #F1F5F9;letter-spacing:-0.2px;">
+      Detalle de incidencias
+    </div>
+
+    <!-- Incidencias by group -->
+    ${incidenciasBlock}
+
+    <!-- Notas -->
+    ${notaBlock}
+
+    <!-- Correctos -->
+    ${correctosBlock}
+
+  </td></tr>
+
+  <!-- FOOTER -->
+  <tr><td style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:14px 32px;">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td><div style="font-size:11px;color:#94A3B8;">Control de Presencia · Informe automático</div></td>
+      <td align="right"><div style="font-size:11px;color:#94A3B8;">${new Date().toLocaleDateString("es-ES", { day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Atlantic/Canary" })}</div></td>
+    </tr></table>
+  </td></tr>
+
+</table>
+</td></tr></table>
+</body></html>`;
     }
 
     if (!enabled) {
       return json({ ok: true, disabled: true, total_incidencias: incidencias.length });
     }
 
-    // ── 6. Send via SMTP ───────────────────────────────────────────────────
+    // ── 6. Send via SMTP ──────────────────────────────────────────────────────
     const smtpResp = await sendSmtp({
       host: cuenta.smtp_host,
       port: cuenta.smtp_port,
@@ -258,7 +406,7 @@ Deno.serve(async (req: Request) => {
       from: cuenta.email,
       to: recipient,
       subject,
-      text: `Informe de Incidencias - ${fmtDate(targetDate)}. Total: ${incidencias.length}.`,
+      text: `Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)}. Incidencias: ${totalIncidencias}. Correctos: ${totalCorrectos}.`,
       html,
     });
 
@@ -266,7 +414,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: smtpResp.error ?? "Error al enviar el correo" }, 500);
     }
 
-    return json({ ok: true, total_incidencias: incidencias.length, recipient });
+    return json({ ok: true, total_incidencias: incidencias.length, total_correctos: correctos.length, recipient, date: targetDate });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "Error interno" }, 500);
   }
@@ -314,7 +462,7 @@ async function sendSmtp(opts: {
     };
 
     await readResponse();
-    await cmd(`EHLO localhost`);
+    await cmd("EHLO localhost");
 
     if (useStartTLS) {
       const r = await cmd("STARTTLS");
@@ -334,17 +482,15 @@ async function sendSmtp(opts: {
 
     const boundary = crypto.randomUUID().replace(/-/g, "");
     const date = new Date().toUTCString();
-
     let message: string;
+
     if (opts.html) {
       message = [
         `From: ${opts.from}`, `To: ${opts.to}`, `Subject: ${opts.subject}`,
         `Date: ${date}`, `MIME-Version: 1.0`,
         `Content-Type: multipart/alternative; boundary="${boundary}"`, ``,
-        `--${boundary}`, `Content-Type: text/plain; charset=UTF-8`,
-        `Content-Transfer-Encoding: 7bit`, ``, opts.text, ``,
-        `--${boundary}`, `Content-Type: text/html; charset=UTF-8`,
-        `Content-Transfer-Encoding: 7bit`, ``, opts.html, ``,
+        `--${boundary}`, `Content-Type: text/plain; charset=UTF-8`, `Content-Transfer-Encoding: 7bit`, ``, opts.text, ``,
+        `--${boundary}`, `Content-Type: text/html; charset=UTF-8`, `Content-Transfer-Encoding: 7bit`, ``, opts.html, ``,
         `--${boundary}--`, ``, `.`,
       ].join("\r\n");
     } else {
@@ -361,7 +507,6 @@ async function sendSmtp(opts: {
 
     await cmd("QUIT");
     try { conn.close(); } catch { /* ignore */ }
-
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "SMTP error" };

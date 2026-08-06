@@ -109,7 +109,8 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     try {
       const { data, error: rpcErr } = await supabase.rpc('validate_vehicle_pin', { p_pin: pin.trim() });
       if (rpcErr || !data?.[0]) { setError('PIN incorrecto o no encontrado'); return; }
-      setUsuarioPin(data[0]);
+      // Store the entered PIN alongside the profile so it can be forwarded to web_register_fichaje
+      setUsuarioPin({ ...data[0], pin: pin.trim() });
       const { data: devData } = await supabase.rpc('kiosk_check_device_by_profile', {
         p_device_key: getDeviceKey(),
         p_user_profile_id: data[0].id,

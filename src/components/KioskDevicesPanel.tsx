@@ -66,19 +66,19 @@ const RECENT_MS = 15 * 60 * 1000;
 const MODE_CONFIG = {
   kiosk_only: {
     label: 'Solo Kiosco',
-    desc: 'Solo puede fichar desde tablets de kiosco autorizadas',
+    desc: 'Solo puede fichar desde tablets de kiosco autorizadas. Sin ubicación GPS.',
     bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE', dot: '#3B82F6',
     icon: Tablet,
   },
   kiosk_or_corporate: {
     label: 'Kiosco o Móvil corporativo',
-    desc: 'Puede fichar desde kiosco o desde su móvil corporativo registrado',
+    desc: 'Kiosco sin GPS · El móvil corporativo exige ubicación GPS',
     bg: '#F0FDF4', text: '#166534', border: '#BBF7D0', dot: '#22C55E',
     icon: MonitorSmartphone,
   },
   any: {
     label: 'Cualquier dispositivo',
-    desc: 'Sin restricción — puede fichar desde cualquier dispositivo',
+    desc: 'Sin restricción. Desde kiosco sin GPS · desde móvil exige ubicación GPS',
     bg: '#F8FAFC', text: '#475569', border: '#E2E8F0', dot: '#94A3B8',
     icon: Globe,
   },

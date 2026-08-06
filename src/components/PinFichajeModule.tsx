@@ -1,212 +1,474 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Delete, Fingerprint, LogIn, LogOut, MapPin, CircleAlert as AlertCircle, Loader as Loader2 } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Delete, Check, Fingerprint, LogIn, LogOut, MapPin, Shield, Lock, Loader2, AlertCircle, Tablet, X, Smartphone } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { useDeviceAuth } from '../hooks/useDeviceAuth';
+import { loadSocietyLogos } from '../lib/societyLogos';
 
-type Screen = 'pin' | 'action' | 'result';
-type ActionResult = { ok: boolean; message: string; type?: string };
+const PIN_LENGTH = 6;
+const RESET_DELAY_MS = 2500;
 
-function useClock() {
-  const [now, setNow] = useState(new Date());
+type Status = 'idle' | 'submitting' | 'success' | 'error';
+
+// ── Device setup modal ─────────────────────────────────────────────────────
+
+function DeviceSetupModal({
+  onSuccess,
+  onCancel,
+  registerDevice,
+}: {
+  onSuccess: () => void;
+  onCancel?: () => void;
+  registerDevice: (key: string, site: string) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [deviceKey, setDeviceKey] = useState('');
+  const [siteName, setSiteName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return now;
-}
-
-export default function PinFichajeModule() {
-  const [screen, setScreen] = useState<Screen>('pin');
-  const [pin, setPin] = useState('');
-  const [employee, setEmployee] = useState<{ id: string; nombre: string } | null>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<ActionResult | null>(null);
-  const [gpsStatus, setGpsStatus] = useState<'idle' | 'searching' | 'ok' | 'denied' | 'unsupported'>('idle');
-  const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const now = useClock();
-
-  const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const dateStr = now.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
-  const getLocation = useCallback(() => {
-    return new Promise<{ lat: number; lng: number } | null>((resolve) => {
-      if (!navigator.geolocation) { setGpsStatus('unsupported'); resolve(null); return; }
-      setGpsStatus('searching');
-      navigator.geolocation.getCurrentPosition(
-        (pos) => { setGpsCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setGpsStatus('ok'); resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
-        () => { setGpsStatus('denied'); resolve(null); },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-      );
-    });
+    setDeviceKey(`tablet_${Date.now().toString(36)}`);
   }, []);
 
-  async function submitPin() {
-    if (pin.length < 4) return;
-    setLoading(true); setError('');
-    const { data, error: rpcErr } = await supabase.rpc('verify_employee_pin', { p_pin: pin });
-    setLoading(false);
-    if (rpcErr || !data || data.length === 0) { setError('PIN no válido'); setPin(''); return; }
-    const emp = data[0] as { id: string; nombre: string };
-    setEmployee({ id: emp.id, nombre: emp.nombre });
-    setScreen('action');
-    setPin('');
+  async function save() {
+    if (!deviceKey.trim() || !siteName.trim()) { setSaveError('Completa todos los campos'); return; }
+    setSaving(true); setSaveError('');
+    const { ok, error } = await registerDevice(deviceKey.trim(), siteName.trim());
+    if (!ok) { setSaveError(error ?? 'Error al registrar el dispositivo'); setSaving(false); return; }
+    onSuccess();
   }
 
-  async function doFichaje(tipo: 'entrada' | 'salida') {
-    if (!employee) return;
-    setLoading(true); setError('');
-    let coords = gpsCoords;
-    if (gpsStatus !== 'ok') coords = await getLocation();
-    const { data, error: rpcErr } = await supabase.rpc('register_fichaje', {
-      p_empleado_id: employee.id,
-      p_tipo: tipo,
-      p_lat: coords?.lat ?? null,
-      p_lng: coords?.lng ?? null,
-    });
-    setLoading(false);
-    if (rpcErr || !data || data.length === 0) {
-      setResult({ ok: false, message: 'Error al registrar el fichaje' });
-    } else {
-      const r = data[0] as { ok: boolean; message: string; tipo: string };
-      setResult({ ok: r.ok, message: r.message, type: r.tipo });
-    }
-    setScreen('result');
-  }
-
-  function reset() {
-    setScreen('pin'); setPin(''); setEmployee(null); setError(''); setResult(null);
-  }
-
-  // ── PIN screen ──
-  if (screen === 'pin') {
-    return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 40%, #F0FDF4 100%)' }}>
-
-        {/* Decorative SVG backgrounds */}
-        <DecorBackground />
-
-        {/* Main card */}
-        <div className="relative z-10 flex flex-col items-center gap-6 px-6">
-          {/* Clock */}
-          <div className="text-center">
-            <p className="text-6xl sm:text-7xl font-bold tracking-tight tabular-nums" style={{ color: '#0F172A' }}>
-              {timeStr}
-            </p>
-            <p className="text-base sm:text-lg mt-1 capitalize" style={{ color: '#475569' }}>
-              {dateStr}
-            </p>
-          </div>
-
-          {/* PIN dots */}
-          <div className="flex items-center gap-4">
-            {[0, 1, 2, 3].map(i => (
-              <div key={i} className="w-4 h-4 rounded-full transition-all duration-200"
-                style={{
-                  backgroundColor: pin.length > i ? '#1D4ED8' : '#CBD5E1',
-                  transform: pin.length > i ? 'scale(1.15)' : 'scale(1)',
-                }} />
-            ))}
-          </div>
-
-          {/* Error */}
-          {error && (
-            <div className="flex items-center gap-2 text-sm" style={{ color: '#DC2626' }}>
-              <AlertCircle size={14} /> {error}
+  return (
+    <div className="fixed inset-0 z-[400] flex flex-col items-center justify-center px-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}>
+      <div className="w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        <div className="px-6 py-5 border-b flex items-center justify-between" style={{ borderColor: '#E2E8F0' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}>
+              <Shield size={18} style={{ color: '#1D4ED8' }} />
             </div>
-          )}
-
-          {/* Numpad */}
-          <div className="grid grid-cols-3 gap-3 sm:gap-4">
-            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(n => (
-              <NumpadKey key={n} label={n} onClick={() => { if (pin.length < 4) setPin(pin + n); }} />
-            ))}
-            <NumpadKey label="" icon={<Delete size={22} />} onClick={() => setPin(pin.slice(0, -1))} variant="secondary" />
-            <NumpadKey label="0" onClick={() => { if (pin.length < 4) setPin(pin + '0'); }} />
-            <NumpadKey label="" icon={loading ? <Loader2 size={22} className="animate-spin" /> : <Fingerprint size={22} />}
-              onClick={submitPin} variant="confirm" disabled={loading || pin.length < 4} />
-          </div>
-
-          {/* GPS status */}
-          {gpsStatus === 'searching' && (
-            <div className="flex items-center gap-2 text-xs" style={{ color: '#64748B' }}>
-              <Loader2 size={12} className="animate-spin" /> Obteniendo ubicación...
+            <div>
+              <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>Registrar tablet kiosco</p>
+              <p className="text-xs" style={{ color: '#64748B' }}>Vincula este dispositivo como terminal de fichaje</p>
             </div>
-          )}
-          {(gpsStatus === 'denied' || gpsStatus === 'unsupported') && (
-            <button onClick={getLocation} className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: '#B45309' }}>
-              <MapPin size={12} /> Ubicación no disponible — pulsar para reintentar
+          </div>
+          {onCancel && (
+            <button onClick={onCancel} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer" style={{ color: '#64748B' }}>
+              <X size={16} />
             </button>
           )}
         </div>
-      </div>
-    );
-  }
-
-  // ── Action screen ──
-  if (screen === 'action' && employee) {
-    return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 40%, #F0FDF4 100%)' }}>
-        <DecorBackground />
-        <div className="relative z-10 flex flex-col items-center gap-8 px-6">
-          <div className="text-center">
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
-              style={{ backgroundColor: '#1D4ED8' }}>
-              <Fingerprint size={28} style={{ color: '#FFFFFF' }} />
+        <div className="px-6 py-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Código del dispositivo</label>
+            <input type="text" value={deviceKey} onChange={e => { setDeviceKey(e.target.value); setSaveError(''); }}
+              placeholder="ej: tablet_oficina_1"
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono"
+              style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#0F172A' }} autoFocus />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Nombre del centro / sede</label>
+            <input type="text" value={siteName} onChange={e => { setSiteName(e.target.value); setSaveError(''); }}
+              placeholder="ej: Oficina La Laguna"
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+              style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#0F172A' }} />
+          </div>
+          {saveError && (
+            <div className="flex items-center gap-2 text-xs" style={{ color: '#DC2626' }}>
+              <AlertCircle size={12} /> {saveError}
             </div>
-            <p className="text-2xl font-bold" style={{ color: '#0F172A' }}>Hola, {employee.nombre}</p>
-            <p className="text-sm mt-1" style={{ color: '#64748B' }}>¿Qué quieres hacer?</p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <button onClick={() => doFichaje('entrada')} disabled={loading}
-              className="flex items-center gap-3 px-8 py-5 rounded-2xl text-lg font-semibold cursor-pointer disabled:opacity-50 transition-all hover:scale-105"
-              style={{ backgroundColor: '#16A34A', color: '#FFFFFF', boxShadow: '0 4px 14px rgba(22,163,74,0.3)' }}>
-              {loading ? <Loader2 size={22} className="animate-spin" /> : <LogIn size={22} />}
-              Fichar entrada
-            </button>
-            <button onClick={() => doFichaje('salida')} disabled={loading}
-              className="flex items-center gap-3 px-8 py-5 rounded-2xl text-lg font-semibold cursor-pointer disabled:opacity-50 transition-all hover:scale-105"
-              style={{ backgroundColor: '#DC2626', color: '#FFFFFF', boxShadow: '0 4px 14px rgba(220,38,38,0.3)' }}>
-              {loading ? <Loader2 size={22} className="animate-spin" /> : <LogOut size={22} />}
-              Fichar salida
-            </button>
-          </div>
-          <button onClick={reset} className="text-sm cursor-pointer" style={{ color: '#64748B' }}>
-            Cancelar
+          )}
+          <button onClick={save} disabled={saving}
+            className="w-full py-3 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-all"
+            style={{ backgroundColor: '#1D4ED8', color: '#FFFFFF' }}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Tablet size={14} />}
+            {saving ? 'Registrando...' : 'Registrar dispositivo'}
           </button>
         </div>
-      </div>
-    );
-  }
-
-  // ── Result screen ──
-  return (
-    <div className="fixed inset-0 flex flex-col items-center justify-center overflow-hidden"
-      style={{ background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 40%, #F0FDF4 100%)' }}>
-      <DecorBackground />
-      <div className="relative z-10 flex flex-col items-center gap-6 px-6 text-center">
-        <div className="w-20 h-20 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: result?.ok ? '#16A34A' : '#DC2626' }}>
-          {result?.ok ? <LogIn size={36} style={{ color: '#FFFFFF' }} /> : <AlertCircle size={36} style={{ color: '#FFFFFF' }} />}
-        </div>
-        <p className="text-2xl font-bold" style={{ color: '#0F172A' }}>
-          {result?.ok ? 'Fichaje registrado' : 'Error'}
-        </p>
-        <p className="text-base" style={{ color: '#64748B' }}>{result?.message}</p>
-        <button onClick={reset}
-          className="mt-4 px-8 py-3 rounded-xl text-sm font-semibold cursor-pointer transition-all hover:scale-105"
-          style={{ backgroundColor: '#1D4ED8', color: '#FFFFFF' }}>
-          Volver al inicio
-        </button>
       </div>
     </div>
   );
 }
 
-// ── Numpad key ──────────────────────────────────────────────────────────────
+// ── Main kiosk PIN module ──────────────────────────────────────────────────
 
-function NumpadKey({
+function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
+  const { status: deviceStatus, deviceInfo, validate: validateDevice, registerDevice } = useDeviceAuth();
+
+  // isKiosk = device is a registered, active kiosk tablet
+  const isKiosk = deviceStatus === 'authorized';
+  // GPS is only required for non-kiosk devices (mobile phones, unregistered devices)
+  const gpsRequired = !isKiosk;
+
+  const [pin, setPin] = useState('');
+  const [status, setStatus] = useState<Status>('idle');
+  const [message, setMessage] = useState('');
+  const [now, setNow] = useState(() => new Date());
+  const [lastEvent, setLastEvent] = useState<'entrada' | 'salida' | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<'searching' | 'ready' | 'denied' | 'unsupported' | 'not_required'>('searching');
+  const [kioskBg, setKioskBg] = useState<string>('/assets/kiosco/fondo.png');
+  const [logos, setLogos] = useState<Record<string, string>>({});
+  const [showSetup, setShowSetup] = useState(false);
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cachedGeo = useRef<{ latitud: number | null; longitud: number | null; ubicacion: string | null }>({
+    latitud: null, longitud: null, ubicacion: null,
+  });
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    supabase
+      .from('ui_settings')
+      .select('key, value')
+      .eq('key', 'kiosk_background')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.value) setKioskBg(data.value);
+      });
+    loadSocietyLogos().then(setLogos);
+  }, []);
+
+  // GPS: only fetch if this is NOT a kiosk device
+  const fetchGeoRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    if (isKiosk) {
+      setGpsStatus('not_required');
+      return;
+    }
+    if (!navigator.geolocation) { setGpsStatus('unsupported'); return; }
+    if (typeof window !== 'undefined' && !window.isSecureContext) { setGpsStatus('denied'); return; }
+    let cancelled = false;
+    const fetchGeo = () => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          if (cancelled) return;
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          let direccion: string | null = null;
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
+              { headers: { 'Accept-Language': 'es' } },
+            );
+            if (res.ok) {
+              const data = await res.json();
+              const a = data.address || {};
+              const parts = [a.road, a.house_number, a.postcode, a.village || a.town || a.city || a.municipality, a.state].filter(Boolean);
+              direccion = parts.join(', ') || data.display_name || null;
+            }
+          } catch { direccion = null; }
+          if (cancelled) return;
+          cachedGeo.current = { latitud: lat, longitud: lon, ubicacion: direccion };
+          setGpsStatus('ready');
+        },
+        () => { if (cancelled) return; setGpsStatus('denied'); },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 },
+      );
+    };
+    fetchGeoRef.current = fetchGeo;
+    fetchGeo();
+    const refreshInterval = setInterval(fetchGeo, 60000);
+    return () => { cancelled = true; clearInterval(refreshInterval); };
+  }, [isKiosk]);
+
+  const retryGeo = useCallback(() => { fetchGeoRef.current(); }, []);
+
+  const reset = useCallback(() => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+    setPin(''); setStatus('idle'); setMessage(''); setLastEvent(null);
+  }, []);
+
+  useEffect(() => () => { if (resetTimer.current) clearTimeout(resetTimer.current); }, []);
+
+  const getDeviceInfo = () => {
+    const ua = navigator.userAgent;
+    const mobile = /Android|iPhone|iPad|iPod/i.test(ua);
+    const tablet = /iPad|Android(?!.*Mobile)/i.test(ua);
+    const type = tablet ? 'Tablet' : mobile ? 'Móvil' : 'Escritorio';
+    const browser = /Chrome/i.test(ua) ? 'Chrome' : /Firefox/i.test(ua) ? 'Firefox' : /Safari/i.test(ua) ? 'Safari' : /Edge/i.test(ua) ? 'Edge' : 'Navegador';
+    const os = /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'Mac' : /Android/i.test(ua) ? 'Android' : /iOS|iPhone|iPad/i.test(ua) ? 'iOS' : /Linux/i.test(ua) ? 'Linux' : 'Sistema';
+    return `${type} · ${browser} · ${os}`;
+  };
+
+  const submit = useCallback(async (pinValue: string) => {
+    if (!pinValue) return;
+
+    // GPS check: only required for non-kiosk devices
+    if (gpsRequired) {
+      if (gpsStatus !== 'ready') {
+        setStatus('error');
+        setMessage('Esperando ubicación GPS... Activa el permiso de ubicación para fichar.');
+        resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
+        return;
+      }
+      const geo = cachedGeo.current;
+      if (geo.latitud === null || geo.longitud === null) {
+        setStatus('error');
+        setMessage('No se pudo obtener la ubicación. Activa el GPS e inténtalo de nuevo.');
+        resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
+        return;
+      }
+    }
+
+    setStatus('submitting'); setMessage('');
+    try {
+      const geo = cachedGeo.current;
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('kiosk_register_fichaje', {
+        p_pin: pinValue,
+        p_latitud: gpsRequired ? geo.latitud : null,
+        p_longitud: gpsRequired ? geo.longitud : null,
+        p_ubicacion: gpsRequired ? geo.ubicacion : null,
+        p_dispositivo: deviceInfo ? `${deviceInfo.site_name} · ${getDeviceInfo()}` : getDeviceInfo(),
+        p_user_agent: navigator.userAgent,
+        p_device_key: deviceInfo?.device_key ?? null,
+      });
+      if (rpcErr || !rpcData || rpcData.length === 0) {
+        setStatus('error'); setMessage('Error al registrar el fichaje.');
+        resetTimer.current = setTimeout(reset, RESET_DELAY_MS); return;
+      }
+      const result = rpcData[0] as { success: boolean; tipo: 'entrada' | 'salida'; nombre_empleado: string; error_msg: string | null };
+      if (!result.success) {
+        if (result.error_msg === 'DEVICE_NOT_AUTHORIZED') {
+          // Show user-facing message instead of blocking the interface
+          setStatus('error');
+          setMessage('Tu modo de fichaje no permite usar este dispositivo. Contacta con RRHH.');
+          resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
+          return;
+        }
+        setStatus('error'); setMessage(result.error_msg ?? 'PIN incorrecto. Inténtalo de nuevo.');
+        resetTimer.current = setTimeout(reset, RESET_DELAY_MS); return;
+      }
+      setLastEvent(result.tipo); setStatus('success');
+      setMessage(`¡Fichaje registrado, ${result.nombre_empleado}!`);
+      resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
+    } catch (err: unknown) {
+      setStatus('error'); setMessage(err instanceof Error ? err.message : 'Error al registrar el fichaje');
+      resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
+    }
+  }, [reset, gpsRequired, gpsStatus, deviceInfo]);
+
+  const appendDigit = (d: string) => {
+    if (status === 'submitting' || status === 'success') return;
+    if (status === 'error') { setPin(d); setStatus('idle'); setMessage(''); return; }
+    setPin((prev) => {
+      if (prev.length >= PIN_LENGTH) return prev;
+      const next = prev + d;
+      if (next.length === PIN_LENGTH) submit(next);
+      return next;
+    });
+  };
+
+  const deleteDigit = () => {
+    if (status === 'submitting' || status === 'success') return;
+    if (status === 'error') { reset(); return; }
+    setPin((prev) => prev.slice(0, -1));
+  };
+
+  const confirm = () => { if (pin.length >= 4) submit(pin); };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key >= '0' && e.key <= '9') appendDigit(e.key);
+      else if (e.key === 'Backspace') deleteDigit();
+      else if (e.key === 'Enter') confirm();
+      else if (e.key === 'Escape' && onClose) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const dateStr = now.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const displayDots = Array.from({ length: PIN_LENGTH }, (_, i) => i < pin.length);
+
+  // Always show the PIN interface — even for unauthorized devices
+  // (the server-side RPC enforces fichaje_mode restrictions)
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[300] flex flex-col" style={{
+        backgroundImage: `url(${kioskBg})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundColor: '#EFF6FF',
+      }}>
+        {/* Main content area — takes all space above logo bar */}
+        <div className="flex-1 flex flex-col items-center justify-center px-4 py-6 overflow-y-auto relative">
+
+          {/* Close button */}
+          {onClose && (
+            <button onClick={onClose}
+              className="absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center cursor-pointer transition-colors"
+              style={{ backgroundColor: 'rgba(255,255,255,0.6)', color: '#1E3A5F' }}
+              title="Salir">
+              <X size={16} />
+            </button>
+          )}
+
+          {/* Device badge — shows kiosk name or "dispositivo móvil" */}
+          <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
+            style={{ backgroundColor: 'rgba(255,255,255,0.75)', color: '#1E3A5F', border: '1px solid rgba(30,58,95,0.15)' }}>
+            {isKiosk ? (
+              <>
+                <Tablet size={11} />
+                {deviceInfo?.site_name ?? 'Kiosco'}
+              </>
+            ) : (
+              <>
+                <Smartphone size={11} />
+                Dispositivo móvil
+              </>
+            )}
+          </div>
+
+          {/* Header */}
+          <div className="text-center mb-5 select-none">
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <Fingerprint size={22} style={{ color: '#1D4ED8' }} />
+              <h1 className="text-sm font-bold uppercase tracking-[0.25em]" style={{ color: '#1D4ED8' }}>
+                Control de Presencia
+              </h1>
+            </div>
+            <p className="text-5xl sm:text-6xl font-bold tracking-wide" style={{ color: '#1E3A5F', lineHeight: 1.1 }}>
+              {timeStr}
+            </p>
+            <p className="text-sm mt-1.5 capitalize font-medium" style={{ color: '#3B6494' }}>
+              {dateStr}
+            </p>
+          </div>
+
+          {/* PIN dots */}
+          <div className="mb-4 select-none">
+            <div className="flex gap-3 justify-center mb-2">
+              {displayDots.map((filled, i) => (
+                <div key={i} className="w-5 h-5 rounded-full border-2 transition-all duration-150"
+                  style={{
+                    borderColor: filled ? '#1D4ED8' : 'rgba(30,58,95,0.3)',
+                    backgroundColor: filled ? '#1D4ED8' : 'transparent',
+                    transform: filled ? 'scale(1.15)' : 'scale(1)',
+                  }} />
+              ))}
+            </div>
+            <p className="text-center text-xs uppercase tracking-widest font-semibold" style={{ color: '#3B6494' }}>
+              Introduce tu PIN
+            </p>
+          </div>
+
+          {/* Status message */}
+          <div className="h-14 mb-3 flex items-center justify-center w-full max-w-xs">
+            {status === 'success' && (
+              <div className="flex items-center gap-3 px-5 py-3 rounded-2xl w-full justify-center"
+                style={{ backgroundColor: 'rgba(22,163,74,0.12)', border: '1.5px solid rgba(22,163,74,0.35)' }}>
+                {lastEvent === 'entrada' ? <LogIn size={18} style={{ color: '#16A34A' }} /> : <LogOut size={18} style={{ color: '#16A34A' }} />}
+                <span className="text-sm font-semibold" style={{ color: '#15803D' }}>{message}</span>
+              </div>
+            )}
+            {status === 'error' && (
+              <div className="flex items-center gap-3 px-5 py-3 rounded-2xl w-full justify-center"
+                style={{ backgroundColor: 'rgba(220,38,38,0.1)', border: '1.5px solid rgba(220,38,38,0.3)' }}>
+                <span className="text-sm font-semibold" style={{ color: '#DC2626' }}>{message}</span>
+              </div>
+            )}
+            {status === 'submitting' && (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full border-2 animate-spin"
+                  style={{ borderColor: 'rgba(29,78,216,0.2)', borderTopColor: '#1D4ED8' }} />
+                <span className="text-sm font-medium" style={{ color: '#3B6494' }}>Validando...</span>
+              </div>
+            )}
+          </div>
+
+          {/* Keypad */}
+          <div className="grid grid-cols-3 gap-3">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
+              <KioskKey key={d} label={d} onClick={() => appendDigit(d)}
+                disabled={status === 'submitting' || status === 'success'} />
+            ))}
+            <KioskKey label="" icon={<Delete size={22} />}
+              onClick={deleteDigit} disabled={status === 'submitting' || status === 'success'} variant="secondary" />
+            <KioskKey label="0" onClick={() => appendDigit('0')}
+              disabled={status === 'submitting' || status === 'success'} />
+            <KioskKey label="" icon={<Check size={24} />}
+              onClick={confirm} disabled={status === 'submitting' || status === 'success' || pin.length < 4} variant="confirm" />
+          </div>
+
+          {/* GPS indicator — only for non-kiosk devices */}
+          {gpsRequired && (
+            <div className="mt-4 flex flex-col items-center gap-1 text-xs">
+              {gpsStatus === 'ready' && cachedGeo.current.ubicacion && (
+                <span className="flex items-center gap-1.5 font-medium" style={{ color: '#1E3A5F' }}>
+                  <MapPin size={12} style={{ color: '#1D4ED8' }} />
+                  Ubicación: <span style={{ color: '#1D4ED8' }}>{cachedGeo.current.ubicacion.split(',')[0]}</span>
+                </span>
+              )}
+              {gpsStatus === 'ready' && !cachedGeo.current.ubicacion && (
+                <span className="flex items-center gap-1.5" style={{ color: '#3B6494' }}>
+                  <MapPin size={12} /> Ubicación lista
+                </span>
+              )}
+              {gpsStatus === 'searching' && (
+                <span className="flex items-center gap-1.5" style={{ color: '#3B6494' }}>
+                  <div className="w-2.5 h-2.5 rounded-full border animate-spin"
+                    style={{ borderColor: 'rgba(59,100,148,0.3)', borderTopColor: '#3B6494' }} />
+                  Obteniendo ubicación...
+                </span>
+              )}
+              {(gpsStatus === 'denied' || gpsStatus === 'unsupported') && (
+                <button onClick={() => { setGpsStatus('searching'); retryGeo(); }}
+                  className="flex items-center gap-1.5 cursor-pointer transition-opacity hover:opacity-70"
+                  style={{ color: '#B45309' }}>
+                  <MapPin size={12} /> Ubicación no disponible — pulsar para reintentar
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Register kiosk button — only for non-registered devices */}
+          {deviceStatus === 'unauthorized' && (
+            <button onClick={() => setShowSetup(true)}
+              className="mt-4 flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+              style={{ backgroundColor: 'rgba(255,255,255,0.7)', color: '#1D4ED8', border: '1px solid rgba(29,78,216,0.2)' }}>
+              <Tablet size={14} /> Registrar como tablet kiosco
+            </button>
+          )}
+
+          {/* Device disabled warning */}
+          {deviceStatus === 'disabled' && deviceInfo && (
+            <div className="mt-3 flex items-center gap-2 px-4 py-2 rounded-xl text-xs"
+              style={{ backgroundColor: 'rgba(220,38,38,0.1)', color: '#DC2626', border: '1px solid rgba(220,38,38,0.2)' }}>
+              <AlertCircle size={14} /> Tablet desactivada por el administrador
+            </div>
+          )}
+        </div>
+
+        {/* Logo bar — bottom strip */}
+        <div className="flex-shrink-0 flex items-center justify-around px-8 py-4 gap-6"
+          style={{ backgroundColor: '#FFFFFF', borderTop: '1px solid rgba(30,58,95,0.1)', minHeight: 80 }}>
+          {Object.entries(logos).map(([societyId, src]) => (
+            <img key={societyId} src={src} alt="" className="h-10 object-contain max-w-[140px]"
+              onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }} />
+          ))}
+          {Object.keys(logos).length === 0 && (
+            <span className="text-sm" style={{ color: '#94A3B8' }}>Cargando logos...</span>
+          )}
+        </div>
+      </div>
+
+      {showSetup && (
+        <DeviceSetupModal
+          registerDevice={registerDevice}
+          onSuccess={() => { setShowSetup(false); validateDevice(); }}
+          onCancel={() => setShowSetup(false)}
+        />
+      )}
+    </>
+  );
+}
+
+function KioskKey({
   label, icon, onClick, disabled, variant = 'default',
 }: {
   label: string;
@@ -217,61 +479,25 @@ function NumpadKey({
 }) {
   let style: React.CSSProperties;
   if (variant === 'confirm') {
-    style = { backgroundColor: '#1D4ED8', border: '1px solid #1E40AF', color: '#FFFFFF', boxShadow: '0 2px 8px rgba(29,78,216,0.3)' };
+    style = { backgroundColor: '#4CAF50', border: '1px solid #388E3C', color: '#FFFFFF', boxShadow: '0 2px 8px rgba(76,175,80,0.35)' };
   } else if (variant === 'secondary') {
-    style = { backgroundColor: 'rgba(255,255,255,0.7)', border: '1px solid #E2E8F0', color: '#475569' };
+    style = { backgroundColor: 'rgba(255,255,255,0.65)', border: '1px solid rgba(30,58,95,0.18)', color: '#1E3A5F', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' };
   } else {
-    style = { backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#0F172A', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' };
+    style = { backgroundColor: 'rgba(255,255,255,0.75)', border: '1px solid rgba(30,58,95,0.15)', color: '#1E3A5F', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' };
   }
   return (
     <button
-      className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center cursor-pointer transition-all duration-100 select-none active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+      className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-2xl flex items-center justify-center cursor-pointer transition-all duration-100 select-none active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed backdrop-blur-sm"
       style={style}
       onClick={onClick}
       disabled={disabled}
     >
-      {icon ? icon : <span className="text-2xl font-semibold">{label}</span>}
+      {icon
+        ? icon
+        : <span className="text-2xl sm:text-3xl font-semibold">{label}</span>
+      }
     </button>
   );
 }
 
-// ── Decorative background ───────────────────────────────────────────────────
-
-function DecorBackground() {
-  return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-      {/* Left: green leaves */}
-      <svg className="absolute -left-10 top-0 h-full w-64 opacity-30" viewBox="0 0 200 600" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M-20 100 Q60 50 80 150 Q60 250 -20 200 Z" fill="#86EFAC" />
-        <path d="M-20 250 Q80 200 100 320 Q80 400 -20 350 Z" fill="#4ADE80" />
-        <path d="M-20 400 Q60 380 70 480 Q50 550 -20 500 Z" fill="#22C55E" />
-        <path d="M-20 50 Q40 20 50 80 Q30 120 -20 100 Z" fill="#BBF7D0" />
-      </svg>
-
-      {/* Right: blue wave shapes */}
-      <svg className="absolute -right-10 top-0 h-full w-72 opacity-25" viewBox="0 0 200 600" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M220 0 Q120 80 180 180 Q220 250 140 300 Q80 350 220 400 L220 0 Z" fill="#BFDBFE" />
-        <path d="M220 300 Q140 350 180 450 Q220 520 160 600 L220 600 Z" fill="#60A5FA" />
-        <path d="M220 100 Q160 150 200 220 Q230 280 170 320 L220 320 Z" fill="#3B82F6" />
-      </svg>
-
-      {/* Bottom-right: Canary Islands map silhouette */}
-      <svg className="absolute bottom-4 right-4 w-32 h-32 opacity-20" viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <ellipse cx="40" cy="75" rx="18" ry="10" fill="#1E3A5F" />
-        <ellipse cx="80" cy="80" rx="14" ry="8" fill="#1E3A5F" />
-        <circle cx="110" cy="85" r="7" fill="#1E3A5F" />
-        <circle cx="130" cy="90" r="5" fill="#1E3A5F" />
-        <circle cx="145" cy="93" r="4" fill="#1E3A5F" />
-        <circle cx="160" cy="96" r="6" fill="#1E3A5F" />
-        <circle cx="175" cy="100" r="3" fill="#1E3A5F" />
-      </svg>
-
-      {/* Top-right: dot grid */}
-      <div className="absolute top-8 right-8 grid grid-cols-5 gap-2 opacity-20">
-        {Array.from({ length: 20 }).map((_, i) => (
-          <div key={i} className="w-2 h-2 rounded-full" style={{ backgroundColor: '#1D4ED8' }} />
-        ))}
-      </div>
-    </div>
-  );
-}
+export default PinFichajeModule;

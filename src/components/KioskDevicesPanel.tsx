@@ -37,7 +37,7 @@ interface Empleado {
   fichaje_mode: 'kiosk_only' | 'kiosk_or_corporate' | 'any';
 }
 
-type PanelTab = 'kiosk' | 'corporate' | 'permissions' | 'requests';
+type PanelTab = 'kiosk' | 'corporate' | 'permissions';
 
 // ── Utils ──────────────────────────────────────────────────────────────────────
 
@@ -463,182 +463,6 @@ function CorporateTab() {
   );
 }
 
-// ── Registration Requests sub-panel ────────────────────────────────────────
-
-interface RegistrationRequest {
-  id: string;
-  request_code: string;
-  approval_code: string | null;
-  device_key: string;
-  site_name: string;
-  device_info: string;
-  user_agent: string;
-  status: 'pending' | 'approved' | 'rejected' | 'completed';
-  created_at: string;
-  reviewed_at: string | null;
-  completed_at: string | null;
-}
-
-function RequestsTab() {
-  const [requests, setRequests] = useState<RegistrationRequest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [approvalResult, setApprovalResult] = useState<{ id: string; code: string; deviceKey: string; siteName: string } | null>(null);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
-
-  async function load() {
-    setLoading(true);
-    const { data } = await supabase
-      .from('device_registration_requests')
-      .select('*')
-      .order('created_at', { ascending: false });
-    setRequests((data as RegistrationRequest[]) ?? []);
-    setLoading(false);
-  }
-  useEffect(() => { load(); }, []);
-
-  async function approve(req: RegistrationRequest) {
-    setActionLoading(req.id);
-    const { data, error } = await supabase.rpc('approve_device_request', { p_request_id: req.id });
-    setActionLoading(null);
-    if (error || !data || data.length === 0 || !data[0].approval_code) return;
-    const result = data[0] as { approval_code: string; device_key: string; site_name: string };
-    setApprovalResult({ id: req.id, code: result.approval_code, deviceKey: result.device_key, siteName: result.site_name });
-    load();
-  }
-
-  async function reject(req: RegistrationRequest) {
-    setActionLoading(req.id);
-    await supabase
-      .from('device_registration_requests')
-      .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
-      .eq('id', req.id);
-    setActionLoading(null);
-    load();
-  }
-
-  function copyCode(code: string) {
-    navigator.clipboard.writeText(code).then(() => {
-      setCopiedCode(code); setTimeout(() => setCopiedCode(null), 2000);
-    });
-  }
-
-  const pending = requests.filter(r => r.status === 'pending');
-  const approved = requests.filter(r => r.status === 'approved');
-  const completed = requests.filter(r => r.status === 'completed');
-  const rejected = requests.filter(r => r.status === 'rejected');
-
-  const statusConfig: Record<string, { label: string; bg: string; text: string; border: string }> = {
-    pending: { label: 'Pendiente', bg: '#FEF9C3', text: '#A16207', border: '#FDE68A' },
-    approved: { label: 'Aprobada', bg: '#DBEAFE', text: '#1D4ED8', border: '#BFDBFE' },
-    completed: { label: 'Completada', bg: '#DCFCE7', text: '#15803D', border: '#BBF7D0' },
-    rejected: { label: 'Rechazada', bg: '#FEE2E2', text: '#DC2626', border: '#FECACA' },
-  };
-
-  return (
-    <>
-      <div className="flex flex-wrap gap-3 mb-5">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm" style={{ backgroundColor: '#FEF9C3', border: '1px solid #FDE68A', color: '#A16207' }}>
-          <Clock size={14} /><span className="font-semibold">{pending.length}</span><span className="text-xs opacity-75">pendientes</span>
-        </div>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm" style={{ backgroundColor: '#DBEAFE', border: '1px solid #BFDBFE', color: '#1D4ED8' }}>
-          <Check size={14} /><span className="font-semibold">{approved.length}</span><span className="text-xs opacity-75">aprobadas</span>
-        </div>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm" style={{ backgroundColor: '#DCFCE7', border: '1px solid #BBF7D0', color: '#15803D' }}>
-          <CheckCircle2 size={14} /><span className="font-semibold">{completed.length}</span><span className="text-xs opacity-75">completadas</span>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm font-medium" style={{ color: '#475569' }}>Solicitudes de registro de dispositivos</p>
-        <button onClick={load} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#64748B' }}><RefreshCw size={14} /></button>
-      </div>
-
-      <div className="space-y-3">
-        {loading ? (
-          <div className="flex items-center justify-center py-12 gap-2" style={{ color: '#94A3B8' }}><Loader2 size={16} className="animate-spin" /> Cargando...</div>
-        ) : requests.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <Tablet size={28} style={{ color: '#CBD5E1' }} />
-            <p className="text-sm" style={{ color: '#94A3B8' }}>No hay solicitudes de registro</p>
-          </div>
-        ) : (
-          requests.map(req => {
-            const cfg = statusConfig[req.status];
-            const isPending = req.status === 'pending';
-            const showApproval = approvalResult?.id === req.id && approvalResult.code !== 'ERROR';
-            return (
-              <div key={req.id} className="rounded-xl p-4" style={{ backgroundColor: '#FFFFFF', border: `1px solid ${isPending ? '#FDE68A' : '#E2E8F0'}` }}>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="flex-shrink-0">
-                    <div className="px-3 py-2 rounded-lg font-mono text-lg font-bold tracking-wider" style={{ backgroundColor: '#F1F5F9', color: '#0F172A' }}>
-                      {req.request_code}
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="font-semibold text-sm" style={{ color: '#0F172A' }}>{req.site_name}</span>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ backgroundColor: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}` }}>{cfg.label}</span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: '#94A3B8' }}>
-                      <span className="flex items-center gap-1"><Tablet size={10} /> {req.device_info || '—'}</span>
-                      <span className="flex items-center gap-1"><Clock size={10} /> {formatDate(req.created_at)}</span>
-                      {req.completed_at && <span style={{ color: '#16A34A' }}>Completada: {formatDate(req.completed_at)}</span>}
-                    </div>
-                  </div>
-                  {isPending && (
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button onClick={() => reject(req)} disabled={actionLoading === req.id}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50"
-                        style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
-                        {actionLoading === req.id ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />} Rechazar
-                      </button>
-                      <button onClick={() => approve(req)} disabled={actionLoading === req.id}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50"
-                        style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
-                        {actionLoading === req.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} Aprobar
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {showApproval && (
-                  <div className="mt-3 p-3 rounded-xl" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-                    <p className="text-xs font-semibold mb-2" style={{ color: '#1D4ED8' }}>Código de aprobación — entrégalo al dispositivo:</p>
-                    <div className="flex items-center gap-2">
-                      <div className="px-4 py-2 rounded-lg text-2xl font-bold font-mono tracking-[0.3em]" style={{ backgroundColor: '#FFFFFF', border: '2px solid #BFDBFE', color: '#1D4ED8' }}>
-                        {approvalResult!.code}
-                      </div>
-                      <button onClick={() => copyCode(approvalResult!.code)} className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#475569' }} title="Copiar">
-                        {copiedCode === approvalResult!.code ? <CheckCircle2 size={16} style={{ color: '#16A34A' }} /> : <Copy size={16} />}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {req.status === 'approved' && req.approval_code && !showApproval && (
-                  <div className="mt-3 p-3 rounded-xl" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-                    <p className="text-xs font-semibold mb-1" style={{ color: '#1D4ED8' }}>Código de aprobación:</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl font-bold font-mono tracking-[0.3em]" style={{ color: '#1D4ED8' }}>{req.approval_code}</span>
-                      <button onClick={() => copyCode(req.approval_code!)} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#475569' }} title="Copiar">
-                        {copiedCode === req.approval_code ? <CheckCircle2 size={14} style={{ color: '#16A34A' }} /> : <Copy size={14} />}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
-        {rejected.length > 0 && (
-          <p className="text-xs text-center pt-2" style={{ color: '#94A3B8' }}>{rejected.length} solicitud{rejected.length !== 1 ? 'es' : ''} rechazada{rejected.length !== 1 ? 's' : ''}</p>
-        )}
-      </div>
-    </>
-  );
-}
-
 // ── Permissions sub-panel ──────────────────────────────────────────────────────
 
 function PermissionsTab() {
@@ -888,7 +712,6 @@ export default function KioskDevicesPanel() {
     { id: 'kiosk',       label: 'Tablets de kiosco',      icon: Tablet,          desc: 'Terminales fijos autorizados' },
     { id: 'corporate',   label: 'Móviles corporativos',   icon: Smartphone,      desc: 'Dispositivos personales asignados' },
     { id: 'permissions', label: 'Permisos por empleado',  icon: Settings2,       desc: 'Control de acceso individual' },
-    { id: 'requests',    label: 'Solicitudes',            icon: Clock,           desc: 'Pendientes de aprobación' },
   ];
 
   return (
@@ -931,7 +754,6 @@ export default function KioskDevicesPanel() {
         {activeTab === 'kiosk' && <KioskTab />}
         {activeTab === 'corporate' && <CorporateTab />}
         {activeTab === 'permissions' && <PermissionsTab />}
-        {activeTab === 'requests' && <RequestsTab />}
       </div>
     </div>
   );

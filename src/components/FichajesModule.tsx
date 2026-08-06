@@ -358,6 +358,13 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
         .maybeSingle();
 
       const [ubicacion] = await Promise.all([getGeolocation()]);
+      // For entrada, require GPS location before attempting to register
+      if (tipo === 'entrada' && !ubicacion) {
+        setError('No se pudo obtener tu ubicación GPS. Sin ubicación no se puede registrar la entrada.');
+        setLoading(false);
+        return;
+      }
+
       const { data: rpcData, error: rpcErr } = await supabase.rpc('web_register_fichaje', {
         p_tipo_evento: tipo,
         p_ubicacion: ubicacion,
@@ -368,7 +375,20 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
       });
       if (rpcErr || !rpcData || rpcData.length === 0) {
         const msg = rpcData?.[0]?.error_msg || rpcErr?.message || 'Error al fichar';
-        throw new Error(msg === 'DEVICE_NOT_AUTHORIZED' ? 'Dispositivo no autorizado. Contacta con RRHH para registrar este dispositivo.' : msg);
+        throw new Error(msg);
+      }
+      const rpcResult = rpcData[0] as { success: boolean; error_msg: string };
+      if (!rpcResult.success) {
+        const msg = rpcResult.error_msg || 'Error al fichar';
+        if (msg === 'DEVICE_NOT_AUTHORIZED') {
+          throw new Error('Dispositivo no autorizado. Contacta con RRHH para registrar este dispositivo.');
+        } else if (msg === 'LOCATION_REQUIRED') {
+          throw new Error('No se pudo obtener tu ubicación GPS. Sin ubicación no se puede registrar la entrada.');
+        } else if (msg === 'PIN_INCORRECTO') {
+          throw new Error('PIN incorrecto.');
+        } else {
+          throw new Error(msg);
+        }
       }
       const tipoLabel = tipo === 'entrada' ? 'entrada' : tipo === 'salida' ? 'salida' : tipo === 'permiso' ? 'inicio de permiso' : 'fin de permiso';
       setSuccess(`Fichaje de ${tipoLabel} registrado.`);

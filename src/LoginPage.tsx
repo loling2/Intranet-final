@@ -164,7 +164,13 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
         : tipo === 'fin_descanso' ? 'pausa_fin'
         : 'permiso';
 
-      const [ubicacion] = await Promise.all([getGeolocation()]);
+      // For entrada, we must have GPS location before attempting to register
+      let ubicacion = await getGeolocation();
+      if (tipo === 'entrada' && !ubicacion) {
+        setError('No se pudo obtener tu ubicación GPS. Activa la ubicación e inténtalo de nuevo. Sin ubicación no se puede registrar la entrada.');
+        setLoading(false);
+        return;
+      }
 
       const { data: rpcData, error: rpcErr } = await supabase.rpc('web_register_fichaje', {
         p_tipo_evento: tipoEvento,
@@ -173,10 +179,24 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
         p_user_agent: navigator.userAgent,
         p_device_key: getDeviceKey(),
         p_es_manual: false,
+        p_pin: usuarioPin.pin,
       });
       if (rpcErr || !rpcData || rpcData.length === 0) {
         const msg = rpcData?.[0]?.error_msg || rpcErr?.message || 'Error al registrar';
-        throw new Error(msg === 'DEVICE_NOT_AUTHORIZED' ? 'Dispositivo no autorizado. Contacta con RRHH para registrar este dispositivo.' : msg);
+        throw new Error(msg);
+      }
+      const result = rpcData[0] as { success: boolean; tipo: string; nombre_empleado: string; error_msg: string };
+      if (!result.success) {
+        const msg = result.error_msg || 'Error al registrar';
+        if (msg === 'DEVICE_NOT_AUTHORIZED') {
+          throw new Error('Dispositivo no autorizado. Contacta con RRHH para registrar este dispositivo.');
+        } else if (msg === 'LOCATION_REQUIRED') {
+          throw new Error('No se pudo obtener tu ubicación GPS. Sin ubicación no se puede registrar la entrada.');
+        } else if (msg === 'PIN_INCORRECTO') {
+          throw new Error('PIN incorrecto. Introduce tu PIN de nuevo.');
+        } else {
+          throw new Error(msg);
+        }
       }
       setDoneMsg(`${tipo === 'entrada' ? 'Entrada' : tipo === 'salida' ? 'Salida' : tipo === 'descanso' ? 'Descanso iniciado' : tipo === 'fin_descanso' ? 'Descanso finalizado' : 'Permiso'} registrado — ${usuarioPin.nombre}`);
       setDoneColor(tipo === 'salida' ? '#DC2626' : '#16A34A');
@@ -315,10 +335,22 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
         p_device_key: getDeviceKey(),
         p_es_manual: true,
         p_nota_correccion: fichajeNota.trim(),
+        p_pin: usuarioPin?.pin,
       });
       if (rpcErr || !rpcData || rpcData.length === 0) {
         const msg = rpcData?.[0]?.error_msg || rpcErr?.message || 'Error al registrar';
-        throw new Error(msg === 'DEVICE_NOT_AUTHORIZED' ? 'Dispositivo no autorizado. Contacta con RRHH para registrar este dispositivo.' : msg);
+        throw new Error(msg);
+      }
+      const result = rpcData[0] as { success: boolean; tipo: string; nombre_empleado: string; error_msg: string };
+      if (!result.success) {
+        const msg = result.error_msg || 'Error al registrar';
+        if (msg === 'DEVICE_NOT_AUTHORIZED') {
+          throw new Error('Dispositivo no autorizado. Contacta con RRHH para registrar este dispositivo.');
+        } else if (msg === 'PIN_INCORRECTO') {
+          throw new Error('PIN incorrecto. Introduce tu PIN de nuevo.');
+        } else {
+          throw new Error(msg);
+        }
       }
       setDoneMsg('Incidencia de fichaje registrada correctamente');
       setDoneColor('#7C3AED');

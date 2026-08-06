@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Delete, Fingerprint, LogIn, LogOut, MapPin, AlertCircle, Loader2 } from 'lucide-react';
+import { Delete, Fingerprint, LogIn, LogOut, MapPin, CircleAlert as AlertCircle, Loader as Loader2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 type Screen = 'pin' | 'action' | 'result';

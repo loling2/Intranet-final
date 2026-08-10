@@ -850,6 +850,10 @@ function SolicitudesTab() {
 
   const loadRequests = async () => {
     setLoading(true);
+    await supabase
+      .from('device_pairing_requests')
+      .delete()
+      .lt('expires_at', new Date().toISOString());
     const { data, error: qErr } = await supabase
       .from('device_pairing_requests')
       .select('*')

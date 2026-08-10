@@ -3,7 +3,8 @@ import {
   Tablet, Smartphone, Plus, Power, PowerOff, RefreshCw, Pencil, X, Check,
   Loader2, AlertCircle, Clock, MapPin, ShieldCheck, Copy, CheckCircle2, Search,
   Users, Globe, MonitorSmartphone, Settings2, ChevronDown, ChevronUp,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Inbox, KeyRound, Timer, CheckCheck, Trash2,
+  Activity,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -37,7 +38,7 @@ interface Empleado {
   fichaje_mode: 'kiosk_only' | 'kiosk_or_corporate' | 'any';
 }
 
-type PanelTab = 'kiosk' | 'corporate' | 'permissions';
+type PanelTab = 'kiosk' | 'corporate' | 'permissions' | 'solicitudes' | 'telemetria';
 
 // ── Utils ──────────────────────────────────────────────────────────────────────
 
@@ -131,6 +132,13 @@ function KioskTab() {
     await supabase.from('kiosk_devices').update({ is_active: !d.is_active }).eq('id', d.id);
     await load(); setToggling(null);
   }
+  const [deleting, setDeleting] = useState<string | null>(null);
+  async function deleteDevice(d: KioskDevice) {
+    if (!confirm(`¿Eliminar el dispositivo "${d.site_name}"? Esta acción no se puede deshacer.`)) return;
+    setDeleting(d.id);
+    await supabase.from('kiosk_devices').delete().eq('id', d.id);
+    await load(); setDeleting(null);
+  }
   function copyKey(key: string) {
     navigator.clipboard.writeText(key).then(() => { setCopiedKey(key); setTimeout(() => setCopiedKey(null), 2000); });
   }
@@ -154,9 +162,7 @@ function KioskTab() {
             <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." className="pl-7 pr-3 py-1.5 rounded-lg text-sm outline-none" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B', width: 180 }} />
           </div>
           <button onClick={load} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" title="Actualizar" style={{ color: '#64748B' }}><RefreshCw size={14} /></button>
-          <button onClick={openNew} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer" style={{ backgroundColor: '#0F172A', color: '#22D3EE' }}>
-            <Plus size={14} /> Registrar tablet
-          </button>
+          <span className="text-xs px-3 py-2 rounded-lg whitespace-nowrap" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>Vincula dispositivos desde Solicitudes</span>
         </div>
       </div>
 
@@ -201,6 +207,11 @@ function KioskTab() {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <button onClick={() => openEdit(device)} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" title="Editar" style={{ color: '#475569' }}><Pencil size={13} /></button>
+                    <button onClick={() => deleteDevice(device)} disabled={deleting === device.id}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 disabled:opacity-50" title="Eliminar"
+                      style={{ color: '#DC2626' }}>
+                      {deleting === device.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    </button>
                     <button onClick={() => toggleActive(device)} disabled={toggling === device.id}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50"
                       style={{ backgroundColor: device.is_active ? '#FEF2F2' : '#F0FDF4', color: device.is_active ? '#DC2626' : '#16A34A', border: `1px solid ${device.is_active ? '#FECACA' : '#BBF7D0'}` }}>
@@ -290,6 +301,7 @@ function CorporateTab() {
   const [saveError, setSaveError] = useState('');
   const [toggling, setToggling] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -332,6 +344,12 @@ function CorporateTab() {
   }
   function copyKey(key: string) {
     navigator.clipboard.writeText(key).then(() => { setCopiedKey(key); setTimeout(() => setCopiedKey(null), 2000); });
+  }
+  async function deleteDevice(d: CorporateDevice) {
+    if (!confirm(`¿Eliminar el dispositivo "${d.device_label}"? Esta acción no se puede deshacer.`)) return;
+    setDeleting(d.id);
+    await supabase.from('employee_registered_devices').delete().eq('id', d.id);
+    await load(); setDeleting(null);
   }
 
   const filtered = devices.filter(d =>
@@ -400,7 +418,12 @@ function CorporateTab() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <button onClick={() => openEdit(device)} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#475569' }}><Pencil size={13} /></button>
+                    <button onClick={() => openEdit(device)} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" title="Editar" style={{ color: '#475569' }}><Pencil size={13} /></button>
+                    <button onClick={() => deleteDevice(device)} disabled={deleting === device.id}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 disabled:opacity-50" title="Eliminar"
+                      style={{ color: '#DC2626' }}>
+                      {deleting === device.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    </button>
                     <button onClick={() => toggleActive(device)} disabled={toggling === device.id}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50"
                       style={{ backgroundColor: device.is_active ? '#FEF2F2' : '#F0FDF4', color: device.is_active ? '#DC2626' : '#16A34A', border: `1px solid ${device.is_active ? '#FECACA' : '#BBF7D0'}` }}>
@@ -703,6 +726,396 @@ function PermissionsTab() {
   );
 }
 
+// ── Solicitudes Tab ──────────────────────────────────────────────────────────
+
+function genPairingCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+interface PairingRequest {
+  id: string;
+  device_key: string;
+  device_code: string;
+  confirm_code: string | null;
+  site_name: string | null;
+  device_info: string | null;
+  status: string;
+  expires_at: string;
+  confirmed_at: string | null;
+  created_at: string;
+}
+
+function SolicitudesTab() {
+  const [requests, setRequests] = useState<PairingRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [siteNames, setSiteNames] = useState<Record<string, string>>({});
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [savingDevice, setSavingDevice] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const loadRequests = async () => {
+    setLoading(true);
+    const { data, error: qErr } = await supabase
+      .from('device_pairing_requests')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (qErr) { setError('Error al cargar solicitudes'); setLoading(false); return; }
+    const now = new Date();
+    const valid = (data ?? []).filter(r => r.status === 'pending' || r.status === 'confirmed');
+    setRequests(valid as PairingRequest[]);
+    const names: Record<string, string> = {};
+    for (const r of valid as PairingRequest[]) names[r.id] = r.site_name ?? '';
+    setSiteNames(names);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadRequests(); }, []);
+
+  const handleGenerateConfirm = async (reqId: string) => {
+    setConfirming(reqId);
+    setError('');
+    try {
+      const code = genPairingCode();
+      const { error: uErr } = await supabase
+        .from('device_pairing_requests')
+        .update({ confirm_code: code, status: 'confirmed', confirmed_at: new Date().toISOString() })
+        .eq('id', reqId);
+      if (uErr) throw new Error(uErr.message);
+      setSuccess(`Código de confirmación generado: ${code}`);
+      await loadRequests();
+    } catch (e: any) { setError(e.message ?? 'Error al generar código'); }
+    finally { setConfirming(null); }
+  };
+
+  const handleReject = async (reqId: string) => {
+    setRejecting(reqId);
+    setError('');
+    try {
+      const { error: uErr } = await supabase
+        .from('device_pairing_requests')
+        .update({ status: 'rejected' })
+        .eq('id', reqId);
+      if (uErr) throw new Error(uErr.message);
+      await loadRequests();
+    } catch (e: any) { setError(e.message ?? 'Error al rechazar'); }
+    finally { setRejecting(null); }
+  };
+
+  const handleSaveDevice = async (req: PairingRequest) => {
+    setSavingDevice(req.id);
+    setError('');
+    try {
+      const siteName = siteNames[req.id]?.trim() || req.site_name?.trim() || `Kiosco ${new Date().toLocaleDateString('es-ES')}`;
+      if (siteName) {
+        const { error: uErr } = await supabase
+          .from('device_pairing_requests')
+          .update({ site_name: siteName })
+          .eq('id', req.id);
+        if (uErr) throw new Error(uErr.message);
+      }
+      const { data, error: rpcErr } = await supabase.rpc('complete_device_pairing', {
+        p_request_id: req.id,
+        p_device_key: req.device_key,
+        p_confirm_code: req.confirm_code,
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+      const result = Array.isArray(data) ? data[0] : data;
+      if (!result?.success) throw new Error(result?.error_msg ?? 'No se pudo completar el registro');
+      setSuccess(`Dispositivo "${siteName}" guardado correctamente`);
+      await loadRequests();
+    } catch (e: any) { setError(e.message ?? 'Error al guardar dispositivo'); }
+    finally { setSavingDevice(null); }
+  };
+
+  const pending = requests.filter(r => r.status === 'pending');
+  const confirmed = requests.filter(r => r.status === 'confirmed');
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 size={20} className="animate-spin" style={{ color: '#0369A1' }} />
+        <span className="ml-2 text-sm" style={{ color: '#64748B' }}>Cargando solicitudes...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+          <AlertCircle size={16} style={{ color: '#DC2626' }} />
+          <span className="text-sm" style={{ color: '#DC2626' }}>{error}</span>
+        </div>
+      )}
+      {success && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+          <CheckCircle2 size={16} style={{ color: '#16A34A' }} />
+          <span className="text-sm" style={{ color: '#15803D' }}>{success}</span>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-bold text-sm" style={{ color: '#0F172A' }}>Solicitudes de emparejamiento</h3>
+          <p className="text-xs" style={{ color: '#64748B' }}>Revisa y autoriza dispositivos que solicitan registro</p>
+        </div>
+        <button onClick={loadRequests} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
+          <RefreshCw size={13} /> Actualizar
+        </button>
+      </div>
+
+      {pending.length === 0 && confirmed.length === 0 && (
+        <div className="text-center py-12 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
+          <Inbox size={32} className="mx-auto mb-2" style={{ color: '#CBD5E1' }} />
+          <p className="text-sm" style={{ color: '#94A3B8' }}>No hay solicitudes pendientes</p>
+        </div>
+      )}
+
+      {pending.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#F59E0B' }}>Pendientes ({pending.length})</p>
+          {pending.map(req => {
+            const expired = new Date(req.expires_at) < new Date();
+            return (
+              <div key={req.id} className="rounded-xl p-4" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#FEF3C7' }}>
+                      <KeyRound size={18} style={{ color: '#D97706' }} />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm" style={{ color: '#92400E' }}>{req.site_name || 'Sin nombre'}</p>
+                      <p className="font-mono font-bold text-lg tracking-widest" style={{ color: '#92400E' }}>{req.device_code}</p>
+                      <p className="text-xs" style={{ color: '#A16207' }}>{req.device_info ?? 'Dispositivo desconocido'}</p>
+                      <p className="text-xs mt-0.5" style={{ color: expired ? '#DC2626' : '#A16207' }}>
+                        {expired ? 'Expirado' : `Expira ${new Date(req.expires_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    {!expired && (
+                      <button onClick={() => handleGenerateConfirm(req.id)} disabled={confirming === req.id}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-60"
+                        style={{ backgroundColor: '#0369A1' }}>
+                        {confirming === req.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCheck size={13} />}
+                        Generar código
+                      </button>
+                    )}
+                    <button onClick={() => handleReject(req.id)} disabled={rejecting === req.id}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-60"
+                      style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
+                      {rejecting === req.id ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
+                      Rechazar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {confirmed.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#16A34A' }}>Confirmados — Listos para guardar ({confirmed.length})</p>
+          {confirmed.map(req => (
+            <div key={req.id} className="rounded-xl p-4" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#DCFCE7' }}>
+                    <ShieldCheck size={18} style={{ color: '#16A34A' }} />
+                  </div>
+                  <div className="space-y-1">
+                    <div>
+                      <span className="text-xs" style={{ color: '#64748B' }}>Nombre: </span>
+                      <span className="font-semibold text-sm" style={{ color: '#0F172A' }}>{req.site_name || 'Sin nombre'}</span>
+                    </div>
+                    <div>
+                      <span className="text-xs" style={{ color: '#64748B' }}>Código dispositivo: </span>
+                      <span className="font-mono font-bold" style={{ color: '#92400E' }}>{req.device_code}</span>
+                    </div>
+                    <div>
+                      <span className="text-xs" style={{ color: '#64748B' }}>Código confirmación: </span>
+                      <span className="font-mono font-bold text-lg tracking-widest" style={{ color: '#15803D' }}>{req.confirm_code}</span>
+                    </div>
+                    <p className="text-xs" style={{ color: '#64748B' }}>{req.device_info ?? 'Dispositivo desconocido'}</p>
+                    <input type="text" value={siteNames[req.id] ?? ''}
+                      onChange={(e) => setSiteNames(prev => ({ ...prev, [req.id]: e.target.value }))}
+                      placeholder="Nombre del dispositivo (ej: Móvil Julio)"
+                      className="mt-1 w-full px-3 py-1.5 rounded-lg text-xs outline-none"
+                      style={{ border: '1px solid #BBF7D0', backgroundColor: '#FFFFFF', color: '#1E293B' }} />
+                  </div>
+                </div>
+                <button onClick={() => handleSaveDevice(req)} disabled={savingDevice === req.id}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-60"
+                  style={{ backgroundColor: '#16A34A' }}>
+                  {savingDevice === req.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                  Guardar dispositivo
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Telemetria Tab ─────────────────────────────────────────────────────────────
+
+function TelemetriaTab() {
+  const [kioskDevices, setKioskDevices] = useState<KioskDevice[]>([]);
+  const [corpDevices, setCorpDevices] = useState<CorporateDevice[]>([]);
+  const [recentFichajes, setRecentFichajes] = useState<{ id: string; nombre_empleado: string; tipo_evento: string; timestamp: string; dispositivo: string | null; ubicacion: string | null }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  async function load() {
+    setLoading(true);
+    const [{ data: kd }, { data: cd }, { data: rf }] = await Promise.all([
+      supabase.from('kiosk_devices').select('*').order('last_seen_at', { ascending: false, nullsFirst: false }),
+      supabase.from('employee_registered_devices').select('*').order('created_at', { ascending: false }),
+      supabase.from('fichajes').select('id, nombre_empleado, tipo_evento, timestamp, dispositivo, ubicacion').order('timestamp', { ascending: false }).limit(20),
+    ]);
+    setKioskDevices(kd ?? []);
+    setCorpDevices(cd ?? []);
+    setRecentFichajes(rf ?? []);
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  const RECENT_MS = 24 * 60 * 60 * 1000;
+  const onlineKiosk = kioskDevices.filter(d => d.last_seen_at && Date.now() - new Date(d.last_seen_at).getTime() < RECENT_MS).length;
+  const activeCorp = corpDevices.filter(d => d.is_active).length;
+
+  function relativeTime(ts: string | null): string {
+    if (!ts) return 'Nunca';
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Hace instantes';
+    if (mins < 60) return `Hace ${mins} min`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `Hace ${hrs} h`;
+    const days = Math.floor(hrs / 24);
+    return `Hace ${days} d`;
+  }
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12 gap-2" style={{ color: '#94A3B8' }}><Loader2 size={16} className="animate-spin" /> Cargando telemetría...</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="rounded-xl p-4" style={{ backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD' }}>
+          <div className="flex items-center gap-2 mb-1"><Tablet size={14} style={{ color: '#0369A1' }} /><span className="text-xs font-medium" style={{ color: '#0369A1' }}>Tablets</span></div>
+          <p className="text-2xl font-bold" style={{ color: '#0F172A' }}>{kioskDevices.length}</p>
+          <p className="text-xs" style={{ color: '#64748B' }}>{onlineKiosk} activas hoy</p>
+        </div>
+        <div className="rounded-xl p-4" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+          <div className="flex items-center gap-2 mb-1"><Smartphone size={14} style={{ color: '#16A34A' }} /><span className="text-xs font-medium" style={{ color: '#16A34A' }}>Móviles</span></div>
+          <p className="text-2xl font-bold" style={{ color: '#0F172A' }}>{corpDevices.length}</p>
+          <p className="text-xs" style={{ color: '#64748B' }}>{activeCorp} activos</p>
+        </div>
+        <div className="rounded-xl p-4" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+          <div className="flex items-center gap-2 mb-1"><Activity size={14} style={{ color: '#DC2626' }} /><span className="text-xs font-medium" style={{ color: '#DC2626' }}>Fichajes recientes</span></div>
+          <p className="text-2xl font-bold" style={{ color: '#0F172A' }}>{recentFichajes.length}</p>
+          <p className="text-xs" style={{ color: '#64748B' }}>últimos 20</p>
+        </div>
+        <div className="rounded-xl p-4" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+          <div className="flex items-center gap-2 mb-1"><Clock size={14} style={{ color: '#D97706' }} /><span className="text-xs font-medium" style={{ color: '#D97706' }}>Sin actividad</span></div>
+          <p className="text-2xl font-bold" style={{ color: '#0F172A' }}>{kioskDevices.filter(d => !d.last_seen_at).length}</p>
+          <p className="text-xs" style={{ color: '#64748B' }}>tablets nunca usadas</p>
+        </div>
+      </div>
+
+      {/* Device activity table */}
+      <div>
+        <h3 className="font-bold text-sm mb-3" style={{ color: '#0F172A' }}>Actividad de tablets de kiosco</h3>
+        <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid #E2E8F0' }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ backgroundColor: '#F8FAFC' }}>
+                <th className="text-left px-4 py-2.5 font-medium text-xs" style={{ color: '#64748B' }}>Dispositivo</th>
+                <th className="text-left px-4 py-2.5 font-medium text-xs" style={{ color: '#64748B' }}>Estado</th>
+                <th className="text-left px-4 py-2.5 font-medium text-xs" style={{ color: '#64748B' }}>Último fichaje</th>
+                <th className="text-left px-4 py-2.5 font-medium text-xs" style={{ color: '#64748B' }}>Clave</th>
+              </tr>
+            </thead>
+            <tbody>
+              {kioskDevices.length === 0 && (
+                <tr><td colSpan={4} className="text-center py-8 text-xs" style={{ color: '#94A3B8' }}>No hay tablets registradas</td></tr>
+              )}
+              {kioskDevices.map(d => {
+                const isOnline = d.last_seen_at ? Date.now() - new Date(d.last_seen_at).getTime() < RECENT_MS : false;
+                return (
+                  <tr key={d.id} className="border-t" style={{ borderColor: '#F1F5F9' }}>
+                    <td className="px-4 py-2.5 font-medium" style={{ color: '#0F172A' }}>{d.site_name}</td>
+                    <td className="px-4 py-2.5">
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
+                        style={{ backgroundColor: d.is_active ? (isOnline ? '#F0FDF4' : '#F1F5F9') : '#FEF2F2', color: d.is_active ? (isOnline ? '#16A34A' : '#64748B') : '#DC2626' }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: d.is_active ? (isOnline ? '#22C55E' : '#94A3B8') : '#EF4444' }} />
+                        {d.is_active ? (isOnline ? 'En línea' : 'Inactiva') : 'Bloqueada'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs" style={{ color: '#64748B' }}>{relativeTime(d.last_seen_at)}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: '#94A3B8' }}>{d.device_key.slice(0, 12)}...</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Recent fichajes */}
+      <div>
+        <h3 className="font-bold text-sm mb-3" style={{ color: '#0F172A' }}>Fichajes más recientes</h3>
+        <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid #E2E8F0' }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ backgroundColor: '#F8FAFC' }}>
+                <th className="text-left px-4 py-2.5 font-medium text-xs" style={{ color: '#64748B' }}>Empleado</th>
+                <th className="text-left px-4 py-2.5 font-medium text-xs" style={{ color: '#64748B' }}>Tipo</th>
+                <th className="text-left px-4 py-2.5 font-medium text-xs" style={{ color: '#64748B' }}>Hora</th>
+                <th className="text-left px-4 py-2.5 font-medium text-xs" style={{ color: '#64748B' }}>Ubicación</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentFichajes.length === 0 && (
+                <tr><td colSpan={4} className="text-center py-8 text-xs" style={{ color: '#94A3B8' }}>No hay fichajes recientes</td></tr>
+              )}
+              {recentFichajes.map(f => (
+                <tr key={f.id} className="border-t" style={{ borderColor: '#F1F5F9' }}>
+                  <td className="px-4 py-2.5 font-medium" style={{ color: '#0F172A' }}>{f.nombre_empleado}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{ backgroundColor: f.tipo_evento === 'entrada' ? '#F0FDF4' : '#FEF2F2', color: f.tipo_evento === 'entrada' ? '#16A34A' : '#DC2626' }}>
+                      {f.tipo_evento}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: '#64748B' }}>{new Date(f.timestamp).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: '#64748B' }}>{f.ubicacion ?? f.dispositivo ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <button onClick={load} className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
+        <RefreshCw size={12} /> Actualizar
+      </button>
+    </div>
+  );
+}
+
 // ── Main panel ─────────────────────────────────────────────────────────────────
 
 export default function KioskDevicesPanel() {
@@ -712,6 +1125,8 @@ export default function KioskDevicesPanel() {
     { id: 'kiosk',       label: 'Tablets de kiosco',      icon: Tablet,          desc: 'Terminales fijos autorizados' },
     { id: 'corporate',   label: 'Móviles corporativos',   icon: Smartphone,      desc: 'Dispositivos personales asignados' },
     { id: 'permissions', label: 'Permisos por empleado',  icon: Settings2,       desc: 'Control de acceso individual' },
+    { id: 'solicitudes', label: 'Solicitudes',            icon: Inbox,           desc: 'Pendientes de emparejamiento' },
+    { id: 'telemetria', label: 'Telemetría',             icon: Activity,        desc: 'Actividad y estado de dispositivos' },
   ];
 
   return (
@@ -730,20 +1145,20 @@ export default function KioskDevicesPanel() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b" style={{ borderColor: '#E2E8F0' }}>
+      <div className="flex overflow-x-auto border-b" style={{ borderColor: '#E2E8F0' }}>
         {tabs.map(t => {
           const Icon = t.icon;
           const isActive = activeTab === t.id;
           return (
             <button key={t.id} onClick={() => setActiveTab(t.id)}
-              className="flex items-center gap-2 px-5 py-3.5 text-sm font-medium cursor-pointer transition-all border-b-2 -mb-px"
+              className="flex shrink-0 items-center gap-2 px-5 py-3.5 text-sm font-medium cursor-pointer transition-all border-b-2 -mb-px whitespace-nowrap"
               style={{
                 borderBottomColor: isActive ? '#0369A1' : 'transparent',
                 color: isActive ? '#0369A1' : '#64748B',
                 backgroundColor: isActive ? '#F0F9FF' : 'transparent',
               }}>
               <Icon size={14} />
-              <span className="hidden sm:inline">{t.label}</span>
+              <span>{t.label}</span>
             </button>
           );
         })}
@@ -754,6 +1169,8 @@ export default function KioskDevicesPanel() {
         {activeTab === 'kiosk' && <KioskTab />}
         {activeTab === 'corporate' && <CorporateTab />}
         {activeTab === 'permissions' && <PermissionsTab />}
+        {activeTab === 'solicitudes' && <SolicitudesTab />}
+        {activeTab === 'telemetria' && <TelemetriaTab />}
       </div>
     </div>
   );

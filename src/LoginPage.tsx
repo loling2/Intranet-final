@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle, Tablet, Timer, Send } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
@@ -55,7 +55,7 @@ type JornadaAction = 'entrada' | 'descanso' | 'fin_descanso' | 'salida' | 'permi
 
 function JornadaModal({ onClose }: { onClose: () => void }) {
   // ── Global steps: pin → menu → sub-flow ──
-  const [step, setStep] = useState<'pin' | 'menu' | 'vehiculo_plate' | 'vehiculo_action' | 'incidencia_vehiculo' | 'fichaje_form' | 'done'>('pin');
+  const [step, setStep] = useState<'pin' | 'menu' | 'vehiculo_plate' | 'vehiculo_action' | 'incidencia_vehiculo' | 'fichaje_form' | 'pair_name' | 'pair_device' | 'done'>('pin');
   const [pin, setPin] = useState('');
   const [usuarioPin, setUsuarioPin] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -86,6 +86,115 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
   const [fichajeNota, setFichajeNota] = useState('');
   const [deviceAuthorized, setDeviceAuthorized] = useState(true);
   const [fichajeMode, setFichajeMode] = useState<string>('any');
+
+  // ── Device pairing state ──
+  const [pairingDeviceName, setPairingDeviceName] = useState('');
+  const [pairingCode, setPairingCode] = useState('');
+  const [pairingExpires, setPairingExpires] = useState<number>(0);
+  const [pairingSent, setPairingSent] = useState(false);
+  const [confirmCodeInput, setConfirmCodeInput] = useState('');
+  const [pairingRequestId, setPairingRequestId] = useState<string | null>(null);
+  const [pairingTimer, setPairingTimer] = useState(300);
+  const pairingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const genPairingCode = (): string => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
+  };
+
+  useEffect(() => {
+    if (step === 'pair_device' && pairingExpires > 0) {
+      pairingIntervalRef.current = setInterval(() => {
+        const remaining = Math.max(0, Math.ceil((pairingExpires - Date.now()) / 1000));
+        setPairingTimer(remaining);
+        if (remaining === 0 && pairingIntervalRef.current) {
+          clearInterval(pairingIntervalRef.current);
+          pairingIntervalRef.current = null;
+        }
+      }, 1000);
+      return () => { if (pairingIntervalRef.current) { clearInterval(pairingIntervalRef.current); pairingIntervalRef.current = null; } };
+    }
+  }, [step, pairingExpires]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleStartPairing = () => {
+    setPairingDeviceName('');
+    setPairingCode('');
+    setPairingSent(false);
+    setConfirmCodeInput('');
+    setPairingRequestId(null);
+    setError('');
+    setStep('pair_name');
+  };
+
+  const handleGeneratePairingCode = () => {
+    if (!pairingDeviceName.trim()) { setError('Introduce un nombre para el dispositivo'); return; }
+    const code = genPairingCode();
+    setPairingCode(code);
+    setPairingExpires(Date.now() + 5 * 60 * 1000);
+    setPairingTimer(300);
+    setPairingSent(false);
+    setConfirmCodeInput('');
+    setPairingRequestId(null);
+    setError('');
+    setStep('pair_device');
+  };
+
+  const handleSendPairingRequest = async () => {
+    if (!pairingCode) return;
+    setError('');
+    setLoading(true);
+    try {
+      const { data, error: insErr } = await supabase
+        .from('device_pairing_requests')
+        .insert({
+          device_key: getDeviceKey(),
+          device_code: pairingCode,
+          device_info: getDeviceInfo(),
+          site_name: pairingDeviceName.trim(),
+          status: 'pending',
+          expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        })
+        .select('id')
+        .single();
+      if (insErr) throw new Error(insErr.message);
+      setPairingRequestId(data.id);
+      setPairingSent(true);
+    } catch (e: any) { setError(e.message ?? 'Error al enviar solicitud'); }
+    finally { setLoading(false); }
+  };
+
+  const handleConfirmPairing = async () => {
+    if (!confirmCodeInput.trim() || !pairingRequestId) return;
+    setError('');
+    setLoading(true);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc('complete_device_pairing', {
+        p_request_id: pairingRequestId,
+        p_device_key: getDeviceKey(),
+        p_confirm_code: confirmCodeInput.trim(),
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+      const result = Array.isArray(data) ? data[0] : data;
+      if (!result?.success) throw new Error(result?.error_msg ?? 'No se pudo completar el emparejamiento');
+
+      // Re-check device authorization so the warning clears immediately
+      if (usuarioPin) {
+        const { data: devData } = await supabase.rpc('kiosk_check_device_by_profile', {
+          p_device_key: getDeviceKey(),
+          p_user_profile_id: usuarioPin.id,
+        });
+        setDeviceAuthorized(devData?.authorized ?? false);
+        setFichajeMode(devData?.mode ?? usuarioPin?.fichaje_mode ?? 'kiosk_only');
+      }
+
+      setDoneMsg('Dispositivo registrado correctamente. Ya puede utilizarse para fichar.');
+      setDoneColor('#16A34A');
+      setStep('done');
+    } catch (e: any) { setError(e.message ?? 'Error al validar código'); }
+    finally { setLoading(false); }
+  };
 
   // ── Plate search helper ──
   const searchPlates = async (query: string, setter: typeof setPlateOptions) => {
@@ -453,15 +562,25 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
               </div>
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Selecciona una acción</p>
               {!deviceAuthorized && (
-                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
-                  <AlertCircle size={14} style={{ color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
-                  <p className="text-xs" style={{ color: '#DC2626' }}>
-                    {fichajeMode === 'kiosk_only'
-                      ? 'Este empleado solo puede fichar desde un kiosco autorizado. Las demás funciones siguen disponibles.'
-                      : fichajeMode === 'kiosk_or_corporate'
-                      ? 'Este empleado solo puede fichar desde un kiosco o un dispositivo registrado. Las demás funciones siguen disponibles.'
-                      : 'Este dispositivo no está autorizado para fichar. Contacta con RRHH para registrarlo. Las demás funciones siguen disponibles.'}
-                  </p>
+                <div className="rounded-xl p-3" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={14} style={{ color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
+                    <p className="text-xs" style={{ color: '#DC2626' }}>
+                      {fichajeMode === 'kiosk_only'
+                        ? 'Este empleado solo puede fichar desde un kiosco autorizado. Las demás funciones siguen disponibles.'
+                        : fichajeMode === 'kiosk_or_corporate'
+                        ? 'Este empleado solo puede fichar desde un kiosco o un dispositivo registrado. Las demás funciones siguen disponibles.'
+                        : 'Este dispositivo no está autorizado para fichar. Regístralo a continuación o contacta con RRHH.'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleStartPairing}
+                    disabled={loading}
+                    className="mt-2.5 w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer transition-all hover:scale-[1.01] disabled:opacity-60"
+                    style={{ backgroundColor: '#DC2626' }}>
+                    <Tablet size={14} />
+                    Registrar este dispositivo
+                  </button>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-2">
@@ -496,8 +615,131 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
                   );
                 })}
               </div>
+              <button
+                onClick={handleStartPairing}
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all hover:scale-[1.01] disabled:opacity-60"
+                style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
+              >
+                <Tablet size={16} />
+                Registrar este dispositivo
+              </button>
               {loading && <div className="flex items-center justify-center gap-2 py-2"><RefreshCw size={14} className="animate-spin" style={{ color: '#94A3B8' }} /><p className="text-xs" style={{ color: '#94A3B8' }}>Registrando...</p></div>}
               {errBox}
+            </>
+          )}
+
+          {step === 'pair_name' && (
+            <>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                <Tablet size={14} style={{ color: '#0369A1' }} />
+                <p className="text-xs font-semibold" style={{ color: '#0369A1' }}>Nombre del dispositivo</p>
+              </div>
+              <p className="text-xs text-center" style={{ color: '#64748B' }}>
+                Pon un nombre identificativo (ej: "Móvil Julio", "Tablet Recepción").
+              </p>
+              <div>
+                <input
+                  type="text"
+                  value={pairingDeviceName}
+                  onChange={(e) => setPairingDeviceName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleGeneratePairingCode()}
+                  placeholder="Nombre del dispositivo"
+                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+                  style={inputStyle}
+                  autoFocus
+                />
+              </div>
+              {errBox}
+              <div className="flex gap-3">
+                <button onClick={() => { setStep('menu'); setError(''); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Atrás</button>
+                <button onClick={handleGeneratePairingCode} disabled={!pairingDeviceName.trim()} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#0369A1' }}>
+                  <KeyRound size={13} />
+                  Generar código
+                </button>
+              </div>
+            </>
+          )}
+
+          {step === 'pair_device' && (
+            <>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                <Tablet size={14} style={{ color: '#0369A1' }} />
+                <p className="text-xs font-semibold" style={{ color: '#0369A1' }}>Registro de dispositivo</p>
+              </div>
+
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F1F5F9' }}>
+                <Tablet size={13} style={{ color: '#64748B' }} />
+                <p className="text-xs font-semibold" style={{ color: '#475569' }}>{pairingDeviceName}</p>
+              </div>
+
+              {!pairingSent ? (
+                <>
+                  <div className="text-center py-4 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ backgroundColor: '#E0F2FE' }}>
+                      <KeyRound size={28} style={{ color: '#0369A1' }} />
+                    </div>
+                    <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#64748B' }}>Tu código de emparejamiento</p>
+                    <p className="font-mono font-bold text-3xl tracking-widest" style={{ color: '#0F172A' }}>{pairingCode}</p>
+                    <div className="flex items-center justify-center gap-1.5 mt-3">
+                      <Timer size={13} style={{ color: pairingTimer <= 60 ? '#DC2626' : '#64748B' }} />
+                      <p className="text-xs font-medium" style={{ color: pairingTimer <= 60 ? '#DC2626' : '#64748B' }}>
+                        {Math.floor(pairingTimer / 60)}:{String(pairingTimer % 60).padStart(2, '0')} restantes
+                      </p>
+                    </div>
+                    {pairingTimer === 0 && (
+                      <p className="text-xs mt-2" style={{ color: '#DC2626' }}>El código ha expirado. Vuelve atrás y genera uno nuevo.</p>
+                    )}
+                  </div>
+                  <p className="text-xs text-center" style={{ color: '#64748B' }}>
+                    Comparte este código con el administrador. Tras generar el código de confirmación, introdúcelo aquí.
+                  </p>
+                  {errBox}
+                  <div className="flex gap-3">
+                    <button onClick={() => { setStep('menu'); setError(''); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Atrás</button>
+                    <button onClick={handleSendPairingRequest} disabled={loading || pairingTimer === 0} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#0369A1' }}>
+                      {loading ? <RefreshCw size={13} className="animate-spin" /> : <Send size={13} />}
+                      Enviar solicitud
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-center py-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                    <CheckCircle2 size={24} className="mx-auto mb-2" style={{ color: '#16A34A' }} />
+                    <p className="text-sm font-semibold" style={{ color: '#15803D' }}>Solicitud enviada</p>
+                    <p className="text-xs mt-1" style={{ color: '#64748B' }}>Tu código: <span className="font-mono font-bold" style={{ color: '#92400E' }}>{pairingCode}</span></p>
+                    <div className="flex items-center justify-center gap-1.5 mt-2">
+                      <Timer size={13} style={{ color: pairingTimer <= 60 ? '#DC2626' : '#64748B' }} />
+                      <p className="text-xs" style={{ color: pairingTimer <= 60 ? '#DC2626' : '#64748B' }}>
+                        {Math.floor(pairingTimer / 60)}:{String(pairingTimer % 60).padStart(2, '0')} restantes
+                      </p>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Código de confirmación</label>
+                    <input
+                      type="text"
+                      value={confirmCodeInput}
+                      onChange={(e) => setConfirmCodeInput(e.target.value.slice(0, 8))}
+                      onKeyDown={(e) => e.key === 'Enter' && handleConfirmPairing()}
+                      placeholder="········"
+                      maxLength={8}
+                      className="w-full px-4 py-2.5 rounded-xl text-sm outline-none text-center font-mono font-bold tracking-widest"
+                      style={{ ...inputStyle, fontSize: '18px' }}
+                    />
+                    <p className="text-xs mt-1.5" style={{ color: '#94A3B8' }}>Pide al administrador el código de confirmación generado en Solicitudes.</p>
+                  </div>
+                  {errBox}
+                  <div className="flex gap-3">
+                    <button onClick={() => { setStep('menu'); setError(''); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Atrás</button>
+                    <button onClick={handleConfirmPairing} disabled={loading || !confirmCodeInput.trim()} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#16A34A' }}>
+                      {loading && <RefreshCw size={13} className="animate-spin" />}
+                      Confirmar
+                    </button>
+                  </div>
+                </>
+              )}
             </>
           )}
 

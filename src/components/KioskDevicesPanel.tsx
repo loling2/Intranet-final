@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Tablet, Smartphone, Plus, Power, PowerOff, RefreshCw, Pencil, X, Check,
   Loader2, AlertCircle, Clock, MapPin, ShieldCheck, Copy, CheckCircle2, Search,
@@ -746,12 +746,102 @@ interface PairingRequest {
   expires_at: string;
   confirmed_at: string | null;
   created_at: string;
+  device_type: string | null;
+  empleado_id: string | null;
+  device_label: string | null;
+}
+
+function EmployeeSearchPicker({
+  empleados,
+  value,
+  onChange,
+}: {
+  empleados: Empleado[];
+  value: string;
+  onChange: (empId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  const selected = empleados.find((e) => e.id === value);
+  const filtered = empleados
+    .filter((e) => !search || e.nombre.toLowerCase().includes(search.toLowerCase()))
+    .slice(0, 10);
+
+  useEffect(() => {
+    const handler = (ev: MouseEvent) => {
+      if (ref.current && !ref.current.contains(ev.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm cursor-pointer"
+        style={{ border: '1.5px solid #BBF7D0', color: '#1E293B', backgroundColor: '#FFFFFF' }}
+      >
+        <span style={{ color: selected ? '#1E293B' : '#94A3B8' }}>
+          {selected ? selected.nombre : 'Buscar empleado...'}
+        </span>
+        <ChevronDown size={13} style={{ color: '#94A3B8' }} />
+      </button>
+      {open && (
+        <div
+          className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden shadow-xl"
+          style={{ backgroundColor: '#FFFFFF', border: '1.5px solid #E2E8F0' }}
+        >
+          <div className="p-2" style={{ borderBottom: '1px solid #F1F5F9' }}>
+            <div className="relative">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+              <input
+                autoFocus
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por nombre..."
+                className="w-full pl-7 pr-3 py-1.5 rounded-lg text-xs outline-none"
+                style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
+              />
+            </div>
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => { onChange(e.id); setOpen(false); setSearch(''); }}
+                className="w-full text-left px-3 py-2 text-xs cursor-pointer hover:bg-slate-50 transition-colors"
+                style={{
+                  backgroundColor: value === e.id ? '#F0F9FF' : undefined,
+                  color: value === e.id ? '#0369A1' : '#1E293B',
+                  fontWeight: value === e.id ? 600 : 400,
+                }}
+              >
+                {e.nombre}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="px-3 py-3 text-xs" style={{ color: '#94A3B8' }}>Sin resultados</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function SolicitudesTab() {
   const [requests, setRequests] = useState<PairingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [siteNames, setSiteNames] = useState<Record<string, string>>({});
+  const [deviceTypes, setDeviceTypes] = useState<Record<string, 'kiosk' | 'corporate'>>({});
+  const [selectedEmpleados, setSelectedEmpleados] = useState<Record<string, string>>({});
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [savingDevice, setSavingDevice] = useState<string | null>(null);
@@ -765,16 +855,25 @@ function SolicitudesTab() {
       .select('*')
       .order('created_at', { ascending: false });
     if (qErr) { setError('Error al cargar solicitudes'); setLoading(false); return; }
-    const now = new Date();
-    const valid = (data ?? []).filter(r => r.status === 'pending' || r.status === 'confirmed');
+    const valid = (data ?? []).filter((r: any) => r.status === 'pending' || r.status === 'confirmed');
     setRequests(valid as PairingRequest[]);
     const names: Record<string, string> = {};
-    for (const r of valid as PairingRequest[]) names[r.id] = r.site_name ?? '';
+    const types: Record<string, 'kiosk' | 'corporate'> = {};
+    for (const r of valid as PairingRequest[]) {
+      names[r.id] = r.site_name ?? '';
+      types[r.id] = (r.device_type === 'corporate') ? 'corporate' : 'kiosk';
+    }
     setSiteNames(names);
+    setDeviceTypes(types);
     setLoading(false);
   };
 
-  useEffect(() => { loadRequests(); }, []);
+  const loadEmpleados = async () => {
+    const { data } = await supabase.rpc('get_employees_fichaje_modes');
+    setEmpleados((data ?? []) as Empleado[]);
+  };
+
+  useEffect(() => { loadRequests(); loadEmpleados(); }, []);
 
   const handleGenerateConfirm = async (reqId: string) => {
     setConfirming(reqId);
@@ -807,26 +906,41 @@ function SolicitudesTab() {
   };
 
   const handleSaveDevice = async (req: PairingRequest) => {
+    const dtype = deviceTypes[req.id] ?? 'kiosk';
+    const empId = selectedEmpleados[req.id] ?? '';
+    if (dtype === 'corporate' && !empId) {
+      setError('Selecciona un empleado para el móvil corporativo');
+      return;
+    }
     setSavingDevice(req.id);
     setError('');
     try {
-      const siteName = siteNames[req.id]?.trim() || req.site_name?.trim() || `Kiosco ${new Date().toLocaleDateString('es-ES')}`;
-      if (siteName) {
-        const { error: uErr } = await supabase
-          .from('device_pairing_requests')
-          .update({ site_name: siteName })
-          .eq('id', req.id);
-        if (uErr) throw new Error(uErr.message);
-      }
-      const { data, error: rpcErr } = await supabase.rpc('complete_device_pairing', {
+      const defaultName = dtype === 'kiosk'
+        ? `Kiosco ${new Date().toLocaleDateString('es-ES')}`
+        : `Móvil corporativo ${new Date().toLocaleDateString('es-ES')}`;
+      const siteName = siteNames[req.id]?.trim() || req.site_name?.trim() || defaultName;
+      const { error: uErr } = await supabase
+        .from('device_pairing_requests')
+        .update({ site_name: siteName, device_type: dtype, empleado_id: dtype === 'corporate' ? empId : null })
+        .eq('id', req.id);
+      if (uErr) throw new Error(uErr.message);
+
+      const rpcParams: Record<string, any> = {
         p_request_id: req.id,
         p_device_key: req.device_key,
         p_confirm_code: req.confirm_code,
-      });
+        p_device_type: dtype,
+      };
+      if (dtype === 'corporate') {
+        rpcParams.p_empleado_id = empId;
+        rpcParams.p_device_label = siteName;
+      }
+
+      const { data, error: rpcErr } = await supabase.rpc('complete_device_pairing', rpcParams);
       if (rpcErr) throw new Error(rpcErr.message);
       const result = Array.isArray(data) ? data[0] : data;
       if (!result?.success) throw new Error(result?.error_msg ?? 'No se pudo completar el registro');
-      setSuccess(`Dispositivo "${siteName}" guardado correctamente`);
+      setSuccess(`Dispositivo "${siteName}" guardado como ${dtype === 'kiosk' ? 'tablet de kiosco' : 'móvil corporativo'}`);
       await loadRequests();
     } catch (e: any) { setError(e.message ?? 'Error al guardar dispositivo'); }
     finally { setSavingDevice(null); }
@@ -923,43 +1037,95 @@ function SolicitudesTab() {
       {confirmed.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#16A34A' }}>Confirmados — Listos para guardar ({confirmed.length})</p>
-          {confirmed.map(req => (
-            <div key={req.id} className="rounded-xl p-4" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#DCFCE7' }}>
-                    <ShieldCheck size={18} style={{ color: '#16A34A' }} />
-                  </div>
-                  <div className="space-y-1">
-                    <div>
-                      <span className="text-xs" style={{ color: '#64748B' }}>Nombre: </span>
-                      <span className="font-semibold text-sm" style={{ color: '#0F172A' }}>{req.site_name || 'Sin nombre'}</span>
+          {confirmed.map(req => {
+            const dtype = deviceTypes[req.id] ?? 'kiosk';
+            const isCorporate = dtype === 'corporate';
+            return (
+              <div key={req.id} className="rounded-xl p-4" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#DCFCE7' }}>
+                      <ShieldCheck size={18} style={{ color: '#16A34A' }} />
                     </div>
-                    <div>
-                      <span className="text-xs" style={{ color: '#64748B' }}>Código dispositivo: </span>
-                      <span className="font-mono font-bold" style={{ color: '#92400E' }}>{req.device_code}</span>
+                    <div className="space-y-1">
+                      <div>
+                        <span className="text-xs" style={{ color: '#64748B' }}>Código dispositivo: </span>
+                        <span className="font-mono font-bold" style={{ color: '#92400E' }}>{req.device_code}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs" style={{ color: '#64748B' }}>Código confirmación: </span>
+                        <span className="font-mono font-bold text-lg tracking-widest" style={{ color: '#15803D' }}>{req.confirm_code}</span>
+                      </div>
+                      <p className="text-xs" style={{ color: '#64748B' }}>{req.device_info ?? 'Dispositivo desconocido'}</p>
                     </div>
-                    <div>
-                      <span className="text-xs" style={{ color: '#64748B' }}>Código confirmación: </span>
-                      <span className="font-mono font-bold text-lg tracking-widest" style={{ color: '#15803D' }}>{req.confirm_code}</span>
-                    </div>
-                    <p className="text-xs" style={{ color: '#64748B' }}>{req.device_info ?? 'Dispositivo desconocido'}</p>
-                    <input type="text" value={siteNames[req.id] ?? ''}
-                      onChange={(e) => setSiteNames(prev => ({ ...prev, [req.id]: e.target.value }))}
-                      placeholder="Nombre del dispositivo (ej: Móvil Julio)"
-                      className="mt-1 w-full px-3 py-1.5 rounded-lg text-xs outline-none"
-                      style={{ border: '1px solid #BBF7D0', backgroundColor: '#FFFFFF', color: '#1E293B' }} />
                   </div>
                 </div>
-                <button onClick={() => handleSaveDevice(req)} disabled={savingDevice === req.id}
-                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-60"
-                  style={{ backgroundColor: '#16A34A' }}>
-                  {savingDevice === req.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                  Guardar dispositivo
-                </button>
+
+                <div className="mb-3">
+                  <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#475569' }}>Tipo de dispositivo</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setDeviceTypes(prev => ({ ...prev, [req.id]: 'kiosk' })); setError(''); }}
+                      className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all"
+                      style={{
+                        backgroundColor: !isCorporate ? '#F0F9FF' : '#F8FAFC',
+                        border: `1.5px solid ${!isCorporate ? '#0369A1' : '#E2E8F0'}`,
+                        color: !isCorporate ? '#0369A1' : '#94A3B8',
+                      }}
+                    >
+                      <Tablet size={15} />
+                      Tablet de kiosco
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setDeviceTypes(prev => ({ ...prev, [req.id]: 'corporate' })); setError(''); }}
+                      className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all"
+                      style={{
+                        backgroundColor: isCorporate ? '#F0FDF4' : '#F8FAFC',
+                        border: `1.5px solid ${isCorporate ? '#16A34A' : '#E2E8F0'}`,
+                        color: isCorporate ? '#16A34A' : '#94A3B8',
+                      }}
+                    >
+                      <Smartphone size={15} />
+                      Móvil corporativo
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#475569' }}>
+                    {isCorporate ? 'Etiqueta del dispositivo' : 'Nombre del kiosco'}
+                  </label>
+                  <input type="text" value={siteNames[req.id] ?? ''}
+                    onChange={(e) => setSiteNames(prev => ({ ...prev, [req.id]: e.target.value }))}
+                    placeholder={isCorporate ? 'ej: iPhone 14 Pro de Juan' : 'ej: Kiosco Oficina Madrid'}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{ border: '1px solid #BBF7D0', backgroundColor: '#FFFFFF', color: '#1E293B' }} />
+                </div>
+
+                {isCorporate && (
+                  <div className="mb-3">
+                    <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#475569' }}>Asignar a empleado *</label>
+                    <EmployeeSearchPicker
+                      empleados={empleados}
+                      value={selectedEmpleados[req.id] ?? ''}
+                      onChange={(empId: string) => setSelectedEmpleados(prev => ({ ...prev, [req.id]: empId }))}
+                    />
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button onClick={() => handleSaveDevice(req)} disabled={savingDevice === req.id || (isCorporate && !selectedEmpleados[req.id])}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-60"
+                    style={{ backgroundColor: isCorporate ? '#16A34A' : '#0369A1' }}>
+                    {savingDevice === req.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                    {isCorporate ? 'Guardar móvil corporativo' : 'Guardar tablet de kiosco'}
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

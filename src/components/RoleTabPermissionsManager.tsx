@@ -4,6 +4,7 @@ import {
   Shield, Users, Truck, FileText, Palmtree, ShieldCheck, ScrollText,
   AlertCircle, Clock, Receipt, Ligature as FileSignature, Zap, Award,
   ClipboardCheck, BarChart2, Plus, Trash2, X, Check, BedSingle, UserCog,
+  MonitorSmartphone,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -31,6 +32,7 @@ const ALL_TABS: TabDef[] = [
   { id: 'facturas',       label: 'Facturas',              icon: Receipt },
   { id: 'incidencias',    label: 'Incidencias',           icon: AlertCircle },
   { id: 'fichajes',       label: 'Fichajes',              icon: Clock },
+  { id: 'kiosk-devices',  label: 'Dispositivos Fichaje',   icon: MonitorSmartphone },
   { id: 'bajas',           label: 'Bajas/Ausencias',       icon: BedSingle },
   { id: 'prl-docs',       label: 'Documentos PRL',        icon: ShieldCheck },
   { id: 'supervisor-empleados', label: 'Empleados Asignados', icon: UserCog },

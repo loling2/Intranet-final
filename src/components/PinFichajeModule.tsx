@@ -242,7 +242,8 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
         resetTimer.current = setTimeout(reset, RESET_DELAY_MS); return;
       }
       setLastEvent(result.tipo); setStatus('success');
-      setMessage(`¡Fichaje registrado, ${result.nombre_empleado}!`);
+      const tipoLabel = result.tipo === 'entrada' ? 'ENTRADA' : 'SALIDA';
+      setMessage(`${tipoLabel} registrada correctamente, ${result.nombre_empleado}`);
       resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
     } catch (err: unknown) {
       setStatus('error'); setMessage(err instanceof Error ? err.message : 'Error al registrar el fichaje');
@@ -368,8 +369,9 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
             )}
             {status === 'error' && (
               <div className="flex items-center gap-3 px-5 py-3 rounded-2xl w-full justify-center"
-                style={{ backgroundColor: 'rgba(220,38,38,0.1)', border: '1.5px solid rgba(220,38,38,0.3)' }}>
-                <span className="text-sm font-semibold" style={{ color: '#DC2626' }}>{message}</span>
+                style={{ backgroundColor: 'rgba(245,158,11,0.12)', border: '1.5px solid rgba(245,158,11,0.35)' }}>
+                <AlertCircle size={18} style={{ color: '#B45309' }} />
+                <span className="text-sm font-semibold" style={{ color: '#B45309' }}>{message}</span>
               </div>
             )}
             {status === 'submitting' && (

@@ -143,6 +143,19 @@ function extractEmpresa(text: string): string | null {
   return null;
 }
 
+function extractEmpresaFromFilename(filename: string): string | null {
+  const base = filename.replace(/\.pdf$/i, '');
+  const noNumbers = base.replace(/^\d+\s*[-–]?\s*/, '').replace(/\d+\s*[-–]?\s*/, '');
+  const noNomina = noNumbers.replace(/n[oó]minas?/i, '').replace(/nominas?/i, '');
+  const monthYearRemoved = noNomina
+    .replace(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)\b/gi, '')
+    .replace(/\b(20\d{2})\b/g, '')
+    .replace(/\b\d{1,2}\b/g, '');
+  const cleaned = monthYearRemoved.replace(/[-–_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (cleaned.length >= 2 && cleaned.length <= 80) return cleaned;
+  return null;
+}
+
 function yieldToMain(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -242,7 +255,7 @@ export default function PDFSplitModule() {
 
         const dni = extractDNI(text);
         const periodoInfo = extractMesAnio(text);
-        const empresa = extractEmpresa(text);
+        const empresa = extractEmpresa(text) ?? extractEmpresaFromFilename(file.name);
 
         extractedPages.push({
           pageNum: i,

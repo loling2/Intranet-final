@@ -7,6 +7,12 @@ import { loadSocietyLogos } from '../lib/societyLogos';
 const PIN_LENGTH = 6;
 const RESET_DELAY_MS = 2500;
 
+function formatWorkedMinutes(totalMinutes: number) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours} h ${minutes.toString().padStart(2, '0')} min`;
+}
+
 type Status = 'idle' | 'submitting' | 'success' | 'error';
 
 // ── Device setup modal ─────────────────────────────────────────────────────
@@ -243,7 +249,16 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
       }
       setLastEvent(result.tipo); setStatus('success');
       const tipoLabel = result.tipo === 'entrada' ? 'ENTRADA' : 'SALIDA';
-      setMessage(`${tipoLabel} registrada correctamente, ${result.nombre_empleado}`);
+      if (result.tipo === 'salida') {
+        const { data: totalMinutes, error: totalError } = await supabase.rpc('kiosk_get_daily_total', { p_pin: pinValue });
+        if (totalError || typeof totalMinutes !== 'number') {
+          setMessage(`SALIDA registrada correctamente, ${result.nombre_empleado}`);
+        } else {
+          setMessage(`SALIDA registrada. Total del día: ${formatWorkedMinutes(totalMinutes)}`);
+        }
+      } else {
+        setMessage(`${tipoLabel} registrada correctamente, ${result.nombre_empleado}`);
+      }
       resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
     } catch (err: unknown) {
       setStatus('error'); setMessage(err instanceof Error ? err.message : 'Error al registrar el fichaje');

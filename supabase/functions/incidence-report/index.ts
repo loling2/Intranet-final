@@ -67,7 +67,7 @@ Deno.serve(async (req: Request) => {
     // ── 3. Fetch fichajes for target date ─────────────────────────────────────
     const { data: fichajes, error: fichErr } = await supabase
       .from("fichajes")
-      .select("nombre_empleado, fecha, timestamp, timestamp_corregido, tipo_evento, nota_correccion")
+      .select("empleado_id, nombre_empleado, fecha, timestamp, timestamp_corregido, tipo_evento, nota_correccion")
       .eq("fecha", targetDate)
       .in("tipo_evento", ["entrada", "salida"])
       .order("timestamp", { ascending: true });
@@ -81,6 +81,7 @@ Deno.serve(async (req: Request) => {
 
     // ── 4. Compute summaries ──────────────────────────────────────────────────
     const summaries = new Map<string, {
+      nombre: string;
       entrada: string | null;
       salida: string | null;
       salidaAuto: boolean;
@@ -88,10 +89,11 @@ Deno.serve(async (req: Request) => {
 
     for (const f of fichajes ?? []) {
       const eff = f.timestamp_corregido ?? f.timestamp;
-      if (!summaries.has(f.nombre_empleado)) {
-        summaries.set(f.nombre_empleado, { entrada: null, salida: null, salidaAuto: false });
+      const key = f.empleado_id ?? f.nombre_empleado.trim().toLocaleUpperCase("es-ES");
+      if (!summaries.has(key)) {
+        summaries.set(key, { nombre: f.nombre_empleado, entrada: null, salida: null, salidaAuto: false });
       }
-      const s = summaries.get(f.nombre_empleado)!;
+      const s = summaries.get(key)!;
       if (f.tipo_evento === "entrada") {
         if (!s.entrada || eff < s.entrada) s.entrada = eff;
       } else if (f.tipo_evento === "salida") {
@@ -114,21 +116,21 @@ Deno.serve(async (req: Request) => {
     const incidencias: Incidencia[] = [];
     const correctos: string[] = [];
 
-    for (const [nombre, s] of summaries) {
+    for (const [, s] of summaries) {
       if (!s.entrada) continue;
       if (!s.salida) {
-        incidencias.push({ nombre, entrada: s.entrada, salida: null, duracionMin: 0, tipo: "sin_salida", salidaAuto: false });
+        incidencias.push({ nombre: s.nombre, entrada: s.entrada, salida: null, duracionMin: 0, tipo: "sin_salida", salidaAuto: false });
         continue;
       }
       const durMin = Math.round((new Date(s.salida).getTime() - new Date(s.entrada).getTime()) / 60000);
       if (durMin > 480 || durMin < 360 || s.salidaAuto) {
         incidencias.push({
-          nombre, entrada: s.entrada, salida: s.salida, duracionMin: durMin,
+          nombre: s.nombre, entrada: s.entrada, salida: s.salida, duracionMin: durMin,
           tipo: s.salidaAuto ? "sin_salida" : durMin > 480 ? "exceso" : "deficit",
           salidaAuto: s.salidaAuto,
         });
       } else {
-        correctos.push(nombre);
+        correctos.push(s.nombre);
       }
     }
 

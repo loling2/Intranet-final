@@ -277,16 +277,18 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
   const [success, setSuccess] = useState('');
   const [deviceAuthorized, setDeviceAuthorized] = useState(true);
 
-  const loadToday = useCallback(async () => {
+  const loadToday = useCallback(async (): Promise<Fichaje[]> => {
     const today = new Date().toISOString().split('T')[0];
     const { data } = await supabase
       .from('fichajes')
       .select('*')
-      .eq('nombre_empleado', profile.nombre)
+      .eq('empleado_id', profile.id)
       .eq('fecha', today)
       .order('timestamp', { ascending: true });
-    setTodayLogs((data ?? []) as Fichaje[]);
-  }, [profile.nombre]);
+    const logs = (data ?? []) as Fichaje[];
+    setTodayLogs(logs);
+    return logs;
+  }, [profile.id]);
 
   useEffect(() => { loadToday(); }, [loadToday]);
 
@@ -391,8 +393,19 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
         }
       }
       const tipoLabel = tipo === 'entrada' ? 'entrada' : tipo === 'salida' ? 'salida' : tipo === 'permiso' ? 'inicio de permiso' : 'fin de permiso';
-      setSuccess(`Fichaje de ${tipoLabel} registrado.`);
-      await loadToday();
+      const updatedLogs = await loadToday();
+      if (tipo === 'salida') {
+        const updatedEntradas = updatedLogs.filter((f) => f.tipo_evento === 'entrada').map((f) => f.timestamp_corregido ?? f.timestamp);
+        const updatedSalidas = updatedLogs.filter((f) => f.tipo_evento === 'salida').map((f) => f.timestamp_corregido ?? f.timestamp);
+        const workedMinutes = updatedSalidas.reduce((total, salida, index) => {
+          const entrada = updatedEntradas[index];
+          const minutes = entrada ? Math.round((new Date(salida).getTime() - new Date(entrada).getTime()) / 60000) : 0;
+          return total + (minutes > 0 ? minutes : 0);
+        }, 0);
+        setSuccess(`Salida registrada. Horas totales: ${formatDuration(workedMinutes)}.`);
+      } else {
+        setSuccess(`Fichaje de ${tipoLabel} registrado.`);
+      }
       onChanged();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al fichar');

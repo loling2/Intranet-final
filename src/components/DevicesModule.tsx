@@ -923,7 +923,7 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
   const loadEmpleados = useCallback(async () => {
     const { data, error: empErr } = await supabase
       .from('empleados')
-      .select('id, nombre, dni, telefono, id_sociedad')
+      .select('id, nombre, dni, telefono, id_sociedad, user_id')
       .eq('activo', true)
       .order('nombre');
     if (empErr) {

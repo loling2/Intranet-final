@@ -1248,18 +1248,28 @@ function IncidenciasSection() {
     setTesting(true);
     try {
       const url = (import.meta as any).env?.VITE_SUPABASE_URL;
+      const anonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
       if (!url) { showMsg('No se pudo determinar la URL del servidor.', 'err'); return; }
       const resp = await fetch(`${url}/functions/v1/incidence-report`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(anonKey ? { Authorization: `Bearer ${anonKey}`, Apikey: anonKey } : {}),
+        },
       });
-      const result = await resp.json();
+      const text = await resp.text();
+      let result: { ok?: boolean; error?: string; recipient?: string; total_incidencias?: number; disabled?: boolean };
+      try { result = JSON.parse(text); } catch { result = { error: `Respuesta no válida del servidor (${resp.status}): ${text.slice(0, 200)}` }; }
       if (result.ok) {
         showMsg(`Correo de prueba enviado a ${result.recipient}. ${result.total_incidencias} incidencia(s) detectada(s).`, 'ok');
+      } else if (result.disabled) {
+        showMsg('Informe desactivado. Activa el informe para enviar correos.', 'err');
       } else {
-        showMsg(result.error || 'Error al enviar el correo.', 'err');
+        showMsg(result.error || `Error al enviar el correo (código ${resp.status}).`, 'err');
       }
-    } catch {
-      showMsg('Error de conexión con el servidor.', 'err');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showMsg(`Error de conexión: ${msg}`, 'err');
     } finally {
       setTesting(false);
     }

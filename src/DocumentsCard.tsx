@@ -51,14 +51,53 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId, ful
         return;
       }
 
-      const { data } = await supabase
-        .from('documents')
-        .select('*')
-        .eq('folder', 'publico')
-        .or(orParts.join(','))
-        .order('fecha_subida', { ascending: false });
+      const [docsRes, empDocsRes] = await Promise.all([
+        supabase
+          .from('documents')
+          .select('*')
+          .eq('folder', 'publico')
+          .or(orParts.join(','))
+          .order('fecha_subida', { ascending: false }),
+        userId
+          ? supabase
+              .from('employee_documents')
+              .select('*')
+              .eq('employee_id', userId)
+              .order('created_at', { ascending: false })
+          : Promise.resolve({ data: null, error: null }),
+      ]);
 
-      setDocs((data ?? []) as DocumentRecord[]);
+      const fromDocs = (docsRes.data ?? []) as DocumentRecord[];
+      const fromEmp = (empDocsRes.data ?? []) as unknown as {
+        id: string;
+        nombre: string;
+        storage_path: string;
+        mime_type: string;
+        size_bytes: number;
+        created_at: string;
+      }[];
+
+      const empMapped: DocumentRecord[] = fromEmp.map((d) => ({
+        id: d.id,
+        nombre_archivo: d.nombre,
+        tipo: d.mime_type || '',
+        usuario_destino_id: userId ?? null,
+        usuario_destino_email: '',
+        society_id: societyId,
+        fecha_subida: d.created_at,
+        subido_por: null,
+        subido_por_nombre: '',
+        tamano_bytes: d.size_bytes ?? 0,
+        indexeddb_key: '',
+        wasabi_key: d.storage_path,
+        folder: 'publico',
+      }));
+
+      const merged = [...fromDocs, ...empMapped].sort(
+        (a, b) => new Date(b.fecha_subida).getTime() - new Date(a.fecha_subida).getTime()
+      );
+
+      setDocs(merged);
     } finally {
       setLoading(false);
     }
@@ -152,7 +191,7 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId, ful
             <p className="text-xs" style={{ color: theme.textSecondary }}>Sin documentos disponibles</p>
           </div>
         ) : (
-          (fullView ? docs : docs.slice(0, 5)).map((doc) => {
+          (fullView ? docs : docs.slice(0, 3)).map((doc) => {
             const { Icon, color } = getFileIcon(doc.tipo);
             return (
               <div
@@ -225,7 +264,7 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId, ful
             borderTop: `1px solid ${theme.border}`,
           }}
         >
-          {docs.length > 5 ? `Ver todos (${docs.length})` : 'Descargar todos'}
+          {docs.length > 3 ? `Ver todos (${docs.length})` : 'Descargar todos'}
           <ChevronRight size={14} />
         </div>
       )}

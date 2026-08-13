@@ -411,6 +411,7 @@ function EmployeeCalendar({ requests, onSubmit, loading }: {
   const [hoverDate, setHoverDate] = useState<string | null>(null);
   const [motivo, setMotivo] = useState('');
   const [submitError, setSubmitError] = useState('');
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
 
   const approvedDates = new Set<string>();
   const pendingDates = new Set<string>();
@@ -456,6 +457,44 @@ function EmployeeCalendar({ requests, onSubmit, loading }: {
       setMotivo('');
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Error al enviar');
+    }
+  };
+
+  const { profile } = useAuth();
+
+  const handleUploadFirmada = async (r: VacationRequest, file: File) => {
+    if (!file || file.type !== 'application/pdf') {
+      alert('Por favor selecciona un archivo PDF.');
+      return;
+    }
+    setUploadingId(r.id);
+    try {
+      const pathParts = r.documento_path?.split('/') ?? [];
+      const folderPart = pathParts[2] ?? '';
+      const dashIdx = folderPart.indexOf('-');
+      const dni = dashIdx > -1 ? folderPart.slice(0, dashIdx) : 'SINDNI';
+      const nombreSafe = dashIdx > -1 ? folderPart.slice(dashIdx + 1) : folderPart;
+      const anio = r.fecha_inicio.slice(0, 4);
+
+      const key = await uploadFirmadaLetter(file, dni, nombreSafe.replace(/-/g, ' '), anio, r.fecha_inicio);
+
+      const fileName = file.name;
+      const { error } = await supabase.rpc('employee_upload_signed_vacation', {
+        p_request_id: r.id,
+        p_storage_path: key,
+        p_nombre: fileName,
+        p_mime_type: 'application/pdf',
+        p_size_bytes: file.size,
+      });
+
+      if (error) throw error;
+      // Refresh requests by reloading the page state
+      window.location.reload();
+    } catch (e) {
+      alert('Error al subir la carta firmada. Inténtalo de nuevo.');
+      console.error(e);
+    } finally {
+      setUploadingId(null);
     }
   };
 
@@ -622,14 +661,52 @@ function EmployeeCalendar({ requests, onSubmit, loading }: {
                       {r.estado}
                     </span>
                     {r.estado === 'aprobada' && r.documento_path && (
-                      <button
-                        onClick={() => downloadFromWasabi(r.documento_path!, `vacaciones_${r.employee_nombre}_${r.fecha_inicio}.pdf`)}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer"
-                        style={{ backgroundColor: '#DCFCE7', border: '1px solid #BBF7D0' }}
-                        title="Descargar carta de vacaciones"
-                      >
-                        <Download size={13} style={{ color: '#16A34A' }} />
-                      </button>
+                      <>
+                        <button
+                          onClick={() => downloadFromWasabi(r.documento_path!, `vacaciones_${r.employee_nombre}_${r.fecha_inicio}.pdf`)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer"
+                          style={{ backgroundColor: '#DCFCE7', border: '1px solid #BBF7D0' }}
+                          title="Descargar carta de vacaciones"
+                        >
+                          <Download size={13} style={{ color: '#16A34A' }} />
+                        </button>
+                        <label
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer ${uploadingId === r.id ? 'opacity-60 pointer-events-none' : ''}`}
+                          style={{
+                            backgroundColor: r.carta_firmada_path ? '#F0FDF4' : '#FEF3C7',
+                            border: `1px solid ${r.carta_firmada_path ? '#BBF7D0' : '#FDE68A'}`,
+                          }}
+                          title={r.carta_firmada_path ? 'Reemplazar carta firmada' : 'Subir carta firmada'}
+                        >
+                          {uploadingId === r.id ? (
+                            <RefreshCw size={13} className="animate-spin" style={{ color: '#92400E' }} />
+                          ) : r.carta_firmada_path ? (
+                            <BadgeCheck size={13} style={{ color: '#16A34A' }} />
+                          ) : (
+                            <Upload size={13} style={{ color: '#92400E' }} />
+                          )}
+                          <input
+                            type="file"
+                            accept="application/pdf"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleUploadFirmada(r, f);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                        {r.carta_firmada_path && (
+                          <button
+                            onClick={() => downloadFromWasabi(r.carta_firmada_path!, `firmada_${r.employee_nombre}_${r.fecha_inicio}.pdf`)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer"
+                            style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}
+                            title="Descargar carta firmada"
+                          >
+                            <Download size={13} style={{ color: '#16A34A' }} />
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

@@ -1162,7 +1162,12 @@ export default function EmployeesModule({ currentUserRole }: Props) {
       cancelForm();
       await loadData();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al guardar');
+      const msg =
+        e instanceof Error ? e.message
+        : typeof e === 'object' && e !== null && 'message' in e ? String((e as { message: unknown }).message)
+        : String(e);
+      console.error('Error al guardar empleado:', e);
+      setError(msg || 'Error al guardar');
     } finally {
       setSaving(false);
     }

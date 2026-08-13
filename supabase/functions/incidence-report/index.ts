@@ -85,21 +85,24 @@ Deno.serve(async (req: Request) => {
       entrada: string | null;
       salida: string | null;
       salidaAuto: boolean;
+      salidaReal: string | null;
     }>();
 
     for (const f of fichajes ?? []) {
       const eff = f.timestamp_corregido ?? f.timestamp;
       const key = f.empleado_id ?? f.nombre_empleado.trim().toLocaleUpperCase("es-ES");
       if (!summaries.has(key)) {
-        summaries.set(key, { nombre: f.nombre_empleado, entrada: null, salida: null, salidaAuto: false });
+        summaries.set(key, { nombre: f.nombre_empleado, entrada: null, salida: null, salidaAuto: false, salidaReal: null });
       }
       const s = summaries.get(key)!;
       if (f.tipo_evento === "entrada") {
         if (!s.entrada || eff < s.entrada) s.entrada = eff;
       } else if (f.tipo_evento === "salida") {
+        const isAuto = (f.nota_correccion ?? "").includes("Cierre automático");
+        if (!isAuto && (!s.salidaReal || eff > s.salidaReal)) s.salidaReal = eff;
         if (!s.salida || eff > s.salida) {
           s.salida = eff;
-          s.salidaAuto = (f.nota_correccion ?? "").includes("Cierre automático");
+          s.salidaAuto = isAuto;
         }
       }
     }
@@ -118,6 +121,10 @@ Deno.serve(async (req: Request) => {
 
     for (const [, s] of summaries) {
       if (!s.entrada) continue;
+      if (s.salidaReal) {
+        s.salida = s.salidaReal;
+        s.salidaAuto = false;
+      }
       if (!s.salida) {
         incidencias.push({ nombre: s.nombre, entrada: s.entrada, salida: null, duracionMin: 0, tipo: "sin_salida", salidaAuto: false });
         continue;

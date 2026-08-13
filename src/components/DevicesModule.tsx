@@ -273,7 +273,7 @@ function DeviceModal({
             realizado_por: currentUserNombre,
           });
         }
-      } else {
+
         // Delete pending doc when device is liberated, unassigned, or transferred away
         if (accion === 'liberado' || (!newEmpId && prevEmpId) || (accion === 'transferido')) {
           await supabase
@@ -284,6 +284,21 @@ function DeviceModal({
             .is('completed_at', null);
         }
 
+        // Create pending doc when a device is assigned or transferred
+        if (newEmpId && (accion === 'asignado' || accion === 'transferido')) {
+          const empRecord = empleados.find((e) => e.id === newEmpId);
+          if (empRecord?.user_id) {
+            await supabase.from('employee_pending_docs').insert({
+              employee_id: empRecord.user_id,
+              society_id: payload.society_id,
+              tipo: 'entrega_dispositivo',
+              titulo: `Entrega de dispositivo: ${payload.marca_modelo}`,
+              descripcion: `Sube el acta de entrega firmada para el dispositivo ${payload.marca_modelo}${payload.numero_serie ? ` (S/N: ${payload.numero_serie})` : ''}.`,
+              ref_id: existing.id,
+            });
+          }
+        }
+      } else {
         const { data: inserted, error: err } = await supabase.from('dispositivos').insert(payload).select('id').single();
         if (err) throw err;
 
@@ -297,6 +312,19 @@ function DeviceModal({
             estado_nuevo: String(payload.estado_id),
             realizado_por: currentUserNombre,
           });
+
+          // Create pending doc for the newly assigned device
+          const empRecord = empleados.find((e) => e.id === payload.empleado_id);
+          if (empRecord?.user_id) {
+            await supabase.from('employee_pending_docs').insert({
+              employee_id: empRecord.user_id,
+              society_id: payload.society_id,
+              tipo: 'entrega_dispositivo',
+              titulo: `Entrega de dispositivo: ${payload.marca_modelo}`,
+              descripcion: `Sube el acta de entrega firmada para el dispositivo ${payload.marca_modelo}${payload.numero_serie ? ` (S/N: ${payload.numero_serie})` : ''}.`,
+              ref_id: inserted.id,
+            });
+          }
         }
       }
       onSaved();

@@ -1,8 +1,17 @@
-import { useEffect, useState, useCallback } from 'react';
-import { FileText, Download, ChevronRight, RefreshCw, File, Image, FileSpreadsheet, Eye, X } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { FileText, Download, ChevronRight, RefreshCw, File, Image, FileSpreadsheet, Eye, X, Upload, AlertCircle, Clock } from 'lucide-react';
 import { SocietyTheme } from './themes';
 import { supabase, type DocumentRecord } from './supabaseClient';
-import { getWasabiBlobUrl } from './lib/wasabi';
+import { getWasabiBlobUrl, uploadToWasabi } from './lib/wasabi';
+
+interface PendingDoc {
+  id: string;
+  tipo: string;
+  titulo: string;
+  descripcion: string;
+  ref_id: string | null;
+  created_at: string;
+}
 
 interface Props {
   theme: SocietyTheme;
@@ -30,12 +39,16 @@ function formatBytes(bytes: number): string {
 
 export default function DocumentsCard({ theme, userEmail, userId, societyId, fullView }: Props) {
   const [docs, setDocs] = useState<DocumentRecord[]>([]);
+  const [pendingDocs, setPendingDocs] = useState<PendingDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string>('');
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [uploadingPending, setUploadingPending] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const loadDocs = useCallback(async () => {
     setLoading(true);
@@ -51,7 +64,7 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId, ful
         return;
       }
 
-      const [docsRes, empDocsRes] = await Promise.all([
+      const [docsRes, empDocsRes, pendingRes] = await Promise.all([
         supabase
           .from('documents')
           .select('*')
@@ -63,6 +76,14 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId, ful
               .from('employee_documents')
               .select('*')
               .eq('employee_id', userId)
+              .order('created_at', { ascending: false })
+          : Promise.resolve({ data: null, error: null }),
+        userId
+          ? supabase
+              .from('employee_pending_docs')
+              .select('*')
+              .eq('employee_id', userId)
+              .is('completed_at', null)
               .order('created_at', { ascending: false })
           : Promise.resolve({ data: null, error: null }),
       ]);
@@ -98,6 +119,7 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId, ful
       );
 
       setDocs(merged);
+      setPendingDocs((pendingRes.data ?? []) as PendingDoc[]);
     } finally {
       setLoading(false);
     }
@@ -143,6 +165,30 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId, ful
     }
   };
 
+  const handleUploadPending = async (pending: PendingDoc, file: File) => {
+    setUploadingPending(pending.id);
+    setUploadError('');
+    try {
+      const path = `empleados/${userId}/publica/${Date.now()}-${file.name}`;
+      await uploadToWasabi(file, path);
+
+      const { error } = await supabase.rpc('employee_upload_pending_doc', {
+        p_pending_id: pending.id,
+        p_storage_path: path,
+        p_nombre: file.name,
+        p_mime_type: file.type || 'application/octet-stream',
+        p_size_bytes: file.size,
+      });
+
+      if (error) throw error;
+      await loadDocs();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Error al subir el documento');
+    } finally {
+      setUploadingPending(null);
+    }
+  };
+
   return (
     <div
       className="rounded-2xl overflow-hidden transition-all duration-500 flex flex-col"
@@ -178,6 +224,68 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId, ful
         </button>
       </div>
 
+      {/* Pending Documents */}
+      {pendingDocs.length > 0 && (
+        <div style={{ borderBottom: `1px solid ${theme.border}` }}>
+          <div className="px-6 py-3 flex items-center gap-2" style={{ backgroundColor: '#FEF3C7' }}>
+            <AlertCircle size={14} style={{ color: '#B45309' }} />
+            <span className="text-xs font-semibold" style={{ color: '#B45309' }}>
+              Documentos pendientes de subir ({pendingDocs.length})
+            </span>
+          </div>
+          {uploadError && (
+            <div className="mx-6 mt-2 mb-2 flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+              <AlertCircle size={13} style={{ color: '#DC2626' }} />
+              <p className="text-xs" style={{ color: '#DC2626' }}>{uploadError}</p>
+            </div>
+          )}
+          {pendingDocs.map((pending) => (
+            <div key={pending.id} className="px-6 py-3.5 flex items-center justify-between" style={{ borderBottom: `1px solid ${theme.border}` }}>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEF3C7' }}>
+                  <Clock size={14} style={{ color: '#B45309' }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: theme.textPrimary }}>
+                    {pending.titulo}
+                  </p>
+                  <p className="text-xs truncate" style={{ color: theme.textSecondary }}>
+                    {pending.descripcion}
+                  </p>
+                </div>
+              </div>
+              <label
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 ${uploadingPending === pending.id ? 'opacity-60 pointer-events-none' : 'hover:opacity-80'}`}
+                style={{
+                  backgroundColor: uploadingPending === pending.id ? '#FDE68A' : '#FEF3C7',
+                  color: '#B45309',
+                  border: '1px solid #FDE68A',
+                }}
+              >
+                {uploadingPending === pending.id ? (
+                  <RefreshCw size={12} className="animate-spin" />
+                ) : (
+                  <Upload size={12} />
+                )}
+                {uploadingPending === pending.id ? 'Subiendo...' : 'Subir'}
+                <input
+                  ref={(el) => { fileInputRefs.current[pending.id] = el; }}
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="hidden"
+                  disabled={uploadingPending === pending.id}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleUploadPending(pending, f);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Document List */}
       <div className="flex-1 divide-y" style={{ borderColor: theme.border }}>
         {loading ? (
@@ -185,10 +293,15 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId, ful
             <RefreshCw size={14} className="animate-spin" style={{ color: theme.primary }} />
             <span className="text-xs" style={{ color: theme.textSecondary }}>Cargando documentos...</span>
           </div>
-        ) : docs.length === 0 ? (
+        ) : docs.length === 0 && pendingDocs.length === 0 ? (
           <div className="flex flex-col items-center py-8 gap-2">
             <FileText size={28} style={{ color: `${theme.primary}30` }} />
             <p className="text-xs" style={{ color: theme.textSecondary }}>Sin documentos disponibles</p>
+          </div>
+        ) : docs.length === 0 ? (
+          <div className="flex flex-col items-center py-6 gap-2">
+            <FileText size={24} style={{ color: `${theme.primary}30` }} />
+            <p className="text-xs" style={{ color: theme.textSecondary }}>Sin documentos subidos aún</p>
           </div>
         ) : (
           (fullView ? docs : docs.slice(0, 3)).map((doc) => {

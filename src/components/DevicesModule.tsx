@@ -274,6 +274,16 @@ function DeviceModal({
           });
         }
       } else {
+        // Delete pending doc when device is liberated, unassigned, or transferred away
+        if (accion === 'liberado' || (!newEmpId && prevEmpId) || (accion === 'transferido')) {
+          await supabase
+            .from('employee_pending_docs')
+            .delete()
+            .eq('ref_id', existing.id)
+            .eq('tipo', 'entrega_dispositivo')
+            .is('completed_at', null);
+        }
+
         const { data: inserted, error: err } = await supabase.from('dispositivos').insert(payload).select('id').single();
         if (err) throw err;
 

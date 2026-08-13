@@ -5,15 +5,14 @@ import {
   UserX, CheckCircle2, UploadCloud, Trash2, FolderPlus, Home,
   Folder, Square, CheckSquare, MinusSquare,
 } from 'lucide-react';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { supabase } from '../supabaseClient';
 import {
   listRrhhEmployeeFiles, ensureRrhhFolder, uploadToWasabiKey,
   getWasabiBlobUrl, downloadFromWasabi, listNominasForDni,
   listBajasEmployeeFiles, deleteFromWasabi,
+  listPrefixOneLevelDeep, listAllKeysUnderPrefix, createWasabiFolder,
   type RrhhFile,
 } from '../lib/wasabi';
-import { S3Client, ListObjectsV2Command, PutObjectCommand } from '@aws-sdk/client-s3';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -44,56 +43,6 @@ interface UploadModal {
 interface FolderEntry {
   name: string;       // display name (last segment)
   prefix: string;     // full S3 prefix including trailing /
-}
-
-// ─── Wasabi client ────────────────────────────────────────────────────────────
-
-const wasabiClient = new S3Client({
-  endpoint: import.meta.env.VITE_WASABI_ENDPOINT as string,
-  region: 'eu-central-2',
-  credentials: {
-    accessKeyId: import.meta.env.VITE_WASABI_ACCESS_KEY as string,
-    secretAccessKey: import.meta.env.VITE_WASABI_SECRET_KEY as string,
-  },
-  forcePathStyle: true,
-});
-
-const BUCKET = import.meta.env.VITE_WASABI_BUCKET_NAME as string;
-
-/** List immediate subdirectories and files under a prefix (one level deep). */
-async function listPrefixOneLevelDeep(prefix: string): Promise<{ folders: FolderEntry[]; files: RrhhFile[] }> {
-  const resp = await wasabiClient.send(
-    new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix, Delimiter: '/' })
-  );
-
-  const folders: FolderEntry[] = (resp.CommonPrefixes ?? [])
-    .filter(p => p.Prefix && p.Prefix !== prefix)
-    .map(p => ({
-      prefix: p.Prefix!,
-      name: p.Prefix!.replace(prefix, '').replace(/\/$/, ''),
-    }));
-
-  const files: RrhhFile[] = (resp.Contents ?? [])
-    .filter(o => o.Key && o.Key !== prefix && !o.Key.endsWith('.keep'))
-    .map(o => ({
-      key: o.Key!,
-      name: o.Key!.replace(prefix, ''),
-      size: o.Size ?? 0,
-      lastModified: o.LastModified ?? new Date(),
-    }));
-
-  return { folders, files };
-}
-
-/** Create a folder placeholder in Wasabi. */
-async function createWasabiFolder(folderPrefix: string): Promise<void> {
-  await wasabiClient.send(new PutObjectCommand({
-    Bucket: BUCKET,
-    Key: `${folderPrefix}.keep`,
-    Body: new Uint8Array(0),
-    ContentType: 'application/octet-stream',
-    ContentLength: 0,
-  }));
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -275,22 +224,6 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
     }
   }
 
-  /** Recursively list all object keys under a prefix. */
-  async function listAllKeysUnderPrefix(prefix: string): Promise<string[]> {
-    const keys: string[] = [];
-    let continuationToken: string | undefined;
-    do {
-      const resp = await wasabiClient.send(
-        new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix, ContinuationToken: continuationToken })
-      );
-      for (const obj of resp.Contents ?? []) {
-        if (obj.Key) keys.push(obj.Key);
-      }
-      continuationToken = resp.IsTruncated ? resp.NextContinuationToken : undefined;
-    } while (continuationToken);
-    return keys;
-  }
-
   async function handleDeleteSelection() {
     if (!selected || selectedKeys.size === 0) return;
     setDeletingSelection(true);
@@ -301,7 +234,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
           const prefix = key.slice('folder:'.length);
           const allKeys = await listAllKeysUnderPrefix(prefix);
           for (const k of allKeys) {
-            await wasabiClient.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: k }));
+            await deleteFromWasabi(k);
           }
         } else {
           await deleteFromWasabi(key);

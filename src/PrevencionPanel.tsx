@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
-import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2, HeartPulse, Activity, HelpCircle } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2, HeartPulse, Activity, HelpCircle, Eye, File, Image as ImageIcon, FileSpreadsheet } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
+import { getWasabiBlobUrl, uploadToWasabi } from './lib/wasabi';
 import SocietySwitcher from './SocietySwitcher';
 import PrlDocsModule from './components/PrlDocsModule';
 import TrazabilidadModule from './components/TrazabilidadModule';
@@ -32,6 +33,131 @@ const TAG_COLORS: Record<string, { bg: string; text: string; border: string }> =
 
 function tagColor(nombre: string) {
   return TAG_COLORS[nombre] ?? { bg: '#F8FAFC', text: '#475569', border: '#E2E8F0' };
+}
+
+type PrevencionDocument = {
+  id: string;
+  nombre: string;
+  storage_path: string;
+  mime_type: string;
+  size_bytes: number;
+  subido_por_nombre: string;
+  created_at: string;
+};
+
+function getPrevencionFileIcon(mimeType: string) {
+  if (mimeType.startsWith('image/')) return ImageIcon;
+  if (mimeType.includes('pdf')) return FileText;
+  if (mimeType.includes('sheet') || mimeType.includes('excel') || mimeType.includes('csv')) return FileSpreadsheet;
+  return File;
+}
+
+function formatPrevencionBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+interface PrevencionDocumentsModalProps {
+  employeeId: string;
+  employeeName: string;
+  refreshKey: number;
+  onClose: () => void;
+}
+
+function PrevencionDocumentsModal({ employeeId, employeeName, refreshKey, onClose }: PrevencionDocumentsModalProps) {
+  const [docs, setDocs] = useState<PrevencionDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<PrevencionDocument | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+    supabase
+      .from('employee_documents')
+      .select('id, nombre, storage_path, mime_type, size_bytes, subido_por_nombre, created_at')
+      .eq('employee_id', employeeId)
+      .eq('folder', 'prevencion')
+      .order('created_at', { ascending: false })
+      .then(({ data, error: queryError }) => {
+        if (cancelled) return;
+        if (queryError) setError(true);
+        setDocs((data ?? []) as PrevencionDocument[]);
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [employeeId, refreshKey]);
+
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  const handlePreview = async (doc: PrevencionDocument) => {
+    setPreviewDoc(doc);
+    setPreviewUrl(null);
+    try {
+      setPreviewUrl(await getWasabiBlobUrl(doc.storage_path));
+    } catch {
+      setError(true);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(15,23,42,0.55)' }} onClick={onClose}>
+      <div className="w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-2xl" style={{ backgroundColor: '#FFFFFF' }} onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #E2E8F0' }}>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#065F46' }}>Carpeta Prevencion</p>
+            <h3 className="text-lg font-bold" style={{ color: '#0F172A' }}>{employeeName}</h3>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}><X size={16} /></button>
+        </div>
+
+        <div className="max-h-[calc(85vh-88px)] overflow-y-auto p-5">
+          {error && <p className="mb-3 rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: '#FEF2F2', color: '#B91C1C' }}>No se pudo cargar o previsualizar el documento.</p>}
+          {loading ? (
+            <div className="py-10 text-center" style={{ color: '#64748B' }}>Cargando documentos...</div>
+          ) : docs.length === 0 ? (
+            <div className="py-10 text-center" style={{ color: '#64748B' }}>
+              <FileText size={32} className="mx-auto mb-2" style={{ color: '#A7F3D0' }} />
+              <p>La carpeta Prevencion esta lista, pero aun no tiene documentos.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {docs.map((doc) => {
+                const DocIcon = getPrevencionFileIcon(doc.mime_type);
+                return (
+                  <div key={doc.id} className="flex items-center gap-3 rounded-xl px-3 py-3" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                    <DocIcon size={18} style={{ color: '#065F46' }} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold" style={{ color: '#1E293B' }}>{doc.nombre}</p>
+                      <p className="text-xs" style={{ color: '#64748B' }}>{formatPrevencionBytes(doc.size_bytes)} · {new Date(doc.created_at).toLocaleDateString('es-ES')}</p>
+                    </div>
+                    <button onClick={() => handlePreview(doc)} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer" title="Ver documento" style={{ backgroundColor: '#ECFDF5', color: '#065F46' }}><Eye size={15} /></button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {previewDoc && (
+            <div className="mt-5 rounded-xl overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
+              <div className="flex items-center justify-between px-3 py-2" style={{ backgroundColor: '#F8FAFC' }}>
+                <p className="truncate text-sm font-semibold" style={{ color: '#1E293B' }}>{previewDoc.nombre}</p>
+                <button onClick={() => { setPreviewDoc(null); if (previewUrl) URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }} className="cursor-pointer" style={{ color: '#64748B' }}><X size={15} /></button>
+              </div>
+              {previewUrl ? (
+                previewDoc.mime_type.startsWith('image/') ? <img src={previewUrl} alt={previewDoc.nombre} className="max-h-[48vh] w-full object-contain bg-slate-100" /> : <iframe src={previewUrl} title={previewDoc.nombre} className="h-[48vh] w-full" />
+              ) : <div className="py-10 text-center text-sm" style={{ color: '#64748B' }}>Cargando vista previa...</div>}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }: Props) {
@@ -173,6 +299,10 @@ function EmpleadosTagsTab() {
   // selected tag ids (multi-select) per employee
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [documentsEmployee, setDocumentsEmployee] = useState<Empleado | null>(null);
+  const [documentsRefreshKey, setDocumentsRefreshKey] = useState(0);
+  const [uploadingEmployeeId, setUploadingEmployeeId] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -273,6 +403,33 @@ function EmpleadosTagsTab() {
       await loadDetail(empleadoId);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al eliminar tag');
+    }
+  };
+
+  const handleUploadPrevencionDoc = async (emp: Empleado, file: File) => {
+    if (!emp.user_id) { setError('Este empleado no tiene usuario vinculado.'); return; }
+    setUploadingEmployeeId(emp.id);
+    setError(null);
+    try {
+      const path = `empleados/${emp.user_id}/prevencion/${Date.now()}-${file.name}`;
+      await uploadToWasabi(file, path);
+      const { error: insertError } = await supabase.from('employee_documents').insert({
+        employee_id: emp.user_id,
+        society_id: emp.id_sociedad ?? '',
+        folder: 'prevencion',
+        nombre: file.name,
+        storage_path: path,
+        mime_type: file.type || 'application/octet-stream',
+        size_bytes: file.size,
+        subido_por_nombre: 'Prevencion',
+      });
+      if (insertError) throw new Error(insertError.message);
+      setSuccess(`Documento "${file.name}" subido a la carpeta Prevencion de ${emp.nombre}.`);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al subir el documento.');
+    } finally {
+      setUploadingEmployeeId(null);
     }
   };
 
@@ -387,6 +544,36 @@ function EmpleadosTagsTab() {
                         {soc.nombre}
                       </span>
                     )}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <label
+                        className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80"
+                        style={{ backgroundColor: uploadingEmployeeId === emp.id ? '#F1F5F9' : '#ECFDF5', border: '1px solid #6EE7B7', color: '#065F46' }}
+                        title="Subir documento a carpeta Prevencion"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {uploadingEmployeeId === emp.id ? <RefreshCw size={13} className="animate-spin" /> : <Upload size={13} />}
+                        <input
+                          ref={(el) => { fileInputRefs.current[emp.id] = el; }}
+                          type="file"
+                          accept="application/pdf,image/*"
+                          className="hidden"
+                          disabled={uploadingEmployeeId === emp.id}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleUploadPrevencionDoc(emp, f);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDocumentsEmployee(emp); setDocumentsRefreshKey((k) => k + 1); }}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80"
+                        style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', color: '#15803D' }}
+                        title="Ver carpeta Prevencion"
+                      >
+                        <Eye size={13} />
+                      </button>
+                    </div>
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
                       style={{ backgroundColor: isExpanded ? '#ECFDF5' : '#F8FAFC', border: '1px solid #E2E8F0', color: isExpanded ? '#065F46' : '#94A3B8' }}>
                       {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
@@ -515,6 +702,15 @@ function EmpleadosTagsTab() {
           })}
         </div>
       </div>
+
+      {documentsEmployee && (
+        <PrevencionDocumentsModal
+          employeeId={documentsEmployee.user_id ?? documentsEmployee.id}
+          employeeName={documentsEmployee.nombre}
+          refreshKey={documentsRefreshKey}
+          onClose={() => setDocumentsEmployee(null)}
+        />
+      )}
     </div>
   );
 }

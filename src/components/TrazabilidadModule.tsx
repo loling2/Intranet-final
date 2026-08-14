@@ -342,10 +342,10 @@ export default function TrazabilidadModule() {
                         <div key={emp.empleado_id} className="flex items-center gap-2.5 px-4 py-2.5">
                           <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold"
                             style={{ backgroundColor: '#065F46' }}>
-                            {emp.nombre.trim().charAt(0).toUpperCase()}
+                            {(emp.nombre ?? '').trim().charAt(0).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold truncate" style={{ color: '#1E293B' }}>{emp.nombre}</p>
+                            <p className="text-xs font-semibold truncate" style={{ color: '#1E293B' }}>{emp.nombre || '—'}</p>
                             {emp.downloaded_at && (
                               <p className="text-[10px]" style={{ color: '#6EE7B7' }}>
                                 {new Date(emp.downloaded_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
@@ -379,10 +379,10 @@ export default function TrazabilidadModule() {
                         <div key={emp.empleado_id} className="flex items-center gap-2.5 px-4 py-2.5">
                           <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold"
                             style={{ backgroundColor: '#94A3B8' }}>
-                            {emp.nombre.trim().charAt(0).toUpperCase()}
+                            {(emp.nombre ?? '').trim().charAt(0).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold truncate" style={{ color: '#1E293B' }}>{emp.nombre}</p>
+                            <p className="text-xs font-semibold truncate" style={{ color: '#1E293B' }}>{emp.nombre || '—'}</p>
                             <p className="text-[10px]" style={{ color: '#94A3B8' }}>{emp.email || '—'}</p>
                           </div>
                           <Clock size={13} style={{ color: '#F97316', flexShrink: 0 }} />

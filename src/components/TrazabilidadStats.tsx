@@ -16,6 +16,21 @@ interface StatRow {
   docs_pendientes: PendingDoc[];
 }
 
+function mapRpcRow(r: any): StatRow {
+  return {
+    empleado_id: r.r_empleado_id ?? r.empleado_id ?? '',
+    nombre: r.r_nombre ?? r.nombre ?? '',
+    email: r.r_email ?? r.email ?? '',
+    society_id: r.r_society_id ?? r.society_id ?? '',
+    society_nombre: r.r_society_nombre ?? r.society_nombre ?? '',
+    centro_trabajo: r.r_centro ?? r.centro_trabajo ?? '',
+    total_asignados: Number(r.r_asignados ?? r.total_asignados ?? 0),
+    total_descargados: Number(r.r_descargados ?? r.total_descargados ?? 0),
+    total_pendientes: Number(r.r_pendientes ?? r.total_pendientes ?? 0),
+    docs_pendientes: (r.r_docs_pend ?? r.docs_pendientes ?? []) as PendingDoc[],
+  };
+}
+
 function timeAgo(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
@@ -94,7 +109,7 @@ export default function TrazabilidadStats() {
       if (selCentro) params.p_centro = selCentro;
       const { data, error: rpcErr } = await supabase.rpc('get_prl_trazabilidad_stats', params);
       if (rpcErr) throw rpcErr;
-      setStats((data ?? []) as StatRow[]);
+      setStats((data ?? []).map(mapRpcRow));
     } catch (e: any) {
       setError(e?.message ?? 'Error al cargar estadísticas');
       setStats([]);
@@ -125,7 +140,7 @@ export default function TrazabilidadStats() {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.toLowerCase();
     return stats
-      .filter((r) => r.nombre.toLowerCase().includes(q) || (r.email ?? '').toLowerCase().includes(q))
+      .filter((r) => (r.nombre ?? '').toLowerCase().includes(q) || (r.email ?? '').toLowerCase().includes(q))
       .slice(0, 8);
   }, [stats, searchQuery]);
 
@@ -134,7 +149,7 @@ export default function TrazabilidadStats() {
     if (selectedEmpId) return stats.filter((r) => r.empleado_id === selectedEmpId);
     if (!searchQuery.trim()) return stats;
     const q = searchQuery.toLowerCase();
-    return stats.filter((r) => r.nombre.toLowerCase().includes(q) || (r.email ?? '').toLowerCase().includes(q));
+    return stats.filter((r) => (r.nombre ?? '').toLowerCase().includes(q) || (r.email ?? '').toLowerCase().includes(q));
   }, [stats, searchQuery, selectedEmpId]);
 
   const toggleRow = (id: string) => {
@@ -348,7 +363,7 @@ export default function TrazabilidadStats() {
                     style={{ borderBottom: '1px solid #F1F5F9' }}>
                     <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
                       style={{ backgroundColor: emp.total_pendientes > 0 ? '#94A3B8' : '#065F46' }}>
-                      {emp.nombre.trim().charAt(0).toUpperCase()}
+                      {(emp.nombre ?? '').trim().charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold truncate" style={{ color: '#1E293B' }}>{emp.nombre}</p>
@@ -496,7 +511,7 @@ export default function TrazabilidadStats() {
                                 <div className="flex items-center gap-2">
                                   <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                                     style={{ backgroundColor: r.total_pendientes > 0 ? '#94A3B8' : '#065F46' }}>
-                                    {r.nombre.trim().charAt(0).toUpperCase()}
+                                    {(r.nombre ?? '').trim().charAt(0).toUpperCase()}
                                   </div>
                                   <span className="text-xs font-semibold" style={{ color: '#1E293B' }}>{r.nombre}</span>
                                 </div>
@@ -537,7 +552,7 @@ export default function TrazabilidadStats() {
                                 <td colSpan={7} className="px-4 py-3">
                                   <div className="space-y-2">
                                     <p className="text-xs font-semibold mb-2" style={{ color: '#C2410C' }}>
-                                      {r.nombre.split(' ')[0]}, te faltan {r.total_pendientes} documento{r.total_pendientes > 1 ? 's' : ''} por descargar:
+                                      {(r.nombre ?? '').split(' ')[0]}, te faltan {r.total_pendientes} documento{r.total_pendientes > 1 ? 's' : ''} por descargar:
                                     </p>
                                     {r.docs_pendientes.map((d) => (
                                       <div key={d.doc_id} className="flex items-start gap-2 pl-2" style={{ borderLeft: '2px solid #FED7AA' }}>

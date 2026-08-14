@@ -1767,9 +1767,17 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                     className="form-input flex-1"
                   >
                     <option value="">Seleccionar...</option>
-                    {centros
-                      .filter((c) => !form.id_sociedad || c.id_sociedad === form.id_sociedad)
-                      .map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                    {(() => {
+                      const filtered = centros.filter((c) => !form.id_sociedad || c.id_sociedad === form.id_sociedad);
+                      const current = form.centro_trabajo;
+                      const exists = filtered.some((c) => c.nombre === current);
+                      return (
+                        <>
+                          {current && !exists && <option value={current}>{current} (otra sociedad)</option>}
+                          {filtered.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                        </>
+                      );
+                    })()}
                   </select>
                   <button
                     type="button"
@@ -2251,9 +2259,17 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                               className="form-input flex-1"
                             >
                               <option value="">Seleccionar...</option>
-                              {centros
-                                .filter((c) => !form.id_sociedad || c.id_sociedad === form.id_sociedad)
-                                .map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                              {(() => {
+                                const filtered = centros.filter((c) => !form.id_sociedad || c.id_sociedad === form.id_sociedad);
+                                const current = form.centro_trabajo;
+                                const exists = filtered.some((c) => c.nombre === current);
+                                return (
+                                  <>
+                                    {current && !exists && <option value={current}>{current} (otra sociedad)</option>}
+                                    {filtered.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                                  </>
+                                );
+                              })()}
                             </select>
                             <button
                               type="button"

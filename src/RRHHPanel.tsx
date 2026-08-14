@@ -19,6 +19,7 @@ import IncidenciasModule from './components/IncidenciasModule';
 import FichajesModule from './components/FichajesModule';
 import CorreccionesFichajesModule from './components/CorreccionesFichajesModule';
 import KioskDevicesPanel from './components/KioskDevicesPanel';
+import DevicesModule from './components/DevicesModule';
 import BajasModule from './components/BajasModule';
 import SupervisorEmpleados from './components/SupervisorEmpleados';
 import HelpPanel from './components/HelpPanel';
@@ -35,7 +36,7 @@ interface Props {
   onNavigateEmployee?: () => void;
 }
 
-type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'facturas' | 'incidencias' | 'fichajes' | 'kiosk-devices' | 'bajas' | 'supervisor-empleados' | 'ayuda';
+type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'facturas' | 'incidencias' | 'fichajes' | 'kiosk-devices' | 'devices' | 'bajas' | 'supervisor-empleados' | 'ayuda';
 
 export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, role, onNavigateEmployee }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
@@ -126,6 +127,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     { id: 'audit', label: 'Auditoria', icon: ScrollText },
     { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },
     { id: 'fichajes', label: 'Fichajes', icon: Clock },
+    { id: 'devices', label: 'Dispositivos', icon: Laptop },
     { id: 'kiosk-devices', label: 'Tablets Kiosco', icon: Tablet },
     { id: 'bajas', label: 'Bajas/Ausencias', icon: BedSingle },
     { id: 'supervisor-empleados', label: 'Empleados Asignados', icon: UserCog },
@@ -688,6 +690,11 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
             <CorreccionesFichajesModule />
             <FichajesModule />
           </div>
+        )}
+
+        {/* Devices Tab */}
+        {activeTab === 'devices' && (
+          <DevicesModule />
         )}
 
         {/* Kiosk Devices Tab */}

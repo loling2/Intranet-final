@@ -32,6 +32,7 @@ const ALL_TABS: TabDef[] = [
   { id: 'facturas',       label: 'Facturas',              icon: Receipt },
   { id: 'incidencias',    label: 'Incidencias',           icon: AlertCircle },
   { id: 'fichajes',       label: 'Fichajes',              icon: Clock },
+  { id: 'devices',         label: 'Dispositivos',          icon: MonitorSmartphone },
   { id: 'kiosk-devices',  label: 'Dispositivos Fichaje',   icon: MonitorSmartphone },
   { id: 'bajas',           label: 'Bajas/Ausencias',       icon: BedSingle },
   { id: 'prl-docs',       label: 'Documentos PRL',        icon: ShieldCheck },

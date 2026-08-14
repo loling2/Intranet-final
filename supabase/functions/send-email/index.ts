@@ -300,7 +300,16 @@ async function sendSmtp(opts: {
       ].join("\r\n");
     }
 
-    const dataResp = await cmd(message);
+    // Write DATA in chunks to avoid overflowing the TCP buffer on large HTML emails
+    const CHUNK = 8192;
+    const fullData = message + "\r\n";
+    const bytes = enc.encode(fullData);
+    for (let off = 0; off < bytes.length; off += CHUNK) {
+      const end = Math.min(off + CHUNK, bytes.length);
+      await conn.write(bytes.subarray(off, end));
+    }
+
+    const dataResp = await readResponse();
     if (!dataResp.startsWith("250")) throw new Error("DATA failed: " + dataResp);
 
     await cmd("QUIT");

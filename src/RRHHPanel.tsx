@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound, AlertCircle, Menu, BedSingle, UserCog, HelpCircle, Tablet, MonitorSmartphone } from 'lucide-react';
+import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound, AlertCircle, Menu, BedSingle, UserCog, HelpCircle, Tablet, MonitorSmartphone, Laptop } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { mockVacations, mockCertificates, mockExams, mockDocuments } from './mockData';
 import UserManagement from './UserManagement';

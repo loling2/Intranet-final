@@ -1146,7 +1146,7 @@ function PlantillasSection() {
 
 // ─── Main Module ──────────────────────────────────────────────────────────────
 
-type Section = 'cuentas' | 'notificaciones' | 'plantillas' | 'incidencias';
+type Section = 'cuentas' | 'notificaciones' | 'plantillas' | 'incidencias' | 'prl';
 
 export default function EmailModule() {
   const [section, setSection] = useState<Section>('cuentas');
@@ -1156,6 +1156,7 @@ export default function EmailModule() {
     { id: 'notificaciones', label: 'Notificaciones', icon: Bell     },
     { id: 'plantillas',     label: 'Plantillas',     icon: FileText },
     { id: 'incidencias',    label: 'Informe Incidencias', icon: Clock },
+    { id: 'prl',            label: 'Informe PRL',         icon: Shield },
   ];
 
   return (
@@ -1193,6 +1194,7 @@ export default function EmailModule() {
       {section === 'notificaciones' && <NotificacionesSection />}
       {section === 'plantillas' && <PlantillasSection />}
       {section === 'incidencias' && <IncidenciasSection />}
+      {section === 'prl' && <PrlReportSection />}
     </div>
   );
 }
@@ -1380,6 +1382,216 @@ function IncidenciasSection() {
 
       <div className="rounded-xl px-4 py-3 mt-4 text-xs" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
         <strong>Criterios del informe:</strong> Déficit: menos de 6h. Exceso: más de 8h. Sin salida: empleado con entrada pero sin salida registrada (se cierra automáticamente a las 23:59:59). El cierre automático se ejecuta cada día a las 23:55.
+      </div>
+    </>
+  );
+}
+
+// ─── PRL Report Section ───────────────────────────────────────────────────────
+
+function PrlReportSection() {
+  const [email, setEmail] = useState('');
+  const [enabled, setEnabled] = useState(true);
+  const [hour, setHour] = useState(8);
+  const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'every3'>('daily');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [msgType, setMsgType] = useState<'ok' | 'err'>('ok');
+
+  useEffect(() => {
+    (async () => {
+      const [{ data: ed }, { data: en }, { data: hr }, { data: fq }] = await Promise.all([
+        supabase.from('ui_settings').select('value').eq('key', 'prl_report_email').maybeSingle(),
+        supabase.from('ui_settings').select('value').eq('key', 'prl_report_enabled').maybeSingle(),
+        supabase.from('ui_settings').select('value').eq('key', 'prl_report_hour').maybeSingle(),
+        supabase.from('ui_settings').select('value').eq('key', 'prl_report_frequency').maybeSingle(),
+      ]);
+      if (ed?.value) setEmail(ed.value);
+      if (en?.value) setEnabled(en.value !== 'false');
+      if (hr?.value) setHour(parseInt(hr.value, 10) || 8);
+      if (fq?.value && ['daily', 'weekly', 'every3'].includes(fq.value)) setFrequency(fq.value as 'daily' | 'weekly' | 'every3');
+      setLoading(false);
+    })();
+  }, []);
+
+  const showMsg = (text: string, type: 'ok' | 'err') => {
+    setMsg(text); setMsgType(type);
+    setTimeout(() => setMsg(''), 5000);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await Promise.all([
+        supabase.from('ui_settings').upsert({ key: 'prl_report_email', value: email }, { onConflict: 'key' }),
+        supabase.from('ui_settings').upsert({ key: 'prl_report_enabled', value: enabled ? 'true' : 'false' }, { onConflict: 'key' }),
+        supabase.rpc('reschedule_prl_report', { p_hour: hour, p_frequency: frequency }),
+      ]);
+      const freqLabel = frequency === 'daily' ? 'cada día' : frequency === 'weekly' ? 'cada semana (lunes)' : 'cada 3 días';
+      showMsg(`Configuración guardada. El informe se enviará ${freqLabel} a las ${String(hour).padStart(2, '0')}:00.`, 'ok');
+    } catch {
+      showMsg('Error al guardar la configuración.', 'err');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    try {
+      const url = (import.meta as any).env?.VITE_SUPABASE_URL;
+      const anonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+      if (!url) { showMsg('No se pudo determinar la URL del servidor.', 'err'); return; }
+      const resp = await fetch(`${url}/functions/v1/prl-report`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(anonKey ? { Authorization: `Bearer ${anonKey}`, Apikey: anonKey } : {}),
+        },
+      });
+      const text = await resp.text();
+      let result: { ok?: boolean; error?: string; recipient?: string; total_empleados?: number; disabled?: boolean };
+      try { result = JSON.parse(text); } catch { result = { error: `Respuesta no válida del servidor (${resp.status}): ${text.slice(0, 200)}` }; }
+      if (result.ok) {
+        showMsg(`Correo de prueba enviado a ${result.recipient}. ${result.total_empleados} empleado(s) con documentos pendientes.`, 'ok');
+      } else if (result.disabled) {
+        showMsg('Informe desactivado. Activa el informe para enviar correos.', 'err');
+      } else {
+        showMsg(result.error || `Error al enviar el correo (código ${resp.status}).`, 'err');
+      }
+    } catch (e: unknown) {
+      const m = e instanceof Error ? e.message : String(e);
+      showMsg(`Error de conexión: ${m}`, 'err');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 size={26} className="animate-spin" style={{ color: '#059669' }} />
+      </div>
+    );
+  }
+
+  const FREQ_OPTIONS: { value: 'daily' | 'weekly' | 'every3'; label: string }[] = [
+    { value: 'daily',  label: 'Cada día' },
+    { value: 'every3', label: 'Cada 3 días' },
+    { value: 'weekly', label: 'Cada semana (lunes)' },
+  ];
+
+  return (
+    <>
+      <p className="text-sm mb-5" style={{ color: '#64748B' }}>
+        El sistema revisa automáticamente los documentos PRL pendientes de cada trabajador (ficha de puesto, evaluación de riesgos, medidas de emergencia, plan de prevención, reconocimiento médico y entrega de documentación) y envía un correo con el listado de empleados que tienen documentos pendientes de descarga o entrega.
+      </p>
+
+      <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        <div className="flex items-start gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#ECFDF5', border: '1px solid #BBF7D0' }}>
+            <Shield size={17} style={{ color: '#059669' }} />
+          </div>
+          <div>
+            <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>Informe de documentos PRL pendientes por trabajador</p>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Envío automático — frecuencia y hora configurables</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Correo destinatario</label>
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+              <Mail size={15} style={{ color: '#94A3B8' }} />
+              <input
+                type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="prevencion@apedeca.es"
+                className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1E293B' }}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Frecuencia de envío</label>
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+                <Clock size={15} style={{ color: '#94A3B8' }} />
+                <select
+                  value={frequency}
+                  onChange={(e) => setFrequency(e.target.value as 'daily' | 'weekly' | 'every3')}
+                  className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1E293B' }}
+                >
+                  {FREQ_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Hora de envío</label>
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+                <Clock size={15} style={{ color: '#94A3B8' }} />
+                <select
+                  value={hour}
+                  onChange={(e) => setHour(parseInt(e.target.value, 10))}
+                  className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1E293B' }}
+                >
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => setEnabled(!enabled)}>
+              {enabled
+                ? <ToggleRight size={28} style={{ color: '#059669' }} />
+                : <ToggleLeft size={28} style={{ color: '#94A3B8' }} />}
+            </button>
+            <span className="text-sm font-medium" style={{ color: '#475569' }}>
+              Envío {enabled ? 'activo' : 'inactivo'}
+            </span>
+          </div>
+        </div>
+
+        {msg && (
+          <div className="mt-4 flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm" style={{
+            backgroundColor: msgType === 'ok' ? '#F0FDF4' : '#FEF2F2',
+            color: msgType === 'ok' ? '#16A34A' : '#B91C1C',
+            border: `1px solid ${msgType === 'ok' ? '#BBF7D0' : '#FECACA'}`,
+          }}>
+            {msgType === 'ok' ? <Check size={14} /> : <AlertCircle size={14} />}
+            {msg}
+          </div>
+        )}
+
+        <div className="flex gap-3 mt-5">
+          <button
+            onClick={handleSave} disabled={saving}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60"
+            style={{ backgroundColor: '#059669', color: '#FFFFFF' }}
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            Guardar configuración
+          </button>
+          <button
+            onClick={handleTest} disabled={testing}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60"
+            style={{ backgroundColor: '#ECFDF5', color: '#047857', border: '1px solid #BBF7D0' }}
+          >
+            {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            Enviar correo de prueba
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-xl px-4 py-3 mt-4 text-xs" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+        <strong>Documentos que revisa el informe:</strong> Ficha de puesto de trabajo, Evaluación de riesgos, Medidas de emergencia, Plan de prevención, Reconocimiento médico y Entrega de documentación PRL. Un empleado aparece en el informe si tiene al menos uno de estos documentos sin completar.
       </div>
     </>
   );

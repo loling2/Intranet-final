@@ -999,6 +999,7 @@ function ReconocimientoMedicoTab() {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editEstado, setEditEstado] = useState<'en_proceso' | 'finalizado' | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1019,11 +1020,16 @@ function ReconocimientoMedicoTab() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(0); }, [search]);
 
   const filtered = empleados.filter((e) => {
     const q = search.toLowerCase();
     return !q || e.nombre?.toLowerCase().includes(q) || e.dni?.toLowerCase().includes(q);
   });
+
+  const RECOGNITION_PAGE_SIZE = 30;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / RECOGNITION_PAGE_SIZE));
+  const paginated = filtered.slice(page * RECOGNITION_PAGE_SIZE, (page + 1) * RECOGNITION_PAGE_SIZE);
 
   const handleEdit = (emp: Empleado) => {
     setEditingId(emp.id);
@@ -1092,7 +1098,7 @@ function ReconocimientoMedicoTab() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map((emp) => {
+          {paginated.map((emp) => {
             const badge = estadoBadge(emp.reconocimiento_medico_estado);
             const isEditing = editingId === emp.id;
             return (

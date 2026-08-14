@@ -74,13 +74,13 @@ export default function TrazabilidadStats() {
 
   async function loadCentros(societyId: string) {
     try {
-      let q = supabase.from('empleados').select('centro_trabajo').eq('activo', true);
+      let q = supabase.from('centros').select('nombre, id_sociedad');
       if (societyId) q = q.eq('id_sociedad', societyId);
       const { data, error } = await q;
       if (error) throw error;
       const rows = (data ?? []) as any[];
       const cSet = new Set<string>();
-      rows.forEach((r) => { if (r.centro_trabajo) cSet.add(r.centro_trabajo); });
+      rows.forEach((r) => { if (r.nombre) cSet.add(r.nombre); });
       setCentros(Array.from(cSet).sort());
     } catch { setCentros([]); }
   }

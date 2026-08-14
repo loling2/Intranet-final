@@ -54,7 +54,7 @@ Deno.serve(async (req: Request) => {
 
     if (empErr) throw new Error(empErr.message);
 
-    interface PendingEmp { nombre: string; puesto: string | null; docs: string[] }
+    interface PendingEmp { nombre: string; puesto: string | null; pendingCount: number }
     const pending: PendingEmp[] = [];
 
     for (const e of empleados ?? []) {
@@ -68,7 +68,7 @@ Deno.serve(async (req: Request) => {
 
       if (docs.length > 0) {
         const fullName = [e.nombre, e.apellidos].filter(Boolean).join(" ").trim();
-        pending.push({ nombre: fullName, puesto: e.puesto, docs });
+        pending.push({ nombre: fullName, puesto: e.puesto, pendingCount: docs.length });
       }
     }
 
@@ -91,11 +91,10 @@ Deno.serve(async (req: Request) => {
     } else {
       const rows = pending.map((emp, idx) => {
         const rowBg = idx % 2 === 0 ? "#FFFFFF" : "#FAFAFA";
-        const docsHtml = emp.docs.map(d => `<span style="display:inline-block;margin:2px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;">${d}</span>`).join("");
-        return `<tr style="background:${rowBg};"><td style="padding:10px 12px;border-bottom:1px solid #F1F5F9;font-size:13px;font-weight:600;color:#0F172A;">${emp.nombre}</td><td style="padding:10px 12px;border-bottom:1px solid #F1F5F9;font-size:12px;color:#475569;">${emp.puesto ?? "—"}</td><td style="padding:10px 12px;border-bottom:1px solid #F1F5F9;">${docsHtml}</td></tr>`;
+        return `<tr style="background:${rowBg};"><td style="padding:10px 12px;border-bottom:1px solid #F1F5F9;font-size:13px;font-weight:600;color:#0F172A;">${emp.nombre}</td><td style="padding:10px 12px;border-bottom:1px solid #F1F5F9;font-size:12px;color:#475569;">${emp.puesto ?? "—"}</td><td style="padding:10px 12px;border-bottom:1px solid #F1F5F9;text-align:center;"><span style="display:inline-block;background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;">${emp.pendingCount} pendiente${emp.pendingCount !== 1 ? "s" : ""}</span></td></tr>`;
       }).join("");
 
-      html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#F1F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:32px 0;"><tr><td align="center"><table width="620" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:620px;"><tr><td style="background:linear-gradient(135deg,#065F46 0%,#047857 60%,#059669 100%);padding:28px 36px 24px;"><table width="100%" cellpadding="0" cellspacing="0"><tr><td><div style="font-size:20px;font-weight:800;color:#FFFFFF;letter-spacing:-0.3px;">🛡️ Informe PRL — Documentos Pendientes</div><div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:4px;font-weight:500;">${fmtDate(today)}</div></td><td align="right"><div style="display:inline-block;background:rgba(239,68,68,0.25);border:1px solid rgba(239,68,68,0.5);border-radius:20px;padding:6px 14px;"><span style="font-size:13px;font-weight:700;color:#FCA5A5;">${totalPendientes} empleado${totalPendientes !== 1 ? "s" : ""}</span></div></td></tr></table></td></tr><tr><td style="padding:28px 32px;"><div style="font-size:14px;font-weight:800;color:#0F172A;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #F1F5F9;letter-spacing:-0.2px;">Trabajadores con documentos pendientes</div><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:10px;overflow:hidden;border:1px solid #E2E8F0;"><thead><tr style="background:#F8FAFC;"><th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid #E2E8F0;">Empleado</th><th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid #E2E8F0;">Puesto</th><th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid #E2E8F0;">Documentos pendientes</th></tr></thead><tbody>${rows}</tbody></table><p style="margin:20px 0 0;font-size:11px;color:#94A3B8;">Este informe se genera automáticamente según la frecuencia configurada.</p></td></tr></table></td></tr></table></body></html>`;
+      html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#F1F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:32px 0;"><tr><td align="center"><table width="620" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:620px;"><tr><td style="background:linear-gradient(135deg,#065F46 0%,#047857 60%,#059669 100%);padding:28px 36px 24px;"><table width="100%" cellpadding="0" cellspacing="0"><tr><td><div style="font-size:20px;font-weight:800;color:#FFFFFF;letter-spacing:-0.3px;">🛡️ Informe PRL — Documentos Pendientes</div><div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:4px;font-weight:500;">${fmtDate(today)}</div></td><td align="right"><div style="display:inline-block;background:rgba(239,68,68,0.25);border:1px solid rgba(239,68,68,0.5);border-radius:20px;padding:6px 14px;"><span style="font-size:13px;font-weight:700;color:#FCA5A5;">${totalPendientes} empleado${totalPendientes !== 1 ? "s" : ""}</span></div></td></tr></table></td></tr><tr><td style="padding:28px 32px;"><div style="font-size:14px;font-weight:800;color:#0F172A;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #F1F5F9;letter-spacing:-0.2px;">Resumen de trabajadores con pendientes</div><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:10px;overflow:hidden;border:1px solid #E2E8F0;"><thead><tr style="background:#F8FAFC;"><th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid #E2E8F0;">Empleado</th><th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid #E2E8F0;">Puesto</th><th style="padding:8px 12px;text-align:center;font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid #E2E8F0;">Pendientes</th></tr></thead><tbody>${rows}</tbody></table><p style="margin:20px 0 0;font-size:11px;color:#94A3B8;">Para consultar el detalle de cada documento, entra en el perfil PRL del trabajador.</p></td></tr></table></td></tr></table></body></html>`;
     }
 
     if (!enabled) {
@@ -144,6 +143,15 @@ async function sendSmtp(opts: {
     const enc = new TextEncoder();
     const dec = new TextDecoder();
 
+    const writeAll = async (data: Uint8Array) => {
+      let offset = 0;
+      while (offset < data.length) {
+        const written = await conn.write(data.subarray(offset));
+        if (!written) throw new Error("SMTP connection closed while sending");
+        offset += written;
+      }
+    };
+
     const readResponse = async (): Promise<string> => {
       let result = "";
       const buf = new Uint8Array(4096);
@@ -160,7 +168,7 @@ async function sendSmtp(opts: {
     };
 
     const cmd = async (line: string): Promise<string> => {
-      await conn.write(enc.encode(line + "\r\n"));
+      await writeAll(enc.encode(line + "\r\n"));
       return await readResponse();
     };
 
@@ -204,7 +212,10 @@ async function sendSmtp(opts: {
       ].join("\r\n");
     }
 
-    await conn.write(enc.encode(message + "\r\n"));
+    const bytes = enc.encode(message + "\r\n");
+    for (let off = 0; off < bytes.length; off += 8192) {
+      await writeAll(bytes.subarray(off, Math.min(off + 8192, bytes.length)));
+    }
     const dataResp = await readResponse();
     if (!dataResp.startsWith("250")) throw new Error("Send failed: " + dataResp);
 

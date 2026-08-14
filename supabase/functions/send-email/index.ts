@@ -214,6 +214,15 @@ async function sendSmtp(opts: {
     const enc = new TextEncoder();
     const dec = new TextDecoder();
 
+    const writeAll = async (data: Uint8Array) => {
+      let offset = 0;
+      while (offset < data.length) {
+        const written = await conn.write(data.subarray(offset));
+        if (!written) throw new Error("SMTP connection closed while sending");
+        offset += written;
+      }
+    };
+
     // Read full SMTP response (may span multiple packets)
     const readResponse = async (): Promise<string> => {
       let result = "";
@@ -231,7 +240,7 @@ async function sendSmtp(opts: {
     };
 
     const cmd = async (line: string): Promise<string> => {
-      await conn.write(enc.encode(line + "\r\n"));
+      await writeAll(enc.encode(line + "\r\n"));
       return await readResponse();
     };
 
@@ -302,11 +311,10 @@ async function sendSmtp(opts: {
 
     // Write DATA in chunks to avoid overflowing the TCP buffer on large HTML emails
     const CHUNK = 8192;
-    const fullData = message + "\r\n";
-    const bytes = enc.encode(fullData);
+    const bytes = enc.encode(message + "\r\n");
     for (let off = 0; off < bytes.length; off += CHUNK) {
       const end = Math.min(off + CHUNK, bytes.length);
-      await conn.write(bytes.subarray(off, end));
+      await writeAll(bytes.subarray(off, end));
     }
 
     const dataResp = await readResponse();

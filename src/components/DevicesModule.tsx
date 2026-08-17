@@ -936,6 +936,7 @@ export default function DevicesModule() {
   const [filterSociety, setFilterSociety] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
   const [filterEstado, setFilterEstado] = useState<'all' | '1' | '2' | '3'>('all');
+  const [filterCentro, setFilterCentro] = useState('');
   const [page, setPage] = useState(1);
 const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -978,7 +979,7 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
   }, []);
 
   useEffect(() => { loadDevices(); loadEmpleados(); loadCentros(); }, [loadDevices, loadEmpleados, loadCentros]);
-  useEffect(() => { setPage(1); }, [search, filterSociety, filterTipo, filterEstado]);
+  useEffect(() => { setPage(1); }, [search, filterSociety, filterTipo, filterEstado, filterCentro]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -997,6 +998,8 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
   .filter((d) => {
     if (filterSociety && d.society_id !== filterSociety) return false;
     if (filterTipo && d.tipo !== filterTipo) return false;
+
+    if (filterCentro && d.centro_trabajo !== filterCentro) return false;
 
     if (
       filterEstado !== 'all' &&
@@ -1099,14 +1102,22 @@ const totalActivos =
             <option value="">Todos los tipos</option>
             {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select  value={filterEstado} onChange={(e) => setFilterEstado(e.target.value as any)}
+          <select value={filterCentro} onChange={(e) => setFilterCentro(e.target.value)}
             className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
             style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
-            <option value="all">Todos los estados</option>
-<option value="1">Activo</option>
-<option value="2">Inactivo</option>
-<option value="3">Stock</option>
+            <option value="">Todos los centros</option>
+            {centros.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
           </select>
+          {!isSupervisor && (
+            <select  value={filterEstado} onChange={(e) => setFilterEstado(e.target.value as any)}
+              className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer"
+              style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
+              <option value="all">Todos los estados</option>
+  <option value="1">Activo</option>
+  <option value="2">Inactivo</option>
+  <option value="3">Stock</option>
+            </select>
+          )}
         </div>
 
         {/* Alerts */}
@@ -1133,12 +1144,13 @@ const totalActivos =
               <Laptop size={28} style={{ color: '#CBD5E1' }} />
             </div>
             <p className="text-sm font-medium" style={{ color: '#64748B' }}>
-              {search || filterSociety || filterTipo || filterEstado !== 'all' ? 'Sin resultados' : 'Sin dispositivos registrados'}
+              {search || filterSociety || filterTipo || filterCentro || filterEstado !== 'all' ? 'Sin resultados' : 'Sin dispositivos registrados'}
             </p>
             <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
              {!search &&
  !filterSociety &&
  !filterTipo &&
+ !filterCentro &&
  filterEstado === 'all' &&
  'Pulsa "Nuevo dispositivo" para empezar'}
             </p>

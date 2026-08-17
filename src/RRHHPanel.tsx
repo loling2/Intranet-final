@@ -134,7 +134,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
   ];
 
-  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'vacations', 'certificates', 'exams', 'facturas', 'bajas', 'supervisor-empleados', 'ayuda'];
+  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'vacations', 'certificates', 'exams', 'supervisor-empleados', 'ayuda'];
 
   const tabs = enabledTabIds !== null
     ? allTabs.filter(t => t.id === 'ayuda' || enabledTabIds.has(t.id))
@@ -161,12 +161,16 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     (!searchQuery || e.title.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  const supervisorTheme = isSupervisor
+    ? { headerBg: 'linear-gradient(135deg, #4C1D95, #7C3AED)', activeTabColor: '#7C3AED', badgeBg: '#EDE9FE', badgeColor: '#6D28D9', headerText: '#EDE9FE', panelTitle: 'Panel de Supervisor', panelSubtitle: 'Supervision de empleados y gestion operativa' }
+    : { headerBg: 'linear-gradient(135deg, #0C4A6E, #0369A1)', activeTabColor: '#0369A1', badgeBg: '#DBEAFE', badgeColor: '#1D4ED8', headerText: '#E0F2FE', panelTitle: 'Panel de Recursos Humanos', panelSubtitle: 'Gestion de empleados y formacion' };
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
       <header
         className="sticky top-0 z-50"
-        style={{ background: 'linear-gradient(135deg, #0C4A6E, #0369A1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}
+        style={{ background: supervisorTheme.headerBg, borderBottom: '1px solid rgba(255,255,255,0.1)' }}
       >
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -175,7 +179,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
               onClick={isAdmin && onNavigateAdmin ? onNavigateAdmin : onNavigateEmployee ?? onLogout}
               title={isAdmin && onNavigateAdmin ? 'Volver a Admin' : 'Volver al panel de empleado'}
               className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 hover:opacity-80"
-              style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#E0F2FE' }}
+              style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: supervisorTheme.headerText }}
             >
               <ChevronLeft size={16} />
             </button>
@@ -183,15 +187,15 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
               className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ backgroundColor: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)' }}
             >
-              <Users size={18} className="text-white" />
+              {isSupervisor ? <UserCog size={18} className="text-white" /> : <Users size={18} className="text-white" />}
             </div>
             <div className="min-w-0">
-              <h1 className="text-white font-bold text-sm sm:text-lg tracking-tight">Panel de Recursos Humanos</h1>
-              <p className="text-white/50 text-xs hidden sm:block">Gestion de empleados y formacion</p>
+              <h1 className="text-white font-bold text-sm sm:text-lg tracking-tight">{supervisorTheme.panelTitle}</h1>
+              <p className="text-white/50 text-xs hidden sm:block">{supervisorTheme.panelSubtitle}</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
-            <SocietySwitcher textColor="#E0F2FE" bgColor="rgba(255,255,255,0.08)" borderColor="rgba(255,255,255,0.1)" />
+            <SocietySwitcher textColor={supervisorTheme.headerText} bgColor="rgba(255,255,255,0.08)" borderColor="rgba(255,255,255,0.1)" />
             {/* Kiosk mode button */}
             <button
               onClick={() => { window.location.hash = 'kiosco'; }}
@@ -225,6 +229,12 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
               <p className="text-white text-xs font-medium truncate max-w-[140px]">{email}</p>
               <p className="text-white/50 text-xs">{isAdmin ? 'Admin / RRHH' : isSupervisor ? 'Supervisor' : 'RRHH'}</p>
             </div>
+            {isSupervisor && (
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold" style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#EDE9FE', border: '1px solid rgba(255,255,255,0.2)' }}>
+                <ShieldCheck size={12} />
+                Supervisor
+              </span>
+            )}
             <button
               onClick={onLogout}
               className="flex items-center gap-1.5 px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-200"
@@ -282,7 +292,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
                 onClick={() => setActiveTab(tab.id)}
                 className="relative flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer whitespace-nowrap"
                 style={{
-                  backgroundColor: isActive ? '#0369A1' : 'transparent',
+                  backgroundColor: isActive ? supervisorTheme.activeTabColor : 'transparent',
                   color: isActive ? '#FFFFFF' : '#64748B',
                 }}
               >
@@ -292,8 +302,8 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
                   <span
                     className="ml-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                     style={{
-                      backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : '#DBEAFE',
-                      color: isActive ? '#FFFFFF' : '#1D4ED8',
+                      backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : supervisorTheme.badgeBg,
+                      color: isActive ? '#FFFFFF' : supervisorTheme.badgeColor,
                     }}
                   >
                     {tab.badge}
@@ -306,20 +316,20 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
 
         {/* Help Tab */}
         {activeTab === 'ayuda' && (
-          <HelpPanel currentProfileName={isSupervisor ? 'Supervisor' : 'RRHH'} accentColor="#0369A1" />
+          <HelpPanel currentProfileName={isSupervisor ? 'Supervisor' : 'RRHH'} accentColor={isSupervisor ? '#7C3AED' : '#0369A1'} />
         )}
 
         {/* Overview */}
         {activeTab === 'overview' && (
           <>
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-8">
+            <div className={`grid grid-cols-2 ${isSupervisor ? 'sm:grid-cols-4' : 'sm:grid-cols-5'} gap-4 mb-8`}>
               {[
-                { label: 'Total Empleados', value: '—', sub: 'ver pestana Empleados', color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE', onClick: undefined },
+                { label: 'Total Empleados', value: '—', sub: 'ver pestana Empleados', color: isSupervisor ? '#7C3AED' : '#0369A1', bg: isSupervisor ? '#F5F3FF' : '#EFF6FF', border: isSupervisor ? '#DDD6FE' : '#BFDBFE', onClick: undefined },
                 { label: 'Vacaciones pendientes', value: vacationsPending.length, sub: 'requieren aprobacion', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', onClick: undefined },
                 { label: 'Examenes aprobados', value: examsCompleted.length, sub: 'este periodo', color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0', onClick: undefined },
                 { label: 'Certificados por vencer', value: certExpiring.length, sub: 'en menos de 90 dias', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA', onClick: undefined },
-                { label: 'Contratos pendientes', value: contratosPendientes, sub: 'pendiente o avisado', color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', onClick: () => setActiveTab('contratos') },
+                ...(!isSupervisor ? [{ label: 'Contratos pendientes', value: contratosPendientes, sub: 'pendiente o avisado', color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', onClick: () => setActiveTab('contratos') as const }] : []),
               ].map((kpi, i) => (
                 <div
                   key={i}
@@ -478,12 +488,12 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
 
         {/* Employees Tab — Supabase-backed */}
         {activeTab === 'employees' && (
-          <EmployeesModule currentUserRole={isAdmin ? 'admin' : 'rrhh'} />
+          <EmployeesModule currentUserRole={isSupervisor ? 'supervisor' : (isAdmin ? 'admin' : 'rrhh')} />
         )}
 
         {/* Vacations Tab — Supabase-backed */}
         {activeTab === 'vacations' && (
-          <VacationsModule role={isAdmin ? 'admin' : 'rrhh'} />
+          <VacationsModule role={isSupervisor ? 'supervisor' : (isAdmin ? 'admin' : 'rrhh')} />
         )}
         {activeTab === 'personal-docs' && <PersonalDocumentsPanel isRrhh={true} />}
         {/* Certificates Tab */}

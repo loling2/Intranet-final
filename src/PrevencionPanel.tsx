@@ -268,7 +268,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
         {activeTab === 'documentos' && <PrlDocsModule />}
         {activeTab === 'trazabilidad' && <TrazabilidadModule />}
         {activeTab === 'departamentos' && <DepartamentosPrlTab />}
-        {activeTab === 'reconocimiento' && <ReconocimientoMedicoTab />}
+        {activeTab === 'reconocimiento' && <ReconocimientoMedicoTab email={email} />}
         {activeTab === 'vitaly' && <VitalyTab />}
         {activeTab === 'ayuda' && <HelpPanel currentProfileName="Prevención" accentColor="#065F46" />}
       </div>
@@ -1191,14 +1191,29 @@ function DepartamentosPrlTab() {
   );
 }
 
-function ReconocimientoMedicoTab() {
+interface HistorialEntry {
+  id: string;
+  estado_anterior: string | null;
+  estado_nuevo: string;
+  anotacion: string;
+  fecha_cita: string | null;
+  created_by_email: string | null;
+  created_at: string;
+}
+
+function ReconocimientoMedicoTab({ email }: { email: string }) {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editEstado, setEditEstado] = useState<'en_proceso' | 'finalizado' | null>(null);
+  const [editAnotacion, setEditAnotacion] = useState('');
+  const [editFechaCita, setEditFechaCita] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [historial, setHistorial] = useState<Record<string, HistorialEntry[]>>({});
+  const [expandedHistorial, setExpandedHistorial] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1227,38 +1242,96 @@ function ReconocimientoMedicoTab() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / RECOGNITION_PAGE_SIZE));
   const paginated = filtered.slice(page * RECOGNITION_PAGE_SIZE, (page + 1) * RECOGNITION_PAGE_SIZE);
 
+  const loadHistorial = useCallback(async (empleadoId: string) => {
+    const { data, error: histError } = await supabase
+      .from('reconocimiento_medico_historial')
+      .select('*')
+      .eq('empleado_id', empleadoId)
+      .order('created_at', { ascending: false });
+    if (!histError && data) {
+      setHistorial((prev) => ({ ...prev, [empleadoId]: data as HistorialEntry[] }));
+    }
+  }, []);
+
   const handleEdit = (emp: Empleado) => {
     setEditingId(emp.id);
     setEditEstado((emp.reconocimiento_medico_estado as 'en_proceso' | 'finalizado' | null) ?? null);
+    setEditAnotacion('');
+    setEditFechaCita('');
+    setError(null);
   };
 
   const handleSave = async (empId: string) => {
     setSaving(true);
+    setError(null);
+
+    const emp = empleados.find((e) => e.id === empId);
+    const estadoAnterior = emp?.reconocimiento_medico_estado ?? null;
+
     const update: Record<string, unknown> = { reconocimiento_medico_estado: editEstado };
     if (editEstado === 'finalizado') {
       update.reconocimiento_medico_fecha = new Date().toISOString();
     }
-    const { error } = await supabase
+
+    const { error: updateError } = await supabase
       .from('empleados')
       .update(update)
       .eq('id', empId);
-    if (error) {
-      console.error('Error updating estado:', error);
-    } else {
-      setEmpleados((prev) => prev.map((e) =>
-        e.id === empId
-          ? { ...e, reconocimiento_medico_estado: editEstado, reconocimiento_medico_fecha: editEstado === 'finalizado' ? new Date().toISOString() : e.reconocimiento_medico_fecha }
-          : e
-      ));
-      setEditingId(null);
+
+    if (updateError) {
+      console.error('Error updating estado:', updateError);
+      setError('No se pudo actualizar el estado. Intenta de nuevo.');
+      setSaving(false);
+      return;
     }
+
+    const { error: histError } = await supabase
+      .from('reconocimiento_medico_historial')
+      .insert({
+        empleado_id: empId,
+        estado_anterior: estadoAnterior,
+        estado_nuevo: editEstado,
+        anotacion: editAnotacion.trim() || null,
+        fecha_cita: editFechaCita || null,
+        created_by_email: email,
+      });
+
+    if (histError) {
+      console.error('Error saving historial:', histError);
+    }
+
+    setEmpleados((prev) => prev.map((e) =>
+      e.id === empId
+        ? { ...e, reconocimiento_medico_estado: editEstado, reconocimiento_medico_fecha: editEstado === 'finalizado' ? new Date().toISOString() : e.reconocimiento_medico_fecha }
+        : e
+    ));
+
+    await loadHistorial(empId);
+    setEditingId(null);
     setSaving(false);
+  };
+
+  const toggleHistorial = async (empId: string) => {
+    if (expandedHistorial === empId) {
+      setExpandedHistorial(null);
+    } else {
+      setExpandedHistorial(empId);
+      if (!historial[empId]) {
+        await loadHistorial(empId);
+      }
+    }
   };
 
   const estadoBadge = (estado: string | null) => {
     if (estado === 'en_proceso') return { label: 'En proceso', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' };
     if (estado === 'finalizado') return { label: 'Finalizado', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' };
     return { label: 'Pendiente', color: '#475569', bg: '#F1F5F9', border: '#CBD5E1' };
+  };
+
+  const estadoLabel = (estado: string | null) => {
+    if (estado === 'en_proceso') return 'En proceso';
+    if (estado === 'finalizado') return 'Finalizado';
+    return 'Pendiente';
   };
 
   return (
@@ -1297,6 +1370,8 @@ function ReconocimientoMedicoTab() {
           {paginated.map((emp) => {
             const badge = estadoBadge(emp.reconocimiento_medico_estado);
             const isEditing = editingId === emp.id;
+            const isHistorialExpanded = expandedHistorial === emp.id;
+            const empHistorial = historial[emp.id] ?? [];
             return (
               <div key={emp.id} className="rounded-xl p-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                 <div className="flex items-center justify-between">
@@ -1317,7 +1392,7 @@ function ReconocimientoMedicoTab() {
                 {isEditing ? (
                   <div className="mt-3 pt-3" style={{ borderTop: '1px solid #F1F5F9' }}>
                     <p className="text-xs font-semibold mb-2" style={{ color: '#64748B' }}>Actualizar estado:</p>
-                    <div className="flex gap-2 flex-wrap items-center">
+                    <div className="flex gap-2 flex-wrap items-center mb-3">
                       {([
                         { value: 'en_proceso', label: 'En proceso', color: '#B45309', bg: '#FEF3C7', border: '#F59E0B' },
                         { value: 'finalizado', label: 'Finalizado', color: '#15803D', bg: '#DCFCE7', border: '#22C55E' },
@@ -1339,16 +1414,52 @@ function ReconocimientoMedicoTab() {
                           </button>
                         );
                       })}
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="text-xs font-semibold block mb-1" style={{ color: '#475569' }}>
+                        Fecha de cita (opcional)
+                      </label>
+                      <input
+                        type="date"
+                        value={editFechaCita}
+                        onChange={(e) => setEditFechaCita(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                        style={{ borderColor: '#D1D5DB', color: '#1E293B' }}
+                      />
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="text-xs font-semibold block mb-1" style={{ color: '#475569' }}>
+                        Anotacion <span style={{ color: '#94A3B8' }}>(opcional)</span>
+                      </label>
+                      <textarea
+                        value={editAnotacion}
+                        onChange={(e) => setEditAnotacion(e.target.value)}
+                        placeholder="Describe el motivo del cambio, la cita, el resultado..."
+                        rows={3}
+                        className="w-full px-3 py-2 rounded-lg text-sm border outline-none resize-none"
+                        style={{ borderColor: '#D1D5DB', color: '#1E293B' }}
+                      />
+                    </div>
+
+                    {error && (
+                      <p className="text-xs mb-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
+                        {error}
+                      </p>
+                    )}
+
+                    <div className="flex gap-2 justify-end">
                       <button
                         onClick={() => handleSave(emp.id)}
                         disabled={saving}
-                        className="ml-auto px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all disabled:opacity-50"
+                        className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all disabled:opacity-50"
                         style={{ backgroundColor: '#065F46', color: '#FFFFFF' }}
                       >
                         {saving ? 'Guardando...' : 'Guardar'}
                       </button>
                       <button
-                        onClick={() => setEditingId(null)}
+                        onClick={() => { setEditingId(null); setError(null); }}
                         className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all"
                         style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}
                       >
@@ -1357,7 +1468,19 @@ function ReconocimientoMedicoTab() {
                     </div>
                   </div>
                 ) : (
-                  <div className="mt-2 flex justify-end">
+                  <div className="mt-2 flex justify-end gap-2">
+                    <button
+                      onClick={() => toggleHistorial(emp.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                      style={{ backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}
+                    >
+                      <Activity size={13} /> {isHistorialExpanded ? 'Ocultar historial' : 'Ver historial'}
+                      {empHistorial.length > 0 && (
+                        <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: '#DCFCE7', color: '#15803D' }}>
+                          {empHistorial.length}
+                        </span>
+                      )}
+                    </button>
                     <button
                       onClick={() => handleEdit(emp)}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
@@ -1367,10 +1490,53 @@ function ReconocimientoMedicoTab() {
                     </button>
                   </div>
                 )}
+
                 {emp.reconocimiento_medico_fecha && (
                   <p className="text-xs mt-2" style={{ color: '#64748B' }}>
                     Fecha: {new Date(emp.reconocimiento_medico_fecha).toLocaleDateString('es-ES')}
                   </p>
+                )}
+
+                {isHistorialExpanded && !isEditing && (
+                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid #F1F5F9' }}>
+                    {empHistorial.length === 0 ? (
+                      <p className="text-xs text-center py-3" style={{ color: '#94A3B8' }}>
+                        No hay cambios registrados en el historial.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {empHistorial.map((entry) => (
+                          <div key={entry.id} className="relative pl-6">
+                            <div className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.estado_nuevo === 'finalizado' ? '#22C55E' : '#F59E0B' }} />
+                            {empHistorial.length > 1 && (
+                              <div className="absolute left-[4.5px] top-4 bottom-[-12px] w-px" style={{ backgroundColor: '#E2E8F0' }} />
+                            )}
+                            <div className="rounded-lg px-3 py-2" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-semibold" style={{ color: '#1E293B' }}>
+                                  {estadoLabel(entry.estado_anterior)} → {estadoLabel(entry.estado_nuevo)}
+                                </span>
+                                <span className="text-[10px]" style={{ color: '#94A3B8' }}>
+                                  {new Date(entry.created_at).toLocaleString('es-ES')}
+                                </span>
+                              </div>
+                              <p className="text-xs" style={{ color: '#475569' }}>{entry.anotacion || 'Sin anotacion'}</p>
+                              {entry.fecha_cita && (
+                                <p className="text-xs mt-1" style={{ color: '#0369A1' }}>
+                                  Cita: {new Date(entry.fecha_cita).toLocaleDateString('es-ES')}
+                                </p>
+                              )}
+                              {entry.created_by_email && (
+                                <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
+                                  Por: {entry.created_by_email}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             );

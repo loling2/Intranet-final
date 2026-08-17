@@ -22,7 +22,6 @@ import { supabase } from './supabaseClient';
 import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
 import { downloadFromWasabi, uploadToWasabiKey } from './lib/wasabi';
-import { getOrCreateDeviceKey, getDeviceInfo } from './lib/deviceKey';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import ChangePinModal from './components/ChangePinModal';
 import IncidenciasModule from './components/IncidenciasModule';
@@ -232,7 +231,25 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     finally { setLoading(false); }
   };
 
-  const getDeviceKey = (): string => getOrCreateDeviceKey();
+  // ── Device info helper ──
+  const getDeviceInfo = () => {
+    const ua = navigator.userAgent;
+    const mobile = /Android|iPhone|iPad|iPod/i.test(ua);
+    const tablet = /iPad|Android(?!.*Mobile)/i.test(ua);
+    const type = tablet ? 'Tablet' : mobile ? 'Móvil' : 'Escritorio';
+    const browser = /Chrome/i.test(ua) ? 'Chrome' : /Firefox/i.test(ua) ? 'Firefox' : /Safari/i.test(ua) ? 'Safari' : /Edge/i.test(ua) ? 'Edge' : 'Navegador';
+    const os = /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'Mac' : /Android/i.test(ua) ? 'Android' : /iOS|iPhone|iPad/i.test(ua) ? 'iOS' : /Linux/i.test(ua) ? 'Linux' : 'Sistema';
+    return `${type} · ${browser} · ${os}`;
+  };
+
+  const getDeviceKey = (): string => {
+    let key = localStorage.getItem('app_device_key');
+    if (!key) {
+      key = `web_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      localStorage.setItem('app_device_key', key);
+    }
+    return key;
+  };
 
   const getGeolocation = (): Promise<string | null> =>
     new Promise((resolve) => {

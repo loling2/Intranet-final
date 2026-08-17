@@ -111,7 +111,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
   });
 
   const allTabs: { id: RRHHTab; label: string; icon: LucideIcon; badge?: number }[] = [
-    { id: 'overview', label: 'Resumen RRHH', icon: Clock },
+    { id: 'overview', label: isSupervisor ? 'Resumen Supervisor' : 'Resumen RRHH', icon: Clock },
     { id: 'employees', label: 'Empleados', icon: Users },
     { id: 'users', label: 'Gestion de Usuarios', icon: Users },
     { id: 'prevencion', label: 'Prevencion/Calidad', icon: ShieldCheck },
@@ -134,7 +134,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
   ];
 
-  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'vacations', 'certificates', 'exams', 'supervisor-empleados', 'ayuda'];
+  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'devices', 'vacations', 'certificates', 'exams', 'supervisor-empleados', 'ayuda'];
 
   const tabs = enabledTabIds !== null
     ? allTabs.filter(t => t.id === 'ayuda' || enabledTabIds.has(t.id))

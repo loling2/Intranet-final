@@ -926,6 +926,8 @@ function DeviceHistoryModal({ device, onClose }: { device: Dispositivo; onClose:
 export default function DevicesModule() {
   const { profile } = useAuth();
   const currentUserNombre = profile ? `${profile.nombre || ''}${profile.apellidos ? ' ' + profile.apellidos : ''}`.trim() || profile.email || '' : '';
+  const isSupervisor = profile?.role === 'supervisor';
+  const canEdit = !isSupervisor;
   const [devices, setDevices] = useState<Dispositivo[]>([]);
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [centros, setCentros] = useState<Centro[]>([]);
@@ -1059,14 +1061,16 @@ const totalActivos =
               {devices.length} dispositivo{devices.length !== 1 ? 's' : ''} &middot; {totalActivos} activo{totalActivos !== 1 ? 's' : ''}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all hover:opacity-90"
-            style={{ backgroundColor: '#0F172A', boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}
-          >
-            <Plus size={15} /> Nuevo dispositivo
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all hover:opacity-90"
+              style={{ backgroundColor: '#0F172A', boxShadow: '0 4px 12px rgba(15,23,42,0.3)' }}
+            >
+              <Plus size={15} /> Nuevo dispositivo
+            </button>
+          )}
         </div>
 
         {/* Filters */}
@@ -1282,18 +1286,22 @@ const totalActivos =
 
                   {/* Acciones */}
                   <div className="col-span-1 flex items-center justify-end gap-1">
-                    <button type="button" onClick={() => setEditing(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#CBD5E1' }} title="Editar">
-                      <Pencil size={13} />
-                    </button>
+                    {canEdit && (
+                      <button type="button" onClick={() => setEditing(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors" style={{ color: '#CBD5E1' }} title="Editar">
+                        <Pencil size={13} />
+                      </button>
+                    )}
                     <button type="button" onClick={() => setDeliveryDevice(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors" style={{ color: '#94A3B8' }} title="Generar acta de entrega">
                       <FileText size={13} />
                     </button>
                     <button type="button" onClick={() => setHistoryDevice(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-amber-50 transition-colors" style={{ color: '#94A3B8' }} title="Historial de asignaciones">
                       <History size={13} />
                     </button>
-                    <button type="button" onClick={() => setDeleteTarget(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors" style={{ color: '#CBD5E1' }} title="Eliminar">
-                      <Trash2 size={13} />
-                    </button>
+                    {canEdit && (
+                      <button type="button" onClick={() => setDeleteTarget(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-red-50 transition-colors" style={{ color: '#CBD5E1' }} title="Eliminar">
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                   </div>
                 </div>
               );

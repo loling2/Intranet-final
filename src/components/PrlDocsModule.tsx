@@ -253,9 +253,9 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
-        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #064E3B, #065F46)' }}>
+    <div className="fixed inset-0 z-[300] flex items-start sm:items-center justify-center overflow-y-auto py-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="px-6 py-4 flex items-center justify-between flex-shrink-0" style={{ background: 'linear-gradient(135deg, #064E3B, #065F46)' }}>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
               <FolderPlus size={16} className="text-white" />
@@ -267,7 +267,7 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 overflow-y-auto">
           {/* Nombre */}
           <div>
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Nombre *</label>
@@ -525,7 +525,7 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
             </div>
           )}
 
-          <div className="flex gap-3 pt-1">
+          <div className="flex gap-3 pt-1 sticky bottom-0 bg-white pb-1">
             <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
             <button onClick={handleSave} disabled={saving || !nombre.trim()}
               className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"

@@ -8,6 +8,8 @@ import PrlDocsModule from './components/PrlDocsModule';
 import TrazabilidadModule from './components/TrazabilidadModule';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import HelpPanel from './components/HelpPanel';
+import TagsManager from './components/TagsManager';
+import { Pagination, paginate, totalPages } from './components/Pagination';
 
 interface Props {
   email: string;
@@ -15,7 +17,7 @@ interface Props {
   onNavigateEmployee?: () => void;
 }
 
-type PrevTab = 'empleados' | 'documentos' | 'trazabilidad' | 'departamentos' | 'reconocimiento' | 'vitaly' | 'ayuda';
+type PrevTab = 'empleados' | 'tags' | 'documentos' | 'trazabilidad' | 'departamentos' | 'reconocimiento' | 'vitaly' | 'ayuda';
 
 // Colors per prevention tag category
 const TAG_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -166,6 +168,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
 
   const tabs: { id: PrevTab; label: string; icon: LucideIcon }[] = [
     { id: 'empleados',     label: 'Empleados y Tags',   icon: Users },
+    { id: 'tags',          label: 'Tags PRL',             icon: Tag },
     { id: 'documentos',    label: 'Documentos PRL',      icon: FileText },
     { id: 'trazabilidad',  label: 'Trazabilidad',        icon: CheckCircle2 },
     { id: 'departamentos', label: 'Departamentos PRL',   icon: Building2 },
@@ -265,6 +268,7 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
         </div>
 
         {activeTab === 'empleados' && <EmpleadosTagsTab />}
+        {activeTab === 'tags' && <TagsManager />}
         {activeTab === 'documentos' && <PrlDocsModule />}
         {activeTab === 'trazabilidad' && <TrazabilidadModule />}
         {activeTab === 'departamentos' && <DepartamentosPrlTab />}
@@ -290,6 +294,7 @@ function EmpleadosTagsTab() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSociedad, setFilterSociedad] = useState('');
+  const [page, setPage] = useState(1);
 
   // expandedId → the employee panel currently open
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -327,6 +332,7 @@ function EmpleadosTagsTab() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { setPage(1); }, [searchQuery, filterSociedad]);
 
   const loadDetail = useCallback(async (empleadoId: string) => {
     setLoadingDetail(true);
@@ -443,6 +449,10 @@ function EmpleadosTagsTab() {
     }
     return true;
   });
+  const EMPLOYEES_PAGE_SIZE = 30;
+  const employeeTotalPages = totalPages(filtered.length, EMPLOYEES_PAGE_SIZE);
+  const safePage = Math.min(page, employeeTotalPages);
+  const pagedEmpleados = paginate(filtered, safePage, EMPLOYEES_PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -505,7 +515,7 @@ function EmpleadosTagsTab() {
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-            {filtered.map((emp) => {
+            {pagedEmpleados.map((emp) => {
               const soc = getSociedad(emp.id_sociedad ?? '');
               const isExpanded = expandedId === emp.id;
               const assignedTags = tagCache[emp.id] ?? [];
@@ -680,6 +690,13 @@ function EmpleadosTagsTab() {
                 </div>
               );
             })}
+            <Pagination
+              page={safePage}
+              totalPages={employeeTotalPages}
+              totalItems={filtered.length}
+              pageSize={EMPLOYEES_PAGE_SIZE}
+              onPage={setPage}
+            />
           </div>
         )}
       </div>

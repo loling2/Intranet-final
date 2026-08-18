@@ -118,8 +118,24 @@ export interface Empleado {
   prl_plan_prevencion: boolean;
   vitaly_estado: string;
   vitaly_motivo: string | null;
+  fecha_baja: string | null;
+  motivo_baja: string | null;
+  comentario_baja: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface BajaVitaly {
+  id: string;
+  empleado_id: string;
+  empleado_nombre: string;
+  fecha_baja: string;
+  motivo: string | null;
+  comentario: string | null;
+  estado: string;
+  finalizada_at: string | null;
+  created_by: string | null;
+  created_at: string;
 }
 
 export type EstadoContrato = 'pendiente' | 'avisado' | 'firmado';

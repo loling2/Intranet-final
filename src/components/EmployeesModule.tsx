@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination';
 import { Users, Plus, Search, X, Save, ChevronDown, ChevronUp, Pencil, Trash2, AlertCircle, CheckCircle2, XCircle, Building2, Tag, RefreshCw, UserPlus, Ligature as FileSignature, Clock, Bell, Upload, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad, type Centro, type Asignacion, type Tag as TagType, type UserProfile } from '../supabaseClient';
+import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad, type Centro, type Asignacion, type Tag as TagType, type UserProfile, type BajaVitaly } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { uploadToWasabi, moveRrhhFolderToBajas, moveRrhhFolderToActivo } from '../lib/wasabi';
 import { writeAuditLog } from '../lib/auditLog';
@@ -71,6 +71,9 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   prl_plan_prevencion: false,
   vitaly_estado: 'inactivo',
   vitaly_motivo: null,
+  fecha_baja: null,
+  motivo_baja: null,
+  comentario_baja: null,
 };
 
 function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
@@ -114,6 +117,9 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     prl_plan_prevencion: e.prl_plan_prevencion ?? false,
     vitaly_estado: e.vitaly_estado ?? 'inactivo',
     vitaly_motivo: e.vitaly_motivo ?? null,
+    fecha_baja: e.fecha_baja ?? null,
+    motivo_baja: e.motivo_baja ?? null,
+    comentario_baja: e.comentario_baja ?? null,
   };
 }
 
@@ -995,6 +1001,12 @@ export default function EmployeesModule({ currentUserRole }: Props) {
   // Quick upload to public folder
   const [uploadEmpModal, setUploadEmpModal] = useState<Empleado | null>(null);
 
+  // Baja modal — asks fecha_baja + motivo when deactivating
+  const [bajaModal, setBajaModal] = useState<Empleado | null>(null);
+  const [bajaFecha, setBajaFecha] = useState('');
+  const [bajaMotivo, setBajaMotivo] = useState('');
+  const [savingBaja, setSavingBaja] = useState(false);
+
   // Estado contrato — change modal
   const [contratoModal, setContratoModal] = useState<{
     empleadoId: string;
@@ -1106,6 +1118,79 @@ export default function EmployeesModule({ currentUserRole }: Props) {
   const handleSave = async () => {
     if (!form.nombre.trim()) { setError('El nombre es obligatorio'); return; }
     if (!form.id_sociedad) { setError('Selecciona una sociedad'); return; }
+    // Intercept activo → inactivo: ask for fecha_baja + motivo before saving
+    if (editingId) {
+      const original = empleados.find(e => e.id === editingId);
+      const wasActivo = original?.activo ?? true;
+      if (wasActivo && form.activo === false) {
+        setBajaModal(original ?? null);
+        setBajaFecha(new Date().toISOString().slice(0, 10));
+        setBajaMotivo('');
+        return;
+      }
+    }
+    await doSave();
+  };
+
+  const confirmBaja = async () => {
+    if (!bajaModal || !editingId) return;
+    if (!bajaFecha) { setError('La fecha de baja es obligatoria.'); return; }
+    if (!bajaMotivo.trim()) { setError('El motivo de la baja es obligatorio.'); return; }
+    setSavingBaja(true);
+    setError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id ?? null;
+      // Update empleado with baja fields + activo=false
+      const payload = { ...form, fecha_baja: bajaFecha, motivo_baja: bajaMotivo.trim() };
+      const { error: err } = await supabase.from('empleados').update(payload).eq('id', editingId);
+      if (err) {
+        if (err.code === '42501' || err.message?.includes('security')) throw new Error('Sin permiso para modificar empleados. Vuelve a iniciar sesion.');
+        throw err;
+      }
+      // Create bajas_vitaly record (aviso de dar de baja)
+      const bajaVitalyPayload: Omit<BajaVitaly, 'id' | 'created_at' | 'finalizada_at'> = {
+        empleado_id: editingId,
+        empleado_nombre: bajaModal.nombre,
+        fecha_baja: bajaFecha,
+        motivo: bajaMotivo.trim(),
+        comentario: null,
+        estado: 'pendiente',
+        created_by: userId,
+      };
+      await supabase.from('bajas_vitaly').insert(bajaVitalyPayload);
+      // Move Wasabi folder to bajas
+      if (bajaModal.dni && bajaModal.nombre) {
+        const soc = sociedades.find(s => s.id === (form.id_sociedad || bajaModal.id_sociedad));
+        const sociedadSlug = soc
+          ? soc.nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_')
+          : 'sin_sociedad';
+        const nombreSanitized = bajaModal.nombre.replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ ]/g, '').trim();
+        try {
+          await moveRrhhFolderToBajas(bajaModal.dni, nombreSanitized, sociedadSlug);
+        } catch (moveErr) {
+          console.warn('No se pudo mover la carpeta a bajas:', moveErr);
+        }
+      }
+      setBajaModal(null);
+      setBajaFecha('');
+      setBajaMotivo('');
+      cancelForm();
+      await loadData();
+      showSuccess('Empleado dado de baja. Se ha creado un aviso en Vitaly.');
+    } catch (e: unknown) {
+      const msg =
+        e instanceof Error ? e.message
+        : typeof e === 'object' && e !== null && 'message' in e ? String((e as { message: unknown }).message)
+        : String(e);
+      console.error('Error al dar de baja:', e);
+      setError(msg || 'Error al dar de baja');
+    } finally {
+      setSavingBaja(false);
+    }
+  };
+
+  const doSave = async () => {
     setSaving(true);
     setError(null);
     try {
@@ -1415,6 +1500,67 @@ export default function EmployeesModule({ currentUserRole }: Props) {
           onClose={() => setUploadEmpModal(null)}
           onUploaded={() => showSuccess('Archivo subido y visible para el empleado')}
         />
+      )}
+
+      {/* Baja modal — ask fecha_baja + motivo when deactivating */}
+      {bajaModal && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #991B1B, #B91C1C)' }}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+                  <XCircle size={14} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-white font-semibold text-sm">Dar de baja</h2>
+                  <p className="text-white/70 text-xs">{bajaModal.nombre}</p>
+                </div>
+              </div>
+              <button onClick={() => { setBajaModal(null); setBajaFecha(''); setBajaMotivo(''); }} className="w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+                <X size={13} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-xs" style={{ color: '#64748B' }}>
+                Vas a pasar a <strong style={{ color: '#B91C1C' }}>Inactivo</strong>. Se creara un aviso de dar de baja en la pestana de Vitaly (Prevencion).
+              </p>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Fecha de baja *</label>
+                <input
+                  type="date"
+                  value={bajaFecha}
+                  onChange={(e) => setBajaFecha(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Motivo de la baja *</label>
+                <textarea
+                  value={bajaMotivo}
+                  onChange={(e) => setBajaMotivo(e.target.value)}
+                  rows={3}
+                  placeholder="Describe el motivo de la baja..."
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => { setBajaModal(null); setBajaFecha(''); setBajaMotivo(''); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmBaja}
+                  disabled={savingBaja || !bajaFecha || !bajaMotivo.trim()}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: '#B91C1C' }}
+                >
+                  {savingBaja ? <><RefreshCw size={13} className="animate-spin" />Dando de baja...</> : 'Confirmar baja'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Contrato change modal */}

@@ -16,6 +16,16 @@ interface DeptRow {
   nombre: string;
 }
 
+interface CentroRow {
+  id: string;
+  nombre: string;
+}
+
+interface PuestoTagRow {
+  id: string;
+  nombre: string;
+}
+
 interface PrlFolder {
   id: string;
   nombre: string;
@@ -23,10 +33,12 @@ interface PrlFolder {
   society_id: string;
   created_by: string | null;
   access_tag_id: string | null;
+  centro_id: string | null;
   created_at: string;
   _docCount?: number;
   _tags?: TagRow[];
   _depts?: DeptRow[];
+  _centro?: CentroRow | null;
 }
 
 interface PrlDocument {
@@ -39,6 +51,7 @@ interface PrlDocument {
   subido_por_nombre: string;
   society_id: string;
   created_at: string;
+  _puestoTags?: string[];
 }
 
 interface TagRow {
@@ -160,8 +173,10 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
   const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>(
     existing?._depts?.map((d) => d.id) ?? []
   );
+  const [selectedCentroId, setSelectedCentroId] = useState<string>(existing?.centro_id ?? existing?._centro?.id ?? '');
   const [tags, setTags] = useState<TagRow[]>([]);
   const [depts, setDepts] = useState<DeptRow[]>([]);
+  const [centros, setCentros] = useState<CentroRow[]>([]);
   const [tagsLoading, setTagsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -170,12 +185,14 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
 
   useEffect(() => {
     (async () => {
-      const [tagsRes, deptsRes] = await Promise.all([
+      const [tagsRes, deptsRes, centrosRes] = await Promise.all([
         supabase.from('tags').select('id, nombre').order('nombre'),
         supabase.from('departamentos_prl').select('id, nombre').order('nombre'),
+        supabase.from('centros').select('id, nombre').order('nombre'),
       ]);
       setTags(tagsRes.data ?? []);
       setDepts(deptsRes.data ?? []);
+      setCentros(centrosRes.data ?? []);
       setTagsLoading(false);
     })();
   }, []);
@@ -206,7 +223,7 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
       if (isEdit) {
         const { error: upErr } = await supabase
           .from('prl_folders')
-          .update({ nombre: nombre.trim(), descripcion: descripcion.trim(), access_tag_id: selectedTagIds[0] ?? null })
+          .update({ nombre: nombre.trim(), descripcion: descripcion.trim(), access_tag_id: selectedTagIds[0] ?? null, centro_id: selectedCentroId || null })
           .eq('id', folderId!);
         if (upErr) throw upErr;
       } else {
@@ -218,6 +235,7 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
             society_id: societyId,
             created_by: profile?.id ?? null,
             access_tag_id: selectedTagIds[0] ?? null,
+            centro_id: selectedCentroId || null,
           })
           .select('id')
           .single();
@@ -294,6 +312,21 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
               className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
               style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
             />
+          </div>
+
+          {/* Centro de trabajo */}
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Centro de trabajo (opcional)</label>
+            <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>Vincula esta carpeta a un centro. Los empleados de ese centro (actual o historico) veran sus documentos.</p>
+            <select
+              value={selectedCentroId}
+              onChange={(e) => setSelectedCentroId(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer"
+              style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+            >
+              <option value="">Sin centro especifico (todas las sociedades)</option>
+              {centros.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
           </div>
 
           {/* Tags de acceso */}
@@ -540,6 +573,150 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
   );
 }
 
+// ─── Puesto Tags Modal (assign sub-tags to a document) ──────────────────────────
+
+function PuestoTagModal({ doc, folderId, onClose, onSaved }: {
+  doc: PrlDocument;
+  folderId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [puestoTags, setPuestoTags] = useState<PuestoTagRow[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(doc._puestoTags ? doc._puestoTags.map((n) => {
+    return '';
+  }) : []);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const { data: tags } = await supabase.from('puesto_tags').select('id, nombre').order('nombre');
+      const allTags = (tags ?? []) as PuestoTagRow[];
+      setPuestoTags(allTags);
+
+      const { data: existing } = await supabase
+        .from('prl_document_puesto_tags')
+        .select('puesto_tag_id')
+        .eq('document_id', doc.id);
+      setSelectedIds(((existing ?? []) as { puesto_tag_id: string }[]).map((r) => r.puesto_tag_id));
+      setLoading(false);
+    })();
+  }, [doc.id]);
+
+  const toggle = (id: string) => {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]);
+  };
+
+  const handleSave = async () => {
+    setSaving(true); setError('');
+    try {
+      const { error: delErr } = await supabase.from('prl_document_puesto_tags').delete().eq('document_id', doc.id);
+      if (delErr) throw delErr;
+      if (selectedIds.length > 0) {
+        const rows = selectedIds.map((puesto_tag_id) => ({ document_id: doc.id, puesto_tag_id }));
+        const { error: insErr } = await supabase.from('prl_document_puesto_tags').insert(rows);
+        if (insErr) throw insErr;
+      }
+      onSaved();
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="px-6 py-4 flex items-center justify-between flex-shrink-0" style={{ background: 'linear-gradient(135deg, #064E3B, #065F46)' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+              <Tag size={16} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-white font-semibold text-sm">Sub-tags de puesto</h2>
+              <p className="text-xs text-white/70 truncate">{doc.nombre_archivo}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-3 overflow-y-auto">
+          <p className="text-xs" style={{ color: '#94A3B8' }}>
+            Selecciona los puestos que podran ver este documento. Sin sub-tag = visible para todos los que ya tienen acceso a la carpeta.
+          </p>
+          {loading ? (
+            <div className="flex items-center gap-2 py-4">
+              <RefreshCw size={14} className="animate-spin" style={{ color: '#94A3B8' }} />
+              <span className="text-xs" style={{ color: '#94A3B8' }}>Cargando...</span>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => setSelectedIds([])}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all cursor-pointer"
+                style={{ border: `1.5px solid ${selectedIds.length === 0 ? '#065F46' : '#E2E8F0'}`, backgroundColor: selectedIds.length === 0 ? '#ECFDF5' : '#F8FAFC' }}
+              >
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: selectedIds.length === 0 ? '#065F46' : '#E2E8F0' }}>
+                  <Globe size={13} style={{ color: selectedIds.length === 0 ? '#FFFFFF' : '#94A3B8' }} />
+                </div>
+                <div className="text-left">
+                  <span className="font-semibold" style={{ color: '#1E293B' }}>Sin filtro de puesto</span>
+                  <span className="block text-xs" style={{ color: '#94A3B8' }}>Visible para todos los que ya tienen acceso</span>
+                </div>
+                {selectedIds.length === 0 && <CheckCircle2 size={14} className="ml-auto" style={{ color: '#065F46' }} />}
+              </button>
+
+              <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
+                {puestoTags.map((pt) => {
+                  const selected = selectedIds.includes(pt.id);
+                  return (
+                    <button
+                      key={pt.id}
+                      type="button"
+                      onClick={() => toggle(pt.id)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all cursor-pointer"
+                      style={{ border: `1.5px solid ${selected ? '#15803D' : '#E2E8F0'}`, backgroundColor: selected ? '#F0FDF4' : '#F8FAFC' }}
+                    >
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: selected ? '#15803D' : '#E2E8F0' }}>
+                        <Tag size={12} style={{ color: selected ? '#FFFFFF' : '#94A3B8' }} />
+                      </div>
+                      <span className="font-medium flex-1 text-left" style={{ color: '#1E293B' }}>{pt.nombre}</span>
+                      {selected && <CheckCircle2 size={14} className="flex-shrink-0" style={{ color: '#15803D' }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+              <AlertCircle size={13} style={{ color: '#DC2626' }} />
+              <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3 px-6 pb-4 pt-1">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+            style={{ backgroundColor: '#065F46' }}>
+            {saving ? <RefreshCw size={14} className="animate-spin" /> : <Tag size={14} />}
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Delete Confirm Modal ────────────────────────────────────────────────────
 
 function ConfirmDeleteModal({ title, description, onConfirm, onClose, loading }: {
@@ -595,6 +772,7 @@ export default function PrlDocsModule() {
   const [deleting, setDeleting] = useState(false);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
   const [previewDoc, setPreviewDoc] = useState<PrlDocument | null>(null);
+  const [tagDoc, setTagDoc] = useState<PrlDocument | null>(null);
 
   const canPreview = profile?.role === 'admin' || profile?.role === 'prevencion';
 
@@ -607,12 +785,14 @@ export default function PrlDocsModule() {
     setLoadingFolders(true);
     const { data, error: err } = await supabase
       .from('prl_folders')
-      .select('*, prl_folder_tags(tag_id, tags(id, nombre)), prl_folder_departamentos(departamento_prl_id, departamentos_prl(id, nombre))')
+      .select('*, centro_id, centros(id, nombre), prl_folder_tags(tag_id, tags(id, nombre)), prl_folder_departamentos(departamento_prl_id, departamentos_prl(id, nombre))')
       .eq('society_id', activeSocietyId)
       .order('nombre');
     if (err) { setError(err.message); setLoadingFolders(false); return; }
 
     const folderList = (data ?? []) as (PrlFolder & {
+      centro_id: string | null;
+      centros: { id: string; nombre: string } | null;
       prl_folder_tags: { tag_id: string; tags: { id: string; nombre: string } | null }[];
       prl_folder_departamentos: { departamento_prl_id: string; departamentos_prl: { id: string; nombre: string } | null }[];
     })[];
@@ -630,6 +810,7 @@ export default function PrlDocsModule() {
       society_id: f.society_id,
       created_by: f.created_by,
       access_tag_id: f.access_tag_id,
+      centro_id: f.centro_id,
       created_at: f.created_at,
       _docCount: counts[i].count ?? 0,
       _tags: (f.prl_folder_tags ?? [])
@@ -638,6 +819,7 @@ export default function PrlDocsModule() {
       _depts: (f.prl_folder_departamentos ?? [])
         .map((fd) => fd.departamentos_prl)
         .filter((d): d is { id: string; nombre: string } => d !== null),
+      _centro: f.centros ?? null,
     }));
 
     setFolders(enriched);
@@ -653,7 +835,26 @@ export default function PrlDocsModule() {
       .select('*')
       .eq('folder_id', folderId)
       .order('created_at', { ascending: false });
-    if (!err) setDocuments((prev) => ({ ...prev, [folderId]: (data ?? []) as PrlDocument[] }));
+    if (!err) {
+      const docs = (data ?? []) as PrlDocument[];
+      if (docs.length > 0) {
+        const { data: tagData } = await supabase
+          .from('prl_document_puesto_tags')
+          .select('document_id, puesto_tags(id, nombre)')
+          .in('document_id', docs.map((d) => d.id));
+        const tagMap: Record<string, string[]> = {};
+        for (const pt of (tagData ?? []) as { document_id: string; puesto_tags: { id: string; nombre: string } | null }[]) {
+          if (pt.puesto_tags) {
+            if (!tagMap[pt.document_id]) tagMap[pt.document_id] = [];
+            tagMap[pt.document_id].push(pt.puesto_tags.nombre);
+          }
+        }
+        const enriched = docs.map((d) => ({ ...d, _puestoTags: tagMap[d.id] ?? [] }));
+        setDocuments((prev) => ({ ...prev, [folderId]: enriched }));
+      } else {
+        setDocuments((prev) => ({ ...prev, [folderId]: [] }));
+      }
+    }
     setLoadingDocs((prev) => ({ ...prev, [folderId]: false }));
   }, []);
 
@@ -806,6 +1007,9 @@ export default function PrlDocsModule() {
       {previewDoc && (
         <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
+      {tagDoc && (
+        <PuestoTagModal doc={tagDoc} folderId={tagDoc.folder_id} onClose={() => setTagDoc(null)} onSaved={() => loadDocs(tagDoc.folder_id)} />
+      )}
       {deleteTarget && (
         <ConfirmDeleteModal
           title={deleteTarget.type === 'folder' ? 'Eliminar carpeta' : 'Eliminar archivo'}
@@ -948,6 +1152,14 @@ export default function PrlDocsModule() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{folder.nombre}</p>
+                      {/* Centro badge */}
+                      {folder._centro && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+                          style={{ backgroundColor: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A' }}>
+                          <Building2 size={9} />
+                          {folder._centro.nombre}
+                        </span>
+                      )}
                       {/* Tag badges */}
                       {hasTag && folderTags.map((tag) => (
                         <span key={tag.id} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
@@ -1069,11 +1281,19 @@ export default function PrlDocsModule() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{doc.nombre_archivo}</p>
-                                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>
-                                  {formatBytes(doc.tamano_bytes)}
-                                  {doc.subido_por_nombre && ` \u00b7 ${doc.subido_por_nombre}`}
-                                  {` \u00b7 ${new Date(doc.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}`}
-                                </p>
+                                <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                  <p className="text-xs" style={{ color: '#94A3B8' }}>
+                                    {formatBytes(doc.tamano_bytes)}
+                                    {doc.subido_por_nombre && ` \u00b7 ${doc.subido_por_nombre}`}
+                                    {` \u00b7 ${new Date(doc.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}`}
+                                  </p>
+                                  {doc._puestoTags && doc._puestoTags.length > 0 && doc._puestoTags.map((pt) => (
+                                    <span key={pt} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-semibold"
+                                      style={{ backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}>
+                                      <Tag size={8} />{pt}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0">
                                 {canPreview && (
@@ -1085,6 +1305,13 @@ export default function PrlDocsModule() {
                                     <Eye size={13} />
                                   </button>
                                 )}
+                                <button
+                                  onClick={() => setTagDoc(doc)}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:bg-green-50"
+                                  title="Asignar sub-tags de puesto"
+                                  style={{ color: '#94A3B8' }}>
+                                  <Tag size={13} />
+                                </button>
                                 <button
                                   onClick={() => handleDownload(doc)}
                                   className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:bg-green-50"

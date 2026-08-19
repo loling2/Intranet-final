@@ -14,6 +14,9 @@ interface PrevDoc {
   folder_nombre: string;
   society_id: string;
   society_nombre: string;
+  folder_centro_id?: string | null;
+  folder_centro_nombre?: string;
+  puesto_tags?: string[] | null;
 }
 
 interface GroupedDocs {
@@ -298,11 +301,17 @@ export default function PrevencionDocsCard({ theme, fullWidth }: Props) {
                                 >
                                   <p className="text-xs font-medium truncate" style={{ color: '#1E293B' }}>{doc.nombre_archivo}</p>
                                 </button>
-                                <div className="flex items-center gap-1 mt-0.5">
+                                <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                                   <Folder size={9} style={{ color: '#94A3B8' }} />
                                   <p className="text-xs truncate" style={{ color: '#94A3B8' }}>
                                     {doc.folder_nombre} · {new Date(doc.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
                                   </p>
+                                  {doc.puesto_tags && doc.puesto_tags.length > 0 && doc.puesto_tags.map((pt) => (
+                                    <span key={pt} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-semibold"
+                                      style={{ backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}>
+                                      <Tag size={8} />{pt}
+                                    </span>
+                                  ))}
                                 </div>
                               </div>
 

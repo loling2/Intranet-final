@@ -317,7 +317,7 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
           {/* Centro de trabajo */}
           <div>
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Centro de trabajo (opcional)</label>
-            <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>Vincula esta carpeta a un centro. Los empleados de ese centro (actual o historico) veran sus documentos.</p>
+            <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>Vincula esta carpeta a un centro. Los empleados de ese centro veran sus documentos.</p>
             <select
               value={selectedCentroId}
               onChange={(e) => setSelectedCentroId(e.target.value)}
@@ -575,16 +575,13 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
 
 // ─── Puesto Tags Modal (assign sub-tags to a document) ──────────────────────────
 
-function PuestoTagModal({ doc, folderId, onClose, onSaved }: {
+function PuestoTagModal({ doc, onClose, onSaved }: {
   doc: PrlDocument;
-  folderId: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [puestoTags, setPuestoTags] = useState<PuestoTagRow[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>(doc._puestoTags ? doc._puestoTags.map((n) => {
-    return '';
-  }) : []);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -592,9 +589,7 @@ function PuestoTagModal({ doc, folderId, onClose, onSaved }: {
   useEffect(() => {
     (async () => {
       const { data: tags } = await supabase.from('puesto_tags').select('id, nombre').order('nombre');
-      const allTags = (tags ?? []) as PuestoTagRow[];
-      setPuestoTags(allTags);
-
+      setPuestoTags((tags ?? []) as PuestoTagRow[]);
       const { data: existing } = await supabase
         .from('prl_document_puesto_tags')
         .select('puesto_tag_id')
@@ -637,7 +632,7 @@ function PuestoTagModal({ doc, folderId, onClose, onSaved }: {
             </div>
             <div>
               <h2 className="text-white font-semibold text-sm">Sub-tags de puesto</h2>
-              <p className="text-xs text-white/70 truncate">{doc.nombre_archivo}</p>
+              <p className="text-xs text-white/70 truncate max-w-[220px]">{doc.nombre_archivo}</p>
             </div>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff' }}>
@@ -1008,7 +1003,7 @@ export default function PrlDocsModule() {
         <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
       {tagDoc && (
-        <PuestoTagModal doc={tagDoc} folderId={tagDoc.folder_id} onClose={() => setTagDoc(null)} onSaved={() => loadDocs(tagDoc.folder_id)} />
+        <PuestoTagModal doc={tagDoc} onClose={() => setTagDoc(null)} onSaved={() => loadDocs(tagDoc.folder_id)} />
       )}
       {deleteTarget && (
         <ConfirmDeleteModal

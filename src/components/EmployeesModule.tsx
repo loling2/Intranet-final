@@ -47,6 +47,7 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   observaciones_contrato: null,
   turno: null,
   puesto: null,
+  puesto_tag_id: null,
   centro_trabajo: null,
   titulacion_habilitante: null,
   fecha_pago_tasas: null,
@@ -93,6 +94,7 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     observaciones_contrato: e.observaciones_contrato,
     turno: e.turno,
     puesto: e.puesto,
+    puesto_tag_id: e.puesto_tag_id ?? null,
     centro_trabajo: e.centro_trabajo,
     titulacion_habilitante: e.titulacion_habilitante,
     fecha_pago_tasas: e.fecha_pago_tasas,
@@ -1020,11 +1022,100 @@ function QuickUploadModal({ empleado, onClose, onUploaded }: { empleado: Emplead
   );
 }
 
+interface PuestoTagRow {
+  id: string;
+  nombre: string;
+}
+
+function PuestoPicker({ puestos, value, onChange }: {
+  puestos: PuestoTagRow[];
+  value: string | null;
+  onChange: (id: string | null, nombre: string | null) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const selected = puestos.find((p) => p.id === value);
+
+  const handleAdd = async () => {
+    const trimmed = newName.trim();
+    if (!trimmed) { setErr('El nombre no puede estar vacio.'); return; }
+    if (puestos.some((p) => p.nombre.toLowerCase() === trimmed.toLowerCase())) {
+      setErr('Ya existe ese puesto.'); return;
+    }
+    setSaving(true); setErr('');
+    const { data, error: e } = await supabase.from('puesto_tags').insert({ nombre: trimmed }).select('id, nombre').single();
+    setSaving(false);
+    if (e) { setErr(e.message); return; }
+    onChange(data.id, data.nombre);
+    setNewName('');
+    setAdding(false);
+  };
+
+  if (adding) {
+    return (
+      <div className="flex gap-1.5">
+        <input
+          autoFocus
+          value={newName}
+          onChange={(e) => { setNewName(e.target.value); setErr(''); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') { setAdding(false); setNewName(''); setErr(''); } }}
+          placeholder="Nombre del nuevo puesto..."
+          className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+          style={{ border: `1.5px solid ${err ? '#FECACA' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }}
+        />
+        <button type="button" onClick={handleAdd} disabled={saving || !newName.trim()}
+          className="px-3 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-50"
+          style={{ backgroundColor: '#0369A1' }}>
+          {saving ? <RefreshCw size={12} className="animate-spin" /> : <Plus size={12} />}
+        </button>
+        <button type="button" onClick={() => { setAdding(false); setNewName(''); setErr(''); }}
+          className="px-2 py-2 rounded-lg cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
+          <X size={12} />
+        </button>
+        {err && <span className="text-xs self-center" style={{ color: '#DC2626' }}>{err}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-1.5">
+      <select
+        value={value ?? ''}
+        onChange={(e) => {
+          const id = e.target.value || null;
+          const p = puestos.find((x) => x.id === id);
+          onChange(id, p?.nombre ?? null);
+        }}
+        className="flex-1 px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
+        style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+      >
+        <option value="">Sin puesto</option>
+        {puestos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+      </select>
+      <button type="button" onClick={() => setAdding(true)}
+        className="flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-medium cursor-pointer whitespace-nowrap"
+        style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
+        title="Anadir nuevo puesto">
+        <Plus size={12} /> Nuevo
+      </button>
+      {selected && (
+        <span className="hidden sm:inline text-xs self-center" style={{ color: '#94A3B8' }}>
+          {selected.nombre}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function EmployeesModule({ currentUserRole }: Props) {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [sociedades, setSociedades] = useState<Sociedad[]>([]);
   const [centros, setCentros] = useState<Centro[]>([]);
   const [tags, setTags] = useState<TagType[]>([]);
+  const [puestosCatalogo, setPuestosCatalogo] = useState<PuestoTagRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -1088,20 +1179,23 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         setError('Sin sesion activa — vuelve a iniciar sesion');
         return;
       }
-      const [empRes, socRes, cenRes, tagRes] = await Promise.all([
+      const [empRes, socRes, cenRes, tagRes, puestosRes] = await Promise.all([
         supabase.from('empleados').select('*').order('nombre'),
         supabase.from('sociedades').select('*').order('nombre'),
         supabase.from('centros').select('*').order('nombre'),
         supabase.from('tags').select('*').order('nombre'),
+        supabase.from('puesto_tags').select('id, nombre').order('nombre'),
       ]);
       if (empRes.error) throw empRes.error;
       if (socRes.error) throw socRes.error;
       if (cenRes.error) throw cenRes.error;
       if (tagRes.error) throw tagRes.error;
+      if (puestosRes.error) throw puestosRes.error;
       setEmpleados(empRes.data ?? []);
       setSociedades(socRes.data ?? []);
       setCentros(cenRes.data ?? []);
       setTags(tagRes.data ?? []);
+      setPuestosCatalogo((puestosRes.data ?? []) as PuestoTagRow[]);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al cargar datos');
     } finally {
@@ -1260,6 +1354,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         telefono: form.telefono?.trim() || null,
         email: form.email?.trim() || '',
         puesto: form.puesto?.trim() || null,
+        puesto_tag_id: form.puesto_tag_id || null,
         centro_trabajo: form.centro_trabajo?.trim() || null,
         titulacion_habilitante: form.titulacion_habilitante?.trim() || null,
         observaciones: form.observaciones?.trim() || null,
@@ -1962,8 +2057,11 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                 </select>
               </FormField>
               <FormField label="Puesto">
-                <input value={form.puesto ?? ''} onChange={(e) => f('puesto', e.target.value)}
-                  className="form-input" placeholder="Tecnico, Operario..." />
+                <PuestoPicker
+                  puestos={puestosCatalogo}
+                  value={form.puesto_tag_id}
+                  onChange={(id, nombre) => { f('puesto_tag_id', id); f('puesto', nombre); }}
+                />
               </FormField>
               <FormField label="Centro de trabajo">
                 <CentroPicker
@@ -2432,8 +2530,11 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                           </select>
                         </FormField>
                         <FormField label="Puesto">
-                          <input value={form.puesto ?? ''} onChange={(e) => f('puesto', e.target.value)}
-                            className="form-input" placeholder="Tecnico, Operario..." />
+                          <PuestoPicker
+                            puestos={puestosCatalogo}
+                            value={form.puesto_tag_id}
+                            onChange={(id, nombre) => { f('puesto_tag_id', id); f('puesto', nombre); }}
+                          />
                         </FormField>
                         <FormField label="Centro de trabajo">
                           <CentroPicker

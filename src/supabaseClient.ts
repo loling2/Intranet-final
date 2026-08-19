@@ -94,6 +94,7 @@ export interface Empleado {
   observaciones_contrato: string | null;
   turno: string | null;
   puesto: string | null;
+  puesto_tag_id: string | null;
   centro_trabajo: string | null;
   titulacion_habilitante: string | null;
   fecha_pago_tasas: string | null;

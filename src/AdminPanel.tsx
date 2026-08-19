@@ -592,6 +592,10 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
         )}
 
         {/* Documents Tab - Supabase backed */}
+        {activeTab === 'centros' && (
+          <CentrosModule />
+        )}
+
         {activeTab === 'documents' && (
           <DocumentsModule currentUserRole="admin" userEmail={email} />
         )}

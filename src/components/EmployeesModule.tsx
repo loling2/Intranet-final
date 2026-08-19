@@ -277,6 +277,66 @@ function hrRowToEmpleado(r: Record<string, string>, sociedadId: string): Record<
   return payload;
 }
 
+function CentroPicker({ centros, sociedades, value, onChange, onCreateNew }: {
+  centros: Centro[];
+  sociedades: Sociedad[];
+  value: string | null;
+  onChange: (v: string | null) => void;
+  onCreateNew: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const filtered = centros.filter((c) => {
+    const q = query.toLowerCase();
+    return !query.trim() || (c.nombre ?? '').toLowerCase().includes(q);
+  });
+  return (
+    <div className="flex gap-1.5 flex-1">
+      <div className="relative flex-1">
+        <input
+          type="text"
+          value={open ? query : (value ?? '')}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => { setOpen(true); setQuery(''); }}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="Buscar centro por nombre..."
+          className="form-input w-full"
+        />
+        {open && (
+          <div className="absolute z-50 mt-1 w-full max-h-56 overflow-y-auto rounded-lg shadow-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-xs" style={{ color: '#94A3B8' }}>No se encontraron centros</p>
+            ) : filtered.map((c) => {
+              const soc = sociedades.find((s) => s.id === c.id_sociedad);
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); onChange(c.nombre); setOpen(false); setQuery(''); }}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-2"
+                  style={{ color: value === c.nombre ? '#0369A1' : '#1E293B', fontWeight: value === c.nombre ? 600 : 400 }}
+                >
+                  <span>{c.nombre}</span>
+                  {soc && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>{soc.nombre}</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onCreateNew}
+        title="Crear nuevo centro"
+        className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80"
+        style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
+      >
+        <Plus size={14} />
+      </button>
+    </div>
+  );
+}
+
 function ImportUsersModal({ sociedades, onClose, onImported }: {
   sociedades: Sociedad[];
   onClose: () => void;
@@ -1906,35 +1966,13 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                   className="form-input" placeholder="Tecnico, Operario..." />
               </FormField>
               <FormField label="Centro de trabajo">
-                <div className="flex gap-1.5">
-                  <select
-                    value={form.centro_trabajo ?? ''}
-                    onChange={(e) => f('centro_trabajo', e.target.value)}
-                    className="form-input flex-1"
-                  >
-                    <option value="">Seleccionar...</option>
-                    {(() => {
-                      const filtered = centros.filter((c) => !form.id_sociedad || c.id_sociedad === form.id_sociedad);
-                      const current = form.centro_trabajo;
-                      const exists = filtered.some((c) => c.nombre === current);
-                      return (
-                        <>
-                          {current && !exists && <option value={current}>{current} (otra sociedad)</option>}
-                          {filtered.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
-                        </>
-                      );
-                    })()}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateCentro(true)}
-                    title="Crear nuevo centro"
-                    className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80"
-                    style={{ backgroundColor: '#0369A1', color: '#FFFFFF', marginTop: '0px' }}
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
+                <CentroPicker
+                  centros={centros}
+                  sociedades={sociedades}
+                  value={form.centro_trabajo}
+                  onChange={(v) => f('centro_trabajo', v)}
+                  onCreateNew={() => setShowCreateCentro(true)}
+                />
               </FormField>
               <FormField label="Titulacion habilitante" className="sm:col-span-2">
                 <input value={form.titulacion_habilitante ?? ''} onChange={(e) => f('titulacion_habilitante', e.target.value)}
@@ -2398,35 +2436,13 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                             className="form-input" placeholder="Tecnico, Operario..." />
                         </FormField>
                         <FormField label="Centro de trabajo">
-                          <div className="flex gap-1.5">
-                            <select
-                              value={form.centro_trabajo ?? ''}
-                              onChange={(e) => f('centro_trabajo', e.target.value)}
-                              className="form-input flex-1"
-                            >
-                              <option value="">Seleccionar...</option>
-                              {(() => {
-                                const filtered = centros.filter((c) => !form.id_sociedad || c.id_sociedad === form.id_sociedad);
-                                const current = form.centro_trabajo;
-                                const exists = filtered.some((c) => c.nombre === current);
-                                return (
-                                  <>
-                                    {current && !exists && <option value={current}>{current} (otra sociedad)</option>}
-                                    {filtered.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
-                                  </>
-                                );
-                              })()}
-                            </select>
-                            <button
-                              type="button"
-                              onClick={() => setShowCreateCentro(true)}
-                              title="Crear nuevo centro"
-                              className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80"
-                              style={{ backgroundColor: '#0369A1', color: '#FFFFFF', marginTop: '0px' }}
-                            >
-                              <Plus size={14} />
-                            </button>
-                          </div>
+                          <CentroPicker
+                            centros={centros}
+                            sociedades={sociedades}
+                            value={form.centro_trabajo}
+                            onChange={(v) => f('centro_trabajo', v)}
+                            onCreateNew={() => setShowCreateCentro(true)}
+                          />
                         </FormField>
                         <FormField label="Titulacion habilitante" className="sm:col-span-2">
                           <input value={form.titulacion_habilitante ?? ''} onChange={(e) => f('titulacion_habilitante', e.target.value)}

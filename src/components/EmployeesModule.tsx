@@ -1027,17 +1027,24 @@ interface PuestoTagRow {
   nombre: string;
 }
 
-function PuestoPicker({ puestos, value, onChange }: {
+function PuestoPicker({ puestos, value, onChange, onPuestosChange }: {
   puestos: PuestoTagRow[];
   value: string | null;
   onChange: (id: string | null, nombre: string | null) => void;
+  onPuestosChange: (puestos: PuestoTagRow[]) => void;
 }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
   const selected = puestos.find((p) => p.id === value);
+  const filtered = puestos.filter((p) => {
+    const q = query.toLowerCase();
+    return !query.trim() || p.nombre.toLowerCase().includes(q);
+  });
 
   const handleAdd = async () => {
     const trimmed = newName.trim();
@@ -1049,6 +1056,8 @@ function PuestoPicker({ puestos, value, onChange }: {
     const { data, error: e } = await supabase.from('puesto_tags').insert({ nombre: trimmed }).select('id, nombre').single();
     setSaving(false);
     if (e) { setErr(e.message); return; }
+    const updated = [...puestos, { id: data.id, nombre: data.nombre }].sort((a, b) => a.nombre.localeCompare(b.nombre));
+    onPuestosChange(updated);
     onChange(data.id, data.nombre);
     setNewName('');
     setAdding(false);
@@ -1056,24 +1065,24 @@ function PuestoPicker({ puestos, value, onChange }: {
 
   if (adding) {
     return (
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5 flex-1">
         <input
           autoFocus
           value={newName}
           onChange={(e) => { setNewName(e.target.value); setErr(''); }}
           onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') { setAdding(false); setNewName(''); setErr(''); } }}
           placeholder="Nombre del nuevo puesto..."
-          className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-          style={{ border: `1.5px solid ${err ? '#FECACA' : '#E2E8F0'}`, color: '#1E293B', backgroundColor: '#F8FAFC' }}
+          className="form-input flex-1"
         />
         <button type="button" onClick={handleAdd} disabled={saving || !newName.trim()}
-          className="px-3 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-50"
-          style={{ backgroundColor: '#0369A1' }}>
-          {saving ? <RefreshCw size={12} className="animate-spin" /> : <Plus size={12} />}
+          className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80 disabled:opacity-50"
+          style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
+          {saving ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
         </button>
         <button type="button" onClick={() => { setAdding(false); setNewName(''); setErr(''); }}
-          className="px-2 py-2 rounded-lg cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
-          <X size={12} />
+          className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer"
+          style={{ backgroundColor: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}>
+          <X size={14} />
         </button>
         {err && <span className="text-xs self-center" style={{ color: '#DC2626' }}>{err}</span>}
       </div>
@@ -1081,31 +1090,44 @@ function PuestoPicker({ puestos, value, onChange }: {
   }
 
   return (
-    <div className="flex gap-1.5">
-      <select
-        value={value ?? ''}
-        onChange={(e) => {
-          const id = e.target.value || null;
-          const p = puestos.find((x) => x.id === id);
-          onChange(id, p?.nombre ?? null);
-        }}
-        className="flex-1 px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
-        style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+    <div className="flex gap-1.5 flex-1">
+      <div className="relative flex-1">
+        <input
+          type="text"
+          value={open ? query : (selected?.nombre ?? '')}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => { setOpen(true); setQuery(''); }}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="Buscar puesto por nombre..."
+          className="form-input w-full"
+        />
+        {open && (
+          <div className="absolute z-50 mt-1 w-full max-h-56 overflow-y-auto rounded-lg shadow-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-xs" style={{ color: '#94A3B8' }}>No se encontraron puestos</p>
+            ) : filtered.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); onChange(p.id, p.nombre); setOpen(false); setQuery(''); }}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 cursor-pointer"
+                style={{ color: value === p.id ? '#0369A1' : '#1E293B', fontWeight: value === p.id ? 600 : 400 }}
+              >
+                {p.nombre}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => setAdding(true)}
+        title="Anadir nuevo puesto"
+        className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80"
+        style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
       >
-        <option value="">Sin puesto</option>
-        {puestos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-      </select>
-      <button type="button" onClick={() => setAdding(true)}
-        className="flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-medium cursor-pointer whitespace-nowrap"
-        style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}
-        title="Anadir nuevo puesto">
-        <Plus size={12} /> Nuevo
+        <Plus size={14} />
       </button>
-      {selected && (
-        <span className="hidden sm:inline text-xs self-center" style={{ color: '#94A3B8' }}>
-          {selected.nombre}
-        </span>
-      )}
     </div>
   );
 }
@@ -2061,6 +2083,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                   puestos={puestosCatalogo}
                   value={form.puesto_tag_id}
                   onChange={(id, nombre) => { f('puesto_tag_id', id); f('puesto', nombre); }}
+                  onPuestosChange={setPuestosCatalogo}
                 />
               </FormField>
               <FormField label="Centro de trabajo">
@@ -2534,6 +2557,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                             puestos={puestosCatalogo}
                             value={form.puesto_tag_id}
                             onChange={(id, nombre) => { f('puesto_tag_id', id); f('puesto', nombre); }}
+                            onPuestosChange={setPuestosCatalogo}
                           />
                         </FormField>
                         <FormField label="Centro de trabajo">

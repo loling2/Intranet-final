@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound, AlertCircle, Menu, BedSingle, UserCog, HelpCircle, Tablet, MonitorSmartphone, Laptop } from 'lucide-react';
+import { Users, FileText, Palmtree, Award, ClipboardCheck, LogOut, CheckCircle2, XCircle, Clock, Search, Car, ScrollText, ChevronLeft, Zap, Ligature as FileSignature, ShieldCheck, Receipt, KeyRound, AlertCircle, Menu, BedSingle, UserCog, HelpCircle, Tablet, MonitorSmartphone, Laptop, Building2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { mockVacations, mockCertificates, mockExams, mockDocuments } from './mockData';
 import UserManagement from './UserManagement';
@@ -722,6 +722,11 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
         {/* Supervisor: Empleados Asignados Tab */}
         {activeTab === 'supervisor-empleados' && (
           <SupervisorEmpleados />
+        )}
+
+        {/* Centros Tab */}
+        {activeTab === 'centros' && (
+          <CentrosModule />
         )}
 
         {/* Prevencion/Calidad Tab */}

@@ -207,6 +207,8 @@ export interface Dispositivo {
   marca_modelo: string;
   caracteristicas: string;
   centro_trabajo: string;
+  centro_id: string | null;
+  centro_id: string | null;
   numero_serie: string;
   estado_id: 1 | 2 | 3;
   etiquetado: string | null;

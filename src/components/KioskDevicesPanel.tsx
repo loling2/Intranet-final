@@ -16,8 +16,20 @@ interface KioskDevice {
   site_name: string;
   is_active: boolean;
   notes: string | null;
+  centro_id: string | null;
   created_at: string;
   last_seen_at: string | null;
+}
+
+interface Centro {
+  id: string;
+  nombre: string;
+  id_sociedad: string | null;
+}
+
+interface Sociedad {
+  id: string;
+  nombre: string;
 }
 
 interface CorporateDevice {
@@ -93,36 +105,45 @@ function KioskTab() {
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ device_key: '', site_name: '', notes: '' });
+  const [form, setForm] = useState({ device_key: '', site_name: '', notes: '', centro_id: '' });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [toggling, setToggling] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [centros, setCentros] = useState<Centro[]>([]);
+  const [sociedades, setSociedades] = useState<Sociedad[]>([]);
 
   async function load() {
     setLoading(true);
-    const { data } = await supabase.from('kiosk_devices').select('*').order('created_at', { ascending: false });
-    setDevices((data as KioskDevice[]) ?? []);
+    const [devRes, cenRes, socRes] = await Promise.all([
+      supabase.from('kiosk_devices').select('*').order('created_at', { ascending: false }),
+      supabase.from('centros').select('id, nombre, id_sociedad').order('nombre', { ascending: true }),
+      supabase.from('sociedades').select('id, nombre').order('nombre', { ascending: true }),
+    ]);
+    setDevices((devRes.data as KioskDevice[]) ?? []);
+    setCentros((cenRes.data as Centro[]) ?? []);
+    setSociedades((socRes.data as Sociedad[]) ?? []);
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
 
   function openNew() {
-    setForm({ device_key: '', site_name: '', notes: '' });
+    setForm({ device_key: '', site_name: '', notes: '', centro_id: '' });
     setEditId(null); setSaveError(''); setShowForm(true);
   }
   function openEdit(d: KioskDevice) {
-    setForm({ device_key: d.device_key, site_name: d.site_name, notes: d.notes ?? '' });
+    setForm({ device_key: d.device_key, site_name: d.site_name, notes: d.notes ?? '', centro_id: d.centro_id ?? '' });
     setEditId(d.id); setSaveError(''); setShowForm(true);
   }
   async function save() {
     if (!form.device_key.trim() || !form.site_name.trim()) { setSaveError('Código y nombre son obligatorios'); return; }
     setSaving(true); setSaveError('');
+    const centroValue = form.centro_id || null;
     if (editId) {
-      const { error } = await supabase.from('kiosk_devices').update({ site_name: form.site_name.trim(), notes: form.notes.trim() || null }).eq('id', editId);
+      const { error } = await supabase.from('kiosk_devices').update({ site_name: form.site_name.trim(), notes: form.notes.trim() || null, centro_id: centroValue }).eq('id', editId);
       if (error) { setSaveError(error.message); setSaving(false); return; }
     } else {
-      const { error } = await supabase.from('kiosk_devices').insert({ device_key: form.device_key.trim(), site_name: form.site_name.trim(), notes: form.notes.trim() || null });
+      const { error } = await supabase.from('kiosk_devices').insert({ device_key: form.device_key.trim(), site_name: form.site_name.trim(), notes: form.notes.trim() || null, centro_id: centroValue });
       if (error) { setSaveError(error.message); setSaving(false); return; }
     }
     setSaving(false); setShowForm(false); load();
@@ -203,6 +224,7 @@ function KioskTab() {
                     <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: '#94A3B8' }}>
                       <span className="flex items-center gap-1"><Clock size={10} /> {formatDate(device.created_at)}</span>
                       {device.last_seen_at && <span className="flex items-center gap-1" style={{ color: isOnline ? '#16A34A' : '#94A3B8' }}><MapPin size={10} /> {relativeTime(device.last_seen_at)}</span>}
+                      {device.centro_id && (() => { const c = centros.find(x => x.id === device.centro_id); const s = c?.id_sociedad ? sociedades.find(x => x.id === c.id_sociedad) : null; return c ? <span className="flex items-center gap-1" style={{ color: '#0369A1' }}><MapPin size={10} /> {c.nombre}{s ? ` · ${s.nombre}` : ''}</span> : null; })()}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -261,6 +283,26 @@ function KioskTab() {
                   <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Se guardará en localStorage de la tablet</p>
                 </div>
               )}
+              <div>
+                <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#475569' }}>Centro de trabajo (opcional)</label>
+                <select value={form.centro_id} onChange={e => setForm(f => ({ ...f, centro_id: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none" style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}>
+                  <option value="">Sin centro asignado</option>
+                  {sociedades.map(soc => (
+                    <optgroup key={soc.id} label={soc.nombre}>
+                      {centros.filter(c => c.id_sociedad === soc.id).map(c => (
+                        <option key={c.id} value={c.id}>{c.nombre}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                  {centros.filter(c => !c.id_sociedad).length > 0 && (
+                    <optgroup label="Sin sociedad">
+                      {centros.filter(c => !c.id_sociedad).map(c => (
+                        <option key={c.id} value={c.id}>{c.nombre}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
               <div>
                 <label className="block text-xs font-semibold mb-1 uppercase tracking-wider" style={{ color: '#475569' }}>Notas (opcional)</label>
                 <input type="text" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Modelo, planta, ubicación..." className="w-full px-3 py-2.5 rounded-xl text-sm outline-none" style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />

@@ -24,6 +24,7 @@ import DepartamentosModule from './components/DepartamentosModule';
 import EmailModule from './components/EmailModule';
 import FichajesModule from './components/FichajesModule';
 import KioskDevicesPanel from './components/KioskDevicesPanel';
+import CentrosModule from './components/CentrosModule';
 import RoleTabPermissionsManager from './components/RoleTabPermissionsManager';
 import HelpPanel from './components/HelpPanel';
 import { useSociety } from './context/SocietyContext';
@@ -37,7 +38,7 @@ interface Props {
   onImpersonate?: (userId: string, societyId: string | null) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'documents' | 'devices' | 'kiosk-devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'ayuda';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'centros' | 'documents' | 'devices' | 'kiosk-devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'ayuda';
 
 export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -120,6 +121,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     { id: 'employees',  label: 'Empleados',           icon: Users },
     { id: 'users',      label: 'Gestion de Usuarios', icon: Users },
     { id: 'societies',  label: 'Sociedades',          icon: Building2 },
+    { id: 'centros',     label: 'Centros',             icon: Building2 },
     { id: 'vehicles',   label: 'Vehiculos',           icon: Car },
     { id: 'documents',  label: 'Documentos',          icon: FileText },
     { id: 'devices',    label: 'Dispositivos',        icon: Laptop },

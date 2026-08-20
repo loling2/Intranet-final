@@ -96,6 +96,7 @@ export interface Empleado {
   puesto: string | null;
   puesto_tag_id: string | null;
   centro_trabajo: string | null;
+  centro_id: string | null;
   titulacion_habilitante: string | null;
   fecha_pago_tasas: string | null;
   nass: string | null;
@@ -208,7 +209,6 @@ export interface Dispositivo {
   marca_modelo: string;
   caracteristicas: string;
   centro_trabajo: string;
-  centro_id: string | null;
   centro_id: string | null;
   numero_serie: string;
   estado_id: 1 | 2 | 3;

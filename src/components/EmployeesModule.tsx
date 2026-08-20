@@ -49,6 +49,7 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   puesto: null,
   puesto_tag_id: null,
   centro_trabajo: null,
+  centro_id: null,
   titulacion_habilitante: null,
   fecha_pago_tasas: null,
   nass: null,
@@ -96,6 +97,7 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     puesto: e.puesto,
     puesto_tag_id: e.puesto_tag_id ?? null,
     centro_trabajo: e.centro_trabajo,
+    centro_id: e.centro_id ?? null,
     titulacion_habilitante: e.titulacion_habilitante,
     fecha_pago_tasas: e.fecha_pago_tasas,
     nass: e.nass ?? null,
@@ -1370,6 +1372,10 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     setSaving(true);
     setError(null);
     try {
+      const centroNombre = form.centro_trabajo?.trim() || null;
+      const matchedCentro = centroNombre
+        ? centros.find(c => c.nombre.toLowerCase() === centroNombre.toLowerCase())
+        : null;
       const payload = {
         ...form,
         dni: form.dni?.trim() || null,
@@ -1377,7 +1383,8 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         email: form.email?.trim() || '',
         puesto: form.puesto?.trim() || null,
         puesto_tag_id: form.puesto_tag_id || null,
-        centro_trabajo: form.centro_trabajo?.trim() || null,
+        centro_trabajo: centroNombre,
+        centro_id: matchedCentro?.id ?? null,
         titulacion_habilitante: form.titulacion_habilitante?.trim() || null,
         observaciones: form.observaciones?.trim() || null,
         observaciones_contrato: form.observaciones_contrato?.trim() || null,
@@ -1391,6 +1398,20 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         if (err) {
           if (err.code === '42501' || err.message?.includes('security')) throw new Error('Sin permiso para modificar empleados. Vuelve a iniciar sesion.');
           throw err;
+        }
+        // Track centro change in employee_centro_history
+        const centroChanged = (original?.centro_id ?? null) !== (payload.centro_id ?? null)
+          || (original?.centro_trabajo ?? null) !== (payload.centro_trabajo ?? null);
+        if (centroChanged && (payload.centro_id || payload.centro_trabajo)) {
+          try {
+            await supabase.from('employee_centro_history').insert({
+              empleado_id: editingId,
+              centro_id: payload.centro_id,
+              centro_nombre: payload.centro_trabajo ?? '',
+            });
+          } catch (histErr) {
+            console.warn('No se pudo registrar el historial de centro:', histErr);
+          }
         }
         if (original?.dni && original?.nombre) {
           const soc = sociedades.find(s => s.id === (payload.id_sociedad || original.id_sociedad));
@@ -1414,10 +1435,22 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         }
         showSuccess('Empleado actualizado correctamente');
       } else {
-        const { error: err } = await supabase.from('empleados').insert(payload);
+        const { data: inserted, error: err } = await supabase.from('empleados').insert(payload).select('id').maybeSingle();
         if (err) {
           if (err.code === '42501' || err.message?.includes('security')) throw new Error('Sin permiso para crear empleados. Vuelve a iniciar sesion.');
           throw err;
+        }
+        // Record initial centro in history
+        if (inserted && (payload.centro_id || payload.centro_trabajo)) {
+          try {
+            await supabase.from('employee_centro_history').insert({
+              empleado_id: (inserted as { id: string }).id,
+              centro_id: payload.centro_id,
+              centro_nombre: payload.centro_trabajo ?? '',
+            });
+          } catch (histErr) {
+            console.warn('No se pudo registrar el historial de centro:', histErr);
+          }
         }
         showSuccess('Empleado creado correctamente');
       }
@@ -1658,6 +1691,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
           onCreated={(centro) => {
             setCentros((prev) => [...prev, centro].sort((a, b) => a.nombre.localeCompare(b.nombre)));
             f('centro_trabajo', centro.nombre);
+            f('centro_id', centro.id);
           }}
         />
       )}
@@ -2091,7 +2125,11 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                   centros={centros}
                   sociedades={sociedades}
                   value={form.centro_trabajo}
-                  onChange={(v) => f('centro_trabajo', v)}
+                  onChange={(v) => {
+                    f('centro_trabajo', v);
+                    const matched = v ? centros.find(c => c.nombre.toLowerCase() === v.toLowerCase()) : null;
+                    f('centro_id', matched?.id ?? null);
+                  }}
                   onCreateNew={() => setShowCreateCentro(true)}
                 />
               </FormField>
@@ -2565,7 +2603,11 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                             centros={centros}
                             sociedades={sociedades}
                             value={form.centro_trabajo}
-                            onChange={(v) => f('centro_trabajo', v)}
+                            onChange={(v) => {
+                              f('centro_trabajo', v);
+                              const matched = v ? centros.find(c => c.nombre.toLowerCase() === v.toLowerCase()) : null;
+                              f('centro_id', matched?.id ?? null);
+                            }}
                             onCreateNew={() => setShowCreateCentro(true)}
                           />
                         </FormField>

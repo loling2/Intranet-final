@@ -3,13 +3,14 @@ import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination
 import {
   Laptop, Smartphone, Monitor, Headphones, Tablet, Phone,
   Plus, Search, Pencil, Trash2, X, RefreshCw, AlertCircle,
-  CheckCircle2, ChevronDown, Settings, MapPin, FileText, Euro, Printer, History,
+  CheckCircle2, ChevronDown, Settings, MapPin, FileText, Euro, Printer, History, Upload,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import type { Dispositivo, Empleado, Centro } from '../supabaseClient';
 import { societies } from '../themes';
 import { useAuth } from '../context/AuthContext';
 import { getSocietyLogo } from '../lib/societyLogos';
+import { uploadToWasabi } from '../lib/wasabi';
 
 const TIPOS = ['Portatil', 'Sobremesa', 'Monitor', 'Movil', 'Tablet', 'Periferico', 'VoIP', 'Otro'];
 
@@ -991,8 +992,37 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
   const [historyDevice, setHistoryDevice] = useState<Dispositivo | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [uploadingDevice, setUploadingDevice] = useState<Dispositivo | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const flash = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(''), 3000); };
+
+  const handleUploadDeliveryDoc = async (file: File) => {
+    const device = uploadingDevice;
+    if (!device) return;
+    setUploadingDevice(null);
+    try {
+      const emp = empleados.find((e) => e.id === device.empleado_id);
+      if (!emp || !emp.user_id) {
+        setError('El dispositivo no tiene un empleado asignado con cuenta de acceso');
+        return;
+      }
+      const path = `empleados/${emp.user_id}/publica/${Date.now()}-${file.name}`;
+      await uploadToWasabi(file, path);
+      const { error: rpcErr } = await supabase.rpc('staff_upload_device_delivery_doc', {
+        p_dispositivo_id: device.id,
+        p_storage_path: path,
+        p_nombre: file.name,
+        p_mime_type: file.type || 'application/octet-stream',
+        p_size_bytes: file.size,
+        p_subido_por_nombre: currentUserNombre,
+      });
+      if (rpcErr) throw rpcErr;
+      flash(`Acta de entrega subida para "${device.marca_modelo}"`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al subir el acta de entrega');
+    }
+  };
 
   const loadDevices = useCallback(async () => {
     setLoading(true);
@@ -1098,6 +1128,17 @@ const totalActivos =
       {historyDevice && (
         <DeviceHistoryModal device={historyDevice} onClose={() => setHistoryDevice(null)} />
       )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleUploadDeliveryDoc(f);
+          e.target.value = '';
+        }}
+      />
 
       {/* Header */}
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
@@ -1350,6 +1391,20 @@ const totalActivos =
                     <button type="button" onClick={() => setDeliveryDevice(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors" style={{ color: '#94A3B8' }} title="Generar acta de entrega">
                       <FileText size={13} />
                     </button>
+                    {canEdit && dev.empleado_id && dev.estado_id === 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUploadingDevice(dev);
+                          fileInputRef.current?.click();
+                        }}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-emerald-50 transition-colors"
+                        style={{ color: '#94A3B8' }}
+                        title="Subir acta firmada"
+                      >
+                        <Upload size={13} />
+                      </button>
+                    )}
                     <button type="button" onClick={() => setHistoryDevice(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-amber-50 transition-colors" style={{ color: '#94A3B8' }} title="Historial de asignaciones">
                       <History size={13} />
                     </button>

@@ -1936,10 +1936,10 @@ function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
   const [allDocs, setAllDocs] = useState<PrevDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [expandedSocieties, setExpandedSocieties] = useState<Set<string>>(new Set());
-  // Set of document IDs already downloaded by this user
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [downloadedIds, setDownloadedIds] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState<Set<string>>(new Set());
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -1951,7 +1951,7 @@ function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
         ]);
         const d = (docs ?? []) as PrevDoc[];
         setAllDocs(d);
-        setExpandedSocieties(new Set(d.map((x) => x.society_id)));
+        setExpandedGroups(new Set());
         setDownloadedIds(new Set((logs ?? []).map((l: { document_id: string }) => l.document_id)));
       } catch {
         setAllDocs([]);
@@ -1970,18 +1970,22 @@ function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
     : allDocs;
 
   const groups = (() => {
-    const map = new Map<string, { society_id: string; society_nombre: string; docs: PrevDoc[] }>();
+    const map = new Map<string, { group_id: string; society_id: string; society_nombre: string; centro_nombre: string | null; docs: PrevDoc[] }>();
     for (const doc of filtered) {
-      if (!map.has(doc.society_id)) {
-        map.set(doc.society_id, { society_id: doc.society_id, society_nombre: doc.society_nombre, docs: [] });
+      const centroNombre = doc.folder_centro_nombre?.trim() || null;
+      const groupId = `${doc.society_id}:${doc.folder_centro_id ?? 'sin-centro'}`;
+      if (!map.has(groupId)) {
+        map.set(groupId, { group_id: groupId, society_id: doc.society_id, society_nombre: doc.society_nombre, centro_nombre: centroNombre, docs: [] });
       }
-      map.get(doc.society_id)!.docs.push(doc);
+      map.get(groupId)!.docs.push(doc);
     }
-    return Array.from(map.values()).sort((a, b) => a.society_nombre.localeCompare(b.society_nombre));
+    return Array.from(map.values()).sort((a, b) =>
+      a.society_nombre.localeCompare(b.society_nombre) || (a.centro_nombre ?? '').localeCompare(b.centro_nombre ?? '')
+    );
   })();
 
-  const toggleSociety = (id: string) => {
-    setExpandedSocieties((prev) => {
+  const toggleGroup = (id: string) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
@@ -1993,10 +1997,10 @@ function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
 
   const handleDownload = async (doc: PrevDoc) => {
     if (!doc.wasabi_key || downloading.has(doc.id)) return;
+    setDownloadError(null);
     setDownloading((prev) => new Set(prev).add(doc.id));
     try {
       await downloadFromWasabi(doc.wasabi_key, doc.nombre_archivo);
-      // Log the download
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: emp } = await supabase
@@ -2011,7 +2015,9 @@ function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
         });
         setDownloadedIds((prev) => new Set(prev).add(doc.id));
       }
-    } catch { /* silent */ } finally {
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : 'No se pudo descargar el documento');
+    } finally {
       setDownloading((prev) => { const s = new Set(prev); s.delete(doc.id); return s; });
     }
   };
@@ -2060,6 +2066,13 @@ function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
         </div>
       </div>
 
+      {downloadError && (
+        <div className="flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C' }}>
+          <span>{downloadError}</span>
+          <button onClick={() => setDownloadError(null)} className="cursor-pointer font-semibold">Cerrar</button>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <RefreshCw size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
@@ -2079,17 +2092,20 @@ function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
       ) : (
         <div className="space-y-4">
           {groups.map((group) => {
-            const isOpen = expandedSocieties.has(group.society_id);
+            const isOpen = expandedGroups.has(group.group_id);
             return (
-              <div key={group.society_id} className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+              <div key={group.group_id} className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
                 <button
-                  onClick={() => toggleSociety(group.society_id)}
+                  onClick={() => toggleGroup(group.group_id)}
                   className="w-full flex items-center justify-between px-5 py-3.5 cursor-pointer transition-colors duration-150 hover:opacity-90"
                   style={{ backgroundColor: '#ECFDF5', borderBottom: isOpen ? `1px solid ${theme.border}` : 'none' }}
                 >
                   <div className="flex items-center gap-2.5">
                     <Building2 size={15} style={{ color: '#065F46' }} />
                     <span className="text-sm font-semibold" style={{ color: '#065F46' }}>{group.society_nombre}</span>
+                    {group.centro_nombre && (
+                      <span className="text-xs font-medium truncate max-w-[160px]" style={{ color: '#B45309' }}>{group.centro_nombre}</span>
+                    )}
                     <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}>
                       {group.docs.length}
                     </span>
@@ -2825,7 +2841,7 @@ useEffect(() => {
 
             {/* Fila 2: Documentos PRL (ancho completo, cards por sociedad dentro) */}
             <div>
-              <PrevencionDocsCard theme={theme} userEmail={email} fullWidth />
+              <PrevencionDocsCard theme={theme} userEmail={email} fullWidth onSeeAll={() => setActiveTab('prevencion')} />
             </div>
 
             {/* Fila 3: Modales / documentos adicionales */}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldCheck, FileText, Download, Tag, RefreshCw, Folder, X, ZoomIn, ChevronDown, ChevronUp, Building2 } from 'lucide-react';
+import { ShieldCheck, FileText, Download, Tag, RefreshCw, Folder, X, ZoomIn, ChevronDown, ChevronUp, ChevronRight, Building2 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { downloadFromWasabi, getWasabiBlobUrl } from './lib/wasabi';
 import type { SocietyTheme } from './themes';
@@ -20,8 +20,10 @@ interface PrevDoc {
 }
 
 interface GroupedDocs {
+  group_id: string;
   society_id: string;
   society_nombre: string;
+  centro_nombre: string | null;
   docs: PrevDoc[];
 }
 
@@ -29,6 +31,7 @@ interface Props {
   theme: SocietyTheme;
   userEmail?: string;
   fullWidth?: boolean;
+  onSeeAll?: () => void;
 }
 
 // ── Preview Modal ─────────────────────────────────────────────────────────────
@@ -131,11 +134,13 @@ function PreviewModal({ doc, onClose, getUrl }: {
 
 // ── Main Card ─────────────────────────────────────────────────────────────────
 
-export default function PrevencionDocsCard({ theme, fullWidth }: Props) {
+export default function PrevencionDocsCard({ theme, fullWidth, onSeeAll }: Props) {
   const [groups, setGroups] = useState<GroupedDocs[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewDoc, setPreviewDoc] = useState<PrevDoc | null>(null);
   const [expandedSocieties, setExpandedSocieties] = useState<Set<string>>(new Set());
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const totalDocs = groups.reduce((acc, g) => acc + g.docs.length, 0);
 
@@ -148,26 +153,31 @@ export default function PrevencionDocsCard({ theme, fullWidth }: Props) {
 
         const docs = (data ?? []) as PrevDoc[];
 
-        // Sort by created_at desc within each society, keep only 3 newest per society
+        const newestDocs = [...docs]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 3);
         const map = new Map<string, GroupedDocs>();
-        for (const doc of docs) {
-          if (!map.has(doc.society_id)) {
-            map.set(doc.society_id, { society_id: doc.society_id, society_nombre: doc.society_nombre, docs: [] });
+        for (const doc of newestDocs) {
+          const centroNombre = doc.folder_centro_nombre?.trim() || null;
+          const groupId = `${doc.society_id}:${doc.folder_centro_id ?? 'sin-centro'}`;
+          if (!map.has(groupId)) {
+            map.set(groupId, {
+              group_id: groupId,
+              society_id: doc.society_id,
+              society_nombre: doc.society_nombre,
+              centro_nombre: centroNombre,
+              docs: [],
+            });
           }
-          map.get(doc.society_id)!.docs.push(doc);
+          map.get(groupId)!.docs.push(doc);
         }
-        // Sort docs within each group by created_at desc (show all)
-        const grouped = Array.from(map.values())
-          .map((g) => ({
-            ...g,
-            docs: g.docs
-              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
-          }))
-          .sort((a, b) => a.society_nombre.localeCompare(b.society_nombre));
+        const grouped = Array.from(map.values()).sort((a, b) =>
+          a.society_nombre.localeCompare(b.society_nombre) || (a.centro_nombre ?? '').localeCompare(b.centro_nombre ?? '')
+        );
         setGroups(grouped);
 
         // Expand all by default
-        setExpandedSocieties(new Set(grouped.map((g) => g.society_id)));
+        setExpandedSocieties(new Set(grouped.map((g) => g.group_id)));
       } catch {
         setGroups([]);
       } finally {
@@ -180,10 +190,16 @@ export default function PrevencionDocsCard({ theme, fullWidth }: Props) {
   const getPreviewUrl = (wasabiKey: string): Promise<string> => getWasabiBlobUrl(wasabiKey);
 
   const handleDownload = async (doc: PrevDoc) => {
-    if (!doc.wasabi_key) return;
+    if (!doc.wasabi_key || downloadingId) return;
+    setDownloadError(null);
+    setDownloadingId(doc.id);
     try {
       await downloadFromWasabi(doc.wasabi_key, doc.nombre_archivo);
-    } catch { /* silent */ }
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : 'No se pudo descargar el documento');
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const toggleSociety = (id: string) => {
@@ -227,14 +243,30 @@ export default function PrevencionDocsCard({ theme, fullWidth }: Props) {
             <div>
               <h3 className="text-sm font-semibold" style={{ color: theme.textPrimary }}>Documentos Prevencion</h3>
               <p className="text-xs" style={{ color: theme.textSecondary }}>
-                {loading ? '...' : `${totalDocs} documento${totalDocs !== 1 ? 's' : ''} disponible${totalDocs !== 1 ? 's' : ''}`}
+                {loading ? '...' : `Mostrando ${totalDocs} de tus documentos más recientes`}
               </p>
             </div>
           </div>
+          {onSeeAll && !loading && totalDocs > 0 && (
+            <button
+              onClick={onSeeAll}
+              className="flex items-center gap-1 text-xs font-semibold cursor-pointer hover:opacity-70 transition-opacity"
+              style={{ color: '#065F46' }}
+            >
+              Ver todos
+              <ChevronRight size={12} />
+            </button>
+          )}
         </div>
 
         {/* Content */}
         <div className="px-5 py-4">
+          {downloadError && (
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C' }}>
+              <span>{downloadError}</span>
+              <button onClick={() => setDownloadError(null)} className="cursor-pointer font-semibold">Cerrar</button>
+            </div>
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <RefreshCw size={16} className="animate-spin" style={{ color: '#94A3B8' }} />
@@ -250,18 +282,21 @@ export default function PrevencionDocsCard({ theme, fullWidth }: Props) {
           ) : (
             <div className={fullWidth ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3" : "space-y-3"}>
               {groups.map((group) => {
-                const isOpen = expandedSocieties.has(group.society_id);
+                const isOpen = expandedSocieties.has(group.group_id);
                 return (
-                  <div key={group.society_id} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
+                  <div key={group.group_id} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
                     {/* Society header */}
                     <button
-                      onClick={() => toggleSociety(group.society_id)}
+                      onClick={() => toggleSociety(group.group_id)}
                       className="w-full flex items-center justify-between px-3 py-2.5 cursor-pointer transition-colors duration-150 hover:opacity-90"
                       style={{ backgroundColor: '#ECFDF5' }}
                     >
                       <div className="flex items-center gap-2">
                         <Building2 size={13} style={{ color: '#065F46' }} />
                         <span className="text-xs font-semibold" style={{ color: '#065F46' }}>{group.society_nombre}</span>
+                        {group.centro_nombre && (
+                          <span className="text-xs font-medium truncate max-w-[140px]" style={{ color: '#B45309' }}>{group.centro_nombre}</span>
+                        )}
                         <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}>
                           {group.docs.length}
                         </span>
@@ -335,11 +370,13 @@ export default function PrevencionDocsCard({ theme, fullWidth }: Props) {
                                 {doc.wasabi_key && (
                                   <button
                                     onClick={() => handleDownload(doc)}
-                                    className="w-6 h-6 rounded-md flex items-center justify-center cursor-pointer hover:opacity-70 transition-opacity"
-                                    style={{ color: '#475569', backgroundColor: '#F1F5F9' }}
-                                    title="Descargar"
+                                    disabled={downloadingId !== null}
+                                    className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold cursor-pointer hover:opacity-70 transition-opacity disabled:opacity-50"
+                                    style={{ color: '#065F46', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0' }}
+                                    title="Descargar documento"
                                   >
-                                    <Download size={11} />
+                                    {downloadingId === doc.id ? <RefreshCw size={11} className="animate-spin" /> : <Download size={11} />}
+                                    <span>Descargar</span>
                                   </button>
                                 )}
                               </div>

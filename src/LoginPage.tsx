@@ -2032,38 +2032,38 @@ function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
 
   return (
     <div className="space-y-4">
-      {/* Header + search */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#ECFDF5' }}>
-            <ShieldCheck size={18} style={{ color: '#065F46' }} />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold" style={{ color: theme.textPrimary }}>Documentos Prevención</h3>
-            {!loading && (
-              <p className="text-xs" style={{ color: theme.textSecondary }}>
-                {allDocs.length} documento{allDocs.length !== 1 ? 's' : ''} disponible{allDocs.length !== 1 ? 's' : ''}
-                {search.trim() && filtered.length !== allDocs.length && ` · ${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`}
-              </p>
-            )}
-          </div>
+      {/* Header */}
+      <div className="flex items-center gap-2.5">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#ECFDF5' }}>
+          <ShieldCheck size={18} style={{ color: '#065F46' }} />
         </div>
-        <div className="relative flex-1 max-w-xs">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
-          <input
-            type="text"
-            placeholder="Buscar documentos..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 text-sm rounded-xl transition-all duration-200 outline-none"
-            style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
-          />
-          {search && (
-            <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer hover:opacity-70" style={{ color: '#94A3B8' }}>
-              <X size={13} />
-            </button>
+        <div>
+          <h3 className="text-lg font-bold" style={{ color: theme.textPrimary }}>Documentos Prevención</h3>
+          {!loading && (
+            <p className="text-xs" style={{ color: theme.textSecondary }}>
+              {allDocs.length} documento{allDocs.length !== 1 ? 's' : ''} disponible{allDocs.length !== 1 ? 's' : ''}
+              {search.trim() && filtered.length !== allDocs.length && ` · ${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`}
+            </p>
           )}
         </div>
+      </div>
+
+      {/* Search */}
+      <div className="relative w-full">
+        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#94A3B8' }} />
+        <input
+          type="text"
+          placeholder="Buscar documentos..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full pl-10 pr-10 py-3 text-sm rounded-xl transition-all duration-200 outline-none"
+          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer hover:opacity-70" style={{ color: '#94A3B8' }}>
+            <X size={14} />
+          </button>
+        )}
       </div>
 
       {downloadError && (

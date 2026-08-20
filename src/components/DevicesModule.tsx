@@ -761,13 +761,6 @@ function DeliveryDocModal({ device, empleados, onClose }: {
             <div className="mt-2 mx-auto" style={{ width: 60, height: 3, backgroundColor: '#0F172A' }} />
           </div>
 
-          {/* Logo below title */}
-          {logoUrl && (
-            <div className="flex items-center justify-center mb-6">
-              <img src={logoUrl} alt={society?.name ?? 'Logo'} style={{ maxHeight: 60, maxWidth: 180, objectFit: 'contain' }} />
-            </div>
-          )}
-
           {/* Date + delivery number */}
           <div className="flex items-center justify-between mb-6">
             <p className="text-sm" style={{ color: '#475569' }}>
@@ -842,7 +835,12 @@ function DeliveryDocModal({ device, empleados, onClose }: {
           {/* Signatures */}
           <div className="grid grid-cols-2 gap-8 mt-12">
             <div className="text-center">
-              <div style={{ borderTop: '1px solid #0F172A', paddingTop: 8, marginTop: 60 }}>
+              {logoUrl && (
+                <div className="flex items-center justify-center" style={{ height: 60, marginBottom: 8 }}>
+                  <img src={logoUrl} alt={society?.name ?? 'Logo'} style={{ maxHeight: 60, maxWidth: 180, objectFit: 'contain' }} />
+                </div>
+              )}
+              <div style={{ borderTop: '1px solid #0F172A', paddingTop: 8 }}>
                 <p className="text-xs font-semibold" style={{ color: '#0F172A' }}>Entrega</p>
                 <p className="text-xs" style={{ color: '#94A3B8' }}>Firma de la empresa</p>
               </div>

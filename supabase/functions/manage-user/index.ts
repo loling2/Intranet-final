@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
       .eq("id", callerUser.id)
       .maybeSingle();
 
-    if (!callerProfile || !["admin", "rrhh"].includes(callerProfile.role)) {
+    if (!callerProfile || !["admin", "rrhh", "prevencion"].includes(callerProfile.role)) {
       return new Response(JSON.stringify({ error: "Permiso denegado" }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

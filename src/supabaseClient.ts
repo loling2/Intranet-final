@@ -219,6 +219,7 @@ export interface Dispositivo {
   empleado_id: string | null;
   usuario_asignado_nombre: string;
   fecha_asignacion: string | null;
+  numero_entrega: number | null;
   notas: string;
   created_at: string;
   updated_at: string;

@@ -30,13 +30,21 @@ input:focus {
     visibility: hidden !important;
   }
   #delivery-doc-print,
-  #delivery-doc-print * {
+  #delivery-doc-print *,
+  #delivery-doc-print-copy,
+  #delivery-doc-print-copy * {
     visibility: visible !important;
   }
   #delivery-doc-print {
     position: absolute;
     left: 0;
     top: 0;
+    width: 100%;
+  }
+  #delivery-doc-print-copy {
+    position: absolute;
+    left: 0;
+    top: 100%;
     width: 100%;
   }
 }

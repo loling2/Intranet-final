@@ -47,6 +47,7 @@ interface FormState {
   empleado_id: string;
   usuario_asignado_nombre: string;
   fecha_asignacion: string;
+  numero_entrega: number | null;
   notas: string;
 }
 
@@ -66,6 +67,7 @@ const EMPTY_FORM: FormState = {
   empleado_id: '',
   usuario_asignado_nombre: '',
   fecha_asignacion: '',
+  numero_entrega: null,
   notas: '',
 };
 // ── Searchable Employee Picker ────────────────────────────────────────────────
@@ -195,6 +197,7 @@ function DeviceModal({
           empleado_id: existing.empleado_id ?? '',
           usuario_asignado_nombre: existing.usuario_asignado_nombre || '',
           fecha_asignacion: existing.fecha_asignacion ?? '',
+          numero_entrega: existing.numero_entrega ?? null,
           notas: existing.notas || '',
         }
       : { ...EMPTY_FORM, society_id: societies[0]?.id ?? '' }
@@ -226,6 +229,27 @@ function DeviceModal({
     if (!form.society_id) { setError('Selecciona una sociedad.'); return; }
     setSaving(true); setError('');
 
+    // Determine if this is a new assignment (needs a numero_entrega)
+    const isNewAssignment = form.estado_id !== 3 && !!form.empleado_id &&
+      (!existing || (!existing.empleado_id && !existing.numero_entrega));
+
+    let numeroEntrega = form.numero_entrega;
+    if (isNewAssignment) {
+      // Fetch the current max numero_entrega to generate the next sequential number
+      const { data: maxData } = await supabase
+        .from('dispositivos')
+        .select('numero_entrega')
+        .not('numero_entrega', 'is', null)
+        .order('numero_entrega', { ascending: false })
+        .limit(1);
+      const maxNum = maxData && maxData.length > 0 ? (maxData[0] as { numero_entrega: number | null }).numero_entrega : 0;
+      numeroEntrega = (maxNum ?? 0) + 1;
+    }
+    // Clear numero_entrega if device is liberated or unassigned
+    if (form.estado_id === 3 || !form.empleado_id) {
+      numeroEntrega = null;
+    }
+
     const payload = {
       tipo: form.tipo,
       marca_modelo: form.marca_modelo.trim(),
@@ -240,6 +264,7 @@ function DeviceModal({
       empleado_id: form.estado_id === 3 ? null : (form.empleado_id || null),
       usuario_asignado_nombre: form.estado_id === 3 ? '' : form.usuario_asignado_nombre.trim(),
       fecha_asignacion: form.estado_id === 3 ? null : (form.fecha_asignacion || null),
+      numero_entrega: numeroEntrega,
       notas: form.notas.trim(),
     };
 
@@ -697,7 +722,21 @@ function DeliveryDocModal({ device, empleados, onClose }: {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => window.print()}
+              onClick={() => {
+                const original = document.getElementById('delivery-doc-print');
+                let clone: HTMLElement | null = null;
+                if (original) {
+                  clone = original.cloneNode(true) as HTMLElement;
+                  clone.id = 'delivery-doc-print-copy';
+                  original.parentElement?.appendChild(clone);
+                }
+                const cleanup = () => {
+                  clone?.remove();
+                  window.removeEventListener('afterprint', cleanup);
+                };
+                window.addEventListener('afterprint', cleanup);
+                window.print();
+              }}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all hover:opacity-80"
               style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}
             >
@@ -715,22 +754,29 @@ function DeliveryDocModal({ device, empleados, onClose }: {
 
         {/* Printable document body */}
         <div className="flex-1 overflow-y-auto p-8" id="delivery-doc-print">
-          {/* Logo + company name header */}
-          <div className="flex items-center justify-center gap-4 mb-6">
-            {logoUrl && (
-              <img src={logoUrl} alt={society?.name ?? 'Logo'} style={{ maxHeight: 60, maxWidth: 180, objectFit: 'contain' }} />
-            )}
-            <div className="text-center">
-              <h1 className="text-xl font-bold uppercase tracking-wider" style={{ color: '#0F172A' }}>Acta de Entrega de Equipos</h1>
-              <p className="text-sm font-semibold mt-1" style={{ color: society?.primary ?? '#0F172A' }}>{society?.name ?? ''}</p>
-              <div className="mt-2 mx-auto" style={{ width: 60, height: 3, backgroundColor: '#0F172A' }} />
-            </div>
+          {/* Title header */}
+          <div className="text-center mb-4">
+            <h1 className="text-xl font-bold uppercase tracking-wider" style={{ color: '#0F172A' }}>Acta de Entrega de Equipos</h1>
+            <p className="text-sm font-semibold mt-1" style={{ color: society?.primary ?? '#0F172A' }}>{society?.name ?? ''}</p>
+            <div className="mt-2 mx-auto" style={{ width: 60, height: 3, backgroundColor: '#0F172A' }} />
           </div>
 
-          {/* Date */}
-          <p className="text-sm text-right mb-6" style={{ color: '#475569' }}>
-            Fecha de generación: <strong style={{ color: '#0F172A' }}>{fechaGen}</strong>
-          </p>
+          {/* Logo below title */}
+          {logoUrl && (
+            <div className="flex items-center justify-center mb-6">
+              <img src={logoUrl} alt={society?.name ?? 'Logo'} style={{ maxHeight: 60, maxWidth: 180, objectFit: 'contain' }} />
+            </div>
+          )}
+
+          {/* Date + delivery number */}
+          <div className="flex items-center justify-between mb-6">
+            <p className="text-sm" style={{ color: '#475569' }}>
+              Nº de entrega: <strong style={{ color: '#0F172A' }}>{device.numero_entrega ?? '—'}</strong>
+            </p>
+            <p className="text-sm" style={{ color: '#475569' }}>
+              Fecha de generación: <strong style={{ color: '#0F172A' }}>{fechaGen}</strong>
+            </p>
+          </div>
 
           {/* Worker info box */}
           <div className="rounded-xl p-5 mb-6" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>

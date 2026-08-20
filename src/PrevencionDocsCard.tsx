@@ -156,13 +156,12 @@ export default function PrevencionDocsCard({ theme, fullWidth }: Props) {
           }
           map.get(doc.society_id)!.docs.push(doc);
         }
-        // Sort docs within each group by created_at desc, cap at 3
+        // Sort docs within each group by created_at desc (show all)
         const grouped = Array.from(map.values())
           .map((g) => ({
             ...g,
             docs: g.docs
-              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-              .slice(0, 3),
+              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
           }))
           .sort((a, b) => a.society_nombre.localeCompare(b.society_nombre));
         setGroups(grouped);

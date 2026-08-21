@@ -143,11 +143,36 @@ const CSV_HR_HEADERS = [
   'Codigo Contrato', 'Fecha de alta en compania', 'Fecha Antiguedad en la empresa',
   'Fecha Nacimiento', 'Telefono 1', 'E-mail personal',
   'Convenio', 'Localidad', 'Direccion Completa', 'Codigo Postal', 'Sexo',
+  'Empresa',
 ];
 const CSV_HR_EXAMPLE = [
-  ['GARCIA LOPEZ, JUAN', 'TECNICO', '38/12345678/90', '12345678A', '100', '01/01/2024', '01/01/2020', '15/05/1990', '600000001', 'juan@email.com', 'SERVICIOS ATENCION PERSONAS', 'SANTA CRUZ DE TENERIFE', 'CL/EJEMPLO, 1', '38001', 'Hombre'],
-  ['PEREZ RUIZ, MARIA', 'PSICOLOGO/A', '38/87654321/05', '87654321B', '100', '01/03/2024', '01/03/2024', '08/11/1985', '600000002', 'maria@email.com', 'SERVICIOS ATENCION PERSONAS', 'SANTA URSULA', 'AV/PRINCIPAL, 5', '38390', 'Mujer'],
+  ['GARCIA LOPEZ, JUAN', 'TECNICO', '38/12345678/90', '12345678A', '100', '01/01/2024', '01/01/2020', '15/05/1990', '600000001', 'juan@email.com', 'SERVICIOS ATENCION PERSONAS', 'SANTA CRUZ DE TENERIFE', 'CL/EJEMPLO, 1', '38001', 'Hombre', '100'],
+  ['PEREZ RUIZ, MARIA', 'PSICOLOGO/A', '38/87654321/05', '87654321B', '100', '01/03/2024', '01/03/2024', '08/11/1985', '600000002', 'maria@email.com', 'SERVICIOS ATENCION PERSONAS', 'SANTA URSULA', 'AV/PRINCIPAL, 5', '38390', 'Mujer', '72'],
 ];
+
+// A3 export codes → sociedad ID (synchronized with themes.ts / DB)
+const A3_CODE_TO_SOCIETY: Record<string, string> = {
+  '10':  '6632d8d1-c4e7-4540-aab7-515b9d7913f7', // Gerontalia
+  '100': '78125129-dcb0-4f5a-b559-480379812b15', // Eleda
+  '330': '85e3c3bc-a789-4b12-986c-ca91b8653f03', // Apedeca
+  '72':  'fdb5114a-c6b4-4b3a-8eb9-420bd188ad52', // Serca Gestion
+};
+
+function resolveSociedadId(empresaField: string, sociedades: Sociedad[], fallbackId: string): string {
+  const raw = empresaField.trim();
+  if (!raw) return fallbackId;
+  const codeMatch = raw.match(/(\d+)/);
+  if (codeMatch) {
+    const code = codeMatch[1];
+    if (A3_CODE_TO_SOCIETY[code]) return A3_CODE_TO_SOCIETY[code];
+  }
+  const normalized = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const byName = sociedades.find(s =>
+    s.nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(normalized)
+  );
+  if (byName) return byName.id;
+  return fallbackId;
+}
 
 function downloadTemplateCsv(type: 'auth' | 'hr') {
   const headers = type === 'auth' ? CSV_AUTH_HEADERS : CSV_HR_HEADERS;
@@ -204,7 +229,7 @@ function parseCsv(text: string): { rows: Record<string, string>[]; mode: 'auth' 
 
 // Convert a parsed HR CSV row into an empleados insert/update payload.
 // "APELLIDOS, NOMBRE" → "NOMBRE APELLIDOS"; dates dd/mm/yyyy → yyyy-mm-dd.
-function hrRowToEmpleado(r: Record<string, string>, sociedadId: string): Record<string, string | null> {
+function hrRowToEmpleado(r: Record<string, string>, sociedadId: string, sociedades: Sociedad[] = []): Record<string, string | null> {
   const get = (...keys: string[]) => {
     for (const k of keys) {
       const v = r[k] ?? r[normHeader(k)];
@@ -212,6 +237,9 @@ function hrRowToEmpleado(r: Record<string, string>, sociedadId: string): Record<
     }
     return '';
   };
+
+  const empresaRaw = get('Empresa', 'empresa', 'codigo_empresa', 'cod_empresa', 'sociedad');
+  const resolvedSociedadId = resolveSociedadId(empresaRaw, sociedades, sociedadId);
 
   // Parse "APELLIDOS, NOMBRE" → "NOMBRE APELLIDOS"
   function parseName(raw: string): string {
@@ -262,7 +290,7 @@ function hrRowToEmpleado(r: Record<string, string>, sociedadId: string): Record<
     puesto: puesto || null,
     tipo_contrato: tipoContrato || null,
     fecha_alta: fechaAlta || null,
-    id_sociedad: sociedadId,
+    id_sociedad: resolvedSociedadId,
     activo: 'true',
   };
   payload.fecha_nacimiento = fechaNacimiento || null;
@@ -386,7 +414,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
       setStep('preview');
       if ((manualMode ?? parsed.mode) === 'hr') {
         const dnis = parsed.rows
-          .map(r => hrRowToEmpleado(r, selectedSociety).dni)
+          .map(r => hrRowToEmpleado(r, selectedSociety, sociedades).dni)
           .filter((d): d is string => !!d && d.trim() !== '')
           .map(d => d.toUpperCase());
         checkExistingDnis(dnis);
@@ -403,7 +431,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
         if (!selectedSociety) throw new Error('Selecciona una sociedad antes de importar');
         const res: Array<{ label: string; ok: boolean; updated?: boolean; error?: string }> = [];
         for (const r of rows) {
-          const payload = hrRowToEmpleado(r, selectedSociety);
+          const payload = hrRowToEmpleado(r, selectedSociety, sociedades);
           if (!payload.nombre?.trim()) { res.push({ label: payload.email || payload.nombre || '?', ok: false, error: 'Nombre vacío' }); continue; }
           const label = payload.nombre || payload.email || '?';
           try {
@@ -571,7 +599,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
               {sociedades.length > 0 && (
                 <div className="p-3 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
                   <label className="block text-xs font-semibold mb-1.5" style={{ color: '#374151' }}>
-                    Sociedad por defecto (se aplica a todos los registros del CSV)
+                    Sociedad por defecto (se usa si el CSV no tiene columna "Empresa")
                   </label>
                   <select
                     value={selectedSociety}
@@ -627,7 +655,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
 
               {/* DNI duplicate summary + toggle (HR mode only) */}
               {mode === 'hr' && (() => {
-                const parsedRows = rows.map(r => hrRowToEmpleado(r, selectedSociety));
+                const parsedRows = rows.map(r => hrRowToEmpleado(r, selectedSociety, sociedades));
                 const newCount = parsedRows.filter(p => !p.dni || !existingDnis.has(p.dni.toUpperCase())).length;
                 const existCount = parsedRows.length - newCount;
                 return (
@@ -671,7 +699,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                   <thead style={{ backgroundColor: '#F8FAFC' }}>
                     <tr>
                       {mode === 'hr'
-                        ? ['Nombre (parseado)', 'DNI/NIF', 'NASS', 'Puesto', 'Fecha Alta', 'F. Nacimiento', 'Teléfono', 'Email', 'Localidad', 'Sexo', 'Estado'].map(h => (
+                        ? ['Nombre (parseado)', 'DNI/NIF', 'NASS', 'Puesto', 'Fecha Alta', 'F. Nacimiento', 'Teléfono', 'Email', 'Localidad', 'Sexo', 'Empresa', 'Estado'].map(h => (
                             <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: '#374151', borderBottom: '1px solid #E2E8F0' }}>{h}</th>
                           ))
                         : ['Email', 'Nombre', 'DNI', 'Contraseña', 'Rol', 'Sociedad'].map(h => (
@@ -685,7 +713,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                       <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
                         {mode === 'hr' ? (
                           (() => {
-                            const parsed = hrRowToEmpleado(r, selectedSociety);
+                            const parsed = hrRowToEmpleado(r, selectedSociety, sociedades);
                             return (
                               <>
                                 <td className="px-3 py-2 font-medium whitespace-nowrap" style={{ color: '#1E293B' }}>{parsed.nombre || '—'}</td>
@@ -698,6 +726,20 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                                 <td className="px-3 py-2 font-mono" style={{ color: '#0369A1' }}>{parsed.email || '—'}</td>
                                 <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>{(parsed as { localidad?: string | null }).localidad || '—'}</td>
                                 <td className="px-3 py-2" style={{ color: '#475569' }}>{parsed.sexo || '—'}</td>
+                                <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>
+                                  {(() => {
+                                    const empRaw = (r['empresa'] ?? r[normHeader('Empresa')] ?? '').trim();
+                                    if (!empRaw) return <span style={{ color: '#CBD5E1' }}>—</span>;
+                                    const resolvedId = resolveSociedadId(empRaw, sociedades, selectedSociety);
+                                    const socName = sociedades.find(s => s.id === resolvedId)?.nombre ?? '—';
+                                    const isAuto = resolvedId !== selectedSociety;
+                                    return (
+                                      <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: isAuto ? '#EFF6FF' : '#F1F5F9', color: isAuto ? '#0369A1' : '#64748B', border: `1px solid ${isAuto ? '#BFDBFE' : '#E2E8F0'}` }}>
+                                        {socName}
+                                      </span>
+                                    );
+                                  })()}
+                                </td>
                                 <td className="px-3 py-2 whitespace-nowrap">
                                   {parsed.dni && existingDnis.has(parsed.dni.toUpperCase()) ? (
                                     <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#FEF3C7', color: '#B45309' }}>

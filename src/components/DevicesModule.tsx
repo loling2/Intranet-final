@@ -1002,7 +1002,15 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
     if (!device) return;
     setUploadingDevice(null);
     try {
-      const emp = empleados.find((e) => e.id === device.empleado_id);
+      let emp = empleados.find((e) => e.id === device.empleado_id);
+      if (!emp && device.empleado_id) {
+        const { data: fetched } = await supabase
+          .from('empleados')
+          .select('id, nombre, dni, telefono, id_sociedad, user_id')
+          .eq('id', device.empleado_id)
+          .maybeSingle();
+        emp = fetched as Empleado | undefined;
+      }
       if (!emp || !emp.user_id) {
         setError('El dispositivo no tiene un empleado asignado con cuenta de acceso');
         return;
@@ -1391,7 +1399,7 @@ const totalActivos =
                     <button type="button" onClick={() => setDeliveryDevice(dev)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors" style={{ color: '#94A3B8' }} title="Generar acta de entrega">
                       <FileText size={13} />
                     </button>
-                    {canEdit && dev.empleado_id && dev.estado_id === 1 && (
+                    {dev.empleado_id && dev.estado_id === 1 && (
                       <button
                         type="button"
                         onClick={() => {

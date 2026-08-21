@@ -997,6 +997,19 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
 
   const flash = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(''), 3000); };
 
+  const formatUploadError = (err: unknown): string => {
+    if (err instanceof Error) return err.message;
+    if (typeof err === 'object' && err !== null) {
+      const details = err as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+      const parts = [details.message, details.details, details.hint]
+        .filter((part): part is string => typeof part === 'string' && part.trim())
+        .map((part) => part.trim());
+      if (parts.length > 0) return `${parts[0]}${parts[1] ? ` (${parts.slice(1).join(' ')})` : ''}`;
+      if (typeof details.code === 'string' && details.code.trim()) return `Error de Supabase (${details.code})`;
+    }
+    return 'Error al subir el acta de entrega';
+  };
+
   const handleUploadDeliveryDoc = async (file: File) => {
     const device = uploadingDevice;
     if (!device) return;
@@ -1028,7 +1041,7 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
       if (rpcErr) throw rpcErr;
       flash(`Acta de entrega subida para "${device.marca_modelo}"`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al subir el acta de entrega');
+      setError(formatUploadError(err));
     }
   };
 

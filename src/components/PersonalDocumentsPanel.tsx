@@ -63,6 +63,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false, in
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Employee | null>(null);
   const [activeFolder, setActiveFolder] = useState<FolderType>('privado');
+  const [showEmployeeDocs, setShowEmployeeDocs] = useState(false);
 
   // Subfolder navigation: array of {name, prefix} segments navigated into
   const [folderPath, setFolderPath] = useState<FolderEntry[]>([]);
@@ -128,6 +129,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false, in
   useEffect(() => {
     setFolderPath([]);
     setSelectedKeys(new Set());
+    setShowEmployeeDocs(false);
   }, [selected, activeFolder]);
 
   // Clear selection when folder content changes
@@ -670,20 +672,32 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false, in
               )}
             </div>
 
-            {/* ── "Mis Documentos" del perfil del empleado (RRHH puede ver y eliminar) ── */}
+            {/* Documentos del empleado: se abre bajo demanda para no mezclarlo con el archivo RRHH */}
             {isRrhh && !isBaja && (
               <div className="px-6 pt-4">
-                {selected.user_id ? (
-                  <EmployeeDocumentsSection
-                    key={selected.user_id}
-                    employeeId={selected.user_id}
-                    employeeNombre={selected.nombre}
-                    societyId={selected.id_sociedad ?? ''}
-                    viewerRole="rrhh"
-                  />
-                ) : (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs" style={{ backgroundColor: '#FFF7ED', border: '1px solid #FED7AA', color: '#C2410C' }}>
-                    <AlertCircle size={14} /> Este trabajador no tiene una cuenta de empleado vinculada; sus documentos de &ldquo;Mis Documentos&rdquo; no pueden mostrarse todavía.
+                <button
+                  onClick={() => setShowEmployeeDocs(prev => !prev)}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-left transition-all cursor-pointer"
+                  style={{ backgroundColor: showEmployeeDocs ? '#F8FAFC' : '#FFFFFF', border: '1px solid #E2E8F0' }}
+                >
+                  <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Documentos del empleado</span>
+                  <span className="text-xs font-medium" style={{ color: '#0369A1' }}>{showEmployeeDocs ? 'Ocultar' : 'Ver carpetas Pública y Privada'}</span>
+                </button>
+                {showEmployeeDocs && (
+                  <div className="mt-3">
+                    {selected.user_id ? (
+                      <EmployeeDocumentsSection
+                        key={selected.user_id}
+                        employeeId={selected.user_id}
+                        employeeNombre={selected.nombre}
+                        societyId={selected.id_sociedad ?? ''}
+                        viewerRole="rrhh"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs" style={{ backgroundColor: '#FFF7ED', border: '1px solid #FED7AA', color: '#C2410C' }}>
+                        <AlertCircle size={14} /> Este trabajador no tiene una cuenta de empleado vinculada; sus documentos de &ldquo;Mis Documentos&rdquo; no pueden mostrarse todavía.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

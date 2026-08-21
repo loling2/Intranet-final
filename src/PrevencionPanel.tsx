@@ -452,7 +452,7 @@ function EmpleadosTagsTab() {
     }
     return true;
   });
-  const EMPLOYEES_PAGE_SIZE = 30;
+  const EMPLOYEES_PAGE_SIZE = 25;
   const employeeTotalPages = totalPages(filtered.length, EMPLOYEES_PAGE_SIZE);
   const safePage = Math.min(page, employeeTotalPages);
   const pagedEmpleados = paginate(filtered, safePage, EMPLOYEES_PAGE_SIZE);

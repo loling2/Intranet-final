@@ -9,7 +9,7 @@ import { uploadToWasabiKey, downloadFromWasabi, getWasabiBlobUrl } from '../lib/
 import { useAuth } from '../context/AuthContext';
 import { useSociety } from '../context/SocietyContext';
 
-const MAX_TAGS = 5;
+const MAX_TAGS = 15;
 
 interface DeptRow {
   id: string;

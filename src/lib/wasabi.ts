@@ -64,7 +64,16 @@ export async function deleteViaEdgeFunction(key: string): Promise<void> {
 async function uploadViaEdgeFunction(bytes: Uint8Array, key: string, contentType: string): Promise<string> {
   const url = manageUrl({ action: 'upload', key, contentType });
   const resp = await fetch(url, { method: 'PUT', headers: { ...authHeaders(), 'Content-Type': contentType }, body: bytes });
-  if (!resp.ok) throw new Error(`Error al subir (${resp.status})`);
+  if (!resp.ok) {
+    let detail = '';
+    try {
+      const payload = await resp.json() as { error?: string; detail?: string };
+      detail = payload.detail || payload.error || '';
+    } catch {
+      detail = await resp.text();
+    }
+    throw new Error(`Error al subir (${resp.status})${detail ? `: ${detail}` : ''}`);
+  }
   return key;
 }
 

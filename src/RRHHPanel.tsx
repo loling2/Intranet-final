@@ -50,6 +50,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [enabledTabIds, setEnabledTabIds] = useState<Set<string> | null>(null);
+  const [docsEmployeeDni, setDocsEmployeeDni] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -497,7 +498,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
         {activeTab === 'vacations' && (
           <VacationsModule role={isSupervisor ? 'supervisor' : (isAdmin ? 'admin' : 'rrhh')} />
         )}
-        {activeTab === 'personal-docs' && <PersonalDocumentsPanel isRrhh={true} />}
+        {activeTab === 'personal-docs' && <PersonalDocumentsPanel isRrhh={true} initialEmployeeDni={docsEmployeeDni} />}
         {/* Certificates Tab */}
         {activeTab === 'certificates' && (
           <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
@@ -716,7 +717,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
 
         {/* Bajas/Ausencias Tab */}
         {activeTab === 'bajas' && (
-          <BajasModule />
+          <BajasModule onViewEmployeeDocs={(dni) => { setDocsEmployeeDni(dni); setActiveTab('personal-docs'); }} />
         )}
 
         {/* Supervisor: Empleados Asignados Tab */}

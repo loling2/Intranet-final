@@ -48,7 +48,10 @@ export async function listViaEdgeFunction(prefix: string, delimiter?: string): P
     size: o.size,
     lastModified: new Date(o.lastModified),
   }));
-  const prefixes: string[] = data.prefixes ?? [];
+  const rawPrefixes: unknown[] = data.prefixes ?? [];
+  const prefixes: string[] = rawPrefixes.map((p): string =>
+    typeof p === 'string' ? p : (p as { prefix: string }).prefix
+  );
   return { objects, prefixes };
 }
 

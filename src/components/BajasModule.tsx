@@ -4,7 +4,7 @@ import {
   AlertTriangle, UserCheck, CheckCircle2, Clock, ArrowRight,
   Sun, Moon, Sunset, Banknote, RotateCcw, MoreHorizontal, Star,
   FileCheck, CreditCard, Hash, FileSpreadsheet, FileText, ChevronDown,
-  Timer, Upload, CheckSquare, Square, Pencil, ChevronRight,
+  Timer, Upload, CheckSquare, Square, Pencil, ChevronRight, FolderOpen,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import SustitucionesModule from './SustitucionesModule';
@@ -740,7 +740,11 @@ function SustitucionBlock({ s, idx, bajaFechaInicio, tipoContrato, onUpdate, onR
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function BajasModule() {
+interface Props {
+  onViewEmployeeDocs?: (dni: string) => void;
+}
+
+export default function BajasModule({ onViewEmployeeDocs }: Props = {}) {
   const [bajas, setBajas] = useState<BajaWithSustituciones[]>([]);
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1529,6 +1533,18 @@ export default function BajasModule() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {onViewEmployeeDocs && (() => {
+                          const emp = empleados.find(e => e.id === baja.empleado_id);
+                          const dni = emp?.dni ?? null;
+                          return dni ? (
+                            <button onClick={() => onViewEmployeeDocs(dni)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+                              style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}
+                              title="Ver documentos del empleado">
+                              <FolderOpen size={12} /> Documentos
+                            </button>
+                          ) : null;
+                        })()}
                         <button onClick={() => openFinalizarModal(baja)}
                           className="px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
                           style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>

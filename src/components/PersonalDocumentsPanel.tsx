@@ -52,9 +52,10 @@ interface FolderEntry {
 interface Props {
   employeeDni?: string;
   isRrhh?: boolean;
+  initialEmployeeDni?: string;
 }
 
-export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: Props) {
+export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false, initialEmployeeDni }: Props) {
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
   const [sociedades, setSociedades] = useState<Sociedad[]>([]);
   const [selectedSociedadId, setSelectedSociedadId] = useState<string | null>(null);
@@ -103,13 +104,18 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   useEffect(() => {
     if (!isRrhh) return;
     Promise.all([
-      supabase.from('empleados').select('id, nombre, dni, email, id_sociedad, user_id, activo').eq('activo', true).order('nombre'),
+      supabase.from('empleados').select('id, nombre, dni, email, id_sociedad, user_id, activo').order('nombre'),
       supabase.from('sociedades').select('id, nombre').order('nombre'),
     ]).then(([empRes, socRes]) => {
-      setAllEmployees((empRes.data as Employee[]) ?? []);
+      const emps = (empRes.data as Employee[]) ?? [];
+      setAllEmployees(emps);
       setSociedades((socRes.data as Sociedad[]) ?? []);
+      if (initialEmployeeDni) {
+        const found = emps.find(e => e.dni === initialEmployeeDni);
+        if (found) setSelected(found);
+      }
     });
-  }, [isRrhh]);
+  }, [isRrhh, initialEmployeeDni]);
 
   // Self-service mode
   useEffect(() => {

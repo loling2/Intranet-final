@@ -1,18 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search, User, FolderOpen, FileText, Upload, Download, Eye,
-  ChevronRight, X, Loader2, AlertCircle, Lock, Globe, Plus,
+  ChevronRight, X, Loader2, AlertCircle, Lock, Globe,
   UserX, CheckCircle2, UploadCloud, Trash2, FolderPlus, Home,
   Folder, Square, CheckSquare, MinusSquare,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import {
-  listRrhhEmployeeFiles, ensureRrhhFolder, uploadToWasabiKey,
+  ensureRrhhFolder, uploadToWasabiKey,
   getWasabiBlobUrl, downloadFromWasabi, listNominasForDni,
   listBajasEmployeeFiles, deleteFromWasabi,
   listPrefixOneLevelDeep, listAllKeysUnderPrefix, createWasabiFolder,
   type RrhhFile,
 } from '../lib/wasabi';
+import EmployeeDocumentsSection from './EmployeeDocumentsSection';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ interface Employee {
   dni: string | null;
   email: string;
   id_sociedad: string | null;
+  user_id: string | null;
   activo: boolean;
 }
 
@@ -101,7 +103,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   useEffect(() => {
     if (!isRrhh) return;
     Promise.all([
-      supabase.from('empleados').select('id, nombre, dni, email, id_sociedad, activo').eq('activo', true).order('nombre'),
+      supabase.from('empleados').select('id, nombre, dni, email, id_sociedad, user_id, activo').eq('activo', true).order('nombre'),
       supabase.from('sociedades').select('id, nombre').order('nombre'),
     ]).then(([empRes, socRes]) => {
       setAllEmployees((empRes.data as Employee[]) ?? []);
@@ -112,7 +114,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
   // Self-service mode
   useEffect(() => {
     if (employeeDni && !isRrhh) {
-      setSelected({ id: '', nombre: '', dni: employeeDni, email: '', id_sociedad: null, activo: true });
+      setSelected({ id: '', nombre: '', dni: employeeDni, email: '', id_sociedad: null, user_id: null, activo: true });
     }
   }, [employeeDni, isRrhh]);
 
@@ -660,6 +662,30 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false }: 
                   </button>
                 </div>
               )}
+            </div>
+
+            {/* ── "Mis Documentos" del perfil del empleado (RRHH puede ver y eliminar) ── */}
+            {isRrhh && !isBaja && (
+              <div className="px-6 pt-4">
+                {selected.user_id ? (
+                  <EmployeeDocumentsSection
+                    key={selected.user_id}
+                    employeeId={selected.user_id}
+                    employeeNombre={selected.nombre}
+                    societyId={selected.id_sociedad ?? ''}
+                    viewerRole="rrhh"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs" style={{ backgroundColor: '#FFF7ED', border: '1px solid #FED7AA', color: '#C2410C' }}>
+                    <AlertCircle size={14} /> Este trabajador no tiene una cuenta de empleado vinculada; sus documentos de &ldquo;Mis Documentos&rdquo; no pueden mostrarse todavía.
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="px-6 pt-5">
+              <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#64748B' }}>Archivo de carpetas RRHH</p>
+              <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Documentos antiguos organizados por carpetas y nóminas almacenadas por DNI.</p>
             </div>
 
             {/* Folder tabs + delete selection button */}

@@ -76,6 +76,7 @@ export default function DocumentsCard({ theme, userEmail, userId, societyId, ful
               .from('employee_documents')
               .select('*')
               .eq('employee_id', userId)
+              .eq('folder', 'publica')
               .order('created_at', { ascending: false })
           : Promise.resolve({ data: null, error: null }),
         userId

@@ -52,11 +52,15 @@ export default function EmployeeDocumentsSection({ employeeId, employeeNombre, s
 
   const loadDocs = async () => {
     setLoading(true);
-    const { data } = await supabase
+    let query = supabase
       .from('employee_documents')
       .select('*')
-      .eq('employee_id', employeeId)
-      .order('created_at', { ascending: false });
+      .eq('employee_id', employeeId);
+    // Employees only see 'publica'; staff (admin/rrhh) see all folders
+    if (!canManage) {
+      query = query.eq('folder', 'publica');
+    }
+    const { data } = await query.order('created_at', { ascending: false });
     setDocs((data ?? []) as EmployeeDoc[]);
     setLoading(false);
   };

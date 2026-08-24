@@ -149,6 +149,9 @@ interface Props {
   accentColor?: string;
 }
 
+const normalize = (v: string | undefined): string =>
+  (v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
 export default function HelpPanel({ currentProfileName, accentColor = '#0369A1' }: Props) {
   const [expandedProfile, setExpandedProfile] = useState<string | null>(currentProfileName ?? ALL_MANUALS[0].profileName);
   const [expandedTab, setExpandedTab] = useState<string | null>(null);
@@ -244,7 +247,7 @@ export default function HelpPanel({ currentProfileName, accentColor = '#0369A1' 
   };
 
   const generateAllPDFs = () => {
-    ALL_MANUALS.forEach((manual) => generatePDF(manual));
+    visibleManuals.forEach((manual) => generatePDF(manual));
   };
 
   const generateCompletePDF = () => {
@@ -290,7 +293,7 @@ export default function HelpPanel({ currentProfileName, accentColor = '#0369A1' 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(80, 80, 80);
-    ALL_MANUALS.forEach((manual, index) => {
+    visibleManuals.forEach((manual, index) => {
       ensureSpace(8);
       doc.text(`${index + 1}. ${manual.profileName} (${manual.tabs.length} pestanas)`, margin + 5, y);
       y += 7;
@@ -298,7 +301,7 @@ export default function HelpPanel({ currentProfileName, accentColor = '#0369A1' 
     y += 5;
 
     // Each profile manual
-    ALL_MANUALS.forEach((manual, profileIndex) => {
+    visibleManuals.forEach((manual, profileIndex) => {
       doc.addPage();
       y = margin;
 
@@ -371,7 +374,12 @@ export default function HelpPanel({ currentProfileName, accentColor = '#0369A1' 
     doc.save('Manual_Completo_Operaciones.pdf');
   };
 
-  const isAdmin = currentProfileName === 'Admin';
+  const normalizedProfile = normalize(currentProfileName);
+  const canViewAllManuals = normalizedProfile === 'rrhh' || normalizedProfile === 'admin';
+  const visibleManuals = canViewAllManuals
+    ? ALL_MANUALS
+    : ALL_MANUALS.filter((m) => normalize(m.profileName) === normalizedProfile);
+  const isAdmin = normalizedProfile === 'admin';
 
   return (
     <div className="space-y-6">
@@ -414,7 +422,7 @@ export default function HelpPanel({ currentProfileName, accentColor = '#0369A1' 
               style={{ backgroundColor: accentColor, color: '#FFFFFF' }}
             >
               <Download size={16} />
-              Descargar todos los manuales
+              {canViewAllManuals ? 'Descargar todos los manuales' : 'Descargar mi manual'}
             </button>
           </div>
         </div>
@@ -422,9 +430,9 @@ export default function HelpPanel({ currentProfileName, accentColor = '#0369A1' 
 
       {/* Profile manuals accordion */}
       <div className="space-y-3">
-        {ALL_MANUALS.map((manual) => {
+        {visibleManuals.map((manual) => {
           const isExpanded = expandedProfile === manual.profileName;
-          const isCurrent = manual.profileName === currentProfileName;
+          const isCurrent = normalize(manual.profileName) === normalizedProfile;
 
           return (
             <div

@@ -378,7 +378,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [mode, setMode] = useState<'auth' | 'hr'>('hr');
   const [manualMode, setManualMode] = useState<'auth' | 'hr' | null>('hr');
-  const [selectedSociety, setSelectedSociety] = useState(sociedades[0]?.id ?? '');
+  const [selectedSociety, setSelectedSociety] = useState('');
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
   const [results, setResults] = useState<Array<{ label: string; ok: boolean; updated?: boolean; error?: string }>>([]);
@@ -428,7 +428,6 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
     setError('');
     try {
       if (mode === 'hr') {
-        if (!selectedSociety) throw new Error('Selecciona una sociedad antes de importar');
         const res: Array<{ label: string; ok: boolean; updated?: boolean; error?: string }> = [];
         for (const r of rows) {
           const payload = hrRowToEmpleado(r, selectedSociety, sociedades);
@@ -599,7 +598,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
               {sociedades.length > 0 && (
                 <div className="p-3 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
                   <label className="block text-xs font-semibold mb-1.5" style={{ color: '#374151' }}>
-                    Sociedad por defecto (se usa si el CSV no tiene columna "Empresa")
+                    Sociedad por defecto (opcional — se ignora si el CSV trae columna "Empresa" con codigo valido)
                   </label>
                   <select
                     value={selectedSociety}
@@ -648,9 +647,19 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                 style={{ backgroundColor: mode === 'hr' ? '#F0FDF4' : '#EFF6FF', color: mode === 'hr' ? '#166534' : '#0369A1', border: `1px solid ${mode === 'hr' ? '#BBF7D0' : '#BFDBFE'}` }}>
                 <FileSpreadsheet size={13} />
                 Formato detectado: <strong>{mode === 'hr' ? 'RRHH (ficha de empleado, sin login)' : 'Acceso Web (crea usuario con login)'}</strong>
-                {mode === 'hr' && selectedSociety && (
-                  <span className="ml-2" style={{ color: '#94A3B8' }}>· Sociedad: {sociedades.find(s => s.id === selectedSociety)?.nombre}</span>
-                )}
+                {mode === 'hr' && (() => {
+                  const allEmpRaw = rows.map(r => (r['empresa'] ?? r[normHeader('Empresa')] ?? '').trim()).filter(Boolean);
+                  if (allEmpRaw.length === 0 && selectedSociety) {
+                    return <span className="ml-2" style={{ color: '#94A3B8' }}>· Sociedad por defecto: {sociedades.find(s => s.id === selectedSociety)?.nombre}</span>;
+                  }
+                  if (allEmpRaw.length === 0) return null;
+                  const detectedSociedades = new Set(allEmpRaw.map(e => resolveSociedadId(e, sociedades, selectedSociety)));
+                  if (detectedSociedades.size === 1) {
+                    const socName = sociedades.find(s => s.id === [...detectedSociedades][0])?.nombre ?? '—';
+                    return <span className="ml-2" style={{ color: '#0369A1' }}>· Empresa detectada: <strong>{socName}</strong></span>;
+                  }
+                  return <span className="ml-2" style={{ color: '#0369A1' }}>· {detectedSociedades.size} empresas detectadas en el CSV</span>;
+                })()}
               </div>
 
               {/* DNI duplicate summary + toggle (HR mode only) */}
@@ -832,7 +841,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
               </button>
               <button
                 onClick={handleImport}
-                disabled={importing || (mode === 'hr' && !selectedSociety)}
+                disabled={importing}
                 className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-60"
                 style={{ backgroundColor: mode === 'hr' ? '#16A34A' : '#0369A1', color: '#FFFFFF' }}
               >

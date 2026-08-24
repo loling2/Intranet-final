@@ -130,10 +130,10 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
 // ─── CSV Import Modal ────────────────────────────────────────────────────────
 
 // Template A: Auth users (email + password → creates login access)
-const CSV_AUTH_HEADERS = ['email', 'nombre', 'dni', 'contrasena', 'rol', 'sociedad_id'];
+const CSV_AUTH_HEADERS = ['email', 'nombre', 'dni', 'contrasena', 'rol', 'empresa'];
 const CSV_AUTH_EXAMPLE = [
-  ['empleado@empresa.com', 'Juan Garcia Lopez', '12345678A', 'Contrasena123!', 'employee', ''],
-  ['supervisor@empresa.com', 'Maria Perez Ruiz', '87654321B', 'Contrasena456!', 'supervisor', ''],
+  ['empleado@empresa.com', 'Juan Garcia Lopez', '12345678A', 'Contrasena123!', 'employee', '100'],
+  ['supervisor@empresa.com', 'Maria Perez Ruiz', '87654321B', 'Contrasena456!', 'supervisor', '72'],
 ];
 
 // Template B: HR data — matches the real RRHH export format
@@ -468,7 +468,11 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
           dni: r['dni'] ?? r['dni_nie'] ?? '',
           password: r['contrasena'] ?? r['contrasena'] ?? r['password'] ?? r['clave'] ?? '',
           role: (r['rol'] ?? r['role'] ?? 'employee').toLowerCase().trim(),
-          societies: r['sociedad_id']?.trim() ? [r['sociedad_id'].trim()] : (selectedSociety ? [selectedSociety] : []),
+          societies: (() => {
+            const empRaw = (r['empresa'] ?? r[normHeader('Empresa')] ?? r['sociedad_id'] ?? '').trim();
+            const resolved = resolveSociedadId(empRaw, sociedades, selectedSociety);
+            return resolved ? [resolved] : [];
+          })(),
         }));
 
         const resp = await fetch(`${supabaseUrl}/functions/v1/manage-user`, {
@@ -647,8 +651,8 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                 style={{ backgroundColor: mode === 'hr' ? '#F0FDF4' : '#EFF6FF', color: mode === 'hr' ? '#166534' : '#0369A1', border: `1px solid ${mode === 'hr' ? '#BBF7D0' : '#BFDBFE'}` }}>
                 <FileSpreadsheet size={13} />
                 Formato detectado: <strong>{mode === 'hr' ? 'RRHH (ficha de empleado, sin login)' : 'Acceso Web (crea usuario con login)'}</strong>
-                {mode === 'hr' && (() => {
-                  const allEmpRaw = rows.map(r => (r['empresa'] ?? r[normHeader('Empresa')] ?? '').trim()).filter(Boolean);
+                {(() => {
+                  const allEmpRaw = rows.map(r => (r['empresa'] ?? r[normHeader('Empresa')] ?? r['sociedad_id'] ?? '').trim()).filter(Boolean);
                   if (allEmpRaw.length === 0 && selectedSociety) {
                     return <span className="ml-2" style={{ color: '#94A3B8' }}>· Sociedad por defecto: {sociedades.find(s => s.id === selectedSociety)?.nombre}</span>;
                   }
@@ -656,9 +660,9 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                   const detectedSociedades = new Set(allEmpRaw.map(e => resolveSociedadId(e, sociedades, selectedSociety)));
                   if (detectedSociedades.size === 1) {
                     const socName = sociedades.find(s => s.id === [...detectedSociedades][0])?.nombre ?? '—';
-                    return <span className="ml-2" style={{ color: '#0369A1' }}>· Empresa detectada: <strong>{socName}</strong></span>;
+                    return <span className="ml-2" style={{ color: mode === 'hr' ? '#16A34A' : '#0369A1' }}>· Empresa detectada: <strong>{socName}</strong></span>;
                   }
-                  return <span className="ml-2" style={{ color: '#0369A1' }}>· {detectedSociedades.size} empresas detectadas en el CSV</span>;
+                  return <span className="ml-2" style={{ color: mode === 'hr' ? '#16A34A' : '#0369A1' }}>· {detectedSociedades.size} empresas detectadas en el CSV</span>;
                 })()}
               </div>
 
@@ -711,7 +715,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                         ? ['Nombre (parseado)', 'DNI/NIF', 'NASS', 'Puesto', 'Fecha Alta', 'F. Nacimiento', 'Teléfono', 'Email', 'Localidad', 'Sexo', 'Empresa', 'Estado'].map(h => (
                             <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: '#374151', borderBottom: '1px solid #E2E8F0' }}>{h}</th>
                           ))
-                        : ['Email', 'Nombre', 'DNI', 'Contraseña', 'Rol', 'Sociedad'].map(h => (
+                        : ['Email', 'Nombre', 'DNI', 'Contraseña', 'Rol', 'Empresa'].map(h => (
                             <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: '#374151', borderBottom: '1px solid #E2E8F0' }}>{h}</th>
                           ))
                       }
@@ -775,7 +779,18 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                               </span>
                             </td>
                             <td className="px-3 py-2 text-xs" style={{ color: '#94A3B8' }}>
-                              {r['sociedad_id'] ? (sociedades.find(s => s.id === r['sociedad_id'])?.nombre ?? r['sociedad_id']) : (sociedades.find(s => s.id === selectedSociety)?.nombre ?? '—')}
+                              {(() => {
+                                const empRaw = (r['empresa'] ?? r[normHeader('Empresa')] ?? r['sociedad_id'] ?? '').trim();
+                                if (!empRaw && !selectedSociety) return <span style={{ color: '#CBD5E1' }}>—</span>;
+                                const resolvedId = resolveSociedadId(empRaw, sociedades, selectedSociety);
+                                const socName = sociedades.find(s => s.id === resolvedId)?.nombre ?? '—';
+                                const isAuto = empRaw !== '';
+                                return (
+                                  <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: isAuto ? '#EFF6FF' : '#F1F5F9', color: isAuto ? '#0369A1' : '#64748B', border: `1px solid ${isAuto ? '#BFDBFE' : '#E2E8F0'}` }}>
+                                    {socName}
+                                  </span>
+                                );
+                              })()}
                             </td>
                           </>
                         )}

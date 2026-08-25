@@ -278,10 +278,12 @@ Deno.serve(async (req: Request) => {
     // Accept date from query param OR from POST body
     const url = new URL(req.url);
     let targetDate = url.searchParams.get("date");
-    if (!targetDate && req.method === "POST") {
+    let testSupervisorId: string | null = null;
+    if (req.method === "POST") {
       try {
         const body = await req.json();
-        targetDate = body?.date ?? null;
+        if (!targetDate) targetDate = body?.date ?? null;
+        testSupervisorId = body?.supervisor_id ?? null;
       } catch { /* no body */ }
     }
     if (!targetDate) {
@@ -441,41 +443,57 @@ Deno.serve(async (req: Request) => {
     const subject = `📋 Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)}`;
     const html = buildReportHtml(targetDate, incidencias, correctos, totalFicharon, false, null);
 
-    if (!enabled) {
+    if (!enabled && !testSupervisorId) {
       return json({ ok: true, disabled: true, total_incidencias: incidencias.length });
     }
 
-    // ── 6. Send global report via SMTP ────────────────────────────────────────
-    const smtpResp = await sendSmtp({
-      host: cuenta.smtp_host,
-      port: cuenta.smtp_port,
-      security: cuenta.seguridad,
-      user: cuenta.email,
-      password: cuenta.password,
-      from: cuenta.email,
-      to: recipient,
-      subject,
-      text: `Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)}. Incidencias: ${totalIncidencias}. Correctos: ${totalCorrectos}.`,
-      html,
-    });
+    // ── 6. Send global report via SMTP (skip in supervisor test mode) ─────────
+    if (!testSupervisorId) {
+      const smtpResp = await sendSmtp({
+        host: cuenta.smtp_host,
+        port: cuenta.smtp_port,
+        security: cuenta.seguridad,
+        user: cuenta.email,
+        password: cuenta.password,
+        from: cuenta.email,
+        to: recipient,
+        subject,
+        text: `Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)}. Incidencias: ${totalIncidencias}. Correctos: ${totalCorrectos}.`,
+        html,
+      });
 
-    if (!smtpResp.ok) {
-      return json({ error: smtpResp.error ?? "Error al enviar el correo global" }, 500);
+      if (!smtpResp.ok) {
+        return json({ error: smtpResp.error ?? "Error al enviar el correo global" }, 500);
+      }
     }
 
     // ── 7. Send per-supervisor reports ───────────────────────────────────────
     // For each supervisor with assigned employees/centros, build a filtered
     // report with only their employees' fichajes and send it to their email.
-    const { data: supervisors } = await supabase
-      .from("user_profiles")
-      .select("id, email, nombre")
-      .eq("role", "supervisor")
-      .eq("activo", true);
+    // In test mode, only send to the specified supervisor.
+    let supervisors: { id: string; email: string; nombre: string }[] | null;
+    if (testSupervisorId) {
+      const { data: singleSup } = await supabase
+        .from("user_profiles").select("id, email, nombre")
+        .eq("id", testSupervisorId).maybeSingle();
+      supervisors = singleSup ? [singleSup] : [];
+    } else {
+      const { data } = await supabase
+        .from("user_profiles").select("id, email, nombre")
+        .eq("role", "supervisor").eq("activo", true);
+      supervisors = data;
+    }
 
     const supervisorResults: { email: string; ok: boolean; error?: string }[] = [];
 
+    let supIndex = 0;
     for (const sup of (supervisors ?? []) as { id: string; email: string; nombre: string }[]) {
       try {
+        // Wait 60 seconds between supervisor emails to avoid SMTP rate limits
+        // (skip delay in test mode with a single supervisor)
+        if (supIndex > 0 && !testSupervisorId) await new Promise((r) => setTimeout(r, 60_000));
+        supIndex++;
+
         // Check for a custom email override for this supervisor
         const { data: supEmailSetting } = await supabase
           .from("ui_settings").select("value")
@@ -605,7 +623,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    return json({ ok: true, total_incidencias: incidencias.length, total_correctos: correctos.length, recipient, date: targetDate, supervisor_reports: supervisorResults });
+    return json({ ok: true, total_incidencias: incidencias.length, total_correctos: correctos.length, recipient: testSupervisorId ? supervisorResults[0]?.email ?? recipient : recipient, date: targetDate, supervisor_reports: supervisorResults, test_mode: !!testSupervisorId });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "Error interno" }, 500);
   }

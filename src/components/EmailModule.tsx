@@ -1223,6 +1223,7 @@ function IncidenciasSection() {
   const [supEmail, setSupEmail] = useState('');
   const [savingSupEmail, setSavingSupEmail] = useState(false);
   const [supMsg, setSupMsg] = useState('');
+  const [testingSup, setTestingSup] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -1285,6 +1286,43 @@ function IncidenciasSection() {
       setSupMsg('Error al guardar.');
     } finally {
       setSavingSupEmail(false);
+    }
+  };
+
+  const handleTestSup = async () => {
+    if (!selectedSupId) return;
+    setTestingSup(true);
+    setSupMsg('');
+    try {
+      const url = (import.meta as any).env?.VITE_SUPABASE_URL;
+      const anonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+      if (!url) { setSupMsg('No se pudo determinar la URL del servidor.'); return; }
+      const resp = await fetch(`${url}/functions/v1/incidence-report`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(anonKey ? { Authorization: `Bearer ${anonKey}`, Apikey: anonKey } : {}),
+        },
+        body: JSON.stringify({ supervisor_id: selectedSupId }),
+      });
+      const text = await resp.text();
+      let result: { ok?: boolean; error?: string; supervisor_reports?: { email: string; ok: boolean; error?: string }[] };
+      try { result = JSON.parse(text); } catch { result = { error: `Respuesta no válida (${resp.status})` }; }
+      if (result.ok && result.supervisor_reports?.length) {
+        const r = result.supervisor_reports[0];
+        if (r.ok) setSupMsg(`Correo de prueba enviado a ${r.email}.`);
+        else setSupMsg(`Error al enviar: ${r.error ?? 'desconocido'}.`);
+      } else if (result.ok && (!result.supervisor_reports || result.supervisor_reports.length === 0)) {
+        setSupMsg('El supervisor no tiene empleados asignados. No se envió ningún correo.');
+      } else {
+        setSupMsg(result.error || `Error (${resp.status}).`);
+      }
+      setTimeout(() => setSupMsg(''), 6000);
+    } catch (e: unknown) {
+      const m = e instanceof Error ? e.message : String(e);
+      setSupMsg(`Error de conexión: ${m}`);
+    } finally {
+      setTestingSup(false);
     }
   };
 
@@ -1508,14 +1546,24 @@ function IncidenciasSection() {
                   </div>
                 )}
 
-                <button
-                  onClick={handleSaveSupEmail} disabled={savingSupEmail}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-60"
-                  style={{ backgroundColor: '#16A34A', color: '#FFFFFF' }}
-                >
-                  {savingSupEmail ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                  Guardar correo del supervisor
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleSaveSupEmail} disabled={savingSupEmail}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-60"
+                    style={{ backgroundColor: '#16A34A', color: '#FFFFFF' }}
+                  >
+                    {savingSupEmail ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                    Guardar correo
+                  </button>
+                  <button
+                    onClick={handleTestSup} disabled={testingSup}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-60"
+                    style={{ backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}
+                  >
+                    {testingSup ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    Enviar prueba
+                  </button>
+                </div>
               </>
             )}
           </div>

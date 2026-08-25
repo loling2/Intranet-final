@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Building2, Plus, Search, Pencil, Trash2, X, Check, RefreshCw,
-  AlertCircle, Loader2, Tablet,
+  AlertCircle, Loader2, Tablet, UserCog,
 } from 'lucide-react';
 import { supabase, type Sociedad, type Centro } from '../supabaseClient';
 
@@ -11,10 +11,19 @@ interface KioskDeviceSummary {
   is_active: boolean;
 }
 
+interface SupervisorInfo {
+  id: string;
+  nombre: string;
+  email: string;
+}
+
 export default function CentrosModule() {
   const [centros, setCentros] = useState<Centro[]>([]);
   const [sociedades, setSociedades] = useState<Sociedad[]>([]);
   const [kioskDevices, setKioskDevices] = useState<Record<string, KioskDeviceSummary[]>>({});
+  const [supervisors, setSupervisors] = useState<SupervisorInfo[]>([]);
+  const [centroSupervisor, setCentroSupervisor] = useState<Record<string, string | null>>({});
+  const [savingSupervisor, setSavingSupervisor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -31,10 +40,12 @@ export default function CentrosModule() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [cenRes, socRes, kioskRes] = await Promise.all([
+    const [cenRes, socRes, kioskRes, supRes, supCentrosRes] = await Promise.all([
       supabase.from('centros').select('id, nombre, id_sociedad').order('nombre', { ascending: true }),
       supabase.from('sociedades').select('id, nombre').order('nombre', { ascending: true }),
       supabase.from('kiosk_devices').select('id, site_name, is_active, centro_id').order('site_name', { ascending: true }),
+      supabase.from('user_profiles').select('id, nombre, email').eq('role', 'supervisor').eq('activo', true).order('nombre'),
+      supabase.from('supervisor_centros').select('supervisor_id, centro_id'),
     ]);
     if (cenRes.error) { setError(cenRes.error.message); setCentros([]); }
     else setCentros((cenRes.data as Centro[]) ?? []);
@@ -51,6 +62,13 @@ export default function CentrosModule() {
       }
       setKioskDevices(map);
     }
+    setSupervisors((supRes.data as SupervisorInfo[]) ?? []);
+    // Build centro -> supervisor_id map (first supervisor found per centro)
+    const csMap: Record<string, string | null> = {};
+    for (const sc of (supCentrosRes.data as { supervisor_id: string; centro_id: string }[]) ?? []) {
+      if (!csMap[sc.centro_id]) csMap[sc.centro_id] = sc.supervisor_id;
+    }
+    setCentroSupervisor(csMap);
     setLoading(false);
   }, []);
 
@@ -93,9 +111,29 @@ export default function CentrosModule() {
     await load(); setDeletingId(null);
   }
 
+  async function changeSupervisor(centroId: string, supervisorId: string) {
+    setSavingSupervisor(centroId);
+    try {
+      // Remove existing supervisor assignments for this centro
+      await supabase.from('supervisor_centros').delete().eq('centro_id', centroId);
+      // Insert new assignment if a supervisor was selected
+      if (supervisorId) {
+        await supabase.from('supervisor_centros').insert({ centro_id: centroId, supervisor_id: supervisorId });
+      }
+      setCentroSupervisor((prev) => ({ ...prev, [centroId]: supervisorId || null }));
+    } finally {
+      setSavingSupervisor(null);
+    }
+  }
+
   function getSociedadNombre(id: string | null): string {
     if (!id) return 'Sin sociedad';
     return sociedades.find((s) => s.id === id)?.nombre ?? 'Sin sociedad';
+  }
+
+  function getSupervisorNombre(id: string | null): string {
+    if (!id) return '';
+    return supervisors.find((s) => s.id === id)?.nombre ?? '';
   }
 
   return (
@@ -103,7 +141,7 @@ export default function CentrosModule() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="text-lg font-semibold" style={{ color: '#0F172A' }}>Centros de Trabajo</h3>
-          <p className="text-sm" style={{ color: '#64748B' }}>Gestiona los centros asignados a sociedades y sus tablets de fichaje.</p>
+          <p className="text-sm" style={{ color: '#64748B' }}>Gestiona los centros asignados a sociedades, sus tablets de fichaje y supervisor.</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={load} className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#475569' }} title="Actualizar"><RefreshCw size={15} /></button>
@@ -141,6 +179,7 @@ export default function CentrosModule() {
           {filtered.map((c) => {
             const tablets = kioskDevices[c.id] ?? [];
             const activeTablets = tablets.filter((t) => t.is_active).length;
+            const currentSup = centroSupervisor[c.id] ?? '';
             return (
               <div key={c.id} className="rounded-xl p-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                 <div className="flex items-start justify-between gap-2 mb-2">
@@ -162,12 +201,36 @@ export default function CentrosModule() {
                     <span className="text-xs font-medium" style={{ color: '#64748B' }}>{tablets.length} tablet{tablets.length !== 1 ? 's' : ''} asignada{tablets.length !== 1 ? 's' : ''}{activeTablets > 0 && <span style={{ color: '#16A34A' }}> · {activeTablets} activa{activeTablets !== 1 ? 's' : ''}</span>}</span>
                   </div>
                   {tablets.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1 mb-2">
                       {tablets.map((t) => (
                         <span key={t.id} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: t.is_active ? '#F0FDF4' : '#F1F5F9', color: t.is_active ? '#16A34A' : '#94A3B8', border: `1px solid ${t.is_active ? '#BBF7D0' : '#E2E8F0'}` }}>{t.site_name}</span>
                       ))}
                     </div>
-                  ) : <p className="text-xs" style={{ color: '#CBD5E1' }}>Sin tablets asignadas</p>}
+                  ) : <p className="text-xs mb-2" style={{ color: '#CBD5E1' }}>Sin tablets asignadas</p>}
+                </div>
+                {/* Supervisor assignment */}
+                <div className="mt-2 pt-2" style={{ borderTop: '1px solid #F1F5F9' }}>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <UserCog size={11} style={{ color: '#64748B' }} />
+                    <span className="text-xs font-medium" style={{ color: '#64748B' }}>Supervisor</span>
+                  </div>
+                  <select
+                    value={currentSup}
+                    onChange={(e) => changeSupervisor(c.id, e.target.value)}
+                    disabled={savingSupervisor === c.id}
+                    className="w-full px-2.5 py-1.5 rounded-lg text-xs outline-none cursor-pointer disabled:opacity-50"
+                    style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
+                  >
+                    <option value="">Sin supervisor</option>
+                    {supervisors.map((s) => (
+                      <option key={s.id} value={s.id}>{s.nombre}{s.email ? ` (${s.email})` : ''}</option>
+                    ))}
+                  </select>
+                  {currentSup && (
+                    <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
+                      Asignado: {getSupervisorNombre(currentSup)}
+                    </p>
+                  )}
                 </div>
               </div>
             );

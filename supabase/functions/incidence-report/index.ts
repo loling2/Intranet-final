@@ -403,10 +403,8 @@ Deno.serve(async (req: Request) => {
 
     // ── 4b. Detect active employees assigned to a centro who did NOT fichar ────
     // Only flag employees with a centro_trabajo assigned (not null/empty).
-    // Skip weekends (Saturday=6, Sunday=0) so we don't flag people on days off.
-    const dayOfWeek = new Date(targetDate + "T12:00:00Z").getUTCDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    if (!isWeekend) {
+    // All days are checked — rest days vary per employee and some work extras.
+    {
       const ficharonIds = new Set<string>();
       for (const [, s] of summaries) {
         // Try to match summary entry to an active employee by name
@@ -540,8 +538,8 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        // Detect supervisor's employees who did NOT fichar (skip weekends)
-        if (!isWeekend) {
+        // Detect supervisor's employees who did NOT fichar
+        {
           for (const empId of supEmpIds) {
             if (!supFicharonIds.has(empId)) {
               const emp = allActiveEmpleados.get(empId);

@@ -14,7 +14,7 @@ interface Incidencia {
   entrada: string | null;
   salida: string | null;
   duracionMin: number;
-  tipo: "exceso" | "deficit" | "sin_salida";
+  tipo: "exceso" | "deficit" | "sin_salida" | "no_fichado";
   salidaAuto: boolean;
 }
 
@@ -44,6 +44,7 @@ const typeConfig: Record<string, { label: string; bg: string; text: string; bord
   sin_salida: { label: "Sin salida", bg: "#F5F3FF", text: "#7C3AED", border: "#DDD6FE", dot: "#7C3AED" },
   exceso:     { label: "Exceso de horas",  bg: "#FEF2F2", text: "#DC2626", border: "#FECACA", dot: "#DC2626" },
   deficit:    { label: "Déficit de horas", bg: "#FFFBEB", text: "#D97706", border: "#FDE68A", dot: "#F59E0B" },
+  no_fichado: { label: "No ha fichado", bg: "#FFF7ED", text: "#C2410C", border: "#FED7AA", dot: "#EA580C" },
 };
 
 function buildReportHtml(
@@ -93,6 +94,7 @@ function buildReportHtml(
   let incidenciasBlock = "";
   if (incidencias.length > 0) {
     const groups: { type: string; items: Incidencia[] }[] = [
+      { type: "no_fichado", items: incidencias.filter(i => i.tipo === "no_fichado") },
       { type: "sin_salida", items: incidencias.filter(i => i.tipo === "sin_salida") },
       { type: "exceso",     items: incidencias.filter(i => i.tipo === "exceso") },
       { type: "deficit",    items: incidencias.filter(i => i.tipo === "deficit") },
@@ -101,8 +103,9 @@ function buildReportHtml(
     incidenciasBlock = groups.map(group => {
       const cfg = typeConfig[group.type];
       const rows = group.items.map((inc, idx) => {
-        const salidaDisplay = inc.tipo === "sin_salida" && !inc.salidaAuto ? "—" : fmtTime(inc.salida);
-        const durDisplay = inc.tipo === "sin_salida" && !inc.salidaAuto ? "—" : fmtDur(inc.duracionMin);
+        const salidaDisplay = (inc.tipo === "sin_salida" && !inc.salidaAuto) || inc.tipo === "no_fichado" ? "—" : fmtTime(inc.salida);
+        const durDisplay = (inc.tipo === "sin_salida" && !inc.salidaAuto) || inc.tipo === "no_fichado" ? "—" : fmtDur(inc.duracionMin);
+        const entradaDisplay = inc.tipo === "no_fichado" ? "—" : fmtTime(inc.entrada);
         const rowBg = idx % 2 === 0 ? "#FFFFFF" : "#FAFAFA";
         const autoTag = inc.salidaAuto
           ? `<span style="display:inline-block;font-size:9px;background:#F5F3FF;color:#7C3AED;border:1px solid #DDD6FE;border-radius:4px;padding:1px 5px;margin-left:4px;font-weight:600;vertical-align:middle;">AUTO</span>`
@@ -113,7 +116,7 @@ function buildReportHtml(
     <div style="font-size:13px;font-weight:600;color:#0F172A;">${inc.nombre}${autoTag}</div>
   </td>
   <td style="padding:10px 12px;border-bottom:1px solid #F1F5F9;text-align:center;">
-    <span style="display:inline-block;background:#F0FDF4;color:#16A34A;border-radius:6px;padding:3px 8px;font-size:12px;font-weight:700;">${fmtTime(inc.entrada)}</span>
+    <span style="display:inline-block;background:${inc.tipo === "no_fichado" ? "#F8FAFC" : "#F0FDF4"};color:${inc.tipo === "no_fichado" ? "#94A3B8" : "#16A34A"};border-radius:6px;padding:3px 8px;font-size:12px;font-weight:700;">${entradaDisplay}</span>
   </td>
   <td style="padding:10px 12px;border-bottom:1px solid #F1F5F9;text-align:center;">
     <span style="display:inline-block;background:${inc.tipo==="sin_salida" && !inc.salidaAuto ? "#F8FAFC" : "#FEF2F2"};color:${inc.tipo==="sin_salida" && !inc.salidaAuto ? "#94A3B8" : "#DC2626"};border-radius:6px;padding:3px 8px;font-size:12px;font-weight:700;">${salidaDisplay}</span>
@@ -322,18 +325,20 @@ Deno.serve(async (req: Request) => {
 
     // Also fetch total unique employees who worked that day (to show attendance rate)
     const { data: totalEmps } = await supabase
-      .from("empleados").select("id").eq("activo", true);
+      .from("empleados").select("id, nombre, centro_trabajo").eq("activo", true);
     const totalActive = totalEmps?.length ?? 0;
 
     // Fetch horas_diarias per employee for per-employee expected hours
     const { data: empHoras } = await supabase
-      .from("empleados").select("id, nombre, horas_diarias");
+      .from("empleados").select("id, nombre, horas_diarias, centro_trabajo").eq("activo", true);
     const expectedByNombre = new Map<string, number>();
     const expectedById = new Map<string, number>();
-    for (const e of (empHoras ?? []) as { id: string; nombre: string; horas_diarias: number | null }[]) {
+    const allActiveEmpleados = new Map<string, { id: string; nombre: string; centro_trabajo: string | null }>();
+    for (const e of (empHoras ?? []) as { id: string; nombre: string; horas_diarias: number | null; centro_trabajo: string | null }[]) {
       const mins = e.horas_diarias != null && e.horas_diarias > 0 ? Math.round(e.horas_diarias * 60) : 480;
       expectedByNombre.set(e.nombre.trim().toUpperCase(), mins);
       expectedById.set(e.id, mins);
+      allActiveEmpleados.set(e.id, { id: e.id, nombre: e.nombre, centro_trabajo: e.centro_trabajo });
     }
     const TOLERANCE = 10;
     const expectedFor = (empId: string | null, nombre: string): number => {
@@ -393,6 +398,37 @@ Deno.serve(async (req: Request) => {
         });
       } else {
         correctos.push(s.nombre);
+      }
+    }
+
+    // ── 4b. Detect active employees assigned to a centro who did NOT fichar ────
+    // Only flag employees with a centro_trabajo assigned (not null/empty).
+    // Skip weekends (Saturday=6, Sunday=0) so we don't flag people on days off.
+    const dayOfWeek = new Date(targetDate + "T12:00:00Z").getUTCDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    if (!isWeekend) {
+      const ficharonIds = new Set<string>();
+      for (const [, s] of summaries) {
+        // Try to match summary entry to an active employee by name
+        const upperName = s.nombre.trim().toUpperCase();
+        for (const [empId, emp] of allActiveEmpleados) {
+          if (emp.nombre.trim().toUpperCase() === upperName) {
+            ficharonIds.add(empId);
+            break;
+          }
+        }
+      }
+      for (const [empId, emp] of allActiveEmpleados) {
+        if (!ficharonIds.has(empId) && emp.centro_trabajo && emp.centro_trabajo.trim() !== "") {
+          incidencias.push({
+            nombre: emp.nombre,
+            entrada: null,
+            salida: null,
+            duracionMin: 0,
+            tipo: "no_fichado",
+            salidaAuto: false,
+          });
+        }
       }
     }
 
@@ -484,6 +520,44 @@ Deno.serve(async (req: Request) => {
 
         const supIncidencias: Incidencia[] = [];
         const supCorrectos: string[] = [];
+
+        // Build set of supervisor's employee IDs that ficharon
+        const supFicharonIds = new Set<string>();
+        for (const [key, s] of supSummaries) {
+          if (s.entrada) {
+            // The key is either empleado_id or uppercased nombre
+            if (typeof key === "string" && allActiveEmpleados.has(key)) {
+              supFicharonIds.add(key);
+            } else {
+              const upperName = s.nombre.trim().toUpperCase();
+              for (const [empId, emp] of allActiveEmpleados) {
+                if (emp.nombre.trim().toUpperCase() === upperName && supEmpIds.includes(empId)) {
+                  supFicharonIds.add(empId);
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        // Detect supervisor's employees who did NOT fichar (skip weekends)
+        if (!isWeekend) {
+          for (const empId of supEmpIds) {
+            if (!supFicharonIds.has(empId)) {
+              const emp = allActiveEmpleados.get(empId);
+              if (emp && emp.centro_trabajo && emp.centro_trabajo.trim() !== "") {
+                supIncidencias.push({
+                  nombre: emp.nombre,
+                  entrada: null,
+                  salida: null,
+                  duracionMin: 0,
+                  tipo: "no_fichado",
+                  salidaAuto: false,
+                });
+              }
+            }
+          }
+        }
 
         for (const [, s] of supSummaries) {
           if (!s.entrada) continue;

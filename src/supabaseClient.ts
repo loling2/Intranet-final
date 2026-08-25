@@ -123,6 +123,7 @@ export interface Empleado {
   fecha_baja: string | null;
   motivo_baja: string | null;
   comentario_baja: string | null;
+  horas_diarias: number | null;
   created_at: string;
   updated_at: string;
 }

@@ -78,8 +78,7 @@ function effectiveTs(f: Fichaje): string {
   return f.timestamp_corregido ?? f.timestamp;
 }
 
-const NORMAL_HOURS_MIN = 6 * 60;  // 6 hours in minutes
-const NORMAL_HOURS_MAX = 8 * 60;  // 8 hours in minutes
+const TOLERANCE_MIN = 10; // ±10 minutes tolerance for correct fichaje
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,15 +94,19 @@ function formatDuration(minutes: number | null) {
   return `${h}h ${m}m`;
 }
 
-function isIncident(minutes: number | null) {
+function isIncident(minutes: number | null, expectedMinutes: number = 8 * 60) {
   if (minutes === null) return false;
-  return minutes > NORMAL_HOURS_MAX || minutes < NORMAL_HOURS_MIN;
+  const min = expectedMinutes - TOLERANCE_MIN;
+  const max = expectedMinutes + TOLERANCE_MIN;
+  return minutes > max || minutes < min;
 }
 
-function incidentType(minutes: number | null): 'excess' | 'deficit' | null {
+function incidentType(minutes: number | null, expectedMinutes: number = 8 * 60): 'excess' | 'deficit' | null {
   if (minutes === null) return null;
-  if (minutes > NORMAL_HOURS_MAX) return 'excess';
-  if (minutes < NORMAL_HOURS_MIN) return 'deficit';
+  const min = expectedMinutes - TOLERANCE_MIN;
+  const max = expectedMinutes + TOLERANCE_MIN;
+  if (minutes > max) return 'excess';
+  if (minutes < min) return 'deficit';
   return null;
 }
 
@@ -198,17 +201,19 @@ function getMonthRange(date: string): { start: string; end: string } {
 
 // ── Export helpers ───────────────────────────────────────────────────────────
 
-function exportCSV(resumenes: JornadaResumen[]) {
+function exportCSV(resumenes: JornadaResumen[], expectedFn?: (nombre: string) => number) {
   const header = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Pausa inicio', 'Pausa fin', 'Permiso', 'Horas Totales', 'Incidencia', 'Dispositivo', 'Ubicación'];
   const rows = resumenes.map((r) => {
-    const inc = incidentType(r.duracion_neta);
+    const exp = expectedFn ? expectedFn(r.nombre) : 8 * 60;
+    const inc = incidentType(r.duracion_neta, exp);
+    const expH = (exp / 60).toFixed(2);
     return [
       r.nombre, r.fecha,
       formatTime(r.entrada), formatTime(r.salida),
       formatTime(r.pausa_inicio), formatTime(r.pausa_fin),
       r.permiso ? formatTime(r.permiso) : '—',
       formatDuration(r.duracion_neta),
-      inc === 'excess' ? 'Exceso (>8h)' : inc === 'deficit' ? 'Déficit (<6h)' : '—',
+      inc === 'excess' ? `Exceso (>${expH}h)` : inc === 'deficit' ? `Déficit (<${expH}h)` : '—',
       r.dispositivo ?? '—', r.ubicacion ?? '—',
     ];
   });
@@ -220,17 +225,19 @@ function exportCSV(resumenes: JornadaResumen[]) {
   a.click(); URL.revokeObjectURL(url);
 }
 
-function exportIncidentReport(resumenes: JornadaResumen[], desde: string, hasta: string) {
-  const incidents = resumenes.filter((r) => isIncident(r.duracion_neta));
+function exportIncidentReport(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (nombre: string) => number) {
+  const incidents = resumenes.filter((r) => isIncident(r.duracion_neta, expectedFn ? expectedFn(r.nombre) : 8 * 60));
   const rows = incidents.map((r) => {
-    const inc = incidentType(r.duracion_neta);
+    const exp = expectedFn ? expectedFn(r.nombre) : 8 * 60;
+    const inc = incidentType(r.duracion_neta, exp);
+    const expH = (exp / 60).toFixed(2);
     return `
       <tr>
         <td>${r.nombre}</td><td>${r.fecha}</td>
         <td style="color:#16A34A">${formatTime(r.entrada)}</td>
         <td style="color:#DC2626">${formatTime(r.salida)}</td>
         <td style="font-weight:bold;color:${inc === 'excess' ? '#DC2626' : '#D97706'}">${formatDuration(r.duracion_neta)}</td>
-        <td style="font-weight:bold;color:${inc === 'excess' ? '#DC2626' : '#D97706'}">${inc === 'excess' ? 'Exceso (>8h)' : 'Déficit (<6h)'}</td>
+        <td style="font-weight:bold;color:${inc === 'excess' ? '#DC2626' : '#D97706'}">${inc === 'excess' ? `Exceso (>${expH}h)` : `Déficit (<${expH}h)`}</td>
       </tr>`;
   }).join('');
 
@@ -588,7 +595,7 @@ export default function FichajesModule() {
       }
 
       const [{ data: empData }, { data: socData }, { data: cenData }] = await Promise.all([
-        supabase.from('empleados').select('id, user_id, nombre, id_sociedad, centro_trabajo').order('nombre'),
+        supabase.from('empleados').select('id, user_id, nombre, id_sociedad, centro_trabajo, horas_diarias').order('nombre'),
         supabase.from('sociedades').select('id, nombre').order('nombre'),
         supabase.from('centros').select('id, nombre, id_sociedad').order('nombre'),
       ]);
@@ -664,6 +671,13 @@ export default function FichajesModule() {
   const empleadoByName = new Map<string, Empleado>();
   for (const e of empleados) empleadoByName.set(e.nombre, e);
 
+  // Helper: expected daily minutes for a given employee name
+  const expectedMinutesFor = (nombre: string): number => {
+    const emp = empleadoByName.get(nombre);
+    const horas = emp?.horas_diarias;
+    return horas != null && !isNaN(horas) && horas > 0 ? Math.round(horas * 60) : 8 * 60;
+  };
+
   const applyDateRange = (f: Fichaje) => {
     if (filterDesde && f.fecha < filterDesde) return false;
     if (filterHasta && f.fecha > filterHasta) return false;
@@ -701,7 +715,7 @@ export default function FichajesModule() {
 
   let resumenes = buildResumenes(resumenesBase);
   if (showIncidentOnly) {
-    resumenes = resumenes.filter((r) => isIncident(r.duracion_neta));
+    resumenes = resumenes.filter((r) => isIncident(r.duracion_neta, expectedMinutesFor(r.nombre)));
   }
 
   const tp = viewMode === 'eventos'
@@ -712,7 +726,7 @@ export default function FichajesModule() {
   const pagedResumenes = paginate(resumenes, safePage, 25);
 
   const totalDuracion = resumenes.reduce((acc, r) => acc + (r.duracion_neta ?? 0), 0);
-  const incidentCount = resumenes.filter((r) => isIncident(r.duracion_neta)).length;
+  const incidentCount = resumenes.filter((r) => isIncident(r.duracion_neta, expectedMinutesFor(r.nombre))).length;
   const today = new Date().toISOString().split('T')[0];
 
   const filteredCentros = filterSociedad
@@ -858,14 +872,14 @@ export default function FichajesModule() {
 
           {/* Export buttons */}
           <button
-            onClick={() => viewMode === 'resumen' ? exportCSV(resumenes) : null}
+            onClick={() => viewMode === 'resumen' ? exportCSV(resumenes, expectedMinutesFor) : null}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
             <Download size={12} />
             Excel / CSV
           </button>
           <button
-            onClick={() => exportIncidentReport(resumenes, filterDesde, filterHasta)}
+            onClick={() => exportIncidentReport(resumenes, filterDesde, filterHasta, expectedMinutesFor)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
             <FileText size={12} />
@@ -900,7 +914,7 @@ export default function FichajesModule() {
                       const pausaMin = (r.pausa_inicio && r.pausa_fin)
                         ? Math.round((new Date(r.pausa_fin).getTime() - new Date(r.pausa_inicio).getTime()) / 60000)
                         : null;
-                      const inc = incidentType(r.duracion_neta);
+                      const inc = incidentType(r.duracion_neta, expectedMinutesFor(r.nombre));
                       return (
                         <tr key={i} className="hover:bg-slate-50 transition-colors">
                           <td className="px-4 py-3 font-semibold" style={{ color: '#1E293B' }}>{r.nombre}</td>

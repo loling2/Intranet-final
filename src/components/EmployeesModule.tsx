@@ -76,6 +76,7 @@ const EMPTY_FORM: Omit<Empleado, 'id' | 'created_at' | 'updated_at'> = {
   fecha_baja: null,
   motivo_baja: null,
   comentario_baja: null,
+  horas_diarias: 8,
 };
 
 function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
@@ -124,6 +125,7 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
     fecha_baja: e.fecha_baja ?? null,
     motivo_baja: e.motivo_baja ?? null,
     comentario_baja: e.comentario_baja ?? null,
+    horas_diarias: e.horas_diarias ?? 8,
   };
 }
 
@@ -1444,6 +1446,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         : null;
       const payload = {
         ...form,
+        horas_diarias: form.horas_diarias == null || form.horas_diarias === '' ? null : Number(form.horas_diarias),
         dni: form.dni?.trim() || null,
         telefono: form.telefono?.trim() || null,
         email: form.email?.trim() || '',
@@ -2178,6 +2181,18 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                   {TURNOS.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </FormField>
+              <FormField label="Horas diarias">
+                <input
+                  type="number"
+                  step="0.25"
+                  min="0"
+                  max="24"
+                  value={form.horas_diarias ?? ''}
+                  onChange={(e) => f('horas_diarias', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                  className="form-input"
+                  placeholder="8"
+                />
+              </FormField>
               <FormField label="Puesto">
                 <PuestoPicker
                   puestos={puestosCatalogo}
@@ -2656,6 +2671,18 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                             {TURNOS.map((t) => <option key={t} value={t}>{t}</option>)}
                           </select>
                         </FormField>
+                        <FormField label="Horas diarias">
+                          <input
+                            type="number"
+                            step="0.25"
+                            min="0"
+                            max="24"
+                            value={form.horas_diarias ?? ''}
+                            onChange={(e) => f('horas_diarias', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                            className="form-input"
+                            placeholder="8"
+                          />
+                        </FormField>
                         <FormField label="Puesto">
                           <PuestoPicker
                             puestos={puestosCatalogo}
@@ -2836,6 +2863,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                               {emp.fin_periodo_prueba && <Detail label="Fin prueba" value={emp.fin_periodo_prueba} />}
                               {emp.tipo_contrato && <Detail label="Contrato" value={emp.tipo_contrato} />}
                               {emp.turno && <Detail label="Turno" value={emp.turno} />}
+                              {emp.horas_diarias != null && <Detail label="Horas diarias" value={`${emp.horas_diarias}h`} />}
                               {emp.puesto && <Detail label="Puesto" value={emp.puesto} />}
                               {emp.centro_trabajo && <Detail label="Centro" value={emp.centro_trabajo} />}
                               {emp.titulacion_habilitante && <Detail label="Titulacion" value={emp.titulacion_habilitante} className="col-span-2" />}

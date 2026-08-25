@@ -42,8 +42,8 @@ function dayName(d: string): string {
 
 const typeConfig: Record<string, { label: string; bg: string; text: string; border: string; dot: string }> = {
   sin_salida: { label: "Sin salida", bg: "#F5F3FF", text: "#7C3AED", border: "#DDD6FE", dot: "#7C3AED" },
-  exceso:     { label: "Exceso +8h",  bg: "#FEF2F2", text: "#DC2626", border: "#FECACA", dot: "#DC2626" },
-  deficit:    { label: "Déficit -6h", bg: "#FFFBEB", text: "#D97706", border: "#FDE68A", dot: "#F59E0B" },
+  exceso:     { label: "Exceso de horas",  bg: "#FEF2F2", text: "#DC2626", border: "#FECACA", dot: "#DC2626" },
+  deficit:    { label: "Déficit de horas", bg: "#FFFBEB", text: "#D97706", border: "#FDE68A", dot: "#F59E0B" },
 };
 
 function buildReportHtml(
@@ -325,6 +325,23 @@ Deno.serve(async (req: Request) => {
       .from("empleados").select("id").eq("activo", true);
     const totalActive = totalEmps?.length ?? 0;
 
+    // Fetch horas_diarias per employee for per-employee expected hours
+    const { data: empHoras } = await supabase
+      .from("empleados").select("id, nombre, horas_diarias");
+    const expectedByNombre = new Map<string, number>();
+    const expectedById = new Map<string, number>();
+    for (const e of (empHoras ?? []) as { id: string; nombre: string; horas_diarias: number | null }[]) {
+      const mins = e.horas_diarias != null && e.horas_diarias > 0 ? Math.round(e.horas_diarias * 60) : 480;
+      expectedByNombre.set(e.nombre.trim().toUpperCase(), mins);
+      expectedById.set(e.id, mins);
+    }
+    const TOLERANCE = 10;
+    const expectedFor = (empId: string | null, nombre: string): number => {
+      if (empId && expectedById.has(empId)) return expectedById.get(empId)!;
+      const n = nombre.trim().toUpperCase();
+      return expectedByNombre.get(n) ?? 480;
+    };
+
     // ── 4. Compute summaries ──────────────────────────────────────────────────
     const summaries = new Map<string, {
       nombre: string;
@@ -367,10 +384,11 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       const durMin = Math.round((new Date(s.salida).getTime() - new Date(s.entrada).getTime()) / 60000);
-      if (durMin > 480 || durMin < 360 || s.salidaAuto) {
+      const expected = expectedFor(key as string | null, s.nombre);
+      if (s.salidaAuto || durMin > expected + TOLERANCE || durMin < expected - TOLERANCE) {
         incidencias.push({
           nombre: s.nombre, entrada: s.entrada, salida: s.salida, duracionMin: durMin,
-          tipo: s.salidaAuto ? "sin_salida" : durMin > 480 ? "exceso" : "deficit",
+          tipo: s.salidaAuto ? "sin_salida" : durMin > expected + TOLERANCE ? "exceso" : "deficit",
           salidaAuto: s.salidaAuto,
         });
       } else {
@@ -475,10 +493,11 @@ Deno.serve(async (req: Request) => {
             continue;
           }
           const durMin = Math.round((new Date(s.salida).getTime() - new Date(s.entrada).getTime()) / 60000);
-          if (durMin > 480 || durMin < 360 || s.salidaAuto) {
+          const expected = expectedFor(key as string | null, s.nombre);
+          if (s.salidaAuto || durMin > expected + TOLERANCE || durMin < expected - TOLERANCE) {
             supIncidencias.push({
               nombre: s.nombre, entrada: s.entrada, salida: s.salida, duracionMin,
-              tipo: s.salidaAuto ? "sin_salida" : durMin > 480 ? "exceso" : "deficit",
+              tipo: s.salidaAuto ? "sin_salida" : durMin > expected + TOLERANCE ? "exceso" : "deficit",
               salidaAuto: s.salidaAuto,
             });
           } else {

@@ -45,21 +45,6 @@ function CheckInModal({ vehicle, profile, onClose, onDone }: CheckInModalProps) 
     setLoading(true);
     setError('');
     try {
-      // Re-fetch latest vehicle state to prevent stale-data check-in
-      const { data: fresh, error: fetchErr } = await supabase
-        .from('vehicles')
-        .select('estado, current_user_id, kilometros_actuales')
-        .eq('id', vehicle.id)
-        .maybeSingle();
-      if (fetchErr) throw fetchErr;
-      if (!fresh) throw new Error('Vehículo no encontrado');
-      if (fresh.estado === 'en_uso') {
-        throw new Error('Este vehículo ya está en uso por otro usuario. Recarga la página.');
-      }
-      if (km < fresh.kilometros_actuales) {
-        throw new Error(`Los km de inicio deben ser >= ${fresh.kilometros_actuales} (valor actual en la base de datos)`);
-      }
-
       const { error: logErr } = await supabase.from('vehicle_logs').insert({
         vehicle_id: vehicle.id,
         user_id: profile.id,
@@ -80,8 +65,7 @@ function CheckInModal({ vehicle, profile, onClose, onDone }: CheckInModalProps) 
           current_fecha_inicio: new Date().toISOString(),
           kilometros_actuales: km,
         })
-        .eq('id', vehicle.id)
-        .eq('estado', 'libre');
+        .eq('id', vehicle.id);
       if (vErr) throw vErr;
 
       await writeAuditLog({
@@ -160,26 +144,6 @@ function CheckOutModal({ vehicle, profile, log, onClose, onDone }: CheckOutModal
     setLoading(true);
     setError('');
     try {
-      // Re-fetch latest vehicle state to validate against real DB kilometros
-      const { data: fresh, error: fetchErr } = await supabase
-        .from('vehicles')
-        .select('estado, current_user_id, current_km_inicio, kilometros_actuales')
-        .eq('id', vehicle.id)
-        .maybeSingle();
-      if (fetchErr) throw fetchErr;
-      if (!fresh) throw new Error('Vehículo no encontrado');
-      if (fresh.estado !== 'en_uso') {
-        throw new Error('El vehículo no está en uso. Recarga la página.');
-      }
-      if (fresh.current_user_id !== profile.id) {
-        throw new Error('El vehículo está en uso por otro usuario. No puedes finalizarlo.');
-      }
-      const dbKmInicio = fresh.current_km_inicio ?? 0;
-      const dbKmActual = fresh.kilometros_actuales;
-      if (km <= dbKmInicio || km <= dbKmActual) {
-        throw new Error(`Los km finales deben ser superiores a ${Math.max(dbKmInicio, dbKmActual)} (valor en la base de datos)`);
-      }
-
       const fechaFin = new Date();
       const fechaInicio = vehicle.current_fecha_inicio ? new Date(vehicle.current_fecha_inicio) : fechaFin;
       const duracion = Math.round((fechaFin.getTime() - fechaInicio.getTime()) / 60000);
@@ -748,9 +712,6 @@ export default function VehiclesModule({ currentUserRole, userEmail }: Props) {
       } else {
         setModal({ type: 'blocked', vehicle });
       }
-    } else {
-      // Unknown estado — re-fetch to sync UI
-      loadVehicles();
     }
   };
 

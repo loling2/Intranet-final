@@ -113,13 +113,19 @@ export default function CorreccionesFichajesModule() {
         // We need to find the original entrada and salida fichaje rows for that
         // date+employee and stamp the corrected time on each one individually.
         if (c.entrada_propuesta || c.salida_propuesta) {
-          // Fetch today's fichajes for this employee to find entrada/salida rows
-          const { data: dayFichajes } = await supabase
+          // Fetch today's fichajes for this employee to find entrada/salida rows.
+          // Use empleado_id (reliable) instead of nombre_empleado (can differ between user_profiles and empleados).
+          let fichajeQuery = supabase
             .from('fichajes')
             .select('id, tipo_evento, timestamp')
-            .eq('nombre_empleado', c.nombre_empleado)
             .eq('fecha', c.fecha)
             .order('timestamp', { ascending: true });
+          if (c.empleado_id) {
+            fichajeQuery = fichajeQuery.eq('empleado_id', c.empleado_id);
+          } else {
+            fichajeQuery = fichajeQuery.eq('nombre_empleado', c.nombre_empleado);
+          }
+          const { data: dayFichajes } = await fichajeQuery;
 
           const rows = (dayFichajes ?? []) as { id: string; tipo_evento: string; timestamp: string }[];
 

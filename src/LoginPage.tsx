@@ -353,10 +353,15 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
         tipo: 'normal', motivo: motivoUso.trim(),
       });
       if (logErr) throw new Error(logErr.message);
-      await supabase.from('vehicles').update({
+      const { error: vStartErr } = await supabase.from('vehicles').update({
         estado: 'en_uso', current_user_id: usuarioPin.id, current_user_nombre: usuarioPin.nombre,
         current_km_inicio: kmVal, current_fecha_inicio: now, kilometros_actuales: kmVal,
       }).eq('id', vehicle.id);
+      if (vStartErr) throw new Error(vStartErr.message);
+      setVehicle(null);
+      setKm('');
+      setMotivoUso('');
+      setNumeroPersonas(1);
       setDoneMsg(`Uso iniciado — ${vehicle.matricula} · ${usuarioPin.nombre} · ${kmVal} km`);
       setDoneColor('#16A34A');
       setStep('done');
@@ -374,17 +379,23 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     setLoading(true);
     try {
       const now = new Date().toISOString();
-      const { data: openLog } = await supabase.from('vehicle_logs').select('id,km_inicio,fecha_inicio')
+      const { data: openLog, error: selLogErr } = await supabase.from('vehicle_logs').select('id,km_inicio,fecha_inicio')
         .eq('vehicle_id', vehicle.id).is('fecha_fin', null)
         .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (selLogErr) throw new Error(selLogErr.message);
       if (openLog) {
         const duracion = Math.round((new Date(now).getTime() - new Date(openLog.fecha_inicio).getTime()) / 60000);
-        await supabase.from('vehicle_logs').update({ fecha_fin: now, km_fin: kmVal, duracion_minutos: duracion }).eq('id', openLog.id);
+        const { error: logUpdErr } = await supabase.from('vehicle_logs').update({ fecha_fin: now, km_fin: kmVal, duracion_minutos: duracion }).eq('id', openLog.id);
+        if (logUpdErr) throw new Error(logUpdErr.message);
       }
-      await supabase.from('vehicles').update({
+      const { error: vFinErr } = await supabase.from('vehicles').update({
         estado: 'libre', current_user_id: null, current_user_nombre: null,
         current_km_inicio: null, current_fecha_inicio: null, kilometros_actuales: kmVal,
       }).eq('id', vehicle.id);
+      if (vFinErr) throw new Error(vFinErr.message);
+      setVehicle(null);
+      setKm('');
+      setVehicleStatus('libre');
       setDoneMsg(`Uso finalizado — ${vehicle.matricula} · ${kmVal} km`);
       setDoneColor('#2563EB');
       setStep('done');

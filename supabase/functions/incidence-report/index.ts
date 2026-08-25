@@ -476,6 +476,13 @@ Deno.serve(async (req: Request) => {
 
     for (const sup of (supervisors ?? []) as { id: string; email: string; nombre: string }[]) {
       try {
+        // Check for a custom email override for this supervisor
+        const { data: supEmailSetting } = await supabase
+          .from("ui_settings").select("value")
+          .eq("key", `incidence_report_sup_email_${sup.id}`).maybeSingle();
+        const supRecipient = supEmailSetting?.value?.trim() || sup.email;
+        if (!supRecipient) continue; // skip supervisors with no email
+
         // Get this supervisor's employee IDs
         const { data: supEmpData } = await supabase
           .rpc("get_supervisor_empleados", { p_supervisor_id: sup.id });
@@ -587,12 +594,12 @@ Deno.serve(async (req: Request) => {
         const supResp = await sendSmtp({
           host: cuenta.smtp_host, port: cuenta.smtp_port, security: cuenta.seguridad,
           user: cuenta.email, password: cuenta.password, from: cuenta.email,
-          to: sup.email, subject: supSubject,
+          to: supRecipient, subject: supSubject,
           text: `Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)}. Incidencias: ${supIncidencias.length}. Correctos: ${supCorrectos.length}.`,
           html: supHtml,
         });
 
-        supervisorResults.push({ email: sup.email, ok: supResp.ok, error: supResp.error });
+        supervisorResults.push({ email: supRecipient, ok: supResp.ok, error: supResp.error });
       } catch (e) {
         supervisorResults.push({ email: sup.email, ok: false, error: e instanceof Error ? e.message : "Error" });
       }

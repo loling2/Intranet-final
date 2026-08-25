@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import {
   Mail, Plus, X, Loader2, Pencil, Trash2, Eye, EyeOff,
   Server, Shield, Bell, Check, AlertCircle, ToggleLeft, ToggleRight,
-  FileText, ChevronDown, ChevronUp, Send, Clock,
+  FileText, ChevronDown, ChevronUp, Send, Clock, UserCog,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase } from '../supabaseClient';
@@ -1201,6 +1201,13 @@ export default function EmailModule() {
 
 // ─── Incidence Report Section ─────────────────────────────────────────────────
 
+interface SupervisorInfo {
+  id: string;
+  nombre: string;
+  email: string;
+  centros: string[];
+}
+
 function IncidenciasSection() {
   const [email, setEmail] = useState('');
   const [enabled, setEnabled] = useState(true);
@@ -1210,6 +1217,12 @@ function IncidenciasSection() {
   const [testing, setTesting] = useState(false);
   const [msg, setMsg] = useState('');
   const [msgType, setMsgType] = useState<'ok' | 'err'>('ok');
+
+  const [supervisors, setSupervisors] = useState<SupervisorInfo[]>([]);
+  const [selectedSupId, setSelectedSupId] = useState('');
+  const [supEmail, setSupEmail] = useState('');
+  const [savingSupEmail, setSavingSupEmail] = useState(false);
+  const [supMsg, setSupMsg] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -1221,6 +1234,23 @@ function IncidenciasSection() {
       if (ed?.value) setEmail(ed.value);
       if (en?.value) setEnabled(en.value !== 'false');
       if (hr?.value) setHour(parseInt(hr.value, 10) || 22);
+
+      // Load supervisors with their assigned centros
+      const { data: supData } = await supabase
+        .from('user_profiles').select('id, nombre, email')
+        .eq('role', 'supervisor').eq('activo', true).order('nombre');
+      const { data: supCentros } = await supabase
+        .from('supervisor_centros').select('supervisor_id, centros(nombre)');
+      const centrosMap = new Map<string, string[]>();
+      for (const sc of (supCentros ?? []) as { supervisor_id: string; centros: { nombre: string } | null }[]) {
+        if (!centrosMap.has(sc.supervisor_id)) centrosMap.set(sc.supervisor_id, []);
+        if (sc.centros?.nombre) centrosMap.get(sc.supervisor_id)!.push(sc.centros.nombre);
+      }
+      const supList: SupervisorInfo[] = (supData ?? []).map((s: { id: string; nombre: string; email: string }) => ({
+        id: s.id, nombre: s.nombre, email: s.email,
+        centros: centrosMap.get(s.id) ?? [],
+      }));
+      setSupervisors(supList);
       setLoading(false);
     })();
   }, []);
@@ -1228,6 +1258,34 @@ function IncidenciasSection() {
   const showMsg = (text: string, type: 'ok' | 'err') => {
     setMsg(text); setMsgType(type);
     setTimeout(() => setMsg(''), 5000);
+  };
+
+  // Load saved email when supervisor selected
+  useEffect(() => {
+    if (!selectedSupId) { setSupEmail(''); return; }
+    (async () => {
+      const { data } = await supabase
+        .from('ui_settings').select('value')
+        .eq('key', `incidence_report_sup_email_${selectedSupId}`).maybeSingle();
+      setSupEmail(data?.value ?? supervisors.find((s) => s.id === selectedSupId)?.email ?? '');
+    })();
+  }, [selectedSupId, supervisors]);
+
+  const handleSaveSupEmail = async () => {
+    if (!selectedSupId) return;
+    setSavingSupEmail(true);
+    try {
+      await supabase.from('ui_settings').upsert(
+        { key: `incidence_report_sup_email_${selectedSupId}`, value: supEmail },
+        { onConflict: 'key' },
+      );
+      setSupMsg('Correo del supervisor guardado.');
+      setTimeout(() => setSupMsg(''), 4000);
+    } catch {
+      setSupMsg('Error al guardar.');
+    } finally {
+      setSavingSupEmail(false);
+    }
   };
 
   const handleSave = async () => {
@@ -1304,7 +1362,7 @@ function IncidenciasSection() {
 
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Correo destinatario</label>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Correo destinatario general</label>
             <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
               <Mail size={15} style={{ color: '#94A3B8' }} />
               <input
@@ -1313,6 +1371,7 @@ function IncidenciasSection() {
                 className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1E293B' }}
               />
             </div>
+            <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Correo principal que recibe el informe global de todos los centros.</p>
           </div>
 
           <div>
@@ -1380,8 +1439,91 @@ function IncidenciasSection() {
         </div>
       </div>
 
+      {/* Supervisor email configuration */}
+      <div className="rounded-2xl p-5 mt-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+            <UserCog size={17} style={{ color: '#16A34A' }} />
+          </div>
+          <div>
+            <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>Informe por supervisor</p>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Cada supervisor recibe el informe de fichajes de sus centros asignados</p>
+          </div>
+        </div>
+
+        {supervisors.length === 0 ? (
+          <div className="rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+            No hay supervisores activos. Crea usuarios con rol supervisor y asígnales centros desde la pestaña Centros.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Supervisor</label>
+              <select
+                value={selectedSupId}
+                onChange={(e) => setSelectedSupId(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer"
+                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: selectedSupId ? '#1E293B' : '#94A3B8' }}
+              >
+                <option value="">Selecciona un supervisor...</option>
+                {supervisors.map((s) => (
+                  <option key={s.id} value={s.id}>{s.nombre}</option>
+                ))}
+              </select>
+            </div>
+
+            {selectedSupId && (
+              <>
+                <div className="rounded-xl px-4 py-3" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                  <p className="text-xs font-semibold mb-1 uppercase tracking-wide" style={{ color: '#475569' }}>Centros asignados</p>
+                  {supervisors.find((s) => s.id === selectedSupId)?.centros.length ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {supervisors.find((s) => s.id === selectedSupId)!.centros.map((c) => (
+                        <span key={c} className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8' }}>{c}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs" style={{ color: '#94A3B8' }}>Sin centros asignados. Asigna centros desde la pestaña Centros.</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Correo para el informe</label>
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+                    <Mail size={15} style={{ color: '#94A3B8' }} />
+                    <input
+                      type="email" value={supEmail} onChange={(e) => setSupEmail(e.target.value)}
+                      placeholder="supervisor@empresa.com"
+                      className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1E293B' }}
+                    />
+                  </div>
+                  <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
+                    Por defecto se usa el correo del usuario. Puedes sobrescribirlo con otro correo si lo prefieres.
+                  </p>
+                </div>
+
+                {supMsg && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                    <Check size={14} /> {supMsg}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSaveSupEmail} disabled={savingSupEmail}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-60"
+                  style={{ backgroundColor: '#16A34A', color: '#FFFFFF' }}
+                >
+                  {savingSupEmail ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                  Guardar correo del supervisor
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="rounded-xl px-4 py-3 mt-4 text-xs" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
-        <strong>Criterios del informe:</strong> Déficit: menos de 6h. Exceso: más de 8h. Sin salida: empleado con entrada pero sin salida registrada (se cierra automáticamente a las 23:59:59). El cierre automático se ejecuta cada día a las 23:55.
+        <strong>Criterios del informe:</strong> Déficit: menos de las horas diarias del empleado (−10 min tolerancia). Exceso: más de las horas diarias (+10 min tolerancia). Sin salida: empleado con entrada pero sin salida registrada (se cierra automáticamente a las 23:59:59). No ha fichado: empleado activo con centro asignado que no registró ningún fichaje. El cierre automático se ejecuta cada día a las 23:55.
       </div>
     </>
   );

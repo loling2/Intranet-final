@@ -555,6 +555,8 @@ const getGeolocation = (): Promise<string | null> =>
 
 export default function FichajesModule() {
   const { profile } = useAuth();
+  const isSupervisor = profile?.role === 'supervisor';
+  const [supervisorEmpIds, setSupervisorEmpIds] = useState<Set<string> | null>(null);
   const [fichajes, setFichajes] = useState<Fichaje[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -573,15 +575,29 @@ export default function FichajesModule() {
   const [viewMode, setViewMode] = useState<ViewMode>('resumen');
   const [showIncidentOnly, setShowIncidentOnly] = useState(false);
 
-  // Load reference data
+  // Load reference data + supervisor's employee IDs if supervisor
   useEffect(() => {
     (async () => {
+      // If supervisor, fetch their assigned employee IDs first
+      if (isSupervisor && profile) {
+        const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: profile.id });
+        const ids = new Set(((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id));
+        setSupervisorEmpIds(ids);
+      } else {
+        setSupervisorEmpIds(null);
+      }
+
       const [{ data: empData }, { data: socData }, { data: cenData }] = await Promise.all([
         supabase.from('empleados').select('id, user_id, nombre, id_sociedad, centro_trabajo').order('nombre'),
         supabase.from('sociedades').select('id, nombre').order('nombre'),
         supabase.from('centros').select('id, nombre, id_sociedad').order('nombre'),
       ]);
-      setEmpleados((empData ?? []) as Empleado[]);
+      // If supervisor, filter empleados to only their assigned ones
+      if (isSupervisor && supervisorEmpIds) {
+        setEmpleados(((empData ?? []) as Empleado[]).filter((e) => supervisorEmpIds.has(e.id)));
+      } else {
+        setEmpleados((empData ?? []) as Empleado[]);
+      }
       setSociedades((socData ?? []) as Sociedad[]);
       setCentros((cenData ?? []) as Centro[]);
 
@@ -601,20 +617,30 @@ export default function FichajesModule() {
     })();
   }, []);
 
-  // Load fichajes
+  // Load fichajes (filtered by supervisor's employees if supervisor)
   const loadFichajes = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await supabase
-        .from('fichajes')
-        .select('*')
-        .order('timestamp', { ascending: false })
-        .limit(5000);
+      let query = supabase.from('fichajes').select('*').order('timestamp', { ascending: false }).limit(5000);
+      // If supervisor, filter by their employee IDs
+      if (isSupervisor && profile) {
+        const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: profile.id });
+        const ids = ((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id);
+        if (ids.length > 0) {
+          query = query.in('empleado_id', ids);
+        } else {
+          // No employees assigned → no fichajes
+          setFichajes([]);
+          setLoading(false);
+          return;
+        }
+      }
+      const { data } = await query;
       setFichajes((data ?? []) as Fichaje[]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isSupervisor, profile]);
 
   useEffect(() => { loadFichajes(); }, [loadFichajes]);
 

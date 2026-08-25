@@ -474,13 +474,19 @@ export default function MisFichajesView({ theme, userId }: Props) {
 
       setNombreEmpleado(resolvedNombre || emp?.nombre || '');
 
-      // Load fichajes — always filter by nombre_empleado (fichajes store the profile name, not empleado_id)
-      const { data: fichData, error: fichErr } = await supabase
+      // Load fichajes — filter by empleado_id (more reliable than nombre_empleado which can differ between user_profiles and empleados)
+      const fichajeEmpleadoId = emp?.id ?? null;
+      let fichQuery = supabase
         .from('fichajes')
         .select('*')
-        .eq('nombre_empleado', resolvedNombre)
         .order('timestamp', { ascending: false })
         .limit(2000);
+      if (fichajeEmpleadoId) {
+        fichQuery = fichQuery.eq('empleado_id', fichajeEmpleadoId);
+      } else {
+        fichQuery = fichQuery.eq('nombre_empleado', resolvedNombre);
+      }
+      const { data: fichData, error: fichErr } = await fichQuery;
       if (fichErr) throw fichErr;
       setFichajes((fichData ?? []) as Fichaje[]);
 

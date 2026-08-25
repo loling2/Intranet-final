@@ -3,6 +3,7 @@ import {
   Clock, RefreshCw, Download, Calendar, AlertTriangle, X,
   ChevronUp, ChevronDown, CheckCircle2, FileText, Send, Car,
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 import { supabase } from '../supabaseClient';
 import type { SocietyTheme } from '../themes';
 
@@ -180,17 +181,35 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
   return Array.from(map.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
 }
 
-function toLocalDatetimeInputValue(iso: string | null): string {
+function toLocalTimeInputValue(iso: string | null): string {
   if (!iso) return '';
-  const d = new Date(iso);
-  const off = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - off * 60000);
-  return local.toISOString().slice(0, 16);
+  return new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-function fromLocalDatetimeInputValue(local: string): string | null {
-  if (!local) return null;
-  return new Date(local).toISOString();
+function normalizeTimeInput(value: string): string | null {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function fromTimeInputValue(date: string, time: string): string | null {
+  const normalized = normalizeTimeInput(time);
+  if (!normalized) return null;
+  return new Date(`${date}T${normalized}:00`).toISOString();
+}
+
+function formatPdfDate(date: string): string {
+  const parts = date.split('-');
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : date;
+}
+
+function drawPdfWrappedText(doc: jsPDF, text: string, x: number, y: number, width: number, lineHeight = 4.5): number {
+  const lines = doc.splitTextToSize(text, width) as string[];
+  doc.text(lines, x, y);
+  return y + lines.length * lineHeight;
 }
 
 // ── PDF Export ────────────────────────────────────────────────────────────────
@@ -202,84 +221,144 @@ function exportPDF(
   desde: string,
   hasta: string,
 ) {
-  const w = window.open('', '_blank');
-  if (!w) return;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 16;
+  const contentWidth = pageWidth - margin * 2;
+  const generatedAt = new Date().toLocaleString('es-ES');
+  const verificationCode = `${Date.now().toString(36)}-${resumenes.length}-${correcciones.length}`.toUpperCase();
 
-  const rowsHtml = resumenes.map((r) => {
+  const drawHeader = () => {
+    doc.setFillColor(12, 74, 110);
+    doc.rect(0, 0, pageWidth, 38, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.text('Mis Fichajes', margin, 17);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text('Informe personal de asistencia', margin, 24);
+    doc.setFontSize(8);
+    doc.text(`Generado: ${generatedAt}`, pageWidth - margin, 24, { align: 'right' });
+  };
+
+  const ensureSpace = (y: number, required: number): number => {
+    if (y + required <= pageHeight - 16) return y;
+    doc.addPage();
+    drawHeader();
+    return 50;
+  };
+
+  drawHeader();
+  let y = 50;
+  doc.setFillColor(239, 246, 255);
+  doc.roundedRect(margin, y - 7, contentWidth, 25, 3, 3, 'F');
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(nombreEmpleado || 'Empleado', margin + 6, y + 1);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Periodo: ${desde ? formatPdfDate(desde) : '—'} — ${hasta ? formatPdfDate(hasta) : '—'}`, margin + 6, y + 9);
+  doc.text(`${resumenes.length} jornadas · ${formatDuration(resumenes.reduce((total, r) => total + (r.duracion_neta ?? 0), 0))} totales`, margin + 6, y + 15);
+  y += 32;
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text('Resumen diario', margin, y);
+  y += 7;
+
+  const columns = [
+    { label: 'Fecha', width: 28 }, { label: 'Entrada', width: 25 }, { label: 'Salida', width: 25 },
+    { label: 'Horas', width: 25 }, { label: 'Incidencia', width: 35 }, { label: 'Estado', width: 42 },
+  ];
+  const rowHeight = 9;
+  const drawTableHeader = () => {
+    doc.setFillColor(12, 74, 110);
+    doc.rect(margin, y, contentWidth, rowHeight, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    let x = margin + 3;
+    for (const column of columns) { doc.text(column.label, x, y + 5.8); x += column.width; }
+    y += rowHeight;
+  };
+  drawTableHeader();
+
+  resumenes.forEach((r, index) => {
+    y = ensureSpace(y, rowHeight + 2);
+    if (y === 50) drawTableHeader();
+    doc.setFillColor(index % 2 === 0 ? 248 : 241, index % 2 === 0 ? 250 : 245, index % 2 === 0 ? 252 : 249);
+    doc.rect(margin, y, contentWidth, rowHeight, 'F');
     const inc = incidentType(r.duracion_neta);
-    const incidentLabel = inc === 'excess' ? 'Exceso (>8h)' : inc === 'deficit' ? 'Déficit (<6h)' : 'Normal';
-    const incidentColor = inc === 'excess' ? '#DC2626' : inc === 'deficit' ? '#D97706' : '#16A34A';
-    return `
-      <tr>
-        <td>${r.fecha}</td>
-        <td style="color:#16A34A">${formatTime(r.entrada)}${r.entrada_corregida ? ' <span title="Original: ' + formatTime(r.entrada_original) + '" style="font-size:10px;background:#F0FDF4;color:#16A34A;border:1px solid #BBF7D0;border-radius:3px;padding:0 2px">corr.</span>' : ''}</td>
-        <td style="color:#DC2626">${formatTime(r.salida)}${r.salida_corregida ? ' <span title="Original: ' + formatTime(r.salida_original) + '" style="font-size:10px;background:#F0FDF4;color:#16A34A;border:1px solid #BBF7D0;border-radius:3px;padding:0 2px">corr.</span>' : ''}</td>
-        <td style="font-weight:bold">${formatDuration(r.duracion_neta)}</td>
-        <td style="color:#7C3AED">${r.permiso ? formatTime(r.permiso) + (r.permiso_fin ? ' → ' + formatTime(r.permiso_fin) : '') + (r.duracion_permiso != null ? ' (' + formatDuration(r.duracion_permiso) + ')' : '') : '—'}</td>
-        <td style="font-weight:bold;color:${incidentColor}">${incidentLabel}</td>
-      </tr>`;
-  }).join('');
+    const incidentLabel = inc === 'excess' ? 'Exceso' : inc === 'deficit' ? 'Déficit' : 'Normal';
+    const status = r.entrada_corregida || r.salida_corregida ? 'Corregido' : 'Registrado';
+    const values = [formatPdfDate(r.fecha), formatTime(r.entrada), formatTime(r.salida), formatDuration(r.duracion_neta), incidentLabel, status];
+    let x = margin + 3;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    values.forEach((value, valueIndex) => {
+      if (valueIndex === 1) doc.setTextColor(22, 163, 74);
+      else if (valueIndex === 2) doc.setTextColor(220, 38, 38);
+      else if (valueIndex === 4) doc.setTextColor(inc === 'excess' ? 220 : inc === 'deficit' ? 180 : 22, inc === 'excess' ? 38 : inc === 'deficit' ? 83 : 163, inc === 'excess' ? 38 : inc === 'deficit' ? 11 : 74);
+      else doc.setTextColor(51, 65, 85);
+      doc.text(value, x, y + 5.8);
+      x += columns[valueIndex].width;
+    });
+    y += rowHeight;
+  });
 
-  const corrHtml = correcciones.length === 0
-    ? '<p style="color:#94A3B8">Sin correcciones solicitadas en el periodo.</p>'
-    : correcciones.map((c) => {
-        const estadoColor = c.estado === 'aprobada' ? '#16A34A' : c.estado === 'rechazada' ? '#DC2626' : '#D97706';
-        const estadoLabel = c.estado.charAt(0).toUpperCase() + c.estado.slice(1);
-        return `
-          <div style="border:1px solid #E2E8F0;border-radius:8px;padding:10px;margin-bottom:8px">
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-              <strong>${c.fecha}</strong>
-              <span style="color:${estadoColor};font-weight:bold">${estadoLabel}</span>
-            </div>
-            <div style="font-size:11px;color:#475569">
-              <div>Original: ${formatTime(c.entrada_original)} → ${formatTime(c.salida_original)}</div>
-              <div>Propuesta: ${formatTime(c.entrada_propuesta)} → ${formatTime(c.salida_propuesta)}</div>
-              <div style="margin-top:4px"><em>Motivo:</em> ${c.motivo}</div>
-              ${c.respuesta_rrhh ? `<div style="margin-top:4px"><em>RRHH:</em> ${c.respuesta_rrhh}</div>` : ''}
-              ${c.validado_por_nombre ? `<div style="margin-top:4px;color:#94A3B8">Validado por: ${c.validado_por_nombre} · ${formatDateTime(c.validado_at)}</div>` : ''}
-            </div>
-          </div>`;
-      }).join('');
+  y += 12;
+  y = ensureSpace(y, 20);
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text('Solicitudes de corrección', margin, y);
+  y += 7;
 
-  // Unique verification code: hash of content + timestamp, persisted server-side via correcciones ids
-  const verificationCode = btoa(`${nombreEmpleado}|${desde}|${hasta}|${resumenes.length}|${correcciones.length}|${Date.now()}`).slice(0, 24);
+  if (correcciones.length === 0) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text('No hay correcciones solicitadas en este periodo.', margin, y + 4);
+    y += 12;
+  } else {
+    correcciones.forEach((correccion) => {
+      const reasonLines = doc.splitTextToSize(`Motivo: ${correccion.motivo}`, contentWidth - 12) as string[];
+      const cardHeight = 24 + reasonLines.length * 4.5;
+      y = ensureSpace(y, cardHeight + 3);
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(margin, y, contentWidth, cardHeight, 2, 2, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      doc.text(formatPdfDate(correccion.fecha), margin + 6, y + 7);
+      const estadoColor = correccion.estado === 'aprobada' ? [22, 163, 74] : correccion.estado === 'rechazada' ? [220, 38, 38] : [217, 119, 6];
+      doc.setTextColor(estadoColor[0], estadoColor[1], estadoColor[2]);
+      doc.text(correccion.estado.charAt(0).toUpperCase() + correccion.estado.slice(1), pageWidth - margin - 6, y + 7, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Original: ${formatTime(correccion.entrada_original)} — ${formatTime(correccion.salida_original)}`, margin + 6, y + 14);
+      doc.text(`Propuesta: ${formatTime(correccion.entrada_propuesta)} — ${formatTime(correccion.salida_propuesta)}`, margin + 6, y + 19);
+      drawPdfWrappedText(doc, `Motivo: ${correccion.motivo}`, margin + 6, y + 24, contentWidth - 12);
+      y += cardHeight + 4;
+    });
+  }
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Mis Fichajes — ${nombreEmpleado}</title>
-<style>
-  body{font-family:Arial,sans-serif;font-size:12px;padding:24px;color:#1E293B}
-  h1{font-size:20px;margin:0 0 4px}
-  h2{font-size:14px;margin:20px 0 8px;color:#0F172A}
-  p{color:#64748B;margin:0 0 4px}
-  table{width:100%;border-collapse:collapse;margin-top:8px}
-  th{background:#0F172A;color:#fff;padding:6px 8px;text-align:left;font-size:11px}
-  td{padding:5px 8px;border-bottom:1px solid #E2E8F0}
-  tr:nth-child(even){background:#F8FAFC}
-  .code{margin-top:24px;padding:10px;border:1px dashed #94A3B8;border-radius:8px;background:#F8FAFC;font-family:monospace;font-size:11px;color:#475569}
-  @media print{body{padding:0}}
-</style></head><body>
-<h1>Mis Fichajes</h1>
-<p><strong>Empleado:</strong> ${nombreEmpleado}</p>
-<p><strong>Periodo:</strong> ${desde || '—'} a ${hasta || '—'}</p>
-<p><strong>Generado:</strong> ${new Date().toLocaleString('es-ES')}</p>
-<h2>Resumen diario</h2>
-<table>
-<thead><tr>
-  <th>Fecha</th><th>Entrada</th><th>Salida</th><th>Horas Totales</th><th>Permiso</th><th>Incidencia</th>
-</tr></thead>
-<tbody>${rowsHtml}</tbody>
-</table>
-<h2>Correcciones solicitadas</h2>
-${corrHtml}
-<div class="code">
-  Código de verificación: <strong>${verificationCode}</strong><br/>
-  Conserve este código para validar la autenticidad del informe.
-</div>
-</body></html>`;
-
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  setTimeout(() => { w.print(); }, 400);
+  y = ensureSpace(y, 18);
+  doc.setDrawColor(203, 213, 225);
+  doc.line(margin, y, pageWidth - margin, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Código de informe: ${verificationCode}`, margin, y + 6);
+  doc.text('Documento generado desde el Portal del Empleado', pageWidth - margin, y + 6, { align: 'right' });
+  doc.save(`mis-fichajes-${desde || 'periodo'}-${hasta || 'actual'}.pdf`);
 }
 
 // ── Correction Modal ──────────────────────────────────────────────────────────
@@ -292,8 +371,8 @@ interface CorrectionModalProps {
 }
 
 function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: CorrectionModalProps) {
-  const [entradaProp, setEntradaProp] = useState(toLocalDatetimeInputValue(jornada.entrada));
-  const [salidaProp, setSalidaProp] = useState(toLocalDatetimeInputValue(jornada.salida));
+  const [entradaProp, setEntradaProp] = useState(toLocalTimeInputValue(jornada.entrada));
+  const [salidaProp, setSalidaProp] = useState(toLocalTimeInputValue(jornada.salida));
   const [motivo, setMotivo] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -302,6 +381,12 @@ function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: Correcti
     setError('');
     if (!motivo.trim()) { setError('Debes explicar el motivo de la corrección.'); return; }
     if (!entradaProp && !salidaProp) { setError('Debes proponer al menos una hora corregida.'); return; }
+    const entradaNormalizada = entradaProp ? normalizeTimeInput(entradaProp) : '';
+    const salidaNormalizada = salidaProp ? normalizeTimeInput(salidaProp) : '';
+    if ((entradaProp && !entradaNormalizada) || (salidaProp && !salidaNormalizada)) {
+      setError('Escribe las horas con el formato HH:MM, por ejemplo 07:30.');
+      return;
+    }
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -315,8 +400,8 @@ function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: Correcti
         fecha: jornada.fecha,
         entrada_original: jornada.entrada,
         salida_original: jornada.salida,
-        entrada_propuesta: fromLocalDatetimeInputValue(entradaProp),
-        salida_propuesta: fromLocalDatetimeInputValue(salidaProp),
+        entrada_propuesta: entradaNormalizada ? fromTimeInputValue(jornada.fecha, entradaNormalizada) : null,
+        salida_propuesta: salidaNormalizada ? fromTimeInputValue(jornada.fecha, salidaNormalizada) : null,
         motivo: motivo.trim(),
         estado: 'pendiente',
       });
@@ -365,26 +450,42 @@ function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: Correcti
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
               Nueva entrada
             </label>
-            <input
-              type="datetime-local"
-              value={entradaProp}
-              onChange={(e) => setEntradaProp(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-              style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
-            />
+            <div className="relative">
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={5}
+                value={entradaProp}
+                onChange={(e) => setEntradaProp(e.target.value.replace(/[^0-9:]/g, '').slice(0, 5))}
+                onBlur={() => { const normalized = normalizeTimeInput(entradaProp); if (normalized) setEntradaProp(normalized); }}
+                placeholder="HH:MM"
+                aria-label="Nueva hora de entrada"
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono tracking-wider"
+                style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+              />
+              <span className="absolute right-3 top-2.5 text-xs" style={{ color: '#94A3B8' }}>HH:MM</span>
+            </div>
           </div>
 
           <div>
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
               Nueva salida
             </label>
-            <input
-              type="datetime-local"
-              value={salidaProp}
-              onChange={(e) => setSalidaProp(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-              style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
-            />
+            <div className="relative">
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={5}
+                value={salidaProp}
+                onChange={(e) => setSalidaProp(e.target.value.replace(/[^0-9:]/g, '').slice(0, 5))}
+                onBlur={() => { const normalized = normalizeTimeInput(salidaProp); if (normalized) setSalidaProp(normalized); }}
+                placeholder="HH:MM"
+                aria-label="Nueva hora de salida"
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono tracking-wider"
+                style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+              />
+              <span className="absolute right-3 top-2.5 text-xs" style={{ color: '#94A3B8' }}>HH:MM</span>
+            </div>
           </div>
 
           <div>
@@ -400,7 +501,7 @@ function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: Correcti
               style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
             />
             <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
-              La petición se enviará a RRHH para validación.
+              Escribe la hora directamente en formato HH:MM. La petición se enviará a RRHH para validación.
             </p>
           </div>
 

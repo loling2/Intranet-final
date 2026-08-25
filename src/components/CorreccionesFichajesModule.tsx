@@ -3,6 +3,7 @@ import {
   AlertTriangle, RefreshCw, Check, X, FileText,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { useAuth } from '../context/AuthContext';
 
 interface Correccion {
   id: string;
@@ -35,6 +36,8 @@ function formatDateTime(iso: string | null) {
 }
 
 export default function CorreccionesFichajesModule() {
+  const { profile } = useAuth();
+  const isSupervisor = profile?.role === 'supervisor';
   const [correcciones, setCorrecciones] = useState<Correccion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -47,10 +50,25 @@ export default function CorreccionesFichajesModule() {
     setLoading(true);
     setError('');
     try {
-      const { data, error: dbErr } = await supabase
+      let query = supabase
         .from('fichajes_correcciones')
         .select('*')
         .order('created_at', { ascending: false });
+
+      // If supervisor, filter to only their employees' corrections
+      if (isSupervisor && profile) {
+        const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: profile.id });
+        const ids = ((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id);
+        if (ids.length > 0) {
+          query = query.in('empleado_id', ids);
+        } else {
+          setCorrecciones([]);
+          setLoading(false);
+          return;
+        }
+      }
+
+      const { data, error: dbErr } = await query;
       if (dbErr) throw dbErr;
       setCorrecciones((data ?? []) as Correccion[]);
     } catch (e: unknown) {
@@ -58,7 +76,7 @@ export default function CorreccionesFichajesModule() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isSupervisor, profile]);
 
   useEffect(() => { load(); }, [load]);
 

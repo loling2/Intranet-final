@@ -47,6 +47,92 @@ Deno.serve(async (req: Request) => {
       .eq("id", callerUser.id)
       .maybeSingle();
 
+    const body = (await req.json()) as {
+      plantilla_id?: string;
+      cuenta_id?: string;
+      to_email?: string;
+      variables?: Record<string, string>;
+      html_override?: string;
+      subject_override?: string;
+      type?: string;
+      empleado_id?: string;
+      nombre_empleado?: string;
+      fecha?: string;
+      motivo?: string;
+    };
+
+    // ── Type: correccion_solicitada ──────────────────────────────────────────
+    // Any authenticated employee can trigger this. It notifies the assigned
+    // supervisor (or RRHH fallback) that a correction request was submitted.
+    if (body.type === "correccion_solicitada") {
+      // Find the supervisor email for this employee
+      let supervisorEmail: string | null = null;
+      if (body.empleado_id) {
+        const { data: supEmail } = await supabaseAdmin
+          .rpc("get_empleado_supervisor_email", { p_empleado_id: body.empleado_id });
+        supervisorEmail = supEmail as string | null;
+      }
+
+      // If no supervisor, find the default RRHH notification email
+      let recipient = supervisorEmail;
+      if (!recipient) {
+        const { data: rrhhUser } = await supabaseAdmin
+          .from("user_profiles")
+          .select("email")
+          .eq("role", "rrhh")
+          .eq("activo", true)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        recipient = rrhhUser?.email ?? null;
+      }
+
+      if (!recipient) {
+        return json({ ok: true, message: "No supervisor or RRHH to notify" });
+      }
+
+      // Fetch the first active SMTP account
+      const { data: cuenta } = await supabaseAdmin
+        .from("email_cuentas")
+        .select("*")
+        .eq("activo", true)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (!cuenta) {
+        return json({ ok: true, message: "No SMTP account configured" });
+      }
+
+      const subject = `📋 Nueva petición de corrección de fichaje — ${body.nombre_empleado ?? "Empleado"} — ${body.fecha ?? ""}`;
+      const htmlBody = buildCorreccionHtml(
+        body.nombre_empleado ?? "",
+        body.fecha ?? "",
+        body.motivo ?? "",
+        supervisorEmail ? "supervisor" : "RRHH",
+      );
+
+      const smtpResp = await sendSmtp({
+        host: cuenta.smtp_host,
+        port: cuenta.smtp_port,
+        security: cuenta.seguridad,
+        user: cuenta.email,
+        password: cuenta.password,
+        from: cuenta.email,
+        to: recipient,
+        subject,
+        text: `El empleado ${body.nombre_empleado ?? ""} ha solicitado una corrección de fichaje para el día ${body.fecha ?? ""}. Motivo: ${body.motivo ?? ""}`,
+        html: htmlBody,
+      });
+
+      if (!smtpResp.ok) {
+        return json({ error: smtpResp.error ?? "Error al enviar el correo" }, 500);
+      }
+
+      return json({ ok: true, message: `Notificación enviada a ${recipient}` });
+    }
+
+    // ── Default flow: admin/rrhh only ─────────────────────────────────────────
     if (!callerProfile || !["admin", "rrhh"].includes(callerProfile.role)) {
       return json({ error: "Acceso denegado" }, 403);
     }
@@ -58,14 +144,7 @@ Deno.serve(async (req: Request) => {
       variables,
       html_override,
       subject_override,
-    } = (await req.json()) as {
-      plantilla_id: string;
-      cuenta_id: string;
-      to_email: string;
-      variables: Record<string, string>;
-      html_override?: string;
-      subject_override?: string;
-    };
+    } = body;
 
     if (!cuenta_id || !to_email) {
       return json({ error: "Faltan parametros requeridos" }, 400);
@@ -117,6 +196,44 @@ Deno.serve(async (req: Request) => {
     return json({ error: e instanceof Error ? e.message : "Error interno" }, 500);
   }
 });
+
+// ─── Correction notification HTML ─────────────────────────────────────────────
+
+function buildCorreccionHtml(
+  nombreEmpleado: string,
+  fecha: string,
+  motivo: string,
+  destinatarioTipo: string,
+): string {
+  const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F1F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:32px 0;"><tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:560px;">
+  <tr><td style="background:linear-gradient(135deg,#D97706,#F59E0B);padding:28px 36px;text-align:center;">
+    <div style="font-size:22px;font-weight:800;color:#FFFFFF;">📋 Nueva petición de corrección</div>
+    <div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:6px;">${escapeHtml(destinatarioTipo === "supervisor" ? "Revisa la petición como supervisor asignado" : "Revisa la petición como RRHH")}</div>
+  </td></tr>
+  <tr><td style="padding:28px 36px;">
+    <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;padding:20px;margin-bottom:20px;">
+      <div style="font-size:11px;font-weight:700;color:#D97706;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">Datos del empleado</div>
+      <div style="font-size:15px;font-weight:700;color:#0F172A;margin-bottom:4px;">${escapeHtml(nombreEmpleado)}</div>
+      <div style="font-size:13px;color:#64748B;">Fecha del fichaje: <strong>${escapeHtml(fecha)}</strong></div>
+    </div>
+    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:20px;">
+      <div style="font-size:11px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">Motivo de la corrección</div>
+      <div style="font-size:14px;color:#1E293B;line-height:1.6;">${escapeHtml(motivo)}</div>
+    </div>
+    <p style="margin:20px 0 0;font-size:13px;color:#94A3B8;line-height:1.5;">Puedes aprobar o rechazar esta petición desde el panel de RRHH/Supervisor, en la pestaña Fichajes.</p>
+  </td></tr>
+  <tr><td style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:16px 36px;text-align:center;">
+    <div style="font-size:11px;color:#94A3B8;">Notificación automática · ${new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+}
 
 // ─── Minimal SMTP client using Deno TCP ───────────────────────────────────────
 

@@ -406,6 +406,29 @@ function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: Correcti
         estado: 'pendiente',
       });
       if (insErr) throw insErr;
+
+      // Notify the assigned supervisor (or RRHH fallback) via edge function
+      try {
+        const session = (await supabase.auth.getSession()).data.session;
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            type: 'correccion_solicitada',
+            empleado_id: jornada.empleado_id,
+            nombre_empleado: nombreEmpleado,
+            fecha: jornada.fecha,
+            motivo: motivo.trim(),
+          }),
+        });
+      } catch {
+        // Notification is best-effort; don't block the user
+      }
+
       onSaved();
       onClose();
     } catch (e: unknown) {

@@ -137,7 +137,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
   ];
 
-  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'devices', 'vacations', 'certificates', 'exams', 'supervisor-empleados', 'ayuda'];
+  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'devices', 'vacations', 'certificates', 'exams', 'fichajes', 'supervisor-empleados', 'ayuda'];
 
   const tabs = enabledTabIds !== null
     ? allTabs.filter(t => t.id === 'ayuda' || enabledTabIds.has(t.id))

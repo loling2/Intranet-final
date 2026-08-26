@@ -1206,6 +1206,7 @@ interface SupervisorInfo {
   nombre: string;
   email: string;
   centros: string[];
+  reportEmail: string;
 }
 
 function IncidenciasSection() {
@@ -1221,6 +1222,9 @@ function IncidenciasSection() {
   const [supervisors, setSupervisors] = useState<SupervisorInfo[]>([]);
   const [supMsg, setSupMsg] = useState('');
   const [testingSupId, setTestingSupId] = useState('');
+  const [editingSupId, setEditingSupId] = useState('');
+  const [supEditValues, setSupEditValues] = useState<Record<string, string>>({});
+  const [savingSupId, setSavingSupId] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -1244,9 +1248,24 @@ function IncidenciasSection() {
         if (!centrosMap.has(sc.supervisor_id)) centrosMap.set(sc.supervisor_id, []);
         if (sc.centros?.nombre) centrosMap.get(sc.supervisor_id)!.push(sc.centros.nombre);
       }
+
+      // Load custom report emails for each supervisor
+      const supIds = (supData ?? []).map((s: { id: string }) => s.id);
+      const reportEmailMap = new Map<string, string>();
+      if (supIds.length > 0) {
+        const { data: supEmailSettings } = await supabase
+          .from('ui_settings').select('key, value')
+          .in('key', supIds.map((id: string) => `incidence_report_sup_email_${id}`));
+        for (const row of (supEmailSettings ?? []) as { key: string; value: string }[]) {
+          const supId = row.key.replace('incidence_report_sup_email_', '');
+          reportEmailMap.set(supId, row.value);
+        }
+      }
+
       const supList: SupervisorInfo[] = (supData ?? []).map((s: { id: string; nombre: string; email: string }) => ({
         id: s.id, nombre: s.nombre, email: s.email,
         centros: centrosMap.get(s.id) ?? [],
+        reportEmail: reportEmailMap.get(s.id) ?? '',
       }));
       setSupervisors(supList);
       setLoading(false);
@@ -1291,6 +1310,27 @@ function IncidenciasSection() {
       setSupMsg(`Error de conexión: ${m}`);
     } finally {
       setTestingSupId('');
+    }
+  };
+
+  const handleSaveSupEmail = async (supervisorId: string) => {
+    const val = (supEditValues[supervisorId] ?? '').trim();
+    setSavingSupId(supervisorId);
+    try {
+      const key = `incidence_report_sup_email_${supervisorId}`;
+      if (val) {
+        await supabase.from('ui_settings').upsert({ key, value: val }, { onConflict: 'key' });
+      } else {
+        await supabase.from('ui_settings').delete().eq('key', key);
+      }
+      setSupervisors((prev) => prev.map((s) => s.id === supervisorId ? { ...s, reportEmail: val } : s));
+      setEditingSupId('');
+      setSupMsg('Correo de informe guardado.');
+      setTimeout(() => setSupMsg(''), 4000);
+    } catch {
+      setSupMsg('Error al guardar el correo del supervisor.');
+    } finally {
+      setSavingSupId('');
     }
   };
 
@@ -1467,9 +1507,9 @@ function IncidenciasSection() {
               <thead>
                 <tr style={{ borderBottom: '2px solid #E2E8F0' }}>
                   <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Supervisor</th>
-                  <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Correo</th>
+                  <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Correo de informe</th>
                   <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Centros</th>
-                  <th className="text-right py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Enviar</th>
+                  <th className="text-right py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -1483,7 +1523,61 @@ function IncidenciasSection() {
                         <span className="font-medium" style={{ color: '#0F172A' }}>{s.nombre}</span>
                       </div>
                     </td>
-                    <td className="py-3 px-3" style={{ color: '#64748B' }}>{s.email || '—'}</td>
+                    <td className="py-3 px-3">
+                      {editingSupId === s.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="email"
+                            value={supEditValues[s.id] ?? ''}
+                            onChange={(e) => setSupEditValues((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                            placeholder={s.email || 'correo@ejemplo.com'}
+                            className="flex-1 min-w-[180px] px-2.5 py-1.5 rounded-lg text-sm outline-none"
+                            style={{ border: '1.5px solid #BAE6FD', backgroundColor: '#F0F9FF', color: '#1E293B' }}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleSaveSupEmail(s.id)}
+                            disabled={savingSupId === s.id}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: '#059669', color: '#FFFFFF' }}
+                            title="Guardar"
+                          >
+                            {savingSupId === s.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                          </button>
+                          <button
+                            onClick={() => { setEditingSupId(''); setSupEditValues((prev) => { const n = { ...prev }; delete n[s.id]; return n; }); }}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}
+                            title="Cancelar"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <span style={{ color: s.reportEmail ? '#15803D' : '#94A3B8' }}>
+                            {s.reportEmail || s.email || '—'}
+                          </span>
+                          {s.reportEmail && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                              personalizado
+                            </span>
+                          )}
+                          <button
+                            onClick={() => { setEditingSupId(s.id); setSupEditValues((prev) => ({ ...prev, [s.id]: s.reportEmail })); }}
+                            className="w-6 h-6 rounded-md flex items-center justify-center opacity-60 hover:opacity-100"
+                            title="Editar correo de informe"
+                          >
+                            <Pencil size={12} style={{ color: '#0369A1' }} />
+                          </button>
+                        </div>
+                      )}
+                      {!s.reportEmail && editingSupId !== s.id && (
+                        <p className="text-xs mt-0.5" style={{ color: '#CBD5E1' }}>
+                          Usa el correo del perfil. Edítalo para asignar uno exclusivo.
+                        </p>
+                      )}
+                    </td>
                     <td className="py-3 px-3">
                       {s.centros.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
@@ -1516,6 +1610,20 @@ function IncidenciasSection() {
 
       <div className="rounded-xl px-4 py-3 mt-4 text-xs" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
         <strong>Criterios del informe:</strong> Déficit: menos de las horas diarias del empleado (−10 min tolerancia). Exceso: más de las horas diarias (+10 min tolerancia). Sin salida: empleado con entrada pero sin salida registrada (se cierra automáticamente a las 23:59:59). No ha fichado: empleado activo con centro asignado que no registró ningún fichaje. El cierre automático se ejecuta cada día a las 23:55.
+      </div>
+
+      {supMsg && (
+        <div className="mt-3 flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm" style={{
+          backgroundColor: '#F0FDF4',
+          color: '#15803D',
+          border: '1px solid #BBF7D0',
+        }}>
+          <Check size={14} /> {supMsg}
+        </div>
+      )}
+
+      <div className="rounded-xl px-4 py-3 mt-3 text-xs" style={{ backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD', color: '#0369A1' }}>
+        <strong>Correo de informe por supervisor:</strong> El correo que edites aquí se usa únicamente para enviar el informe diario de incidencias. No modifica el correo de la ficha del usuario. Si lo dejas en blanco, se usará el correo del perfil del supervisor.
       </div>
     </>
   );

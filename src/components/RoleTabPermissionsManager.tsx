@@ -57,6 +57,7 @@ const BUILT_IN_ROLES: RoleDef[] = [
   { id: 'rrhh_gerontalia',           label: 'RRHH Gerontalia',           color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE', isBuiltIn: true },
   { id: 'administrador_gerontalia', label: 'Admin Gerontalia',          color: '#B91C1C', bg: '#FEF2F2', border: '#FECACA', isBuiltIn: true },
   { id: 'supervisor_gerontalia',     label: 'Supervisor Gerontalia',     color: '#6D28D9', bg: '#F5F3FF', border: '#DDD6FE', isBuiltIn: true },
+  { id: 'prevencion_gerontalia',     label: 'Prevencion Gerontalia',     color: '#B45309', bg: '#FFFBEB', border: '#FDE68A', isBuiltIn: true },
 ];
 
 const CUSTOM_PALETTE = [

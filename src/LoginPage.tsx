@@ -1190,7 +1190,7 @@ export default function LoginPage() {
         initialView = 'admin';
       } else if (resolvedRole === 'rrhh' || resolvedRole === 'rrhh_gerontalia') {
         initialView = 'rrhh';
-      } else if (resolvedRole === 'prevencion') {
+      } else if (resolvedRole === 'prevencion' || resolvedRole === 'prevencion_gerontalia') {
         initialView = 'prevencion';
       } else if (resolvedRole === 'supervisor' || resolvedRole === 'supervisor_gerontalia') {
         initialView = 'supervisor';
@@ -1205,7 +1205,7 @@ export default function LoginPage() {
       }
 
       // For Gerontalia-scoped roles, lock the society to Gerontalia
-      if (resolvedRole === 'rrhh_gerontalia' || resolvedRole === 'administrador_gerontalia' || resolvedRole === 'supervisor_gerontalia') {
+      if (resolvedRole === 'rrhh_gerontalia' || resolvedRole === 'administrador_gerontalia' || resolvedRole === 'supervisor_gerontalia' || resolvedRole === 'prevencion_gerontalia') {
         resolvedSocietyId = GERONTALIA_ID;
       }
 
@@ -1272,7 +1272,7 @@ export default function LoginPage() {
   // Route to the right panel
   if (session) {
     const GERONTALIA_ID = '6632d8d1-c4e7-4540-aab7-515b9d7913f7';
-    const isGerontaliaScoped = session.role === 'rrhh_gerontalia' || session.role === 'administrador_gerontalia' || session.role === 'supervisor_gerontalia';
+    const isGerontaliaScoped = session.role === 'rrhh_gerontalia' || session.role === 'administrador_gerontalia' || session.role === 'supervisor_gerontalia' || session.role === 'prevencion_gerontalia';
     const lockedSocietyId = isGerontaliaScoped ? GERONTALIA_ID : undefined;
 
     if (session.view === 'admin') {
@@ -1395,6 +1395,7 @@ export default function LoginPage() {
           session.role === 'supervisor'               ? { label: 'Volver a Supervisor',     view: 'supervisor',     color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
           session.role === 'supervisor_gerontalia'    ? { label: 'Volver a Supervisor',     view: 'supervisor',     color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
           session.role === 'prevencion'               ? { label: 'Volver a Prevencion',     view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
+          session.role === 'prevencion_gerontalia'    ? { label: 'Volver a Prevencion',     view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
           session.role === 'administracion'           ? { label: 'Volver a Administracion', view: 'administracion', color: '#93C5FD', border: 'rgba(37,99,235,0.3)'   } :
           session.role === 'calidad'                  ? { label: 'Volver a Calidad',        view: 'calidad',        color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
           session.role === 'formacion'                ? { label: 'Volver a Formacion',      view: 'formacion',      color: '#5EEAD4', border: 'rgba(13,148,136,0.3)'  } :

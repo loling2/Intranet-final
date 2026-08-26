@@ -35,11 +35,12 @@ interface Props {
   isSupervisor?: boolean;
   role?: string;
   onNavigateEmployee?: () => void;
+  allowedSocietyId?: string;
 }
 
 type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'centros' | 'facturas' | 'incidencias' | 'fichajes' | 'kiosk-devices' | 'devices' | 'bajas' | 'supervisor-empleados' | 'ayuda';
 
-export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, role, onNavigateEmployee }: Props) {
+export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, role, onNavigateEmployee, allowedSocietyId }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -65,8 +66,12 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
 
   // Sync filter with active society when it changes
   useEffect(() => {
-    setFilterSociety(activeSocietyId);
-  }, [activeSocietyId]);
+    if (allowedSocietyId) {
+      setFilterSociety(allowedSocietyId);
+    } else {
+      setFilterSociety(activeSocietyId);
+    }
+  }, [activeSocietyId, allowedSocietyId]);
 
   // Load contratos pendientes + avisados count
   useEffect(() => {
@@ -78,7 +83,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
 
   // Load tab permissions from DB for the current role
   useEffect(() => {
-    const effectiveRole = isSupervisor ? 'supervisor' : (isAdmin ? 'rrhh' : (role ?? 'rrhh'));
+    const effectiveRole = role ?? (isSupervisor ? 'supervisor' : (isAdmin ? 'rrhh' : 'rrhh'));
     supabase
       .from('role_tab_permissions')
       .select('tab_id, enabled')
@@ -88,7 +93,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
         const enabled = new Set(data.filter(r => r.enabled).map(r => r.tab_id as string));
         setEnabledTabIds(enabled);
       });
-  }, [role, isSupervisor]);
+  }, [role, isSupervisor, isAdmin]);
 
   const allVacations = Object.entries(mockVacations).flatMap(([sId, v]) =>
     v.requests.map((r) => ({ ...r, societyId: sId }))
@@ -198,7 +203,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
             </div>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
-            <SocietySwitcher textColor={supervisorTheme.headerText} bgColor="rgba(255,255,255,0.08)" borderColor="rgba(255,255,255,0.1)" />
+            <SocietySwitcher textColor={supervisorTheme.headerText} bgColor="rgba(255,255,255,0.08)" borderColor="rgba(255,255,255,0.1)" allowedSocieties={allowedSocietyId ? [allowedSocietyId] : undefined} />
             {/* Kiosk mode button */}
             <button
               onClick={() => { window.location.hash = 'kiosco'; }}

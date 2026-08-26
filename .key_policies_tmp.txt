@@ -1,0 +1,429 @@
+=== app_roles (rls=True) ===
+  SELECT Authenticated users can read roles TO ['authenticated']
+    USING: true
+
+=== bajas_temporales (rls=True) ===
+  DELETE delete_bajas_temporales TO ['authenticated']
+    USING: (is_admin_or_supervisor() OR is_prevencion())
+  INSERT insert_bajas_temporales TO ['authenticated']
+    WITH: (is_admin_or_supervisor() OR is_prevencion())
+  SELECT select_bajas_temporales TO ['authenticated']
+    USING: (is_admin_or_supervisor() OR is_prevencion())
+  UPDATE update_bajas_temporales TO ['authenticated']
+    USING: (is_admin_or_supervisor() OR is_prevencion())
+    WITH: (is_admin_or_supervisor() OR is_prevencion())
+
+=== centros (rls=True) ===
+  DELETE Admin can delete centros TO ['authenticated']
+    USING: is_admin()
+  INSERT Admin or RRHH can insert centros TO ['authenticated']
+    WITH: is_admin_or_rrhh()
+  UPDATE Admin or RRHH can update centros TO ['authenticated']
+    USING: is_admin_or_rrhh()
+    WITH: is_admin_or_rrhh()
+  SELECT Admin or RRHH can view all centros TO ['authenticated']
+    USING: is_admin_or_rrhh()
+  SELECT Employee can view assigned centros TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM (asignaciones a
+     JOIN empleados e ON ((e.id = a.id_empleado)))
+  WHERE ((e.user_id = auth.uid()) AND (a.id_centro = centros.id))))
+  SELECT Prevencion can view all centros TO ['authenticated']
+    USING: is_prevencion()
+
+=== custom_profiles (rls=True) ===
+  DELETE admin_delete_custom_profiles TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'admin'::text))))
+  INSERT admin_insert_custom_profiles TO ['authenticated']
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'admin'::text))))
+  UPDATE admin_update_custom_profiles TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'admin'::text))))
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'admin'::text))))
+  SELECT select_custom_profiles TO ['authenticated']
+    USING: is_admin_or_rrhh()
+
+=== departamentos (rls=True) ===
+  DELETE Admin and rrhh can delete departamentos TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  INSERT Admin and rrhh can insert departamentos TO ['authenticated']
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  UPDATE Admin and rrhh can update departamentos TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  SELECT Authenticated users can view departamentos TO ['authenticated']
+    USING: true
+
+=== dispositivos (rls=True) ===
+  DELETE Admin can delete dispositivos TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  INSERT Admin can insert dispositivos TO ['authenticated']
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  SELECT Admin can select dispositivos TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  UPDATE Admin can update dispositivos TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  SELECT Employees can select own dispositivos TO ['authenticated']
+    USING: (empleado_id IN ( SELECT empleados.id
+   FROM empleados
+  WHERE (empleados.user_id = auth.uid())))
+  SELECT Supervisor can select dispositivos TO ['authenticated']
+    USING: ((EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'supervisor'::text)))) AND (estado_id <> 3))
+
+=== documents (rls=True) ===
+  DELETE delete_documents TO ['authenticated']
+    USING: is_staff()
+  INSERT insert_documents TO ['authenticated']
+    WITH: is_staff()
+  SELECT select_documents TO ['anon', 'authenticated']
+    USING: true
+
+=== empleados (rls=True) ===
+  DELETE Admin can delete empleados TO ['authenticated']
+    USING: is_admin()
+  INSERT Admin or RRHH can insert empleados TO ['authenticated']
+    WITH: is_admin_or_rrhh()
+  UPDATE Admin or RRHH can update empleados TO ['authenticated']
+    USING: is_admin_or_rrhh()
+    WITH: is_admin_or_rrhh()
+  SELECT Admin or RRHH can view all empleados TO ['authenticated']
+    USING: is_admin_or_rrhh()
+  SELECT Employee can view own empleado record TO ['authenticated']
+    USING: (user_id = auth.uid())
+  SELECT Formacion can view all empleados TO ['authenticated']
+    USING: (get_my_role() = 'formacion'::text)
+  UPDATE Prevencion can update vitaly fields on empleados TO ['authenticated']
+    USING: (is_prevencion() OR is_admin_or_rrhh())
+    WITH: (is_prevencion() OR is_admin_or_rrhh())
+  SELECT Prevencion can view all empleados TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'prevencion'::text) AND (user_profiles.activo = true))))
+  SELECT Prevencion can view all employees TO ['authenticated']
+    USING: (is_prevencion() OR is_admin_or_rrhh())
+
+=== employee_documents (rls=True) ===
+  SELECT Employees view own public docs TO ['authenticated']
+    USING: ((employee_id = auth.uid()) AND (folder = 'publica'::text))
+  DELETE Prevencion delete employee prevention docs TO ['authenticated']
+    USING: ((folder = 'prevencion'::text) AND (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'prevencion'::text)))))
+  INSERT Prevencion insert employee prevention docs TO ['authenticated']
+    WITH: ((folder = 'prevencion'::text) AND (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'prevencion'::text)))))
+  UPDATE Prevencion update employee prevention docs TO ['authenticated']
+    USING: ((folder = 'prevencion'::text) AND (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'prevencion'::text)))))
+    WITH: ((folder = 'prevencion'::text) AND (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'prevencion'::text)))))
+  SELECT Prevencion view employee prevention docs TO ['authenticated']
+    USING: ((folder = 'prevencion'::text) AND (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'prevencion'::text)))))
+  DELETE Staff delete employee docs TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text, 'prevencion'::text, 'supervisor'::text, 'encargado'::text, 'administracion'::text])))))
+  INSERT Staff insert employee docs TO ['authenticated']
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text, 'prevencion'::text, 'supervisor'::text, 'encargado'::text, 'administracion'::text])))))
+  UPDATE Staff update employee docs TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text, 'prevencion'::text, 'supervisor'::text, 'encargado'::text, 'administracion'::text])))))
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text, 'prevencion'::text, 'supervisor'::text, 'encargado'::text, 'administracion'::text])))))
+  SELECT Staff view all employee docs TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text, 'prevencion'::text, 'supervisor'::text, 'encargado'::text, 'administracion'::text])))))
+
+=== fichajes (rls=True) ===
+  SELECT admin_rrhh_select_fichajes TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'auditor'::text, 'rrhh'::text, 'supervisor'::text])))))
+  UPDATE admin_rrhh_update_fichajes TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  SELECT auditor_select_fichajes TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'auditor'::text])))))
+  SELECT employee_select_own_fichajes TO ['authenticated']
+    USING: (empleado_id = ( SELECT empleados.id
+   FROM empleados
+  WHERE (empleados.user_id = auth.uid())
+ LIMIT 1))
+  INSERT insert_fichajes_anon_only TO ['anon']
+    WITH: true
+
+=== incidencias (rls=True) ===
+  INSERT Authenticated users can create incidencias TO ['authenticated']
+    WITH: (auth.uid() = creado_por_id)
+  UPDATE Department member or admin can update incidencias TO ['authenticated']
+    USING: ((EXISTS ( SELECT 1
+   FROM departamento_miembros dm
+  WHERE ((dm.departamento_id = incidencias.departamento_id) AND (dm.user_id = auth.uid())))) OR (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text]))))))
+    WITH: ((EXISTS ( SELECT 1
+   FROM departamento_miembros dm
+  WHERE ((dm.departamento_id = incidencias.departamento_id) AND (dm.user_id = auth.uid())))) OR (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text]))))))
+  SELECT Incidencia participants can select TO ['authenticated']
+    USING: ((auth.uid() = creado_por_id) OR (EXISTS ( SELECT 1
+   FROM departamento_miembros dm
+  WHERE ((dm.departamento_id = incidencias.departamento_id) AND (dm.user_id = auth.uid())))) OR (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text, 'supervisor'::text]))))))
+  INSERT Vehicle quick incidents TO ['anon', 'authenticated']
+    WITH: (departamento_nombre = 'Vehiculos'::text)
+
+=== kiosk_devices (rls=True) ===
+  DELETE kiosk_devices_delete TO ['authenticated']
+    USING: true
+  INSERT kiosk_devices_insert TO ['authenticated']
+    WITH: true
+  SELECT kiosk_devices_select TO ['anon', 'authenticated']
+    USING: true
+  UPDATE kiosk_devices_update TO ['authenticated']
+    USING: true
+    WITH: true
+
+=== nominas (rls=True) ===
+  DELETE admin and rrhh can delete nominas TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  INSERT admin and rrhh can insert nominas TO ['authenticated']
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  SELECT admin and rrhh can select nominas TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  UPDATE admin and rrhh can update nominas TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  SELECT employees can select own nominas by dni TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles up
+  WHERE ((up.id = auth.uid()) AND (up.role = 'employee'::text) AND (upper(replace(replace(up.dni, '-'::text, ''::text), ' '::text, ''::text)) = upper(replace(replace(nominas.dni, '-'::text, ''::text), ' '::text, ''::text))))))
+  SELECT own role can select own nominas by dni TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles up
+  WHERE ((up.id = auth.uid()) AND (up.role <> ALL (ARRAY['admin'::text, 'rrhh'::text])) AND (upper(replace(replace(up.dni, '-'::text, ''::text), ' '::text, ''::text)) = upper(replace(replace(nominas.dni, '-'::text, ''::text), ' '::text, ''::text))))))
+
+=== prl_documents (rls=True) ===
+  DELETE prevencion and admin can delete prl_documents TO ['authenticated']
+    USING: (is_admin_or_rrhh() OR is_prevencion())
+  INSERT prevencion and admin can insert prl_documents TO ['authenticated']
+    WITH: (is_admin_or_rrhh() OR is_prevencion())
+  SELECT prevencion and admin can select prl_documents TO ['authenticated']
+    USING: (is_admin_or_rrhh() OR is_prevencion())
+  UPDATE prevencion and admin can update prl_documents TO ['authenticated']
+    USING: (is_admin_or_rrhh() OR is_prevencion())
+    WITH: (is_admin_or_rrhh() OR is_prevencion())
+  SELECT prl_documents select own tags TO ['authenticated']
+    USING: ((EXISTS ( SELECT 1
+   FROM user_profiles up
+  WHERE ((up.id = auth.uid()) AND (up.role = ANY (ARRAY['admin'::text, 'rrhh'::text, 'prevencion'::text]))))) OR ((EXISTS ( SELECT 1
+   FROM ((prl_folder_tags pft
+     JOIN etiquetado et ON ((et.tag_id = pft.tag_id)))
+     JOIN empleados emp ON (((emp.id = et.entidad_id) AND (emp.user_id = auth.uid()))))
+  WHERE (pft.folder_id = prl_documents.folder_id))) OR (EXISTS ( SELECT 1
+   FROM ((prl_folder_departamentos pfd
+     JOIN empleados_departamentos_prl edp ON ((edp.departamento_prl_id = pfd.departamento_prl_id)))
+     JOIN empleados emp ON (((emp.id = edp.empleado_id) AND (emp.user_id = auth.uid()))))
+  WHERE (pfd.folder_id = prl_documents.folder_id)))))
+
+=== role_tab_permissions (rls=True) ===
+  DELETE admin_delete_role_tab_permissions TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'admin'::text))))
+  INSERT admin_insert_role_tab_permissions TO ['authenticated']
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'admin'::text))))
+  UPDATE admin_update_role_tab_permissions TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'admin'::text))))
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = 'admin'::text))))
+  SELECT authenticated_select_role_tab_permissions TO ['authenticated']
+    USING: true
+
+=== sociedades (rls=True) ===
+  DELETE Admin can delete sociedades TO ['authenticated']
+    USING: is_admin()
+  INSERT Admin or RRHH can insert sociedades TO ['authenticated']
+    WITH: is_admin_or_rrhh()
+  UPDATE Admin or RRHH can update sociedades TO ['authenticated']
+    USING: is_admin_or_rrhh()
+    WITH: is_admin_or_rrhh()
+  SELECT Any authenticated can view sociedades TO ['authenticated']
+    USING: true
+
+=== supervisor_asignaciones (rls=True) ===
+  DELETE delete_supervisor_asignaciones TO ['authenticated']
+    USING: is_admin_or_rrhh()
+  INSERT insert_supervisor_asignaciones TO ['authenticated']
+    WITH: is_admin_or_rrhh()
+  SELECT select_supervisor_asignaciones TO ['authenticated']
+    USING: (is_admin_or_rrhh() OR (supervisor_id = auth.uid()))
+  UPDATE update_supervisor_asignaciones TO ['authenticated']
+    USING: is_admin_or_rrhh()
+    WITH: is_admin_or_rrhh()
+
+=== sustituciones (rls=True) ===
+  DELETE delete_sustituciones TO ['authenticated']
+    USING: (is_admin_or_supervisor() OR is_prevencion())
+  INSERT insert_sustituciones TO ['authenticated']
+    WITH: (is_admin_or_supervisor() OR is_prevencion())
+  SELECT select_sustituciones TO ['authenticated']
+    USING: (is_admin_or_supervisor() OR is_prevencion())
+  UPDATE update_sustituciones TO ['authenticated']
+    USING: (is_admin_or_supervisor() OR is_prevencion())
+    WITH: (is_admin_or_supervisor() OR is_prevencion())
+
+=== tab_last_seen (rls=True) ===
+  DELETE delete_own_tab_last_seen TO ['authenticated']
+    USING: (auth.uid() = user_id)
+  INSERT insert_own_tab_last_seen TO ['authenticated']
+    WITH: (auth.uid() = user_id)
+  SELECT select_own_tab_last_seen TO ['authenticated']
+    USING: (auth.uid() = user_id)
+  UPDATE update_own_tab_last_seen TO ['authenticated']
+    USING: (auth.uid() = user_id)
+    WITH: (auth.uid() = user_id)
+
+=== tags (rls=True) ===
+  DELETE Admin RRHH Prevencion can delete tags TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text, 'prevencion'::text])) AND (user_profiles.activo = true))))
+  INSERT Admin RRHH Prevencion can insert tags TO ['authenticated']
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text, 'prevencion'::text])) AND (user_profiles.activo = true))))
+  UPDATE Admin RRHH Prevencion can update tags TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text, 'prevencion'::text])) AND (user_profiles.activo = true))))
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles
+  WHERE ((user_profiles.id = auth.uid()) AND (user_profiles.role = ANY (ARRAY['admin'::text, 'rrhh'::text, 'prevencion'::text])) AND (user_profiles.activo = true))))
+  SELECT Any authenticated can view tags TO ['authenticated']
+    USING: true
+
+=== user_profiles (rls=True) ===
+  DELETE Admins can delete profiles TO ['authenticated']
+    USING: is_admin()
+  INSERT Admins can insert profiles TO ['authenticated']
+    WITH: is_admin_or_rrhh()
+  SELECT Admins can read all profiles TO ['authenticated']
+    USING: is_admin()
+  UPDATE Admins can update all profiles TO ['authenticated']
+    USING: is_admin()
+    WITH: is_admin()
+  SELECT Prevencion can read all profiles TO ['authenticated']
+    USING: is_prevencion()
+  SELECT RRHH can read all profiles TO ['authenticated']
+    USING: is_admin_or_rrhh()
+  UPDATE RRHH can update non-admin profiles TO ['authenticated']
+    USING: (is_admin_or_rrhh() AND (role <> 'admin'::text))
+    WITH: (is_admin_or_rrhh() AND (role <> 'admin'::text))
+  SELECT Users can read own profile TO ['authenticated']
+    USING: (id = auth.uid())
+  UPDATE Users can update own profile TO ['authenticated']
+    USING: (id = auth.uid())
+    WITH: (id = auth.uid())
+
+=== vacation_balances (rls=True) ===
+  SELECT Employees read own vacation balance TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM empleados e
+  WHERE ((e.id = vacation_balances.employee_id) AND (e.user_id = auth.uid()))))
+  INSERT RRHH admin insert vacation balances TO ['authenticated']
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles up
+  WHERE ((up.id = auth.uid()) AND (up.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  SELECT RRHH admin read all vacation balances TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles up
+  WHERE ((up.id = auth.uid()) AND (up.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  UPDATE RRHH admin update vacation balances TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles up
+  WHERE ((up.id = auth.uid()) AND (up.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+    WITH: (EXISTS ( SELECT 1
+   FROM user_profiles up
+  WHERE ((up.id = auth.uid()) AND (up.role = ANY (ARRAY['admin'::text, 'rrhh'::text])))))
+  SELECT Supervisor read vacation balances TO ['authenticated']
+    USING: (EXISTS ( SELECT 1
+   FROM user_profiles up
+  WHERE ((up.id = auth.uid()) AND (up.role = 'supervisor'::text))))
+
+=== vehicle_logs (rls=True) ===
+  INSERT insert_vehicle_logs TO ['anon', 'authenticated']
+    WITH: true
+  SELECT select_vehicle_logs TO ['anon', 'authenticated']
+    USING: true
+  UPDATE update_vehicle_logs TO ['anon', 'authenticated']
+    USING: true
+    WITH: true
+
+=== vehicles (rls=True) ===
+  INSERT insert_vehicles TO ['authenticated']
+    WITH: is_staff()
+  SELECT select_vehicles TO ['anon', 'authenticated']
+    USING: true
+  UPDATE update_vehicles TO ['anon', 'authenticated']
+    USING: true
+    WITH: true
+

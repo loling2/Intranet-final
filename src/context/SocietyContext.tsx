@@ -37,9 +37,10 @@ const SocietyContext = createContext<SocietyContextValue>({
   societies: staticSocieties,
 });
 
-export function SocietyProvider({ children, defaultSocietyId }: { children: ReactNode; defaultSocietyId?: string }) {
+export function SocietyProvider({ children, defaultSocietyId, lockedSocietyId }: { children: ReactNode; defaultSocietyId?: string; lockedSocietyId?: string }) {
   const [societies, setSocieties] = useState<SocietyTheme[]>(staticSocieties);
   const [activeSocietyId, setActiveSocietyIdState] = useState<string>(() => {
+    if (lockedSocietyId) return lockedSocietyId;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored && staticSocieties.some(s => s.id === stored)) return stored;
@@ -69,12 +70,15 @@ export function SocietyProvider({ children, defaultSocietyId }: { children: Reac
   }, []);
 
   useEffect(() => {
-    if (defaultSocietyId && !localStorage.getItem(STORAGE_KEY)) {
+    if (lockedSocietyId) {
+      setActiveSocietyIdState(lockedSocietyId);
+    } else if (defaultSocietyId && !localStorage.getItem(STORAGE_KEY)) {
       setActiveSocietyIdState(defaultSocietyId);
     }
-  }, [defaultSocietyId]);
+  }, [defaultSocietyId, lockedSocietyId]);
 
   const setActiveSocietyId = (id: string) => {
+    if (lockedSocietyId) return; // ignore attempts to switch when locked
     localStorage.setItem(STORAGE_KEY, id);
     setActiveSocietyIdState(id);
   };

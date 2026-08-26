@@ -20,6 +20,9 @@ const ROLE_COLORS: Record<AppRole, { bg: string; text: string; border: string; l
   administracion: { bg: '#FFF7ED', text: '#C2410C', border: '#FED7AA', label: 'Administracion' },
   formacion:      { bg: '#F0FDFA', text: '#0D9488', border: '#99F6E4', label: 'Formacion' },
   calidad:        { bg: '#F0F9FF', text: '#0369A1', border: '#BAE6FD', label: 'Calidad' },
+  rrhh_gerontalia:           { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE', label: 'RRHH Gerontalia' },
+  administrador_gerontalia:  { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA', label: 'Admin Gerontalia' },
+  supervisor_gerontalia:     { bg: '#F5F3FF', text: '#7C3AED', border: '#DDD6FE', label: 'Supervisor Gerontalia' },
 };
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -76,8 +79,8 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
   const [success, setSuccess] = useState(false);
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee']
-    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia']
+    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee', 'rrhh_gerontalia', 'supervisor_gerontalia'];
 
   const toggleSociety = (id: string) =>
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
@@ -463,8 +466,8 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee']
-    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia']
+    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee', 'rrhh_gerontalia', 'supervisor_gerontalia'];
 
   const rc = ROLE_COLORS[user.role];
 
@@ -994,7 +997,7 @@ function BulkCreateAccessModal({ employees, onClose, onCreated }: BulkCreateAcce
               <div>
                 <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: '#64748B' }}>Rol asignado</label>
                 <div className="flex gap-2 flex-wrap">
-                  {(['employee', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad'] as AppRole[]).map((r) => {
+                  {(['employee', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia'] as AppRole[]).map((r) => {
                     const rc = ROLE_COLORS[r];
                     return (
                       <button key={r} onClick={() => setRole(r)}

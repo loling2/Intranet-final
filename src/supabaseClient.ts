@@ -14,6 +14,9 @@ export type AppRole =
   | 'encargado'
   | 'administracion'
   | 'employee'
+  | 'rrhh_gerontalia'
+  | 'administrador_gerontalia'
+  | 'supervisor_gerontalia'
   | string;
 
 export interface UserProfile {

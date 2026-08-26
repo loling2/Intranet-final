@@ -992,7 +992,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 }
 
 
-type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion' | 'calidad' | 'formacion';
+type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion' | 'calidad' | 'formacion' | 'rrhh_gerontalia' | 'supervisor_gerontalia';
 
 interface SessionState {
   email: string;
@@ -1184,14 +1184,15 @@ export default function LoginPage() {
       }
 
       // Step 6: Determine view
+      const GERONTALIA_ID = '6632d8d1-c4e7-4540-aab7-515b9d7913f7';
       let initialView: AppView = 'dashboard';
-      if (resolvedRole === 'admin') {
+      if (resolvedRole === 'admin' || resolvedRole === 'administrador_gerontalia') {
         initialView = 'admin';
-      } else if (resolvedRole === 'rrhh') {
+      } else if (resolvedRole === 'rrhh' || resolvedRole === 'rrhh_gerontalia') {
         initialView = 'rrhh';
       } else if (resolvedRole === 'prevencion') {
         initialView = 'prevencion';
-      } else if (resolvedRole === 'supervisor') {
+      } else if (resolvedRole === 'supervisor' || resolvedRole === 'supervisor_gerontalia') {
         initialView = 'supervisor';
       } else if (resolvedRole === 'administracion') {
         initialView = 'administracion';
@@ -1201,6 +1202,11 @@ export default function LoginPage() {
         initialView = 'formacion';
       } else {
         if (resolvedSocietyId) setSelectedId(resolvedSocietyId);
+      }
+
+      // For Gerontalia-scoped roles, lock the society to Gerontalia
+      if (resolvedRole === 'rrhh_gerontalia' || resolvedRole === 'administrador_gerontalia' || resolvedRole === 'supervisor_gerontalia') {
+        resolvedSocietyId = GERONTALIA_ID;
       }
 
       setSession({
@@ -1265,10 +1271,14 @@ export default function LoginPage() {
 
   // Route to the right panel
   if (session) {
+    const GERONTALIA_ID = '6632d8d1-c4e7-4540-aab7-515b9d7913f7';
+    const isGerontaliaScoped = session.role === 'rrhh_gerontalia' || session.role === 'administrador_gerontalia' || session.role === 'supervisor_gerontalia';
+    const lockedSocietyId = isGerontaliaScoped ? GERONTALIA_ID : undefined;
+
     if (session.view === 'admin') {
       return (
         <AuthProvider>
-          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined} lockedSocietyId={lockedSocietyId}>
             <AdminPanel
               email={session.email}
               onLogout={handleLogout}
@@ -1283,7 +1293,7 @@ export default function LoginPage() {
     if (session.view === 'prevencion') {
       return (
         <AuthProvider>
-          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined} lockedSocietyId={lockedSocietyId}>
             <PrevencionPanel
               email={session.email}
               onLogout={handleLogout}
@@ -1294,33 +1304,38 @@ export default function LoginPage() {
       );
     }
 
-    if (session.view === 'rrhh') {
+    if (session.view === 'rrhh' || session.view === 'rrhh_gerontalia') {
+      const isGerontaliaRole = session.role === 'rrhh_gerontalia';
       return (
         <AuthProvider>
-          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined} lockedSocietyId={lockedSocietyId}>
             <RRHHPanel
               email={session.email}
               onLogout={handleLogout}
               onNavigateAdmin={session.role === 'admin' ? () => handleNavigate('admin') : undefined}
               isAdmin={session.role === 'admin'}
+              isSupervisor={false}
               role={session.role}
               onNavigateEmployee={() => handleNavigate('dashboard')}
+              allowedSocietyId={isGerontaliaRole ? GERONTALIA_ID : undefined}
             />
           </SocietyProvider>
         </AuthProvider>
       );
     }
 
-    if (session.view === 'supervisor') {
+    if (session.view === 'supervisor' || session.view === 'supervisor_gerontalia') {
+      const isGerontaliaSupervisor = session.role === 'supervisor_gerontalia';
       return (
         <AuthProvider>
-          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined} lockedSocietyId={lockedSocietyId}>
             <RRHHPanel
               email={session.email}
               onLogout={handleLogout}
               isSupervisor={true}
               role="supervisor"
               onNavigateEmployee={() => handleNavigate('dashboard')}
+              allowedSocietyId={isGerontaliaSupervisor ? GERONTALIA_ID : undefined}
             />
           </SocietyProvider>
         </AuthProvider>
@@ -1330,7 +1345,7 @@ export default function LoginPage() {
     if (session.view === 'administracion') {
       return (
         <AuthProvider>
-          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined} lockedSocietyId={lockedSocietyId}>
             <AdministracionPanel
               email={session.email}
               onLogout={handleLogout}
@@ -1344,7 +1359,7 @@ export default function LoginPage() {
     if (session.view === 'calidad') {
       return (
         <AuthProvider>
-          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined} lockedSocietyId={lockedSocietyId}>
             <CalidadPanel
               email={session.email}
               onLogout={handleLogout}
@@ -1358,7 +1373,7 @@ export default function LoginPage() {
     if (session.view === 'formacion') {
       return (
         <AuthProvider>
-          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined} lockedSocietyId={lockedSocietyId}>
             <FormacionPanel
               email={session.email}
               onLogout={handleLogout}
@@ -1374,18 +1389,20 @@ export default function LoginPage() {
       if (theme) {
         // Determine back-navigation based on the user's role
         const backNav: { label: string; view: AppView; color: string; border: string } | null =
-          session.role === 'admin'          ? { label: 'Volver a Admin',          view: 'admin',          color: '#FCA5A5', border: 'rgba(239,68,68,0.3)'   } :
-          session.role === 'rrhh'           ? { label: 'Volver a RRHH',           view: 'rrhh',           color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
-          session.role === 'supervisor'     ? { label: 'Volver a Supervisor',     view: 'supervisor',     color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
-          session.role === 'prevencion'     ? { label: 'Volver a Prevencion',     view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
-          session.role === 'administracion' ? { label: 'Volver a Administracion', view: 'administracion', color: '#93C5FD', border: 'rgba(37,99,235,0.3)'   } :
-          session.role === 'calidad'        ? { label: 'Volver a Calidad',        view: 'calidad',        color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
-          session.role === 'formacion'      ? { label: 'Volver a Formacion',      view: 'formacion',      color: '#5EEAD4', border: 'rgba(13,148,136,0.3)'  } :
+          session.role === 'admin'                    ? { label: 'Volver a Admin',          view: 'admin',          color: '#FCA5A5', border: 'rgba(239,68,68,0.3)'   } :
+          session.role === 'rrhh'                     ? { label: 'Volver a RRHH',           view: 'rrhh',           color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
+          session.role === 'rrhh_gerontalia'          ? { label: 'Volver a RRHH',           view: 'rrhh',           color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
+          session.role === 'supervisor'               ? { label: 'Volver a Supervisor',     view: 'supervisor',     color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
+          session.role === 'supervisor_gerontalia'    ? { label: 'Volver a Supervisor',     view: 'supervisor',     color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
+          session.role === 'prevencion'               ? { label: 'Volver a Prevencion',     view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
+          session.role === 'administracion'           ? { label: 'Volver a Administracion', view: 'administracion', color: '#93C5FD', border: 'rgba(37,99,235,0.3)'   } :
+          session.role === 'calidad'                  ? { label: 'Volver a Calidad',        view: 'calidad',        color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
+          session.role === 'formacion'                ? { label: 'Volver a Formacion',      view: 'formacion',      color: '#5EEAD4', border: 'rgba(13,148,136,0.3)'  } :
           null;
 
         return (
           <AuthProvider>
-            <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined}>
+            <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined} lockedSocietyId={lockedSocietyId}>
               <>
                 {impersonating && (
                   <div
@@ -1414,8 +1431,8 @@ export default function LoginPage() {
                     impersonatingUserId={impersonating?.userId}
                     isAdmin={!impersonating && session.role === 'admin'}
                     onNavigateAdmin={!impersonating && session.role === 'admin' ? () => handleNavigate('admin') : undefined}
-                    onNavigateRrhh={!impersonating && session.role === 'rrhh' ? () => handleNavigate('rrhh') : undefined}
-                    onNavigateSupervisor={!impersonating && session.role === 'supervisor' ? () => handleNavigate('supervisor') : undefined}
+                    onNavigateRrhh={!impersonating && (session.role === 'rrhh' || session.role === 'rrhh_gerontalia') ? () => handleNavigate('rrhh') : undefined}
+                    onNavigateSupervisor={!impersonating && (session.role === 'supervisor' || session.role === 'supervisor_gerontalia') ? () => handleNavigate('supervisor') : undefined}
                     onNavigateBack={!impersonating && backNav ? () => handleNavigate(backNav.view) : undefined}
                     backLabel={backNav?.label}
                     backColor={backNav?.color}

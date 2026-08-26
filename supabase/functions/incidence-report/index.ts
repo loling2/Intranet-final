@@ -448,7 +448,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 6. Send global report via SMTP (skip in supervisor test mode) ─────────
-    if (!testSupervisorId) {
+    if (!testSupervisorId && enabled) {
       const smtpResp = await sendSmtp({
         host: cuenta.smtp_host,
         port: cuenta.smtp_port,
@@ -650,6 +650,15 @@ async function sendSmtp(opts: {
     const enc = new TextEncoder();
     const dec = new TextDecoder();
 
+    const writeAll = async (data: Uint8Array) => {
+      let offset = 0;
+      while (offset < data.length) {
+        const written = await conn.write(data.subarray(offset));
+        if (!written) throw new Error("SMTP connection closed while sending");
+        offset += written;
+      }
+    };
+
     const readResponse = async (): Promise<string> => {
       let result = "";
       const buf = new Uint8Array(4096);
@@ -666,7 +675,7 @@ async function sendSmtp(opts: {
     };
 
     const cmd = async (line: string): Promise<string> => {
-      await conn.write(enc.encode(line + "\r\n"));
+      await writeAll(enc.encode(line + "\r\n"));
       return await readResponse();
     };
 
@@ -710,7 +719,13 @@ async function sendSmtp(opts: {
       ].join("\r\n");
     }
 
-    await conn.write(enc.encode(message + "\r\n"));
+    const CHUNK = 8192;
+    const bytes = enc.encode(message + "\r\n");
+    for (let off = 0; off < bytes.length; off += CHUNK) {
+      const end = Math.min(off + CHUNK, bytes.length);
+      await writeAll(bytes.subarray(off, end));
+    }
+
     const dataResp = await readResponse();
     if (!dataResp.startsWith("250")) throw new Error("Send failed: " + dataResp);
 

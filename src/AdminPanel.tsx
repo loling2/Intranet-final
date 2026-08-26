@@ -27,6 +27,7 @@ import KioskDevicesPanel from './components/KioskDevicesPanel';
 import CentrosModule from './components/CentrosModule';
 import RoleTabPermissionsManager from './components/RoleTabPermissionsManager';
 import HelpPanel from './components/HelpPanel';
+import SegurosModule from './components/SegurosModule';
 import { useSociety } from './context/SocietyContext';
 import { supabase } from './supabaseClient';
 import type { Centro } from './supabaseClient';
@@ -38,7 +39,7 @@ interface Props {
   onImpersonate?: (userId: string, societyId: string | null) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'centros' | 'documents' | 'devices' | 'kiosk-devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'ayuda';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'centros' | 'documents' | 'devices' | 'kiosk-devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'seguros' | 'ayuda';
 
 export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -137,6 +138,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     { id: 'incidencias',  label: 'Incidencias',           icon: AlertCircle },
     { id: 'fichajes',     label: 'Fichajes',              icon: Clock },
     { id: 'permissions',  label: 'Permisos de Perfiles',  icon: Lock },
+    { id: 'seguros',       label: 'Seguros',              icon: ShieldCheck },
     { id: 'ayuda',         label: 'Ayuda',                 icon: HelpCircle },
   ];
 
@@ -707,6 +709,10 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
 
         {activeTab === 'permissions' && (
           <RoleTabPermissionsManager />
+        )}
+
+        {activeTab === 'seguros' && (
+          <SegurosModule />
         )}
       </div>
     </div>

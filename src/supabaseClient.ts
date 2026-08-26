@@ -254,3 +254,20 @@ export interface TimeIncident {
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   created_at: string;
 }
+
+export interface Seguro {
+  id: string;
+  sociedad_id: string | null;
+  tipo: string;
+  compania: string;
+  numero_poliza: string;
+  fecha_inicio: string | null;
+  fecha_vencimiento: string | null;
+  importe_anual: number | null;
+  estado: string;
+  beneficiario: string | null;
+  cobertura: string | null;
+  observaciones: string | null;
+  created_at: string;
+  updated_at: string;
+}

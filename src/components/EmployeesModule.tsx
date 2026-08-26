@@ -1362,6 +1362,11 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     setForm({ ...EMPTY_FORM });
   };
 
+  const toggleEmployeeDetail = (employeeId: string) => {
+    if (showForm) cancelForm();
+    setExpandedId((current) => current === employeeId ? null : employeeId);
+  };
+
   const handleSave = async () => {
     if (!form.nombre.trim()) { setError('El nombre es obligatorio'); return; }
     if (!form.id_sociedad) { setError('Selecciona una sociedad'); return; }
@@ -2383,7 +2388,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                 <div key={emp.id}>
                   <div
                     className="px-6 py-4 flex items-center gap-4 hover:bg-slate-50 transition-colors duration-150 cursor-pointer"
-                    onClick={() => setExpandedId(isExpanded ? null : emp.id)}
+                    onClick={() => toggleEmployeeDetail(emp.id)}
                   >
                     {/* Avatar */}
                     <div
@@ -2396,7 +2401,14 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{emp.nombre}</p>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); toggleEmployeeDetail(emp.id); }}
+                          className="text-sm font-semibold text-left cursor-pointer hover:underline"
+                          style={{ color: '#1E293B' }}
+                        >
+                          {emp.nombre}
+                        </button>
                         {!emp.activo && (
                           <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F1F5F9', color: '#94A3B8', border: '1px solid #E2E8F0' }}>Inactivo</span>
                         )}
@@ -2445,7 +2457,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         <Upload size={13} />
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : emp.id); }}
+                        onClick={(e) => { e.stopPropagation(); toggleEmployeeDetail(emp.id); }}
                         className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200"
                         style={{ backgroundColor: isExpanded ? '#EFF6FF' : '#F8FAFC', border: '1px solid #E2E8F0', color: isExpanded ? '#0369A1' : '#94A3B8' }}
                         title="Ver detalle"

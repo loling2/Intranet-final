@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   AlertCircle, Plus, X, Send, Clock, CheckCircle2, Loader2,
   Upload, Image, User, Building2, ChevronLeft, ChevronRight,
+  Forward, Inbox, ListFilter,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase } from '../supabaseClient';
@@ -23,6 +24,8 @@ interface Incidencia {
   creado_por_nombre: string;
   departamento_id: string | null;
   departamento_nombre: string;
+  asignado_a_id: string | null;
+  asignado_a_nombre: string;
   fecha_creacion: string;
   fecha_finalizacion: string | null;
 }
@@ -40,6 +43,9 @@ interface Mensaje {
 interface Departamento {
   id: string;
   nombre: string;
+  visible_incidencias: boolean;
+  responsable_id: string | null;
+  responsable_nombre: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -91,7 +97,7 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    supabase.from('departamentos').select('id, nombre').order('nombre')
+    supabase.from('departamentos').select('id, nombre, visible_incidencias, responsable_id, responsable_nombre').order('nombre')
       .then(({ data }) => setDepartamentos((data ?? []) as Departamento[]));
   }, []);
 
@@ -209,7 +215,7 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                {departamentos.map((dept) => (
+                {departamentos.filter((d) => d.visible_incidencias).map((dept) => (
                   <button
                     key={dept.id}
                     onClick={() => setDepartamentoId(dept.id)}
@@ -230,6 +236,9 @@ function CreateModal({ currentUserId, currentUserNombre, onClose, onCreated }: C
                   </button>
                 ))}
               </div>
+            )}
+            {departamentos.length > 0 && departamentos.every((d) => !d.visible_incidencias) && (
+              <p className="text-xs mt-2" style={{ color: '#94A3B8' }}>Todos los departamentos están ocultos para incidencias.</p>
             )}
           </div>
 
@@ -468,16 +477,21 @@ interface DetailProps {
   currentUserId: string;
   currentUserNombre: string;
   canManage: boolean;
+  canDerive: boolean;
   onClose: () => void;
   onUpdated: () => void;
 }
 
-function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, canManage, onClose, onUpdated }: DetailProps) {
+function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, canManage, canDerive, onClose, onUpdated }: DetailProps) {
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [texto, setTexto] = useState('');
   const [nuevoEstado, setNuevoEstado] = useState<Estado | ''>('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [showDerivar, setShowDerivar] = useState(false);
+  const [miembros, setMiembros] = useState<{ user_id: string; user_nombre: string }[]>([]);
+  const [derivarUserId, setDerivarUserId] = useState('');
+  const [derivando, setDerivando] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const loadMensajes = async () => {
@@ -490,6 +504,41 @@ function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, canMan
   };
 
   useEffect(() => { loadMensajes(); }, [incidencia.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadMiembros = async () => {
+    if (!incidencia.departamento_id) return;
+    const { data } = await supabase
+      .from('departamento_miembros')
+      .select('user_id, user_nombre')
+      .eq('departamento_id', incidencia.departamento_id)
+      .order('user_nombre');
+    setMiembros((data ?? []) as { user_id: string; user_nombre: string }[]);
+  };
+
+  const handleDerivar = async () => {
+    if (!derivarUserId) { setError('Selecciona un usuario'); return; }
+    const user = miembros.find((m) => m.user_id === derivarUserId);
+    if (!user) return;
+    setDerivando(true); setError('');
+    const { error: updErr } = await supabase.from('incidencias').update({
+      asignado_a_id: derivarUserId,
+      asignado_a_nombre: user.user_nombre,
+      updated_at: new Date().toISOString(),
+    }).eq('id', incidencia.id);
+    if (updErr) { setError(updErr.message); setDerivando(false); return; }
+    await supabase.from('incidencias_mensajes').insert({
+      incidencia_id: incidencia.id,
+      autor_id: currentUserId,
+      autor_nombre: currentUserNombre,
+      texto: `Incidencia derivada a ${user.user_nombre}`,
+      estado_nuevo: null,
+    });
+    setDerivando(false);
+    setShowDerivar(false);
+    setDerivarUserId('');
+    await loadMensajes();
+    onUpdated();
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -546,6 +595,12 @@ function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, canMan
                 <span className="flex items-center gap-1 text-xs" style={{ color: '#94A3B8' }}>
                   <Building2 size={10} />
                   <strong style={{ color: '#475569' }}>{incidencia.departamento_nombre}</strong>
+                </span>
+              )}
+              {incidencia.asignado_a_nombre && (
+                <span className="flex items-center gap-1 text-xs" style={{ color: '#94A3B8' }}>
+                  <Forward size={10} />
+                  Asignada a <strong style={{ color: '#475569' }}>{incidencia.asignado_a_nombre}</strong>
                 </span>
               )}
             </div>
@@ -630,6 +685,51 @@ function IncidenciaDetail({ incidencia, currentUserId, currentUserNombre, canMan
         {incidencia.estado !== 'finalizada' && (
           <div className="px-6 py-4 flex-shrink-0" style={{ borderTop: '1px solid #E2E8F0' }}>
             {error && <p className="text-xs mb-2" style={{ color: '#EF4444' }}>{error}</p>}
+
+            {canDerive && !showDerivar && (
+              <button
+                onClick={() => { setShowDerivar(true); loadMiembros(); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold mb-3"
+                style={{ backgroundColor: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }}
+              >
+                <Forward size={13} />
+                {incidencia.asignado_a_nombre ? 'Reasignar' : 'Derivar a miembro'}
+              </button>
+            )}
+
+            {showDerivar && (
+              <div className="mb-3 p-3 rounded-xl" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: '#92400E' }}>Derivar a un miembro del departamento:</p>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={derivarUserId}
+                    onChange={(e) => setDerivarUserId(e.target.value)}
+                    className="flex-1 px-2.5 py-2 rounded-lg text-sm outline-none"
+                    style={{ border: '1.5px solid #FDE68A', backgroundColor: '#FFFFFF', color: '#1E293B' }}
+                  >
+                    <option value="">Selecciona...</option>
+                    {miembros.map((m) => (
+                      <option key={m.user_id} value={m.user_id}>{m.user_nombre}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleDerivar}
+                    disabled={derivando}
+                    className="px-3 py-2 rounded-lg text-xs font-semibold"
+                    style={{ backgroundColor: '#92400E', color: '#FFFFFF' }}
+                  >
+                    {derivando ? <Loader2 size={12} className="animate-spin" /> : 'Derivar'}
+                  </button>
+                  <button
+                    onClick={() => { setShowDerivar(false); setDerivarUserId(''); }}
+                    className="px-2 py-2 rounded-lg text-xs"
+                    style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
 
             {canManage && nextStates.length > 0 && (
               <div className="flex gap-2 mb-3 flex-wrap">
@@ -743,6 +843,12 @@ function KanbanColumn({ estado, incidencias, onSelect }: KanbanColumnProps) {
                   {inc.departamento_nombre}
                 </span>
               )}
+              {inc.asignado_a_nombre && (
+                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FFFBEB', color: '#92400E' }}>
+                  <Forward size={9} />
+                  {inc.asignado_a_nombre}
+                </span>
+              )}
             </div>
             <p className="text-xs mt-2" style={{ color: '#CBD5E1' }}>{formatDate(inc.fecha_creacion)}</p>
           </button>
@@ -766,6 +872,7 @@ export default function IncidenciasModule({ currentUserId, currentUserNombre, cu
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<Incidencia | null>(null);
   const [userDeptIds, setUserDeptIds] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<'todas' | 'mias' | 'asignadas'>('todas');
 
   const isAdminRole = ['admin', 'rrhh', 'supervisor'].includes(currentUserRole);
   const isEmployee = currentUserRole === 'employee';
@@ -800,11 +907,12 @@ const load = async () => {
       if (misDepartamentosIds.length > 0) {
         // Si pertenece a algún departamento (Caso Julio):
         // Ve las incidencias que él creó O las que van a cualquiera de sus departamentos asignados
-        query = query.or(`creado_por_id.eq.${user.id},departamento_id.in.(${misDepartamentosIds.join(',')})`);
+        // O las que le han sido asignadas directamente (derivadas a él)
+        query = query.or(`creado_por_id.eq.${user.id},departamento_id.in.(${misDepartamentosIds.join(',')}),asignado_a_id.eq.${user.id}`);
       } else {
         // Si no pertenece a ningún departamento (Caso Sofía):
-        // SOLO ve las incidencias que ella misma ha reportado
-        query = query.eq('creado_por_id', user.id);
+        // SOLO ve las incidencias que ella misma ha reportado o que le han sido asignadas
+        query = query.or(`creado_por_id.eq.${user.id},asignado_a_id.eq.${user.id}`);
       }
 
       // Aplicamos el orden por número de forma descendente tal como lo tenías
@@ -831,7 +939,16 @@ const load = async () => {
   const canManageIncidencia = (inc: Incidencia) =>
     isAdminRole || (inc.departamento_id != null && userDeptIds.includes(inc.departamento_id));
 
-  const byEstado = (e: Estado) => incidencias.filter((i) => i.estado === e);
+  const canDeriveIncidencia = (inc: Incidencia) =>
+    isAdminRole || (inc.departamento_id != null && userDeptIds.includes(inc.departamento_id));
+
+  const byEstado = (e: Estado) => filteredIncidencias.filter((i) => i.estado === e);
+
+  const filteredIncidencias = (() => {
+    if (activeTab === 'mias') return incidencias.filter((i) => i.creado_por_id === currentUserId);
+    if (activeTab === 'asignadas') return incidencias.filter((i) => i.asignado_a_id === currentUserId);
+    return incidencias;
+  })();
 
   const handleUpdated = async () => {
     await load();
@@ -884,11 +1001,50 @@ const load = async () => {
           <Loader2 size={28} className="animate-spin" style={{ color: '#0EA5E9' }} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <>
+          {/* Tabs */}
+          <div className="flex items-center gap-2 mb-2">
+            {([
+              { key: 'todas', label: 'Todas', icon: ListFilter },
+              { key: 'mias', label: 'Creadas por mí', icon: User },
+              { key: 'asignadas', label: 'Asignadas a mí', icon: Inbox },
+            ] as const).map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.key;
+              const count = tab.key === 'todas' ? incidencias.length
+                : tab.key === 'mias' ? incidencias.filter((i) => i.creado_por_id === currentUserId).length
+                : incidencias.filter((i) => i.asignado_a_id === currentUserId).length;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all"
+                  style={
+                    isActive
+                      ? { backgroundColor: '#0F172A', color: '#FFFFFF' }
+                      : { backgroundColor: '#F1F5F9', color: '#64748B' }
+                  }
+                >
+                  <Icon size={14} />
+                  {tab.label}
+                  {count > 0 && (
+                    <span className="ml-1 text-xs px-1.5 py-0.5 rounded-full" style={
+                      isActive ? { backgroundColor: 'rgba(255,255,255,0.2)', color: '#FFFFFF' } : { backgroundColor: '#E2E8F0', color: '#475569' }
+                    }>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <KanbanColumn estado="pendiente"  incidencias={byEstado('pendiente')}  onSelect={setSelected} />
           <KanbanColumn estado="en_proceso" incidencias={byEstado('en_proceso')} onSelect={setSelected} />
           <KanbanColumn estado="finalizada" incidencias={byEstado('finalizada')} onSelect={setSelected} />
         </div>
+        </>
       )}
 
       {showCreate && (
@@ -906,6 +1062,7 @@ const load = async () => {
           currentUserId={currentUserId}
           currentUserNombre={currentUserNombre}
           canManage={canManageIncidencia(selected)}
+          canDerive={canDeriveIncidencia(selected)}
           onClose={() => setSelected(null)}
           onUpdated={handleUpdated}
         />

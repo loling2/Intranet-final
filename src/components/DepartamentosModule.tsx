@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Building2, Plus, X, Users, Trash2, Loader2, ChevronDown, ChevronUp, UserPlus, Search,
+  Eye, EyeOff, UserCog,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -8,6 +9,9 @@ interface Departamento {
   id: string;
   nombre: string;
   descripcion: string;
+  visible_incidencias: boolean;
+  responsable_id: string | null;
+  responsable_nombre: string;
   created_at: string;
 }
 
@@ -44,6 +48,10 @@ export default function DepartamentosModule() {
   const searchRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [deletingMember, setDeletingMember] = useState<string | null>(null);
   const [deletingDept, setDeletingDept] = useState<string | null>(null);
+  const [togglingVisible, setTogglingVisible] = useState<string | null>(null);
+  const [editingResponsable, setEditingResponsable] = useState<string | null>(null);
+  const [responsableSelect, setResponsableSelect] = useState<Record<string, string>>({});
+  const [savingResponsable, setSavingResponsable] = useState<string | null>(null);
 
   const loadDepartamentos = async () => {
     setLoading(true);
@@ -119,6 +127,39 @@ export default function DepartamentosModule() {
     await supabase.from('departamentos').delete().eq('id', deptId);
     setDeletingDept(null);
     setExpanded(null);
+    await loadDepartamentos();
+  };
+
+  const handleToggleVisible = async (dept: Departamento) => {
+    setTogglingVisible(dept.id);
+    const newVal = !dept.visible_incidencias;
+    await supabase.from('departamentos').update({ visible_incidencias: newVal }).eq('id', dept.id);
+    setTogglingVisible(null);
+    await loadDepartamentos();
+  };
+
+  const handleSaveResponsable = async (deptId: string) => {
+    const userId = responsableSelect[deptId];
+    if (!userId) { setEditingResponsable(null); return; }
+    const user = users.find((u) => u.id === userId);
+    setSavingResponsable(deptId);
+    await supabase.from('departamentos').update({
+      responsable_id: userId,
+      responsable_nombre: user?.nombre ?? '',
+    }).eq('id', deptId);
+    setSavingResponsable(null);
+    setEditingResponsable(null);
+    setResponsableSelect((prev) => { const n = { ...prev }; delete n[deptId]; return n; });
+    await loadDepartamentos();
+  };
+
+  const handleClearResponsable = async (deptId: string) => {
+    setSavingResponsable(deptId);
+    await supabase.from('departamentos').update({
+      responsable_id: null,
+      responsable_nombre: '',
+    }).eq('id', deptId);
+    setSavingResponsable(null);
     await loadDepartamentos();
   };
 
@@ -272,6 +313,24 @@ export default function DepartamentosModule() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
+                    {/* Visibilidad en incidencias */}
+                    <button
+                      onClick={() => handleToggleVisible(dept)}
+                      disabled={togglingVisible === dept.id}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all disabled:opacity-50"
+                      style={
+                        dept.visible_incidencias
+                          ? { backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }
+                          : { backgroundColor: '#F1F5F9', color: '#94A3B8', border: '1px solid #E2E8F0' }
+                      }
+                      title={dept.visible_incidencias ? 'Visible en incidencias (clic para ocultar)' : 'Oculto en incidencias (clic para mostrar)'}
+                    >
+                      {togglingVisible === dept.id
+                        ? <Loader2 size={11} className="animate-spin" />
+                        : dept.visible_incidencias ? <Eye size={11} /> : <EyeOff size={11} />}
+                      {dept.visible_incidencias ? 'Visible' : 'Oculto'}
+                    </button>
+
                     <span
                       className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
                       style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}
@@ -301,6 +360,79 @@ export default function DepartamentosModule() {
                 {/* Members panel */}
                 {isOpen && (
                   <div style={{ borderTop: '1px solid #F1F5F9', backgroundColor: '#FAFBFC' }}>
+                    {/* Responsable row */}
+                    <div className="flex items-center gap-2 px-5 py-3" style={{ borderBottom: '1px solid #F1F5F9' }}>
+                      <UserCog size={15} style={{ color: '#64748B' }} />
+                      <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Responsable:</span>
+                      {editingResponsable === dept.id ? (
+                        <div className="flex items-center gap-1.5 flex-1">
+                          <select
+                            value={responsableSelect[dept.id] ?? ''}
+                            onChange={(e) => setResponsableSelect((prev) => ({ ...prev, [dept.id]: e.target.value }))}
+                            className="flex-1 px-2.5 py-1.5 rounded-lg text-sm outline-none"
+                            style={{ border: '1.5px solid #BAE6FD', backgroundColor: '#F0F9FF', color: '#1E293B' }}
+                          >
+                            <option value="">Selecciona un usuario...</option>
+                            {getMembersForDept(dept.id).map((m) => (
+                              <option key={m.user_id} value={m.user_id}>{m.user_nombre}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => handleSaveResponsable(dept.id)}
+                            disabled={savingResponsable === dept.id}
+                            className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                            style={{ backgroundColor: '#059669', color: '#FFFFFF' }}
+                          >
+                            {savingResponsable === dept.id ? <Loader2 size={12} className="animate-spin" /> : 'Guardar'}
+                          </button>
+                          <button
+                            onClick={() => { setEditingResponsable(null); setResponsableSelect((prev) => { const n = { ...prev }; delete n[dept.id]; return n; }); }}
+                            className="px-2 py-1.5 rounded-lg text-xs"
+                            style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 flex-1">
+                          {dept.responsable_nombre ? (
+                            <>
+                              <span className="text-sm font-medium" style={{ color: '#0F172A' }}>{dept.responsable_nombre}</span>
+                              <button
+                                onClick={() => { setEditingResponsable(dept.id); setResponsableSelect((prev) => ({ ...prev, [dept.id]: dept.responsable_id ?? '' })); }}
+                                className="text-xs px-2 py-0.5 rounded-md"
+                                style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}
+                              >
+                                Cambiar
+                              </button>
+                              <button
+                                onClick={() => handleClearResponsable(dept.id)}
+                                disabled={savingResponsable === dept.id}
+                                className="text-xs px-2 py-0.5 rounded-md"
+                                style={{ backgroundColor: '#FEF2F2', color: '#B91C1C' }}
+                              >
+                                Quitar
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-sm" style={{ color: '#94A3B8' }}>Sin responsable asignado</span>
+                              <button
+                                onClick={() => { setEditingResponsable(dept.id); setResponsableSelect((prev) => ({ ...prev, [dept.id]: '' })); }}
+                                className="text-xs px-2 py-0.5 rounded-md"
+                                style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}
+                              >
+                                Asignar
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="px-5 py-2 text-xs" style={{ color: '#94A3B8', borderBottom: '1px solid #F1F5F9' }}>
+                      El responsable recibe las incidencias enviadas a este departamento y puede derivarlas a cualquier miembro.
+                    </div>
+
                     {/* Add member row */}
                     <div className="flex items-center gap-2 px-5 py-3">
                       <div

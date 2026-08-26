@@ -1362,11 +1362,6 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     setForm({ ...EMPTY_FORM });
   };
 
-  const toggleEmployeeDetail = (employeeId: string) => {
-    if (showForm) cancelForm();
-    setExpandedId((current) => current === employeeId ? null : employeeId);
-  };
-
   const handleSave = async () => {
     if (!form.nombre.trim()) { setError('El nombre es obligatorio'); return; }
     if (!form.id_sociedad) { setError('Selecciona una sociedad'); return; }
@@ -2388,7 +2383,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                 <div key={emp.id}>
                   <div
                     className="px-6 py-4 flex items-center gap-4 hover:bg-slate-50 transition-colors duration-150 cursor-pointer"
-                    onClick={() => toggleEmployeeDetail(emp.id)}
+                    onClick={() => openEdit(emp)}
                   >
                     {/* Avatar */}
                     <div
@@ -2403,7 +2398,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                       <div className="flex items-center gap-2 flex-wrap">
                         <button
                           type="button"
-                          onClick={(e) => { e.stopPropagation(); toggleEmployeeDetail(emp.id); }}
+                          onClick={(e) => { e.stopPropagation(); openEdit(emp); }}
                           className="text-sm font-semibold text-left cursor-pointer hover:underline"
                           style={{ color: '#1E293B' }}
                         >
@@ -2457,7 +2452,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         <Upload size={13} />
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); toggleEmployeeDetail(emp.id); }}
+                        onClick={(e) => { e.stopPropagation(); openEdit(emp); }}
                         className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200"
                         style={{ backgroundColor: isExpanded ? '#EFF6FF' : '#F8FAFC', border: '1px solid #E2E8F0', color: isExpanded ? '#0369A1' : '#94A3B8' }}
                         title="Ver detalle"
@@ -2835,6 +2830,19 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         )}
                       </div>
 
+                      {/* Documentos del empleado */}
+                      {editingId === emp.id && emp.user_id && (
+                        <div className="mb-5">
+                          <EmployeeDocumentsSection
+                            key={emp.user_id}
+                            employeeId={emp.user_id}
+                            employeeNombre={emp.nombre}
+                            societyId={emp.id_sociedad ?? ''}
+                            viewerRole={currentUserRole === 'admin' ? 'admin' : 'rrhh'}
+                          />
+                        </div>
+                      )}
+
                       <div className="flex items-center gap-2 justify-end flex-wrap">
                         {!form.user_id && (
                           <button onClick={handleCreateAccess} disabled={creatingAccess}
@@ -2972,19 +2980,6 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                               </div>
                             </div>
                           </div>
-                        </div>
-                      )}
-
-                      {/* Documentos del empleado */}
-                      {emp.user_id && (
-                        <div className="mt-4">
-                          <EmployeeDocumentsSection
-                            key={emp.user_id}
-                            employeeId={emp.user_id}
-                            employeeNombre={emp.nombre}
-                            societyId={emp.id_sociedad ?? ''}
-                            viewerRole={currentUserRole === 'admin' ? 'admin' : 'rrhh'}
-                          />
                         </div>
                       )}
                     </div>

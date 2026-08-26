@@ -6,6 +6,7 @@ import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, t
 import { useAuth } from '../context/AuthContext';
 import { uploadToWasabi, moveRrhhFolderToBajas, moveRrhhFolderToActivo } from '../lib/wasabi';
 import { writeAuditLog } from '../lib/auditLog';
+import EmployeeDocumentsSection from './EmployeeDocumentsSection';
 
 interface Props {
   currentUserRole: 'admin' | 'rrhh';
@@ -2380,7 +2381,10 @@ export default function EmployeesModule({ currentUserRole }: Props) {
               const isExpanded = expandedId === emp.id;
               return (
                 <div key={emp.id}>
-                  <div className="px-6 py-4 flex items-center gap-4 hover:bg-slate-50 transition-colors duration-150">
+                  <div
+                    className="px-6 py-4 flex items-center gap-4 hover:bg-slate-50 transition-colors duration-150 cursor-pointer"
+                    onClick={() => setExpandedId(isExpanded ? null : emp.id)}
+                  >
                     {/* Avatar */}
                     <div
                       className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
@@ -2441,7 +2445,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         <Upload size={13} />
                       </button>
                       <button
-                        onClick={() => setExpandedId(isExpanded ? null : emp.id)}
+                        onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : emp.id); }}
                         className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200"
                         style={{ backgroundColor: isExpanded ? '#EFF6FF' : '#F8FAFC', border: '1px solid #E2E8F0', color: isExpanded ? '#0369A1' : '#94A3B8' }}
                         title="Ver detalle"
@@ -2449,7 +2453,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                         {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </button>
                       <button
-                        onClick={() => openEdit(emp)}
+                        onClick={(e) => { e.stopPropagation(); openEdit(emp); }}
                         className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200"
                         style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}
                         title="Editar"
@@ -2458,7 +2462,7 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                       </button>
                       {currentUserRole === 'admin' && (
                         <button
-                          onClick={() => handleDelete(emp)}
+                          onClick={(e) => { e.stopPropagation(); handleDelete(emp); }}
                           className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200"
                           style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}
                           title="Eliminar"
@@ -2956,6 +2960,19 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                               </div>
                             </div>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Documentos del empleado */}
+                      {emp.user_id && (
+                        <div className="mt-4">
+                          <EmployeeDocumentsSection
+                            key={emp.user_id}
+                            employeeId={emp.user_id}
+                            employeeNombre={emp.nombre}
+                            societyId={emp.id_sociedad ?? ''}
+                            viewerRole={currentUserRole === 'admin' ? 'admin' : 'rrhh'}
+                          />
                         </div>
                       )}
                     </div>

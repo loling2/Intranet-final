@@ -582,7 +582,7 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        for (const [, s] of supSummaries) {
+        for (const [supKey, s] of supSummaries) {
           if (!s.entrada) continue;
           if (s.salidaReal) { s.salida = s.salidaReal; s.salidaAuto = false; }
           if (!s.salida) {
@@ -590,7 +590,7 @@ Deno.serve(async (req: Request) => {
             continue;
           }
           const durMin = Math.round((new Date(s.salida).getTime() - new Date(s.entrada).getTime()) / 60000);
-          const expected = expectedFor(key as string | null, s.nombre);
+          const expected = expectedFor(supKey, s.nombre);
           if (s.salidaAuto || durMin > expected + TOLERANCE || durMin < expected - TOLERANCE) {
             supIncidencias.push({
               nombre: s.nombre, entrada: s.entrada, salida: s.salida, duracionMin,

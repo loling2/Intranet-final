@@ -259,7 +259,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const [savingCentro, setSavingCentro] = useState(false);
 
   const loadSupervisorEmpleados = useCallback(async () => {
-    if (user.role !== 'supervisor') return;
+    if (user.role !== 'supervisor' && user.role !== 'supervisor_gerontalia') return;
     try {
       const { data, error: err } = await supabase
         .from('supervisor_asignaciones')
@@ -278,7 +278,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   }, [user.id, user.role]);
 
   const loadAllEmpleados = useCallback(async () => {
-    if (user.role !== 'supervisor') return;
+    if (user.role !== 'supervisor' && user.role !== 'supervisor_gerontalia') return;
     try {
       const { data, error: err } = await supabase
         .from('empleados')
@@ -290,7 +290,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   }, [user.role]);
 
   const loadSupervisorCentros = useCallback(async () => {
-    if (user.role !== 'supervisor') return;
+    if (user.role !== 'supervisor' && user.role !== 'supervisor_gerontalia') return;
     try {
       const { data, error: err } = await supabase
         .from('supervisor_centros')
@@ -305,7 +305,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   }, [user.id, user.role]);
 
   const loadAllCentros = useCallback(async () => {
-    if (user.role !== 'supervisor') return;
+    if (user.role !== 'supervisor' && user.role !== 'supervisor_gerontalia') return;
     try {
       const { data, error: err } = await supabase
         .from('centros')
@@ -317,7 +317,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   }, [user.role]);
 
   useEffect(() => {
-    if (user.role === 'supervisor') {
+    if (user.role === 'supervisor' || user.role === 'supervisor_gerontalia') {
       loadSupervisorEmpleados();
       loadAllEmpleados();
       loadSupervisorCentros();
@@ -701,7 +701,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
         </div>
 
         {/* ── Supervisor: empleados asignados ── */}
-        {user.role === 'supervisor' && (
+        {(user.role === 'supervisor' || user.role === 'supervisor_gerontalia') && (
           <div className="px-5 pb-5">
             <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #DDD6FE', backgroundColor: '#FAFAFF' }}>
               <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid #EDE9FE' }}>
@@ -791,7 +791,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
         )}
 
         {/* ── Supervisor: centros asignados ── */}
-        {user.role === 'supervisor' && (
+        {(user.role === 'supervisor' || user.role === 'supervisor_gerontalia') && (
           <div className="px-5 pb-5">
             <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #BFDBFE', backgroundColor: '#F8FAFF' }}>
               <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid #DBEAFE' }}>

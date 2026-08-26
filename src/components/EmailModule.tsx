@@ -1219,11 +1219,8 @@ function IncidenciasSection() {
   const [msgType, setMsgType] = useState<'ok' | 'err'>('ok');
 
   const [supervisors, setSupervisors] = useState<SupervisorInfo[]>([]);
-  const [selectedSupId, setSelectedSupId] = useState('');
-  const [supEmail, setSupEmail] = useState('');
-  const [savingSupEmail, setSavingSupEmail] = useState(false);
   const [supMsg, setSupMsg] = useState('');
-  const [testingSup, setTestingSup] = useState(false);
+  const [testingSupId, setTestingSupId] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -1261,37 +1258,8 @@ function IncidenciasSection() {
     setTimeout(() => setMsg(''), 5000);
   };
 
-  // Load saved email when supervisor selected
-  useEffect(() => {
-    if (!selectedSupId) { setSupEmail(''); return; }
-    (async () => {
-      const { data } = await supabase
-        .from('ui_settings').select('value')
-        .eq('key', `incidence_report_sup_email_${selectedSupId}`).maybeSingle();
-      setSupEmail(data?.value ?? supervisors.find((s) => s.id === selectedSupId)?.email ?? '');
-    })();
-  }, [selectedSupId, supervisors]);
-
-  const handleSaveSupEmail = async () => {
-    if (!selectedSupId) return;
-    setSavingSupEmail(true);
-    try {
-      await supabase.from('ui_settings').upsert(
-        { key: `incidence_report_sup_email_${selectedSupId}`, value: supEmail },
-        { onConflict: 'key' },
-      );
-      setSupMsg('Correo del supervisor guardado.');
-      setTimeout(() => setSupMsg(''), 4000);
-    } catch {
-      setSupMsg('Error al guardar.');
-    } finally {
-      setSavingSupEmail(false);
-    }
-  };
-
-  const handleTestSup = async () => {
-    if (!selectedSupId) return;
-    setTestingSup(true);
+  const handleTestSup = async (supervisorId: string) => {
+    setTestingSupId(supervisorId);
     setSupMsg('');
     try {
       const url = (import.meta as any).env?.VITE_SUPABASE_URL;
@@ -1303,7 +1271,7 @@ function IncidenciasSection() {
           'Content-Type': 'application/json',
           ...(anonKey ? { Authorization: `Bearer ${anonKey}`, Apikey: anonKey } : {}),
         },
-        body: JSON.stringify({ supervisor_id: selectedSupId }),
+        body: JSON.stringify({ supervisor_id: supervisorId }),
       });
       const text = await resp.text();
       let result: { ok?: boolean; error?: string; supervisor_reports?: { email: string; ok: boolean; error?: string }[] };
@@ -1322,7 +1290,7 @@ function IncidenciasSection() {
       const m = e instanceof Error ? e.message : String(e);
       setSupMsg(`Error de conexión: ${m}`);
     } finally {
-      setTestingSup(false);
+      setTestingSupId('');
     }
   };
 
@@ -1494,78 +1462,54 @@ function IncidenciasSection() {
             No hay supervisores activos. Crea usuarios con rol supervisor y asígnales centros desde la pestaña Centros.
           </div>
         ) : (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Supervisor</label>
-              <select
-                value={selectedSupId}
-                onChange={(e) => setSelectedSupId(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer"
-                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: selectedSupId ? '#1E293B' : '#94A3B8' }}
-              >
-                <option value="">Selecciona un supervisor...</option>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #E2E8F0' }}>
+                  <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Supervisor</th>
+                  <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Correo</th>
+                  <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Centros</th>
+                  <th className="text-right py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Enviar</th>
+                </tr>
+              </thead>
+              <tbody>
                 {supervisors.map((s) => (
-                  <option key={s.id} value={s.id}>{s.nombre}</option>
+                  <tr key={s.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}>
+                          {s.nombre.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="font-medium" style={{ color: '#0F172A' }}>{s.nombre}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3" style={{ color: '#64748B' }}>{s.email || '—'}</td>
+                    <td className="py-3 px-3">
+                      {s.centros.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {s.centros.map((c) => (
+                            <span key={c} className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8' }}>{c}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs" style={{ color: '#94A3B8' }}>Sin centros</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      <button
+                        onClick={() => handleTestSup(s.id)}
+                        disabled={testingSupId === s.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60"
+                        style={{ backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}
+                      >
+                        {testingSupId === s.id ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                        Enviar mensaje
+                      </button>
+                    </td>
+                  </tr>
                 ))}
-              </select>
-            </div>
-
-            {selectedSupId && (
-              <>
-                <div className="rounded-xl px-4 py-3" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                  <p className="text-xs font-semibold mb-1 uppercase tracking-wide" style={{ color: '#475569' }}>Centros asignados</p>
-                  {supervisors.find((s) => s.id === selectedSupId)?.centros.length ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {supervisors.find((s) => s.id === selectedSupId)!.centros.map((c) => (
-                        <span key={c} className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8' }}>{c}</span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs" style={{ color: '#94A3B8' }}>Sin centros asignados. Asigna centros desde la pestaña Centros.</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Correo para el informe</label>
-                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
-                    <Mail size={15} style={{ color: '#94A3B8' }} />
-                    <input
-                      type="email" value={supEmail} onChange={(e) => setSupEmail(e.target.value)}
-                      placeholder="supervisor@empresa.com"
-                      className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1E293B' }}
-                    />
-                  </div>
-                  <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
-                    Por defecto se usa el correo del usuario. Puedes sobrescribirlo con otro correo si lo prefieres.
-                  </p>
-                </div>
-
-                {supMsg && (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
-                    <Check size={14} /> {supMsg}
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleSaveSupEmail} disabled={savingSupEmail}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-60"
-                    style={{ backgroundColor: '#16A34A', color: '#FFFFFF' }}
-                  >
-                    {savingSupEmail ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                    Guardar correo
-                  </button>
-                  <button
-                    onClick={handleTestSup} disabled={testingSup}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-60"
-                    style={{ backgroundColor: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}
-                  >
-                    {testingSup ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                    Enviar prueba
-                  </button>
-                </div>
-              </>
-            )}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

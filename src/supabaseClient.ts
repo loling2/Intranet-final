@@ -258,6 +258,7 @@ export interface TimeIncident {
 export interface Seguro {
   id: string;
   sociedad_id: string | null;
+  categoria: string;
   tipo: string;
   compania: string;
   numero_poliza: string;
@@ -268,6 +269,26 @@ export interface Seguro {
   beneficiario: string | null;
   cobertura: string | null;
   observaciones: string | null;
+  matricula: string | null;
+  vehiculo_id: string | null;
+  descripcion: string | null;
+  numero_asistencia: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VehiculoMantenimiento {
+  id: string;
+  vehiculo_id: string;
+  tipo: string;
+  titulo: string;
+  descripcion: string | null;
+  fecha: string;
+  kilometros: number | null;
+  taller: string | null;
+  importe: number | null;
+  proxima_fecha: string | null;
+  proxima_revision_km: number | null;
   created_at: string;
   updated_at: string;
 }

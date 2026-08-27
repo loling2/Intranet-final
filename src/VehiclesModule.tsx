@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  Car, Search, Plus, QrCode, CheckCircle2, AlertTriangle,
-  Clock, RefreshCw, X, Activity, Unlock, Lock,
-  Calendar, Gauge, AlertCircle, History, ToggleLeft, ToggleRight, Filter,
-  ChevronDown, ChevronUp,
-} from 'lucide-react';
-import { supabase, Vehicle, VehicleLog, UserProfile } from './supabaseClient';
+import { Car, Search, Plus, QrCode, CheckCircle2, AlertTriangle, Clock, RefreshCw, X, Activity, Unlock, Lock, Calendar, Gauge, AlertCircle, History, ToggleLeft, ToggleRight, Filter, ChevronDown, ChevronUp, Pencil, Save, Wrench, Trash2, Phone, ShieldCheck, FileText, Euro } from 'lucide-react';
+import { supabase, Vehicle, VehicleLog, UserProfile, Seguro, VehiculoMantenimiento } from './supabaseClient';
 import { useAuth } from './context/AuthContext';
 import { useSociety } from './context/SocietyContext';
 import { writeAuditLog } from './lib/auditLog';
@@ -612,6 +607,66 @@ function VehicleLogRow({ log, matricula, kmUsado }: { log: VehicleLog; matricula
   );
 }
 
+interface EditVehicleModalProps {
+  vehicle: Vehicle;
+  onClose: () => void;
+  onDone: () => void;
+}
+
+function EditVehicleModal({ vehicle, onClose, onDone }: EditVehicleModalProps) {
+  const [form, setForm] = useState({
+    matricula: vehicle.matricula,
+    marca: vehicle.marca,
+    modelo: vehicle.modelo,
+    kilometros_actuales: String(vehicle.kilometros_actuales),
+    fecha_itv: vehicle.fecha_itv,
+  });
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    const km = Number(form.kilometros_actuales);
+    if (!form.matricula.trim() || !form.marca.trim() || !form.modelo.trim() || !form.fecha_itv || !Number.isFinite(km) || km < 0) {
+      setError('Rellena los campos obligatorios con valores válidos');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    const { error: updateError } = await supabase.from('vehicles').update({
+      matricula: form.matricula.trim().toUpperCase(),
+      marca: form.marca.trim(),
+      modelo: form.modelo.trim(),
+      kilometros_actuales: km,
+      fecha_itv: form.fecha_itv,
+    }).eq('id', vehicle.id);
+    setSaving(false);
+    if (updateError) { setError(updateError.message); return; }
+    onDone();
+  };
+
+  return (
+    <ModalWrapper title="Editar Vehículo" subtitle={`${vehicle.marca} ${vehicle.modelo} · ${vehicle.matricula}`} onClose={onClose} accentColor="#0F172A">
+      <div className="space-y-4">
+        {[
+          { key: 'matricula', label: 'Matrícula *', type: 'text' },
+          { key: 'marca', label: 'Marca *', type: 'text' },
+          { key: 'modelo', label: 'Modelo *', type: 'text' },
+          { key: 'kilometros_actuales', label: 'Kilómetros actuales', type: 'number' },
+          { key: 'fecha_itv', label: 'Fecha ITV *', type: 'date' },
+        ].map((field) => (
+          <div key={field.key}>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>{field.label}</label>
+            <input type={field.type} value={form[field.key as keyof typeof form]} onChange={(event) => setForm((previous) => ({ ...previous, [field.key]: event.target.value }))}
+              className="w-full px-4 py-2.5 rounded-xl text-sm outline-none" style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
+          </div>
+        ))}
+        {error && <ErrorBanner msg={error} />}
+        <ModalActions onCancel={onClose} onConfirm={handleSave} loading={saving} confirmLabel="Guardar cambios" />
+      </div>
+    </ModalWrapper>
+  );
+}
+
 interface Props {
   currentUserRole: AppRole;
   userEmail?: string;
@@ -624,460 +679,7 @@ type ActiveModal =
   | { type: 'blocked'; vehicle: Vehicle }
   | { type: 'add' }
   | { type: 'logs'; vehicle: Vehicle }
-  | { type: 'edit'; vehicle: Vehicle }
-  | { type: 'mantenimiento'; vehicle: Vehicle };
-
-interface EditVehicleModalProps {
-  vehicle: Vehicle;
-  profile: UserProfile;
-  onClose: () => void;
-  onDone: () => void;
-}
-
-function EditVehicleModal({ vehicle, profile, onClose, onDone }: EditVehicleModalProps) {
-  const [form, setForm] = useState({
-    matricula: vehicle.matricula,
-    marca: vehicle.marca,
-    modelo: vehicle.modelo,
-    kilometros_actuales: String(vehicle.kilometros_actuales),
-    fecha_itv: vehicle.fecha_itv,
-  });
-  const [seguro, setSeguro] = useState<Seguro | null>(null);
-  const [seguroForm, setSeguroForm] = useState({
-    compania: '',
-    numero_poliza: '',
-    numero_asistencia: '',
-    fecha_vencimiento: '',
-  });
-  const [mantenimientos, setMantenimientos] = useState<VehiculoMantenimiento[]>([]);
-  const [activeTab, setActiveTab] = useState<'datos' | 'seguro' | 'mantenimiento'>('datos');
-  const [saving, setSaving] = useState(false);
-  const [savingSeguro, setSavingSeguro] = useState(false);
-  const [error, setError] = useState('');
-  const [showMantForm, setShowMantForm] = useState(false);
-  const [mantForm, setMantForm] = useState({
-    tipo: 'revision',
-    titulo: '',
-    descripcion: '',
-    fecha: new Date().toISOString().slice(0, 10),
-    kilometros: '',
-    taller: '',
-    importe: '',
-    proxima_fecha: '',
-    proxima_revision_km: '',
-  });
-  const [savingMant, setSavingMant] = useState(false);
-
-  useEffect(() => {
-    const load = async () => {
-      const [segRes, mantRes] = await Promise.all([
-        supabase.from('seguros').select('*').eq('vehiculo_id', vehicle.id).maybeSingle(),
-        supabase.from('vehiculos_mantenimiento').select('*').eq('vehiculo_id', vehicle.id).order('fecha', { ascending: false }),
-      ]);
-      if (segRes.data) {
-        const s = segRes.data as Seguro;
-        setSeguro(s);
-        setSeguroForm({
-          compania: s.compania ?? '',
-          numero_poliza: s.numero_poliza ?? '',
-          numero_asistencia: s.numero_asistencia ?? '',
-          fecha_vencimiento: s.fecha_vencimiento ?? '',
-        });
-      }
-      if (mantRes.data) setMantenimientos(mantRes.data as VehiculoMantenimiento[]);
-    };
-    load();
-  }, [vehicle.id]);
-
-  const handleSaveVehicle = async () => {
-    if (!form.matricula.trim() || !form.marca.trim() || !form.modelo.trim() || !form.fecha_itv) {
-      setError('Rellena todos los campos obligatorios');
-      return;
-    }
-    const km = parseInt(form.kilometros_actuales || '0', 10);
-    if (isNaN(km) || km < 0) { setError('Kilometraje invalido'); return; }
-    setSaving(true);
-    setError('');
-    try {
-      const { error: err } = await supabase
-        .from('vehicles')
-        .update({
-          matricula: form.matricula.trim().toUpperCase(),
-          marca: form.marca.trim(),
-          modelo: form.modelo.trim(),
-          kilometros_actuales: km,
-          fecha_itv: form.fecha_itv,
-        })
-        .eq('id', vehicle.id);
-      if (err) throw err;
-      await writeAuditLog({
-        evento: 'vehicle_edited',
-        descripcion: `Vehiculo editado: ${form.matricula} (${form.marca} ${form.modelo}) por ${profile.nombre}`,
-        autor: profile,
-        entidad: 'vehicle',
-        entidad_id: vehicle.id,
-        metadata: { matricula: form.matricula, marca: form.marca, modelo: form.modelo, km, fecha_itv: form.fecha_itv },
-        society_id: vehicle.society_id,
-      });
-      onDone();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al guardar');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSaveSeguro = async () => {
-    setSavingSeguro(true);
-    setError('');
-    try {
-      if (seguro) {
-        const { error: err } = await supabase.from('seguros').update({
-          compania: seguroForm.compania.trim() || null,
-          numero_poliza: seguroForm.numero_poliza.trim() || null,
-          numero_asistencia: seguroForm.numero_asistencia.trim() || null,
-          fecha_vencimiento: seguroForm.fecha_vencimiento || null,
-        }).eq('id', seguro.id);
-        if (err) throw err;
-      } else {
-        const { error: err } = await supabase.from('seguros').insert({
-          categoria: 'vehiculo',
-          compania: seguroForm.compania.trim() || '—',
-          numero_poliza: seguroForm.numero_poliza.trim() || '—',
-          numero_asistencia: seguroForm.numero_asistencia.trim() || null,
-          fecha_vencimiento: seguroForm.fecha_vencimiento || null,
-          matricula: vehicle.matricula,
-          vehiculo_id: vehicle.id,
-          society_id: vehicle.society_id || null,
-          estado: 'activo',
-        });
-        if (err) throw err;
-      }
-      const { data: refreshed } = await supabase.from('seguros').select('*').eq('vehiculo_id', vehicle.id).maybeSingle();
-      if (refreshed) {
-        const s = refreshed as Seguro;
-        setSeguro(s);
-        setSeguroForm({
-          compania: s.compania ?? '',
-          numero_poliza: s.numero_poliza ?? '',
-          numero_asistencia: s.numero_asistencia ?? '',
-          fecha_vencimiento: s.fecha_vencimiento ?? '',
-        });
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al guardar seguro');
-    } finally {
-      setSavingSeguro(false);
-    }
-  };
-
-  const handleAddMant = async () => {
-    if (!mantForm.titulo.trim()) { setError('El titulo es obligatorio'); return; }
-    setSavingMant(true);
-    setError('');
-    try {
-      const { error: err } = await supabase.from('vehiculos_mantenimiento').insert({
-        vehiculo_id: vehicle.id,
-        tipo: mantForm.tipo,
-        titulo: mantForm.titulo.trim(),
-        descripcion: mantForm.descripcion.trim() || null,
-        fecha: mantForm.fecha,
-        kilometros: mantForm.kilometros ? parseInt(mantForm.kilometros, 10) : null,
-        taller: mantForm.taller.trim() || null,
-        importe: mantForm.importe ? parseFloat(mantForm.importe) : null,
-        proxima_fecha: mantForm.proxima_fecha || null,
-        proxima_revision_km: mantForm.proxima_revision_km ? parseInt(mantForm.proxima_revision_km, 10) : null,
-      });
-      if (err) throw err;
-      setShowMantForm(false);
-      setMantForm({ tipo: 'revision', titulo: '', descripcion: '', fecha: new Date().toISOString().slice(0, 10), kilometros: '', taller: '', importe: '', proxima_fecha: '', proxima_revision_km: '' });
-      const { data: refreshed } = await supabase.from('vehiculos_mantenimiento').select('*').eq('vehiculo_id', vehicle.id).order('fecha', { ascending: false });
-      if (refreshed) setMantenimientos(refreshed as VehiculoMantenimiento[]);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al anadir mantenimiento');
-    } finally {
-      setSavingMant(false);
-    }
-  };
-
-  const handleDeleteMant = async (id: string) => {
-    if (!confirm('Eliminar este registro de mantenimiento?')) return;
-    const { error: err } = await supabase.from('vehiculos_mantenimiento').delete().eq('id', id);
-    if (err) { setError(err.message); return; }
-    setMantenimientos((prev) => prev.filter((m) => m.id !== id));
-  };
-
-  const TIPOS_MANT = ['revision', 'cambio_aceite', 'frenos', 'neumaticos', 'itv', 'taller', 'otro'];
-  const mantLabel: Record<string, string> = {
-    revision: 'Revision', cambio_aceite: 'Cambio de aceite', frenos: 'Frenos',
-    neumaticos: 'Neumaticos', itv: 'ITV', taller: 'Taller', otro: 'Otro',
-  };
-
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
-        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0F172A, #0F172ACC)' }}>
-          <div>
-            <h2 className="text-white font-semibold flex items-center gap-2"><Edit3 size={16} /> Editar Vehiculo</h2>
-            <p className="text-white/70 text-xs font-mono">{vehicle.matricula} - {vehicle.marca} {vehicle.modelo}</p>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff' }}>
-            <X size={15} />
-          </button>
-        </div>
-
-        <div className="flex border-b" style={{ borderColor: '#E2E8F0' }}>
-          {[
-            { key: 'datos' as const, label: 'Datos del vehiculo', icon: Car },
-            { key: 'seguro' as const, label: 'Seguro / Poliza', icon: ShieldCheck },
-            { key: 'mantenimiento' as const, label: 'Mantenimiento', icon: Wrench },
-          ].map((tab) => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-              className="flex items-center gap-1.5 px-4 py-3 text-xs font-semibold cursor-pointer transition-all duration-200"
-              style={{
-                color: activeTab === tab.key ? '#0F172A' : '#94A3B8',
-                borderBottom: activeTab === tab.key ? '2px solid #0F172A' : '2px solid transparent',
-              }}>
-              <tab.icon size={13} /> {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="p-6 overflow-y-auto">
-          {error && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-4" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
-              <AlertCircle size={13} style={{ color: '#DC2626' }} />
-              <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
-            </div>
-          )}
-
-          {activeTab === 'datos' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Matricula *</label>
-                <input value={form.matricula} onChange={(e) => setForm({ ...form, matricula: e.target.value.toUpperCase() })}
-                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none font-mono"
-                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Marca *</label>
-                <input value={form.marca} onChange={(e) => setForm({ ...form, marca: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Modelo *</label>
-                <input value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Kilometros</label>
-                <input type="number" value={form.kilometros_actuales} onChange={(e) => setForm({ ...form, kilometros_actuales: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Fecha ITV *</label>
-                <input type="date" value={form.fecha_itv} onChange={(e) => setForm({ ...form, fecha_itv: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }} />
-              </div>
-              <div className="sm:col-span-2 flex gap-3 mt-2">
-                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer"
-                  style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
-                <button onClick={handleSaveVehicle} disabled={saving}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
-                  style={{ backgroundColor: '#0F172A' }}>
-                  {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} Guardar
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'seguro' && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-                <ShieldCheck size={14} style={{ color: '#0369A1' }} />
-                <p className="text-xs" style={{ color: '#0369A1' }}>
-                  {seguro ? 'Poliza vinculada a este vehiculo' : 'No hay poliza vinculada. Crea una nueva.'}
-                </p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Compania</label>
-                  <input value={seguroForm.compania} onChange={(e) => setSeguroForm({ ...seguroForm, compania: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}
-                    placeholder="Aseguradora" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Numero de poliza</label>
-                  <input value={seguroForm.numero_poliza} onChange={(e) => setSeguroForm({ ...seguroForm, numero_poliza: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
-                    style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}
-                    placeholder="POL-2024-001" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Numero de asistencia</label>
-                  <div className="relative">
-                    <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
-                    <input value={seguroForm.numero_asistencia} onChange={(e) => setSeguroForm({ ...seguroForm, numero_asistencia: e.target.value })}
-                      className="w-full pl-8 pr-3 py-2 rounded-lg text-sm outline-none"
-                      style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}
-                      placeholder="600 123 456" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Fecha vencimiento</label>
-                  <input type="date" value={seguroForm.fecha_vencimiento} onChange={(e) => setSeguroForm({ ...seguroForm, fecha_vencimiento: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }} />
-                </div>
-              </div>
-              <button onClick={handleSaveSeguro} disabled={savingSeguro}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60"
-                style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
-                {savingSeguro ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
-                {seguro ? 'Actualizar poliza' : 'Crear poliza'}
-              </button>
-            </div>
-          )}
-
-          {activeTab === 'mantenimiento' && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold" style={{ color: '#0F172A' }}>Historico de mantenimiento ({mantenimientos.length})</p>
-                <button onClick={() => setShowMantForm(!showMantForm)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
-                  style={{ backgroundColor: '#16A34A', color: '#FFFFFF' }}>
-                  <Plus size={12} /> Nuevo
-                </button>
-              </div>
-
-              {showMantForm && (
-                <div className="rounded-xl p-4 space-y-3" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Tipo</label>
-                      <select value={mantForm.tipo} onChange={(e) => setMantForm({ ...mantForm, tipo: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
-                        style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}>
-                        {TIPOS_MANT.map((t) => <option key={t} value={t}>{mantLabel[t]}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Titulo *</label>
-                      <input value={mantForm.titulo} onChange={(e) => setMantForm({ ...mantForm, titulo: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                        style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}
-                        placeholder="Ej: Cambio de aceite y filtros" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Fecha</label>
-                      <input type="date" value={mantForm.fecha} onChange={(e) => setMantForm({ ...mantForm, fecha: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                        style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Kilometros</label>
-                      <input type="number" value={mantForm.kilometros} onChange={(e) => setMantForm({ ...mantForm, kilometros: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                        style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}
-                        placeholder="Ej: 45000" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Taller</label>
-                      <input value={mantForm.taller} onChange={(e) => setMantForm({ ...mantForm, taller: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                        style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}
-                        placeholder="Nombre del taller" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Importe (€)</label>
-                      <input type="number" step="0.01" value={mantForm.importe} onChange={(e) => setMantForm({ ...mantForm, importe: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                        style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}
-                        placeholder="Ej: 120.50" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Proxima fecha</label>
-                      <input type="date" value={mantForm.proxima_fecha} onChange={(e) => setMantForm({ ...mantForm, proxima_fecha: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                        style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Proxima revision (km)</label>
-                      <input type="number" value={mantForm.proxima_revision_km} onChange={(e) => setMantForm({ ...mantForm, proxima_revision_km: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                        style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}
-                        placeholder="Ej: 55000" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Descripcion</label>
-                    <textarea value={mantForm.descripcion} onChange={(e) => setMantForm({ ...mantForm, descripcion: e.target.value })}
-                      rows={2}
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
-                      style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#1E293B' }}
-                      placeholder="Detalle del trabajo realizado..." />
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setShowMantForm(false)} className="flex-1 py-2 rounded-lg text-xs font-medium cursor-pointer"
-                      style={{ backgroundColor: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
-                    <button onClick={handleAddMant} disabled={savingMant} className="flex-1 py-2 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-60 flex items-center justify-center gap-1.5"
-                      style={{ backgroundColor: '#16A34A', color: '#FFFFFF' }}>
-                      {savingMant ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />} Guardar
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {mantenimientos.length === 0 ? (
-                <div className="py-8 text-center">
-                  <Wrench size={24} className="mx-auto mb-2" style={{ color: '#CBD5E1' }} />
-                  <p className="text-xs" style={{ color: '#94A3B8' }}>No hay registros de mantenimiento</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {mantenimientos.map((m) => (
-                    <div key={m.id} className="rounded-xl p-3" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                              style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
-                              {mantLabel[m.tipo] ?? m.tipo}
-                            </span>
-                            <span className="text-xs" style={{ color: '#94A3B8' }}>{m.fecha}</span>
-                            {m.kilometros != null && <span className="text-xs font-mono" style={{ color: '#64748B' }}>{m.kilometros.toLocaleString()} km</span>}
-                          </div>
-                          <p className="text-sm font-semibold" style={{ color: '#1E293B' }}>{m.titulo}</p>
-                          {m.descripcion && <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{m.descripcion}</p>}
-                          <div className="flex flex-wrap gap-3 mt-1 text-xs" style={{ color: '#94A3B8' }}>
-                            {m.taller && <span>Taller: {m.taller}</span>}
-                            {m.importe != null && <span className="flex items-center gap-0.5"><Euro size={10} /> {m.importe.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</span>}
-                            {m.proxima_fecha && <span className="flex items-center gap-0.5"><Calendar size={10} /> Proxima: {m.proxima_fecha}</span>}
-                            {m.proxima_revision_km != null && <span>Prox. rev: {m.proxima_revision_km.toLocaleString()} km</span>}
-                          </div>
-                        </div>
-                        <button onClick={() => handleDeleteMant(m.id)} title="Eliminar"
-                          className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer flex-shrink-0"
-                          style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+  | { type: 'edit'; vehicle: Vehicle };
 
 export default function VehiclesModule({ currentUserRole, userEmail }: Props) {
   const { profile: authProfile } = useAuth();
@@ -1226,8 +828,7 @@ export default function VehiclesModule({ currentUserRole, userEmail }: Props) {
       {modal?.type === 'checkout' && <CheckOutModal vehicle={modal.vehicle} profile={profile} log={modal.log} onClose={() => setModal(null)} onDone={handleDone} />}
       {modal?.type === 'blocked' && <BlockedModal vehicle={modal.vehicle} profile={profile} canRelease={canManage} onClose={() => setModal(null)} onReleased={handleDone} />}
       {modal?.type === 'add' && <AddVehicleModal profile={profile} societyId={activeSocietyId ?? 'global'} onClose={() => setModal(null)} onAdded={handleDone} />}
-      {modal?.type === 'edit' && <EditVehicleModal vehicle={modal.vehicle} profile={profile} onClose={() => setModal(null)} onDone={handleDone} />}
-      {modal?.type === 'mantenimiento' && <EditVehicleModal vehicle={modal.vehicle} profile={profile} onClose={() => setModal(null)} onDone={handleDone} />}
+      {modal?.type === 'edit' && <EditVehicleModal vehicle={modal.vehicle} onClose={() => setModal(null)} onDone={handleDone} />}
 
       <div className="space-y-6">
         {/* Header */}
@@ -1391,7 +992,7 @@ export default function VehiclesModule({ currentUserRole, userEmail }: Props) {
                       {canManage && (
                         <button
                           onClick={() => setModal({ type: 'edit', vehicle: v })}
-                          title="Editar vehiculo"
+                          title="Editar vehículo"
                           className="px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-all duration-200"
                           style={{
                             backgroundColor: '#F8FAFC',
@@ -1399,7 +1000,7 @@ export default function VehiclesModule({ currentUserRole, userEmail }: Props) {
                             border: '1px solid #E2E8F0',
                           }}
                         >
-                          <Edit3 size={12} /> Editar
+                          <Pencil size={12} /> Editar
                         </button>
                       )}
                       {canManage && (
@@ -1407,7 +1008,7 @@ export default function VehiclesModule({ currentUserRole, userEmail }: Props) {
                           onClick={() => handleToggleEstado(v)}
                           disabled={togglingId === v.id}
                           className="px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-all duration-200 disabled:opacity-50"
-                          title={libre ? 'Marcar como en uso' : 'Liberar vehiculo'}
+                          title={libre ? 'Marcar como en uso' : 'Liberar vehículo'}
                           style={{
                             backgroundColor: libre ? '#FEF2F2' : '#F0FDF4',
                             color: libre ? '#DC2626' : '#16A34A',

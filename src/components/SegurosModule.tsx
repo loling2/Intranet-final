@@ -7,9 +7,13 @@ import { supabase, type Seguro, type Sociedad, type Vehicle } from '../supabaseC
 import { useSociety } from '../context/SocietyContext';
 
 const CATEGORIAS = [
+  { value: 'salud', label: 'Salud' },
+  { value: 'hogar', label: 'Hogar' },
+  { value: 'obra', label: 'Obra' },
+  { value: 'vida', label: 'Vida' },
   { value: 'local', label: 'Local' },
   { value: 'responsabilidad_civil', label: 'Responsabilidad Civil' },
-  { value: 'vehiculo', label: 'Vehiculo' },
+  { value: 'vehiculo', label: 'Vehículo' },
   { value: 'otro', label: 'Otro' },
 ];
 

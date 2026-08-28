@@ -147,7 +147,7 @@ const CSV_HR_HEADERS = [
   'Codigo Contrato', 'Fecha de alta en compania', 'Fecha Antiguedad en la empresa',
   'Fecha Nacimiento', 'Telefono 1', 'E-mail personal',
   'Convenio', 'Localidad', 'Direccion Completa', 'Codigo Postal', 'Sexo',
-  'Empresa',
+  'Código empresa',
 ];
 const CSV_HR_EXAMPLE = [
   ['GARCIA LOPEZ, JUAN', 'TECNICO', '38/12345678/90', '12345678A', '100', '01/01/2024', '01/01/2020', '15/05/1990', '600000001', 'juan@email.com', 'SERVICIOS ATENCION PERSONAS', 'SANTA CRUZ DE TENERIFE', 'CL/EJEMPLO, 1', '38001', 'Hombre', '100'],
@@ -251,7 +251,7 @@ function hrRowToEmpleado(r: Record<string, string>, sociedadId: string, sociedad
     return '';
   };
 
-  const empresaRaw = get('Empresa', 'empresa', 'codigo_empresa', 'cod_empresa', 'sociedad');
+  const empresaRaw = get('Código empresa', 'Codigo empresa', 'codigo_empresa', 'cod_empresa', 'Empresa', 'empresa', 'sociedad');
   const resolvedSociedadId = resolveSociedadId(empresaRaw, sociedades, sociedadId);
 
   // Parse "APELLIDOS, NOMBRE" → "NOMBRE APELLIDOS"
@@ -519,7 +519,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
           password: r['contrasena'] ?? r['contrasena'] ?? r['password'] ?? r['clave'] ?? '',
           role: (r['rol'] ?? r['role'] ?? 'employee').toLowerCase().trim(),
           societies: (() => {
-            const empRaw = (r['empresa'] ?? r[normHeader('Empresa')] ?? r['sociedad_id'] ?? '').trim();
+            const empRaw = (r['codigo_empresa'] ?? r['cod_empresa'] ?? r['empresa'] ?? r[normHeader('Empresa')] ?? r['sociedad_id'] ?? '').trim();
             const resolved = resolveSociedadId(empRaw, sociedades, selectedSociety);
             return resolved ? [resolved] : [];
           })(),
@@ -729,7 +729,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                 <FileSpreadsheet size={13} />
                 Formato detectado: <strong>{mode === 'hr' ? 'RRHH (ficha de empleado, sin login)' : 'Acceso Web (crea usuario con login)'}</strong>
                 {(() => {
-                  const allEmpRaw = rows.map(r => (r['empresa'] ?? r[normHeader('Empresa')] ?? r['sociedad_id'] ?? '').trim()).filter(Boolean);
+                  const allEmpRaw = rows.map(r => (r['codigo_empresa'] ?? r['cod_empresa'] ?? r['empresa'] ?? r[normHeader('Empresa')] ?? r['sociedad_id'] ?? '').trim()).filter(Boolean);
                   if (allEmpRaw.length === 0 && selectedSociety) {
                     return <span className="ml-2" style={{ color: '#94A3B8' }}>· Sociedad por defecto: {sociedades.find(s => s.id === selectedSociety)?.nombre}</span>;
                   }
@@ -739,7 +739,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                     const socName = sociedades.find(s => s.id === [...detectedSociedades][0])?.nombre ?? '—';
                     return <span className="ml-2" style={{ color: mode === 'hr' ? '#16A34A' : '#0369A1' }}>· Empresa detectada: <strong>{socName}</strong></span>;
                   }
-                  return <span className="ml-2" style={{ color: mode === 'hr' ? '#16A34A' : '#0369A1' }}>· {detectedSociedades.size} empresas detectadas en el CSV</span>;
+                  return <span className="ml-2" style={{ color: mode === 'hr' ? '#16A34A' : '#0369A1' }}>· {detectedSociedades.size} empresas detectadas en el archivo</span>;
                 })()}
               </div>
 
@@ -818,7 +818,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                                 <td className="px-3 py-2" style={{ color: '#475569' }}>{parsed.sexo || '—'}</td>
                                 <td className="px-3 py-2 whitespace-nowrap" style={{ color: '#475569' }}>
                                   {(() => {
-                                    const empRaw = (r['empresa'] ?? r[normHeader('Empresa')] ?? '').trim();
+                                    const empRaw = (r['codigo_empresa'] ?? r['cod_empresa'] ?? r['empresa'] ?? r[normHeader('Empresa')] ?? '').trim();
                                     if (!empRaw) return <span style={{ color: '#CBD5E1' }}>—</span>;
                                     const resolvedId = resolveSociedadId(empRaw, sociedades, selectedSociety);
                                     const socName = sociedades.find(s => s.id === resolvedId)?.nombre ?? '—';
@@ -857,7 +857,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                             </td>
                             <td className="px-3 py-2 text-xs" style={{ color: '#94A3B8' }}>
                               {(() => {
-                                const empRaw = (r['empresa'] ?? r[normHeader('Empresa')] ?? r['sociedad_id'] ?? '').trim();
+                                const empRaw = (r['codigo_empresa'] ?? r['cod_empresa'] ?? r['empresa'] ?? r[normHeader('Empresa')] ?? r['sociedad_id'] ?? '').trim();
                                 if (!empRaw && !selectedSociety) return <span style={{ color: '#CBD5E1' }}>—</span>;
                                 const resolvedId = resolveSociedadId(empRaw, sociedades, selectedSociety);
                                 const socName = sociedades.find(s => s.id === resolvedId)?.nombre ?? '—';

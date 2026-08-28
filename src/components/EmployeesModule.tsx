@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination';
 import { Users, Plus, Search, X, Save, ChevronDown, ChevronUp, Pencil, Trash2, AlertCircle, CheckCircle2, XCircle, Building2, Tag, RefreshCw, UserPlus, Ligature as FileSignature, Clock, Bell, Upload, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import type { LucideIcon } from 'lucide-react';
 import { supabase, type Empleado, type EstadoContrato, type HistorialContrato, type Sociedad, type Centro, type Asignacion, type Tag as TagType, type UserProfile, type BajaVitaly } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
@@ -191,6 +192,15 @@ function downloadTemplateCsv(type: 'auth' | 'hr') {
   URL.revokeObjectURL(url);
 }
 
+function downloadTemplateExcel() {
+  const ws = XLSX.utils.aoa_to_sheet([CSV_HR_HEADERS, ...CSV_HR_EXAMPLE]);
+  ws['!cols'] = CSV_HR_HEADERS.map(() => ({ wch: 22 }));
+  ws['!rows'] = [{ hpt: 20 }, { hpt: 18 }, { hpt: 18 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Empleados');
+  XLSX.writeFile(wb, 'plantilla_empleados_rrhh.xlsx');
+}
+
 // Normalize accented/special chars for header matching
 function normHeader(s: string) {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
@@ -306,9 +316,8 @@ function hrRowToEmpleado(r: Record<string, string>, sociedadId: string, sociedad
     else if (['f', 'femenino', 'mujer', 'female'].includes(s)) payload.sexo = 'F';
     else payload.sexo = sexo.trim().slice(0, 20);
   }
-  // nass and localidad are not columns in empleados table; keep for preview only
-  (payload as Record<string, unknown>).nass = nass || null;
-  (payload as Record<string, unknown>).localidad = localidad || null;
+  if (nass) payload.nass = nass;
+  if (localidad) payload.localidad = localidad;
   return payload;
 }
 
@@ -381,6 +390,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [mode, setMode] = useState<'auth' | 'hr'>('hr');
   const [manualMode, setManualMode] = useState<'auth' | 'hr' | null>('hr');
+  const [fileFormat, setFileFormat] = useState<'csv' | 'excel'>('csv');
   const [selectedSociety, setSelectedSociety] = useState('');
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
@@ -406,24 +416,61 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
     const file = e.target.files?.[0];
     if (!file) return;
     setError('');
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const text = ev.target?.result as string;
-      const parsed = parseCsv(text);
-      if (!parsed.rows.length) { setError('El archivo no contiene datos válidos o el formato es incorrecto.'); return; }
-      setRows(parsed.rows);
-      // User's explicit choice always wins over auto-detection
-      setMode(manualMode ?? parsed.mode);
-      setStep('preview');
-      if ((manualMode ?? parsed.mode) === 'hr') {
-        const dnis = parsed.rows
-          .map(r => hrRowToEmpleado(r, selectedSociety, sociedades).dni)
-          .filter((d): d is string => !!d && d.trim() !== '')
-          .map(d => d.toUpperCase());
-        checkExistingDnis(dnis);
-      }
-    };
-    reader.readAsText(file, 'UTF-8');
+    const isExcel = /\.xlsx?$/i.test(file.name);
+    if (isExcel) {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const buf = ev.target?.result as ArrayBuffer;
+        if (!buf) { setError('No se pudo leer el archivo Excel.'); return; }
+        try {
+          const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          if (!ws) { setError('El archivo Excel no tiene hojas.'); return; }
+          const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '', raw: false, dateNF: 'dd/mm/yyyy' });
+          const normalized = jsonRows.map(row => {
+            const obj: Record<string, string> = {};
+            Object.entries(row).forEach(([k, v]) => {
+              const sv = String(v ?? '').trim();
+              obj[normHeader(k)] = sv;
+              obj[k] = sv;
+            });
+            return obj;
+          }).filter(r => Object.values(r).some(v => v.trim()));
+          if (!normalized.length) { setError('El archivo Excel no contiene datos válidos.'); return; }
+          setRows(normalized);
+          setMode(manualMode ?? 'hr');
+          setStep('preview');
+          if ((manualMode ?? 'hr') === 'hr') {
+            const dnis = normalized
+              .map(r => hrRowToEmpleado(r, selectedSociety, sociedades).dni)
+              .filter((d): d is string => !!d && d.trim() !== '')
+              .map(d => d.toUpperCase());
+            checkExistingDnis(dnis);
+          }
+        } catch {
+          setError('Error al leer el Excel. Asegúrate de que es un archivo .xlsx válido.');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const text = ev.target?.result as string;
+        const parsed = parseCsv(text);
+        if (!parsed.rows.length) { setError('El archivo no contiene datos válidos o el formato es incorrecto.'); return; }
+        setRows(parsed.rows);
+        setMode(manualMode ?? parsed.mode);
+        setStep('preview');
+        if ((manualMode ?? parsed.mode) === 'hr') {
+          const dnis = parsed.rows
+            .map(r => hrRowToEmpleado(r, selectedSociety, sociedades).dni)
+            .filter((d): d is string => !!d && d.trim() !== '')
+            .map(d => d.toUpperCase());
+          checkExistingDnis(dnis);
+        }
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
   }
 
   async function handleImport() {
@@ -519,7 +566,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
               <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Importar empleados</h3>
               <p className="text-xs" style={{ color: '#64748B' }}>
                 {step === 'upload'
-                  ? 'Sube un CSV con los datos'
+                  ? 'Sube un CSV o Excel con los datos'
                   : step === 'preview'
                   ? `${rows.length} registro(s) · formato ${mode === 'hr' ? 'RRHH (upsert por DNI)' : 'acceso'}`
                   : 'Resultado de la importación'}
@@ -538,10 +585,10 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
           {step === 'upload' && (
             <>
               {/* Two template options — clicking one SELECTS the import mode */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* HR template */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* HR template (CSV) */}
                 <div
-                  onClick={() => setManualMode('hr')}
+                  onClick={() => { setManualMode('hr'); setFileFormat('csv'); }}
                   className="p-4 rounded-xl cursor-pointer transition-all duration-150"
                   style={{
                     backgroundColor: manualMode === 'hr' ? '#DCFCE7' : '#F0FDF4',
@@ -566,9 +613,36 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                     <Download size={12} /> Descargar plantilla RRHH
                   </button>
                 </div>
+                {/* HR template (Excel) */}
+                <div
+                  onClick={() => { setManualMode('hr'); setFileFormat('excel'); }}
+                  className="p-4 rounded-xl cursor-pointer transition-all duration-150"
+                  style={{
+                    backgroundColor: manualMode === 'hr' && fileFormat === 'excel' ? '#FEF3C7' : '#FFFBEB',
+                    border: manualMode === 'hr' && fileFormat === 'excel' ? '2px solid #D97706' : '1px solid #FDE68A',
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    {manualMode === 'hr' && fileFormat === 'excel' && <span className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#D97706' }}><svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>}
+                    <p className="text-sm font-semibold" style={{ color: '#92400E' }}>Plantilla RRHH (Excel)</p>
+                  </div>
+                  <p className="text-xs mb-2" style={{ color: '#B45309' }}>
+                    Igual que la plantilla RRHH pero en formato Excel (.xlsx). Importa ficha de empleado: apellidos, nombre, DNI, telefono, fechas, contrato, puesto, centro...
+                  </p>
+                  <p className="text-xs mb-3" style={{ color: '#64748B' }}>
+                    No crea acceso de login. Util para cargar datos de RRHH desde Excel.
+                  </p>
+                  <button
+                    onClick={e => { e.stopPropagation(); downloadTemplateExcel(); }}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+                    style={{ backgroundColor: '#D97706', color: '#FFFFFF' }}
+                  >
+                    <Download size={12} /> Descargar plantilla Excel
+                  </button>
+                </div>
                 {/* Auth template */}
                 <div
-                  onClick={() => setManualMode('auth')}
+                  onClick={() => { setManualMode('auth'); setFileFormat('csv'); }}
                   className="p-4 rounded-xl cursor-pointer transition-all duration-150"
                   style={{
                     backgroundColor: manualMode === 'auth' ? '#DBEAFE' : '#EFF6FF',
@@ -595,9 +669,9 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                 </div>
               </div>
               {/* Mode indicator */}
-              <p className="text-xs mt-1" style={{ color: manualMode === 'hr' ? '#16A34A' : '#0369A1' }}>
+              <p className="text-xs mt-1" style={{ color: manualMode === 'hr' ? (fileFormat === 'excel' ? '#D97706' : '#16A34A') : '#0369A1' }}>
                 {manualMode === 'hr'
-                  ? 'Modo seleccionado: RRHH — el CSV se importara como datos de empleados'
+                  ? `Modo seleccionado: RRHH (${fileFormat === 'excel' ? 'Excel .xlsx' : 'CSV'}) — se importara como datos de empleados`
                   : 'Modo seleccionado: Acceso Web — el CSV creara usuarios con login'}
               </p>
 
@@ -605,7 +679,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
               {sociedades.length > 0 && (
                 <div className="p-3 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
                   <label className="block text-xs font-semibold mb-1.5" style={{ color: '#374151' }}>
-                    Sociedad por defecto (opcional — se ignora si el CSV trae columna "Empresa" con codigo valido)
+                    Sociedad por defecto (opcional — se ignora si el archivo trae columna "Empresa" con codigo valido)
                   </label>
                   <select
                     value={selectedSociety}
@@ -621,20 +695,20 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
 
               {/* File upload */}
               <div>
-                <p className="text-sm font-semibold mb-2" style={{ color: '#374151' }}>Sube el CSV relleno</p>
+                <p className="text-sm font-semibold mb-2" style={{ color: '#374151' }}>Sube el archivo relleno</p>
                 <label
                   className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl cursor-pointer transition-all duration-200"
                   style={{
-                    border: `2px dashed ${manualMode === 'hr' ? '#16A34A' : manualMode === 'auth' ? '#0369A1' : '#CBD5E1'}`,
-                    backgroundColor: manualMode === 'hr' ? '#F0FDF4' : manualMode === 'auth' ? '#EFF6FF' : '#F8FAFC',
+                    border: `2px dashed ${manualMode === 'hr' ? (fileFormat === 'excel' ? '#D97706' : '#16A34A') : manualMode === 'auth' ? '#0369A1' : '#CBD5E1'}`,
+                    backgroundColor: manualMode === 'hr' ? (fileFormat === 'excel' ? '#FFFBEB' : '#F0FDF4') : manualMode === 'auth' ? '#EFF6FF' : '#F8FAFC',
                   }}
                 >
-                  <Upload size={28} style={{ color: manualMode === 'hr' ? '#16A34A' : manualMode === 'auth' ? '#0369A1' : '#94A3B8' }} />
+                  <Upload size={28} style={{ color: manualMode === 'hr' ? (fileFormat === 'excel' ? '#D97706' : '#16A34A') : manualMode === 'auth' ? '#0369A1' : '#94A3B8' }} />
                   <div className="text-center">
                     <p className="text-sm font-medium" style={{ color: '#475569' }}>Haz clic para seleccionar el archivo</p>
-                    <p className="text-xs" style={{ color: '#94A3B8' }}>Archivos .csv · separador coma o punto y coma · UTF-8</p>
+                    <p className="text-xs" style={{ color: '#94A3B8' }}>Archivos .csv o .xlsx</p>
                   </div>
-                  <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleFileChange} className="hidden" />
+                  <input ref={fileRef} type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleFileChange} className="hidden" />
                 </label>
               </div>
 

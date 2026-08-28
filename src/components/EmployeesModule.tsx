@@ -397,6 +397,8 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
   const [results, setResults] = useState<Array<{ label: string; ok: boolean; updated?: boolean; error?: string }>>([]);
   const [existingDnis, setExistingDnis] = useState<Set<string>>(new Set());
   const [updateExisting, setUpdateExisting] = useState(true);
+  const [onlyNew, setOnlyNew] = useState(false);
+  const [markMissingInactive, setMarkMissingInactive] = useState(false);
   const [checkingDnis, setCheckingDnis] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -479,7 +481,13 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
     try {
       if (mode === 'hr') {
         const res: Array<{ label: string; ok: boolean; updated?: boolean; error?: string }> = [];
-        for (const r of rows) {
+        const rowsToImport = onlyNew
+          ? rows.filter(r => {
+              const dni = hrRowToEmpleado(r, selectedSociety, sociedades).dni;
+              return !dni || !existingDnis.has(dni.toUpperCase());
+            })
+          : rows;
+        for (const r of rowsToImport) {
           const payload = hrRowToEmpleado(r, selectedSociety, sociedades);
           if (!payload.nombre?.trim()) { res.push({ label: payload.email || payload.nombre || '?', ok: false, error: 'Nombre vacío' }); continue; }
           const label = payload.nombre || payload.email || '?';
@@ -503,6 +511,43 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
               : typeof err === 'object' && err !== null && 'message' in err ? String((err as { message: unknown }).message)
               : String(err);
             res.push({ label, ok: false, error: msg });
+          }
+        }
+
+        if (markMissingInactive) {
+          const importedDnis = new Set(
+            rows
+              .map(r => hrRowToEmpleado(r, selectedSociety, sociedades).dni)
+              .filter((dni): dni is string => !!dni)
+              .map(dni => dni.toUpperCase()),
+          );
+          const societyIds = [...new Set(
+            rows.map(r => {
+              const raw = (r['codigo_empresa'] ?? r['cod_empresa'] ?? r['empresa'] ?? r[normHeader('Empresa')] ?? r['sociedad_id'] ?? '').trim();
+              return resolveSociedadId(raw, sociedades, selectedSociety);
+            }).filter(Boolean),
+          )];
+          if (societyIds.length === 0) {
+            res.push({ label: 'Bajas automáticas', ok: false, error: 'No se pudo determinar la sociedad del archivo.' });
+          } else {
+            const { data: currentEmployees, error: employeesError } = await supabase
+              .from('empleados')
+              .select('id, dni')
+              .eq('activo', true)
+              .not('dni', 'is', null)
+              .in('id_sociedad', societyIds);
+            if (employeesError) throw employeesError;
+            const missingIds = (currentEmployees ?? [])
+              .filter((emp: { id: string; dni: string | null }) => !emp.dni || !importedDnis.has(emp.dni.toUpperCase()))
+              .map((emp: { id: string }) => emp.id);
+            if (missingIds.length > 0) {
+              const { error: inactiveError } = await supabase
+                .from('empleados')
+                .update({ activo: false })
+                .in('id', missingIds);
+              if (inactiveError) throw inactiveError;
+            }
+            res.push({ label: 'Bajas automáticas', ok: true, updated: missingIds.length > 0 });
           }
         }
         setResults(res);
@@ -768,17 +813,41 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                         </>
                       )}
                     </div>
-                    {existCount > 0 && !checkingDnis && (
-                      <label className="flex items-center gap-2 cursor-pointer text-xs" style={{ color: '#374151' }}>
-                        <input
-                          type="checkbox"
-                          checked={updateExisting}
-                          onChange={e => setUpdateExisting(e.target.checked)}
-                          className="cursor-pointer"
-                          style={{ width: 14, height: 14, accentColor: '#0369A1' }}
-                        />
-                        Actualizar registros existentes
-                      </label>
+                    {!checkingDnis && (
+                      <div className="flex flex-wrap items-center gap-3">
+                        {existCount > 0 && (
+                          <label className="flex items-center gap-2 cursor-pointer text-xs" style={{ color: '#374151' }}>
+                            <input
+                              type="checkbox"
+                              checked={updateExisting}
+                              onChange={e => setUpdateExisting(e.target.checked)}
+                              className="cursor-pointer"
+                              style={{ width: 14, height: 14, accentColor: '#0369A1' }}
+                            />
+                            Actualizar existentes
+                          </label>
+                        )}
+                        <label className="flex items-center gap-2 cursor-pointer text-xs" style={{ color: '#16A34A' }}>
+                          <input
+                            type="checkbox"
+                            checked={onlyNew}
+                            onChange={e => setOnlyNew(e.target.checked)}
+                            className="cursor-pointer"
+                            style={{ width: 14, height: 14, accentColor: '#16A34A' }}
+                          />
+                          Solo nuevos
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs" style={{ color: '#92400E' }}>
+                          <input
+                            type="checkbox"
+                            checked={markMissingInactive}
+                            onChange={e => setMarkMissingInactive(e.target.checked)}
+                            className="cursor-pointer"
+                            style={{ width: 14, height: 14, accentColor: '#D97706' }}
+                          />
+                          Marcar ausentes como inactivos
+                        </label>
+                      </div>
                     )}
                   </div>
                 );
@@ -799,7 +868,10 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r, i) => (
+                    {(onlyNew ? rows.filter(r => {
+                      const dni = hrRowToEmpleado(r, selectedSociety, sociedades).dni;
+                      return !dni || !existingDnis.has(dni.toUpperCase());
+                    }) : rows).map((r, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
                         {mode === 'hr' ? (
                           (() => {
@@ -900,11 +972,19 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                   <p className="text-xs" style={{ color: '#94A3B8' }}>Errores</p>
                 </div>
               </div>
-              {results.filter(r => r.ok && r.updated).length > 0 && (
+              {results.filter(r => r.ok && r.updated && r.label !== 'Bajas automáticas').length > 0 && (
                 <div className="flex items-center gap-2 p-2 rounded-lg text-xs" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>
-                  <span className="font-semibold">{results.filter(r => r.ok && r.updated).length}</span> actualizados por DNI · <span className="font-semibold">{results.filter(r => r.ok && !r.updated).length}</span> nuevos insertados
+                  <span className="font-semibold">{results.filter(r => r.ok && r.updated && r.label !== 'Bajas automáticas').length}</span> actualizados por DNI · <span className="font-semibold">{results.filter(r => r.ok && !r.updated && r.label !== 'Bajas automáticas').length}</span> nuevos insertados
                 </div>
               )}
+              {results.some(r => r.label === 'Bajas automáticas') && (() => {
+                const baja = results.find(r => r.label === 'Bajas automáticas');
+                return (
+                  <div className="flex items-center gap-2 p-2 rounded-lg text-xs" style={{ backgroundColor: baja?.ok ? '#FFFBEB' : '#FEF2F2', color: baja?.ok ? '#92400E' : '#DC2626' }}>
+                    {baja?.ok ? 'Empleados ausentes marcados como inactivos' : `Error: ${baja?.error}`}
+                  </div>
+                );
+              })()}
               {results.filter(r => !r.ok).map((r, i) => (
                 <div key={i} className="flex items-start gap-2 p-3 rounded-xl text-xs" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
                   <AlertCircle size={13} className="flex-shrink-0 mt-0.5" style={{ color: '#DC2626' }} />
@@ -937,7 +1017,7 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
                 className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-60"
                 style={{ backgroundColor: mode === 'hr' ? '#16A34A' : '#0369A1', color: '#FFFFFF' }}
               >
-                {importing ? <><Loader2 size={14} className="animate-spin" /> Importando...</> : <><Upload size={14} /> Importar {rows.length} {mode === 'hr' ? 'empleados' : 'usuarios'}</>}
+                {importing ? <><Loader2 size={14} className="animate-spin" /> Importando...</> : <><Upload size={14} /> Importar {onlyNew && mode === 'hr' ? rows.filter(r => { const dni = hrRowToEmpleado(r, selectedSociety, sociedades).dni; return !dni || !existingDnis.has(dni.toUpperCase()); }).length : rows.length} {mode === 'hr' ? 'empleados' : 'usuarios'}</>}
               </button>
             </>
           )}

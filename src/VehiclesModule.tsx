@@ -5,6 +5,7 @@ import { useAuth } from './context/AuthContext';
 import { useSociety } from './context/SocietyContext';
 import { writeAuditLog } from './lib/auditLog';
 import { AppRole } from './context/AuthContext';
+import VehicleReservationsModule from './components/VehicleReservationsModule';
 
 const isITVExpired = (fecha: string) => new Date(fecha) < new Date();
 const isITVNearExpiry = (fecha: string) => {
@@ -1032,6 +1033,7 @@ type ActiveModal =
 export default function VehiclesModule({ currentUserRole, userEmail }: Props) {
   const { profile: authProfile } = useAuth();
   const { activeSocietyId } = useSociety();
+  const [mainTab, setMainTab] = useState<'gestion' | 'reservas'>('gestion');
 
   // Use real profile when available; otherwise build a synthetic one from the email prop
   const profile: UserProfile = (authProfile ?? {
@@ -1179,6 +1181,34 @@ export default function VehiclesModule({ currentUserRole, userEmail }: Props) {
       {modal?.type === 'edit' && <EditVehicleModal vehicle={modal.vehicle} onClose={() => setModal(null)} onDone={handleDone} />}
 
       <div className="space-y-6">
+        {/* Main sub-tabs: Gestión vs Reservas */}
+        <div className="flex gap-1 p-1 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+          <button
+            onClick={() => setMainTab('gestion')}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer"
+            style={{
+              backgroundColor: mainTab === 'gestion' ? '#0F172A' : 'transparent',
+              color: mainTab === 'gestion' ? '#FFFFFF' : '#64748B',
+            }}
+          >
+            <Car size={14} /> Gestión de Vehículos
+          </button>
+          <button
+            onClick={() => setMainTab('reservas')}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer"
+            style={{
+              backgroundColor: mainTab === 'reservas' ? '#0F172A' : 'transparent',
+              color: mainTab === 'reservas' ? '#FFFFFF' : '#64748B',
+            }}
+          >
+            <Calendar size={14} /> Reservas
+          </button>
+        </div>
+
+        {mainTab === 'reservas' ? (
+          <VehicleReservationsModule vehicles={vehicles} profile={profile} canManage={canManage} />
+        ) : (
+        <>
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -1446,6 +1476,8 @@ export default function VehiclesModule({ currentUserRole, userEmail }: Props) {
               )}
             </div>
           </div>
+        )}
+        </>
         )}
       </div>
     </>

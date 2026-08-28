@@ -277,6 +277,30 @@ export interface Seguro {
   updated_at: string;
 }
 
+export type VehicleShift = 'turno_1' | 'turno_2';
+
+export interface VehicleReservation {
+  id: string;
+  vehicle_id: string;
+  user_id: string | null;
+  user_nombre: string;
+  date: string;
+  shift: VehicleShift;
+  is_extraordinary: boolean;
+  is_forced: boolean;
+  nota: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VehicleReservationAuthorizedUser {
+  id: string;
+  user_id: string;
+  user_nombre: string;
+  added_by: string | null;
+  created_at: string;
+}
+
 export interface VehiculoMantenimiento {
   id: string;
   vehiculo_id: string;

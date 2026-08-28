@@ -2693,7 +2693,7 @@ useEffect(() => {
                 <>
                   <div className="fixed inset-0 z-[90]" onClick={() => setShowNotifDropdown(false)} />
                   <div
-                    className="absolute right-0 top-full mt-2 w-80 rounded-2xl shadow-2xl z-[100] overflow-hidden"
+                    className="fixed left-2 right-2 top-[64px] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 rounded-2xl shadow-2xl z-[100] overflow-hidden"
                     style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
                   >
                     <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid #E2E8F0' }}>

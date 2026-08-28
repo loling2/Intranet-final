@@ -371,20 +371,31 @@ interface CorrectionModalProps {
 }
 
 function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: CorrectionModalProps) {
-  const [entradaProp, setEntradaProp] = useState(toLocalTimeInputValue(jornada.entrada));
-  const [salidaProp, setSalidaProp] = useState(toLocalTimeInputValue(jornada.salida));
+  const initialEntrada = toLocalTimeInputValue(jornada.entrada);
+  const initialSalida = toLocalTimeInputValue(jornada.salida);
+  const [entradaHora, setEntradaHora] = useState(initialEntrada ? initialEntrada.split(':')[0] : '');
+  const [entradaMin, setEntradaMin] = useState(initialEntrada ? initialEntrada.split(':')[1] : '');
+  const [salidaHora, setSalidaHora] = useState(initialSalida ? initialSalida.split(':')[0] : '');
+  const [salidaMin, setSalidaMin] = useState(initialSalida ? initialSalida.split(':')[1] : '');
   const [motivo, setMotivo] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const entradaProp = (entradaHora || entradaMin) ? `${entradaHora}:${entradaMin}` : '';
+  const salidaProp = (salidaHora || salidaMin) ? `${salidaHora}:${salidaMin}` : '';
+
   const handleSave = async () => {
     setError('');
     if (!motivo.trim()) { setError('Debes explicar el motivo de la corrección.'); return; }
-    if (!entradaProp && !salidaProp) { setError('Debes proponer al menos una hora corregida.'); return; }
-    const entradaNormalizada = entradaProp ? normalizeTimeInput(entradaProp) : '';
-    const salidaNormalizada = salidaProp ? normalizeTimeInput(salidaProp) : '';
-    if ((entradaProp && !entradaNormalizada) || (salidaProp && !salidaNormalizada)) {
-      setError('Escribe las horas con el formato HH:MM, por ejemplo 07:30.');
+    const hasEntrada = entradaHora.trim() !== '' && entradaMin.trim() !== '';
+    const hasSalida = salidaHora.trim() !== '' && salidaMin.trim() !== '';
+    if (!hasEntrada && !hasSalida) { setError('Debes proponer al menos una hora corregida (horas y minutos).'); return; }
+    if ((entradaHora.trim() !== '' || entradaMin.trim() !== '') && !hasEntrada) { setError('Completa las horas y minutos de la entrada.'); return; }
+    if ((salidaHora.trim() !== '' || salidaMin.trim() !== '') && !hasSalida) { setError('Completa las horas y minutos de la salida.'); return; }
+    const entradaNormalizada = hasEntrada ? normalizeTimeInput(`${entradaHora}:${entradaMin}`) : '';
+    const salidaNormalizada = hasSalida ? normalizeTimeInput(`${salidaHora}:${salidaMin}`) : '';
+    if ((hasEntrada && !entradaNormalizada) || (hasSalida && !salidaNormalizada)) {
+      setError('Horas o minutos fuera de rango. Las horas van de 0 a 23 y los minutos de 0 a 59.');
       return;
     }
     setSaving(true);
@@ -473,20 +484,36 @@ function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: Correcti
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
               Nueva entrada
             </label>
-            <div className="relative">
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={5}
-                value={entradaProp}
-                onChange={(e) => setEntradaProp(e.target.value.replace(/[^0-9:]/g, '').slice(0, 5))}
-                onBlur={() => { const normalized = normalizeTimeInput(entradaProp); if (normalized) setEntradaProp(normalized); }}
-                placeholder="HH:MM"
-                aria-label="Nueva hora de entrada"
-                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono tracking-wider"
-                style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
-              />
-              <span className="absolute right-3 top-2.5 text-xs" style={{ color: '#94A3B8' }}>HH:MM</span>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={2}
+                  value={entradaHora}
+                  onChange={(e) => setEntradaHora(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                  placeholder="HH"
+                  aria-label="Horas de entrada"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono tracking-wider text-center"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                />
+                <p className="text-[10px] text-center mt-1" style={{ color: '#94A3B8' }}>Horas</p>
+              </div>
+              <span className="text-lg font-bold pt-1" style={{ color: '#94A3B8' }}>:</span>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={2}
+                  value={entradaMin}
+                  onChange={(e) => setEntradaMin(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                  placeholder="MM"
+                  aria-label="Minutos de entrada"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono tracking-wider text-center"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                />
+                <p className="text-[10px] text-center mt-1" style={{ color: '#94A3B8' }}>Minutos</p>
+              </div>
             </div>
           </div>
 
@@ -494,20 +521,36 @@ function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: Correcti
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
               Nueva salida
             </label>
-            <div className="relative">
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={5}
-                value={salidaProp}
-                onChange={(e) => setSalidaProp(e.target.value.replace(/[^0-9:]/g, '').slice(0, 5))}
-                onBlur={() => { const normalized = normalizeTimeInput(salidaProp); if (normalized) setSalidaProp(normalized); }}
-                placeholder="HH:MM"
-                aria-label="Nueva hora de salida"
-                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono tracking-wider"
-                style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
-              />
-              <span className="absolute right-3 top-2.5 text-xs" style={{ color: '#94A3B8' }}>HH:MM</span>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={2}
+                  value={salidaHora}
+                  onChange={(e) => setSalidaHora(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                  placeholder="HH"
+                  aria-label="Horas de salida"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono tracking-wider text-center"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                />
+                <p className="text-[10px] text-center mt-1" style={{ color: '#94A3B8' }}>Horas</p>
+              </div>
+              <span className="text-lg font-bold pt-1" style={{ color: '#94A3B8' }}>:</span>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={2}
+                  value={salidaMin}
+                  onChange={(e) => setSalidaMin(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                  placeholder="MM"
+                  aria-label="Minutos de salida"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none font-mono tracking-wider text-center"
+                  style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
+                />
+                <p className="text-[10px] text-center mt-1" style={{ color: '#94A3B8' }}>Minutos</p>
+              </div>
             </div>
           </div>
 
@@ -524,7 +567,7 @@ function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: Correcti
               style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
             />
             <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
-              Escribe la hora directamente en formato HH:MM. La petición se enviará a RRHH para validación.
+              Introduce las horas y los minutos por separado. La petición se enviará a RRHH para validación.
             </p>
           </div>
 

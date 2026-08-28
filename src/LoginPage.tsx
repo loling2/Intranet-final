@@ -95,6 +95,40 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
   const [reservaExtraordinary, setReservaExtraordinary] = useState(false);
   const [reservaMotivo, setReservaMotivo] = useState('');
 
+  // ── Reservation calendar state ──
+  const [reservaCalMonth, setReservaCalMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const [reservaAvail, setReservaAvail] = useState<Record<string, { turno_1: boolean; turno_2: boolean; is_full: boolean }>>({});
+  const [reservaAvailLoading, setReservaAvailLoading] = useState(false);
+
+  const fetchReservaAvail = async (vehicleId: string | null, monthDate: Date) => {
+    if (!vehicleId) { setReservaAvail({}); return; }
+    setReservaAvailLoading(true);
+    try {
+      const monthStr = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}-01`;
+      const { data, error } = await supabase.rpc('get_vehicle_reservation_availability', {
+        p_vehicle_id: vehicleId,
+        p_month_start: monthStr,
+      });
+      if (error) throw error;
+      const map: Record<string, { turno_1: boolean; turno_2: boolean; is_full: boolean }> = {};
+      for (const row of (data ?? []) as any[]) {
+        const dStr = (row.date as string).slice(0, 10);
+        map[dStr] = { turno_1: !!row.turno_1_reserved, turno_2: !!row.turno_2_reserved, is_full: !!row.is_full };
+      }
+      setReservaAvail(map);
+    } catch { setReservaAvail({}); }
+    finally { setReservaAvailLoading(false); }
+  };
+
+  useEffect(() => {
+    if (step === 'reserva_vehiculo' && reservaVehicleId) {
+      fetchReservaAvail(reservaVehicleId, reservaCalMonth);
+    }
+  }, [step, reservaVehicleId, reservaCalMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [deviceAuthorized, setDeviceAuthorized] = useState(true);
   const [fichajeMode, setFichajeMode] = useState<string>('any');
 
@@ -1019,20 +1053,75 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
                 )}
               </div>
 
-              {/* Date picker */}
+              {/* Custom calendar */}
               <div>
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Fecha</label>
-                <input type="date" value={reservaDate} onChange={(e) => setReservaDate(e.target.value)} className="w-full px-4 py-2.5 rounded-xl text-sm outline-none" style={inputStyle} />
+                <div className="rounded-xl p-3" style={{ ...inputStyle, padding: '12px' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <button onClick={() => { const m = new Date(reservaCalMonth); m.setMonth(m.getMonth() - 1); setReservaCalMonth(m); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9' }}><ChevronLeft size={14} style={{ color: '#475569' }} /></button>
+                    <span className="text-xs font-semibold" style={{ color: '#1E293B' }}>{reservaCalMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</span>
+                    <button onClick={() => { const m = new Date(reservaCalMonth); m.setMonth(m.getMonth() + 1); setReservaCalMonth(m); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9' }}><ChevronLeft size={14} style={{ color: '#475569', transform: 'rotate(180deg)' }} /></button>
+                  </div>
+                  <div className="grid grid-cols-7 gap-1 mb-1">
+                    {['L','M','X','J','V','S','D'].map((d) => (
+                      <div key={d} className="text-center text-[10px] font-semibold" style={{ color: '#94A3B8' }}>{d}</div>
+                    ))}
+                  </div>
+                  {reservaAvailLoading && (
+                    <div className="flex items-center justify-center py-3"><RefreshCw size={14} className="animate-spin" style={{ color: '#94A3B8' }} /></div>
+                  )}
+                  {!reservaAvailLoading && (() => {
+                    const year = reservaCalMonth.getFullYear();
+                    const month = reservaCalMonth.getMonth();
+                    const firstDay = new Date(year, month, 1);
+                    const startWeekday = (firstDay.getDay() + 6) % 7;
+                    const daysInMonth = new Date(year, month + 1, 0).getDate();
+                    const cells: (number | null)[] = [];
+                    for (let i = 0; i < startWeekday; i++) cells.push(null);
+                    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    return (
+                      <div className="grid grid-cols-7 gap-1">
+                        {cells.map((day, i) => {
+                          if (day === null) return <div key={i} />;
+                          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                          const avail = reservaAvail[dateStr];
+                          const isFull = avail?.is_full;
+                          const isSelected = reservaDate === dateStr;
+                          const dateObj = new Date(year, month, day);
+                          const isPast = dateObj < today;
+                          let bg = '#F8FAFC'; let color = '#1E293B'; let border = '1px solid #E2E8F0';
+                          if (isPast) { color = '#CBD5E1'; }
+                          if (isFull) { bg = '#F1F5F9'; color = '#94A3B8'; }
+                          else if (avail && (avail.turno_1 || avail.turno_2) && !isFull) { bg = '#FEF3C7'; color = '#92400E'; }
+                          else if (!isFull && !isPast) { bg = '#F0FDF4'; color = '#15803D'; }
+                          if (isSelected) { bg = '#0369A1'; color = '#fff'; border = '2px solid #0369A1'; }
+                          return (
+                            <button key={i} disabled={isFull || isPast} onClick={() => setReservaDate(dateStr)} className="aspect-square rounded-lg text-[11px] font-semibold cursor-pointer transition-all disabled:cursor-not-allowed flex items-center justify-center" style={{ backgroundColor: bg, color, border }}>
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                  <div className="flex items-center gap-3 mt-2 flex-wrap">
+                    <div className="flex items-center gap-1"><div className="w-3 h-3 rounded" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }} /><span className="text-[10px]" style={{ color: '#64748B' }}>Libre</span></div>
+                    <div className="flex items-center gap-1"><div className="w-3 h-3 rounded" style={{ backgroundColor: '#FEF3C7', border: '1px solid #FDE68A' }} /><span className="text-[10px]" style={{ color: '#64748B' }}>1 turno</span></div>
+                    <div className="flex items-center gap-1"><div className="w-3 h-3 rounded" style={{ backgroundColor: '#F1F5F9', border: '1px solid #E2E8F0' }} /><span className="text-[10px]" style={{ color: '#64748B' }}>Completo</span></div>
+                  </div>
+                </div>
               </div>
 
               {/* Shift selector */}
               <div>
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Turno</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => setReservaShift('turno_1')} className="py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all" style={{ backgroundColor: reservaShift === 'turno_1' ? '#0369A1' : '#F8FAFC', color: reservaShift === 'turno_1' ? '#fff' : '#64748B', border: `1.5px solid ${reservaShift === 'turno_1' ? '#0369A1' : '#E2E8F0'}` }}>
+                  <button onClick={() => setReservaShift('turno_1')} disabled={reservaDate ? !!reservaAvail[reservaDate]?.turno_1 : false} className="py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed" style={{ backgroundColor: reservaShift === 'turno_1' ? '#0369A1' : '#F8FAFC', color: reservaShift === 'turno_1' ? '#fff' : '#64748B', border: `1.5px solid ${reservaShift === 'turno_1' ? '#0369A1' : '#E2E8F0'}` }}>
                     Turno 1<br/>07:00–15:00
                   </button>
-                  <button onClick={() => setReservaShift('turno_2')} className="py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all" style={{ backgroundColor: reservaShift === 'turno_2' ? '#0369A1' : '#F8FAFC', color: reservaShift === 'turno_2' ? '#fff' : '#64748B', border: `1.5px solid ${reservaShift === 'turno_2' ? '#0369A1' : '#E2E8F0'}` }}>
+                  <button onClick={() => setReservaShift('turno_2')} disabled={reservaDate ? !!reservaAvail[reservaDate]?.turno_2 : false} className="py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed" style={{ backgroundColor: reservaShift === 'turno_2' ? '#0369A1' : '#F8FAFC', color: reservaShift === 'turno_2' ? '#fff' : '#64748B', border: `1.5px solid ${reservaShift === 'turno_2' ? '#0369A1' : '#E2E8F0'}` }}>
                     Turno 2<br/>15:01–23:59
                   </button>
                 </div>

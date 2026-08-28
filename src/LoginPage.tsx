@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle, Tablet, Timer, Send } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle, Tablet, Timer, Send, Calendar, ToggleLeft, ToggleRight } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
@@ -51,11 +51,11 @@ interface VehicleInfo {
   current_user_id?: string | null;
 }
 
-type JornadaAction = 'entrada' | 'descanso' | 'fin_descanso' | 'salida' | 'permiso' | 'vehiculo' | 'incidencia_vehiculo' | 'incidencia_fichaje';
+type JornadaAction = 'entrada' | 'descanso' | 'fin_descanso' | 'salida' | 'permiso' | 'vehiculo' | 'incidencia_vehiculo' | 'incidencia_fichaje' | 'reserva_vehiculo';
 
 function JornadaModal({ onClose }: { onClose: () => void }) {
   // ── Global steps: pin → menu → sub-flow ──
-  const [step, setStep] = useState<'pin' | 'menu' | 'vehiculo_plate' | 'vehiculo_action' | 'incidencia_vehiculo' | 'fichaje_form' | 'pair_name' | 'pair_device' | 'done'>('pin');
+  const [step, setStep] = useState<'pin' | 'menu' | 'vehiculo_plate' | 'vehiculo_action' | 'incidencia_vehiculo' | 'fichaje_form' | 'pair_name' | 'pair_device' | 'reserva_vehiculo' | 'done'>('pin');
   const [pin, setPin] = useState('');
   const [usuarioPin, setUsuarioPin] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -84,6 +84,17 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
   const [incidentPlateOptions, setIncidentPlateOptions] = useState<{ matricula: string; marca: string; modelo: string }[]>([]);
   const [incidentPlateDropdownOpen, setIncidentPlateDropdownOpen] = useState(false);
   const [fichajeNota, setFichajeNota] = useState('');
+
+  // ── Reservation state ──
+  const [reservaPlate, setReservaPlate] = useState('');
+  const [reservaPlateOptions, setReservaPlateOptions] = useState<{ matricula: string; marca: string; modelo: string; id: string }[]>([]);
+  const [reservaPlateDropdownOpen, setReservaPlateDropdownOpen] = useState(false);
+  const [reservaVehicleId, setReservaVehicleId] = useState<string | null>(null);
+  const [reservaDate, setReservaDate] = useState('');
+  const [reservaShift, setReservaShift] = useState<'turno_1' | 'turno_2'>('turno_1');
+  const [reservaExtraordinary, setReservaExtraordinary] = useState(false);
+  const [reservaMotivo, setReservaMotivo] = useState('');
+
   const [deviceAuthorized, setDeviceAuthorized] = useState(true);
   const [fichajeMode, setFichajeMode] = useState<string>('any');
 
@@ -489,6 +500,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     { id: 'salida',              label: 'Salida',              icon: Square,      color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
     { id: 'permiso',             label: 'Permiso',             icon: Plane,       color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
     { id: 'vehiculo',            label: 'Vehículo',            icon: Car,         color: '#0F172A', bg: '#F8FAFC', border: '#E2E8F0' },
+    { id: 'reserva_vehiculo',    label: 'Reserva Vehículo',    icon: Calendar,    color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
     { id: 'incidencia_vehiculo', label: 'Incidencia Vehículo', icon: Wrench,      color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' },
     { id: 'incidencia_fichaje',  label: 'Incidencia Fichaje',  icon: AlertCircle, color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
   ];
@@ -612,6 +624,9 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
                           setStep('vehiculo_plate');
                         } else if (action.id === 'incidencia_vehiculo') {
                           setStep('incidencia_vehiculo');
+                        } else if (action.id === 'reserva_vehiculo') {
+                          setReservaPlate(''); setReservaVehicleId(null); setReservaDate(''); setReservaShift('turno_1'); setReservaExtraordinary(false); setReservaMotivo('');
+                          setStep('reserva_vehiculo');
                         } else if (action.id === 'incidencia_fichaje') {
                           setStep('fichaje_form');
                         }
@@ -959,6 +974,116 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
                 <button onClick={handleVehicleIncident} disabled={loading || !incidentTitle.trim() || !incidentDescription.trim()} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#EA580C' }}>
                   {loading && <RefreshCw size={13} className="animate-spin" />}
                   Enviar incidencia
+                </button>
+              </div>
+            </>
+          )}
+
+          {step === 'reserva_vehiculo' && (
+            <>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                <Calendar size={14} style={{ color: '#0369A1' }} />
+                <p className="text-xs font-semibold" style={{ color: '#0369A1' }}>Reserva de vehículo</p>
+              </div>
+
+              {/* Plate searcher */}
+              <div className="relative">
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Matrícula</label>
+                <input
+                  type="text"
+                  value={reservaPlate}
+                  onChange={(e) => {
+                    const v = e.target.value.toUpperCase();
+                    setReservaPlate(v);
+                    setReservaPlateDropdownOpen(true);
+                    if (v.trim()) {
+                      supabase.from('vehicles').select('id,matricula,marca,modelo').ilike('matricula', `%${v.trim()}%`).limit(6)
+                        .then(({ data }) => setReservaPlateOptions((data ?? []) as any[]));
+                    } else { setReservaPlateOptions([]); }
+                  }}
+                  onFocus={() => { if (reservaPlate) { setReservaPlateDropdownOpen(true); } }}
+                  placeholder="1234-ABC"
+                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none text-center font-mono font-bold tracking-widest"
+                  style={{ ...inputStyle, fontSize: '16px' }}
+                />
+                {reservaPlateDropdownOpen && reservaPlateOptions.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 rounded-xl overflow-hidden shadow-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                    {reservaPlateOptions.map((opt) => (
+                      <button key={opt.id} onClick={() => { setReservaPlate(opt.matricula); setReservaVehicleId(opt.id); setReservaPlateOptions([]); setReservaPlateDropdownOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer text-left">
+                        <Car size={14} style={{ color: '#94A3B8', flexShrink: 0 }} />
+                        <span className="font-mono font-bold text-sm" style={{ color: '#1E293B' }}>{opt.matricula}</span>
+                        <span className="text-xs ml-auto" style={{ color: '#94A3B8' }}>{opt.marca} {opt.modelo}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Date picker */}
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Fecha</label>
+                <input type="date" value={reservaDate} onChange={(e) => setReservaDate(e.target.value)} className="w-full px-4 py-2.5 rounded-xl text-sm outline-none" style={inputStyle} />
+              </div>
+
+              {/* Shift selector */}
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Turno</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => setReservaShift('turno_1')} className="py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all" style={{ backgroundColor: reservaShift === 'turno_1' ? '#0369A1' : '#F8FAFC', color: reservaShift === 'turno_1' ? '#fff' : '#64748B', border: `1.5px solid ${reservaShift === 'turno_1' ? '#0369A1' : '#E2E8F0'}` }}>
+                    Turno 1<br/>07:00–15:00
+                  </button>
+                  <button onClick={() => setReservaShift('turno_2')} className="py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all" style={{ backgroundColor: reservaShift === 'turno_2' ? '#0369A1' : '#F8FAFC', color: reservaShift === 'turno_2' ? '#fff' : '#64748B', border: `1.5px solid ${reservaShift === 'turno_2' ? '#0369A1' : '#E2E8F0'}` }}>
+                    Turno 2<br/>15:01–23:59
+                  </button>
+                </div>
+              </div>
+
+              {/* Extraordinary toggle */}
+              <button onClick={() => setReservaExtraordinary((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all" style={{ backgroundColor: reservaExtraordinary ? '#EFF6FF' : '#F8FAFC', border: `1.5px solid ${reservaExtraordinary ? '#2563EB' : '#E2E8F0'}` }}>
+                <div className="text-left">
+                  <p className="text-sm font-semibold" style={{ color: reservaExtraordinary ? '#2563EB' : '#1E293B' }}>Extraoficial</p>
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>Marca el tipo de uso como no oficial</p>
+                </div>
+                {reservaExtraordinary
+                  ? <ToggleRight size={28} style={{ color: '#2563EB' }} />
+                  : <ToggleLeft size={28} style={{ color: '#CBD5E1' }} />}
+              </button>
+
+              {/* Motivo de reserva */}
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Motivo de reserva</label>
+                <textarea value={reservaMotivo} onChange={(e) => setReservaMotivo(e.target.value)} placeholder="Ej: Traslado de usuarios, compra de materiales..." rows={2} className="w-full px-4 py-2.5 rounded-xl text-sm outline-none resize-none" style={inputStyle} />
+              </div>
+
+              {errBox}
+              <div className="flex gap-3">
+                <button onClick={() => { setStep('menu'); setError(''); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}>Atrás</button>
+                <button onClick={async () => {
+                  if (!reservaVehicleId) { setError('Selecciona un vehículo de la lista'); return; }
+                  if (!reservaDate) { setError('Selecciona una fecha'); return; }
+                  if (!reservaMotivo.trim()) { setError('Indica el motivo de la reserva'); return; }
+                  setError(''); setLoading(true);
+                  try {
+                    const { data: rpcData, error: rpcErr } = await supabase.rpc('create_vehicle_reservation_from_pin', {
+                      p_pin: usuarioPin.pin,
+                      p_vehicle_id: reservaVehicleId,
+                      p_date: reservaDate,
+                      p_shift: reservaShift,
+                      p_is_extraordinary: reservaExtraordinary,
+                      p_is_forced: false,
+                      p_nota: reservaMotivo.trim(),
+                    });
+                    if (rpcErr) throw new Error(rpcErr.message);
+                    const result = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+                    if (!result?.success) throw new Error(result?.error_msg ?? 'Error al crear la reserva');
+                    setDoneMsg(`Reserva confirmada — ${reservaPlate} · ${reservaDate} · ${reservaShift === 'turno_1' ? 'Turno 1' : 'Turno 2'}`);
+                    setDoneColor('#0369A1');
+                    setStep('done');
+                  } catch (e: any) { setError(e.message ?? 'Error al crear la reserva'); }
+                  finally { setLoading(false); }
+                }} disabled={loading || !reservaVehicleId || !reservaDate || !reservaMotivo.trim()} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2" style={{ backgroundColor: '#0369A1' }}>
+                  {loading && <RefreshCw size={13} className="animate-spin" />}
+                  Confirmar reserva
                 </button>
               </div>
             </>

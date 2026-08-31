@@ -56,7 +56,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { action, userId, password, email, role, pin, nombre, societies } = body;
+    const { action, userId, password, email, role, roles, pin, nombre, societies } = body;
 
     if (!action) {
       return new Response(JSON.stringify({ error: "Faltan parametros" }), {
@@ -90,11 +90,16 @@ Deno.serve(async (req: Request) => {
 
       const uid = rpcUid as string;
 
+      const finalRoles = Array.isArray(roles) && roles.length > 0
+        ? Array.from(new Set([...(roles as string[]), "employee"]))
+        : [role ?? "employee"];
+      const primaryRole = (finalRoles.find((r) => r !== "employee") ?? finalRoles[0]) as string;
       const { error: profileErr } = await supabaseAdmin.from("user_profiles").upsert({
         id: uid,
         nombre: nombre.trim(),
         email: normalizedEmail,
-        role: role ?? "employee",
+        role: primaryRole,
+        roles: finalRoles,
         activo: true,
         societies: societies ?? [],
       }, { onConflict: "id" });
@@ -154,12 +159,17 @@ Deno.serve(async (req: Request) => {
             continue;
           }
 
+          const finalRoles = Array.isArray(row.roles) && row.roles.length > 0
+            ? Array.from(new Set([...(row.roles as string[]), "employee"]))
+            : [row.role ?? "employee"];
+          const primaryRoleBulk = (finalRoles.find((r) => r !== "employee") ?? finalRoles[0]) as string;
           // Upsert user_profile
           const { error: profileErr } = await supabaseAdmin.from("user_profiles").upsert({
             id: uid,
             nombre: row.nombre.trim(),
             email: normalizedEmail,
-            role: row.role ?? "employee",
+            role: primaryRoleBulk,
+            roles: finalRoles,
             activo: true,
             societies: row.societies ?? [],
             ...(row.dni ? { dni: row.dni.trim().toUpperCase() } : {}),
@@ -225,19 +235,23 @@ Deno.serve(async (req: Request) => {
 
     // ── set_role ──────────────────────────────────────────────────────────────
     if (action === "set_role") {
-      if (!role) {
-        return new Response(JSON.stringify({ error: "Rol requerido" }), {
+      if (!role && !roles) {
+        return new Response(JSON.stringify({ error: "Rol o roles requeridos" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (role === "admin" && callerProfile.role !== "admin") {
+      const finalRoles = Array.isArray(roles) && roles.length > 0
+        ? Array.from(new Set([...(roles as string[]), "employee"]))
+        : role ? [role] : ["employee"];
+      const primaryRole = (finalRoles.find((r) => r !== "employee") ?? finalRoles[0]) as string;
+      if (primaryRole === "admin" && callerProfile.role !== "admin") {
         return new Response(JSON.stringify({ error: "Solo el administrador puede asignar el rol admin" }), {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const { error } = await supabaseAdmin
         .from("user_profiles")
-        .update({ role })
+        .update({ role: primaryRole, roles: finalRoles })
         .eq("id", userId);
       if (error) throw error;
       return new Response(JSON.stringify({ ok: true }), {

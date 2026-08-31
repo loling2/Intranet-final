@@ -1,0 +1,23 @@
+[functions.admin-login]
+verify_jwt = false
+
+[functions.manage-user]
+verify_jwt = true
+
+[functions.incidence-report]
+verify_jwt = false
+
+[functions.password-reset]
+verify_jwt = false
+
+[functions.prl-report]
+verify_jwt = true
+
+[functions.send-email]
+verify_jwt = true
+
+[functions.wasabi-download]
+verify_jwt = true
+
+[functions.wasabi-manage]
+verify_jwt = true

@@ -73,7 +73,7 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
   const { societies } = useSociety();
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<AppRole>('employee');
+  const [selectedRoles, setSelectedRoles] = useState<Set<AppRole>>(new Set(['employee']));
   const [selectedSocieties, setSelectedSocieties] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -82,6 +82,15 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
     ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia']
     : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee', 'rrhh_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia'];
+
+  const toggleRole = (r: AppRole) => {
+    if (r === 'employee') return; // empleado is always on
+    setSelectedRoles((prev) => {
+      const next = new Set(prev);
+      if (next.has(r)) next.delete(r); else next.add(r);
+      return next;
+    });
+  };
 
   const toggleSociety = (id: string) =>
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
@@ -104,7 +113,7 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
           action: 'create_user',
           email: email.trim().toLowerCase(),
           nombre: nombre.trim(),
-          role,
+          roles: Array.from(selectedRoles),
           societies: selectedSocieties,
         }),
       });
@@ -118,7 +127,7 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
           autor: profile,
           entidad: 'user',
           entidad_id: result.userId,
-          metadata: { email, role, societies: selectedSocieties },
+          metadata: { email, roles: Array.from(selectedRoles), societies: selectedSocieties },
         });
       }
       setSuccess(true);
@@ -167,13 +176,24 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Rol</label>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Perfiles de acceso</label>
+                <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>El perfil Empleado esta siempre activo. Selecciona los perfiles adicionales que necesites.</p>
                 <div className="flex gap-2 flex-wrap">
                   {availableRoles.map((r) => {
                     const rc = ROLE_COLORS[r];
+                    const isActive = selectedRoles.has(r);
+                    const isEmployee = r === 'employee';
                     return (
-                      <button key={r} onClick={() => setRole(r)} className="flex-1 py-2 rounded-xl text-xs font-semibold border transition-all duration-200 cursor-pointer min-w-[70px]"
-                        style={{ backgroundColor: role === r ? rc.bg : 'transparent', color: role === r ? rc.text : '#94A3B8', borderColor: role === r ? rc.border : '#E2E8F0' }}>
+                      <button key={r} onClick={() => toggleRole(r)} disabled={isEmployee}
+                        className="flex items-center gap-1 py-2 px-3 rounded-xl text-xs font-semibold border transition-all duration-200 cursor-pointer min-w-[70px]"
+                        style={{
+                          backgroundColor: isActive ? rc.bg : 'transparent',
+                          color: isActive ? rc.text : '#94A3B8',
+                          borderColor: isActive ? rc.border : '#E2E8F0',
+                          cursor: isEmployee ? 'default' : 'pointer',
+                          opacity: isEmployee ? 1 : undefined,
+                        }}>
+                        {isActive && <CheckCircle2 size={11} />}
                         {rc.label}
                       </button>
                     );
@@ -239,7 +259,10 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
 
   // role / status / societies fields
   const { societies } = useSociety();
-  const [role, setRole] = useState<AppRole>(user.role);
+  const [selectedRoles, setSelectedRoles] = useState<Set<AppRole>>(new Set(
+    (user.roles && user.roles.length > 0 ? user.roles : [user.role]).filter((r) => r) as AppRole[]
+  ));
+  if (!selectedRoles.has('employee')) selectedRoles.add('employee');
   const [activo, setActivo] = useState(user.activo);
   const [selectedSocieties, setSelectedSocieties] = useState<string[]>(user.societies ?? []);
   const [savingMeta, setSavingMeta] = useState(false);
@@ -318,7 +341,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   }, [user.role]);
 
   useEffect(() => {
-    if (user.role === 'supervisor' || user.role === 'supervisor_gerontalia') {
+    if (user.role === 'supervisor' || user.role === 'supervisor_gerontalia' || (user.roles && (user.roles.includes('supervisor') || user.roles.includes('supervisor_gerontalia')))) {
       loadSupervisorEmpleados();
       loadAllEmpleados();
       loadSupervisorCentros();
@@ -450,12 +473,22 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const toggleSociety = (id: string) =>
     setSelectedSocieties((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
 
+  const toggleRole = (r: AppRole) => {
+    if (r === 'employee') return;
+    setSelectedRoles((prev) => {
+      const next = new Set(prev);
+      if (next.has(r)) next.delete(r); else next.add(r);
+      return next;
+    });
+  };
+
   const handleSaveMeta = async () => {
     setSavingMeta(true); setError('');
     try {
-      const { error: err } = await supabase.from('user_profiles').update({ role, activo, societies: selectedSocieties }).eq('id', user.id);
+      const rolesArray = Array.from(selectedRoles);
+      const { error: err } = await supabase.from('user_profiles').update({ roles: rolesArray, role: rolesArray.find((r) => r !== 'employee') ?? rolesArray[0], activo, societies: selectedSocieties }).eq('id', user.id);
       if (err) throw err;
-      if (profile) await writeAuditLog({ evento: 'user_meta_changed', descripcion: `Perfil de ${user.nombre} actualizado: rol=${role}, activo=${activo}`, autor: profile, entidad: 'user', entidad_id: user.id });
+      if (profile) await writeAuditLog({ evento: 'user_meta_changed', descripcion: `Perfil de ${user.nombre} actualizado: roles=${rolesArray.join(',')}, activo=${activo}`, autor: profile, entidad: 'user', entidad_id: user.id });
       setMetaSuccess(true);
       setTimeout(() => setMetaSuccess(false), 2500);
       onSaved();
@@ -464,13 +497,18 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   };
 
   const societiesChanged = JSON.stringify([...selectedSocieties].sort()) !== JSON.stringify([...(user.societies ?? [])].sort());
-  const metaDirty = role !== user.role || activo !== user.activo || societiesChanged;
+  const rolesChanged = (() => {
+    const current = new Set((user.roles && user.roles.length > 0 ? user.roles : [user.role]).filter((r) => r) as AppRole[]);
+    if (!current.has('employee')) current.add('employee');
+    return JSON.stringify([...selectedRoles].sort()) !== JSON.stringify([...current].sort());
+  })();
+  const metaDirty = rolesChanged || activo !== user.activo || societiesChanged;
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
     ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia']
     : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee', 'rrhh_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia'];
 
-  const rc = ROLE_COLORS[user.role];
+  const rc = ROLE_COLORS[user.role] ?? ROLE_COLORS['employee'];
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
@@ -500,19 +538,23 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
             <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#64748B' }}>Rol y Estado</p>
 
             <div>
-              <p className="text-xs font-medium mb-2" style={{ color: '#94A3B8' }}>Rol de acceso</p>
+              <p className="text-xs font-medium mb-1" style={{ color: '#94A3B8' }}>Perfiles de acceso</p>
+              <p className="text-xs mb-2" style={{ color: '#CBD5E1' }}>El perfil Empleado esta siempre activo.</p>
               <div className="flex flex-wrap gap-2">
                 {availableRoles.map((r) => {
                   const rCol = ROLE_COLORS[r];
-                  const isActive = role === r;
+                  const isActive = selectedRoles.has(r);
+                  const isEmployee = r === 'employee';
                   return (
-                    <button key={r} onClick={() => setRole(r)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer"
+                    <button key={r} onClick={() => toggleRole(r)} disabled={isEmployee}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150"
                       style={{
                         backgroundColor: isActive ? rCol.bg : 'transparent',
                         color: isActive ? rCol.text : '#94A3B8',
                         borderColor: isActive ? rCol.border : '#E2E8F0',
+                        cursor: isEmployee ? 'default' : 'pointer',
                       }}>
+                      {isActive && <CheckCircle2 size={11} />}
                       {rCol.label}
                     </button>
                   );
@@ -702,7 +744,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
         </div>
 
         {/* ── Supervisor: empleados asignados ── */}
-        {(user.role === 'supervisor' || user.role === 'supervisor_gerontalia') && (
+        {(user.role === 'supervisor' || user.role === 'supervisor_gerontalia' || (user.roles && (user.roles.includes('supervisor') || user.roles.includes('supervisor_gerontalia')))) && (
           <div className="px-5 pb-5">
             <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #DDD6FE', backgroundColor: '#FAFAFF' }}>
               <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid #EDE9FE' }}>
@@ -792,7 +834,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
         )}
 
         {/* ── Supervisor: centros asignados ── */}
-        {(user.role === 'supervisor' || user.role === 'supervisor_gerontalia') && (
+        {(user.role === 'supervisor' || user.role === 'supervisor_gerontalia' || (user.roles && (user.roles.includes('supervisor') || user.roles.includes('supervisor_gerontalia')))) && (
           <div className="px-5 pb-5">
             <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #BFDBFE', backgroundColor: '#F8FAFF' }}>
               <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid #DBEAFE' }}>
@@ -922,10 +964,19 @@ interface BulkCreateAccessModalProps {
 
 function BulkCreateAccessModal({ employees, onClose, onCreated }: BulkCreateAccessModalProps) {
   const { profile } = useAuth();
-  const [role, setRole] = useState<AppRole>('employee');
+  const [selectedRoles, setSelectedRoles] = useState<Set<AppRole>>(new Set(['employee']));
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<{ id: string; nombre: string; ok: boolean; error?: string }[]>([]);
   const [done, setDone] = useState(false);
+
+  const toggleRole = (r: AppRole) => {
+    if (r === 'employee') return;
+    setSelectedRoles((prev) => {
+      const next = new Set(prev);
+      if (next.has(r)) next.delete(r); else next.add(r);
+      return next;
+    });
+  };
 
   const withEmail = employees.filter((e) => e.email?.trim());
   const withoutEmail = employees.filter((e) => !e.email?.trim());
@@ -947,7 +998,7 @@ function BulkCreateAccessModal({ employees, onClose, onCreated }: BulkCreateAcce
             action: 'create_user',
             email: (emp.email ?? '').trim().toLowerCase(),
             nombre: emp.nombre,
-            role,
+            roles: Array.from(selectedRoles),
             societies: emp.id_sociedad ? [emp.id_sociedad] : [],
           }),
         });
@@ -960,7 +1011,7 @@ function BulkCreateAccessModal({ employees, onClose, onCreated }: BulkCreateAcce
             autor: profile,
             entidad: 'user',
             entidad_id: result.userId,
-            metadata: { email: emp.email, role, empleado_id: emp.id },
+            metadata: { email: emp.email, roles: Array.from(selectedRoles), empleado_id: emp.id },
           });
         }
         created.push({ id: emp.id, nombre: emp.nombre, ok: true });
@@ -996,14 +1047,23 @@ function BulkCreateAccessModal({ employees, onClose, onCreated }: BulkCreateAcce
               </p>
 
               <div>
-                <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: '#64748B' }}>Rol asignado</label>
+                <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: '#64748B' }}>Perfiles asignados</label>
+                <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>Empleado esta siempre activo.</p>
                 <div className="flex gap-2 flex-wrap">
                   {(['employee', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia'] as AppRole[]).map((r) => {
                     const rc = ROLE_COLORS[r];
+                    const isActive = selectedRoles.has(r);
+                    const isEmployee = r === 'employee';
                     return (
-                      <button key={r} onClick={() => setRole(r)}
-                        className="flex-1 py-2 rounded-xl text-xs font-semibold border transition-all duration-200 cursor-pointer min-w-[70px]"
-                        style={{ backgroundColor: role === r ? rc.bg : 'transparent', color: role === r ? rc.text : '#94A3B8', borderColor: role === r ? rc.border : '#E2E8F0' }}>
+                      <button key={r} onClick={() => toggleRole(r)} disabled={isEmployee}
+                        className="flex items-center gap-1 py-2 px-3 rounded-xl text-xs font-semibold border transition-all duration-200 cursor-pointer min-w-[70px]"
+                        style={{
+                          backgroundColor: isActive ? rc.bg : 'transparent',
+                          color: isActive ? rc.text : '#94A3B8',
+                          borderColor: isActive ? rc.border : '#E2E8F0',
+                          cursor: isEmployee ? 'default' : 'pointer',
+                        }}>
+                        {isActive && <CheckCircle2 size={11} />}
                         {rc.label}
                       </button>
                     );
@@ -1382,7 +1442,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
 
   const filtered = users.filter((u) => {
     const matchSearch = !search || u.nombre.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
-    const matchRole = !filterRole || u.role === filterRole;
+    const matchRole = !filterRole || u.role === filterRole || (u.roles && u.roles.includes(filterRole));
     const matchStatus = filterStatus === '' ? true : filterStatus === 'activo' ? u.activo : !u.activo;
     return matchSearch && matchRole && matchStatus;
   });
@@ -1513,10 +1573,18 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
                       <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{u.email}</p>
                     </div>
                   </div>
-                  <div className="sm:col-span-2">
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-md" style={{ backgroundColor: rc.bg, color: rc.text, border: `1px solid ${rc.border}` }}>
-                      {rc.label}
-                    </span>
+                  <div className="sm:col-span-2 flex flex-wrap gap-1">
+                    {(() => {
+                      const userRoles = (u.roles && u.roles.length > 0 ? u.roles : [u.role]).filter((r) => r) as AppRole[];
+                      return userRoles.map((r) => {
+                        const badge = ROLE_COLORS[r] ?? ROLE_COLORS['employee'];
+                        return (
+                          <span key={r} className="text-xs font-semibold px-2 py-0.5 rounded-md" style={{ backgroundColor: badge.bg, color: badge.text, border: `1px solid ${badge.border}` }}>
+                            {badge.label}
+                          </span>
+                        );
+                      });
+                    })()}
                   </div>
                   <div className="sm:col-span-2 flex flex-wrap gap-1">
                     {userSocieties.length === 0

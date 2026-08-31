@@ -25,6 +25,7 @@ export interface UserProfile {
   nombre: string;
   email: string;
   role: AppRole;
+  roles: string[];
   activo: boolean;
   societies: string[];
   invited_by: string | null;

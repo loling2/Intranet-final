@@ -11,17 +11,18 @@ interface KioskDeviceSummary {
   is_active: boolean;
 }
 
-interface SupervisorInfo {
+interface ResponsableInfo {
   id: string;
   nombre: string;
   email: string;
+  role: string;
 }
 
 export default function CentrosModule() {
   const [centros, setCentros] = useState<Centro[]>([]);
   const [sociedades, setSociedades] = useState<Sociedad[]>([]);
   const [kioskDevices, setKioskDevices] = useState<Record<string, KioskDeviceSummary[]>>({});
-  const [supervisors, setSupervisors] = useState<SupervisorInfo[]>([]);
+  const [responsables, setResponsables] = useState<ResponsableInfo[]>([]);
   const [centroSupervisor, setCentroSupervisor] = useState<Record<string, string | null>>({});
   const [savingSupervisor, setSavingSupervisor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,7 +45,7 @@ export default function CentrosModule() {
       supabase.from('centros').select('id, nombre, id_sociedad').order('nombre', { ascending: true }),
       supabase.from('sociedades').select('id, nombre').order('nombre', { ascending: true }),
       supabase.from('kiosk_devices').select('id, site_name, is_active, centro_id').order('site_name', { ascending: true }),
-      supabase.from('user_profiles').select('id, nombre, email').eq('role', 'supervisor').eq('activo', true).order('nombre'),
+      supabase.from('user_profiles').select('id, nombre, email, role, roles').in('role', ['supervisor', 'rrhh', 'prevencion', 'supervisor_gerontalia', 'rrhh_gerontalia', 'prevencion_gerontalia']).eq('activo', true).order('nombre'),
       supabase.from('supervisor_centros').select('supervisor_id, centro_id'),
     ]);
     if (cenRes.error) { setError(cenRes.error.message); setCentros([]); }
@@ -62,7 +63,15 @@ export default function CentrosModule() {
       }
       setKioskDevices(map);
     }
-    setSupervisors((supRes.data as SupervisorInfo[]) ?? []);
+    // Also include users who have these roles in their roles[] array but whose primary role is different
+    const allProfiles = (supRes.data as ResponsableInfo[]) ?? [];
+    const responsableRoles = ['supervisor', 'rrhh', 'prevencion', 'supervisor_gerontalia', 'rrhh_gerontalia', 'prevencion_gerontalia'];
+    const filtered = allProfiles.filter((u) => {
+      if (responsableRoles.includes(u.role)) return true;
+      if (u.roles && Array.isArray(u.roles)) return u.roles.some((r: string) => responsableRoles.includes(r));
+      return false;
+    });
+    setResponsables(filtered);
     // Build centro -> supervisor_id map (first supervisor found per centro)
     const csMap: Record<string, string | null> = {};
     for (const sc of (supCentrosRes.data as { supervisor_id: string; centro_id: string }[]) ?? []) {
@@ -131,9 +140,9 @@ export default function CentrosModule() {
     return sociedades.find((s) => s.id === id)?.nombre ?? 'Sin sociedad';
   }
 
-  function getSupervisorNombre(id: string | null): string {
+  function getResponsableNombre(id: string | null): string {
     if (!id) return '';
-    return supervisors.find((s) => s.id === id)?.nombre ?? '';
+    return responsables.find((s) => s.id === id)?.nombre ?? '';
   }
 
   return (
@@ -141,7 +150,7 @@ export default function CentrosModule() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="text-lg font-semibold" style={{ color: '#0F172A' }}>Centros de Trabajo</h3>
-          <p className="text-sm" style={{ color: '#64748B' }}>Gestiona los centros asignados a sociedades, sus tablets de fichaje y supervisor.</p>
+          <p className="text-sm" style={{ color: '#64748B' }}>Gestiona los centros asignados a sociedades, sus tablets de fichaje y responsable.</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={load} className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#475569' }} title="Actualizar"><RefreshCw size={15} /></button>
@@ -212,7 +221,7 @@ export default function CentrosModule() {
                 <div className="mt-2 pt-2" style={{ borderTop: '1px solid #F1F5F9' }}>
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <UserCog size={11} style={{ color: '#64748B' }} />
-                    <span className="text-xs font-medium" style={{ color: '#64748B' }}>Supervisor</span>
+                    <span className="text-xs font-medium" style={{ color: '#64748B' }}>Responsable</span>
                   </div>
                   <select
                     value={currentSup}
@@ -221,14 +230,14 @@ export default function CentrosModule() {
                     className="w-full px-2.5 py-1.5 rounded-lg text-xs outline-none cursor-pointer disabled:opacity-50"
                     style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
                   >
-                    <option value="">Sin supervisor</option>
-                    {supervisors.map((s) => (
+                    <option value="">Sin responsable</option>
+                    {responsables.map((s) => (
                       <option key={s.id} value={s.id}>{s.nombre}{s.email ? ` (${s.email})` : ''}</option>
                     ))}
                   </select>
                   {currentSup && (
                     <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>
-                      Asignado: {getSupervisorNombre(currentSup)}
+                      Asignado: {getResponsableNombre(currentSup)}
                     </p>
                   )}
                 </div>

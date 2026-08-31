@@ -3,6 +3,8 @@ import {
   Clock, Search, RefreshCw, Download, FileText, Calendar,
   AlertTriangle, LogIn, LogOut, ChevronDown, ChevronUp, MapPin,
 } from 'lucide-react';
+import * as XLSX from 'xlsx-js-style';
+import { jsPDF } from 'jspdf';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination';
@@ -201,13 +203,46 @@ function getMonthRange(date: string): { start: string; end: string } {
 
 // ── Export helpers ───────────────────────────────────────────────────────────
 
-function exportCSV(resumenes: JornadaResumen[], expectedFn?: (nombre: string) => number) {
-  const header = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Pausa inicio', 'Pausa fin', 'Permiso', 'Horas Totales', 'Incidencia', 'Dispositivo', 'Ubicación'];
-  const rows = resumenes.map((r) => {
+function exportExcel(resumenes: JornadaResumen[], expectedFn?: (nombre: string) => number) {
+  const headerStyle = {
+    font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } },
+    fill: { fgColor: { rgb: '0F172A' } },
+    alignment: { horizontal: 'center' as const, vertical: 'center' as const },
+    border: {
+      top: { style: 'thin', color: { rgb: '334155' } },
+      bottom: { style: 'thin', color: { rgb: '334155' } },
+      left: { style: 'thin', color: { rgb: '334155' } },
+      right: { style: 'thin', color: { rgb: '334155' } },
+    },
+  };
+  const cellStyle = {
+    font: { sz: 10, color: { rgb: '1E293B' } },
+    border: {
+      top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+      bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+      left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+      right: { style: 'thin', color: { rgb: 'E2E8F0' } },
+    },
+  };
+  const incidentStyle = {
+    ...cellStyle,
+    font: { sz: 10, bold: true, color: { rgb: 'DC2626' } },
+    fill: { fgColor: { rgb: 'FEF2F2' } },
+  };
+  const okStyle = {
+    ...cellStyle,
+    font: { sz: 10, color: { rgb: '16A34A' } },
+    fill: { fgColor: { rgb: 'F0FDF4' } },
+  };
+
+  const headers = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Pausa inicio', 'Pausa fin', 'Permiso', 'Horas Totales', 'Incidencia', 'Dispositivo', 'Ubicación'];
+  const aoa: (string | number)[][] = [headers];
+
+  resumenes.forEach((r) => {
     const exp = expectedFn ? expectedFn(r.nombre) : 8 * 60;
     const inc = incidentType(r.duracion_neta, exp);
     const expH = (exp / 60).toFixed(2);
-    return [
+    aoa.push([
       r.nombre, r.fecha,
       formatTime(r.entrada), formatTime(r.salida),
       formatTime(r.pausa_inicio), formatTime(r.pausa_fin),
@@ -215,59 +250,148 @@ function exportCSV(resumenes: JornadaResumen[], expectedFn?: (nombre: string) =>
       formatDuration(r.duracion_neta),
       inc === 'excess' ? `Exceso (>${expH}h)` : inc === 'deficit' ? `Déficit (<${expH}h)` : '—',
       r.dispositivo ?? '—', r.ubicacion ?? '—',
-    ];
+    ]);
   });
-  const csv = [header, ...rows].map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `fichajes_${new Date().toISOString().split('T')[0]}.csv`;
-  a.click(); URL.revokeObjectURL(url);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [
+    { wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
+    { wch: 10 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 22 },
+  ];
+
+  // Style header row
+  for (let c = 0; c < headers.length; c++) {
+    const ref = XLSX.utils.encode_cell({ r: 0, c });
+    if (ws[ref]) ws[ref].s = headerStyle;
+  }
+
+  // Style data rows — highlight incidents
+  for (let r = 1; r < aoa.length; r++) {
+    const incCell = ws[XLSX.utils.encode_cell({ r, c: 8 })];
+    const val = incCell?.v as string;
+    const isInc = val && val !== '—';
+    for (let c = 0; c < headers.length; c++) {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      if (ws[ref]) ws[ref].s = isInc ? incidentStyle : cellStyle;
+    }
+    // Hours column green if ok
+    if (!isInc) {
+      const hRef = XLSX.utils.encode_cell({ r, c: 7 });
+      if (ws[hRef]) ws[hRef].s = okStyle;
+    }
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Fichajes');
+  XLSX.writeFile(wb, `fichajes_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
-function exportIncidentReport(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (nombre: string) => number) {
+function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (nombre: string) => number) {
   const incidents = resumenes.filter((r) => isIncident(r.duracion_neta, expectedFn ? expectedFn(r.nombre) : 8 * 60));
-  const rows = incidents.map((r) => {
-    const exp = expectedFn ? expectedFn(r.nombre) : 8 * 60;
-    const inc = incidentType(r.duracion_neta, exp);
-    const expH = (exp / 60).toFixed(2);
-    return `
-      <tr>
-        <td>${r.nombre}</td><td>${r.fecha}</td>
-        <td style="color:#16A34A">${formatTime(r.entrada)}</td>
-        <td style="color:#DC2626">${formatTime(r.salida)}</td>
-        <td style="font-weight:bold;color:${inc === 'excess' ? '#DC2626' : '#D97706'}">${formatDuration(r.duracion_neta)}</td>
-        <td style="font-weight:bold;color:${inc === 'excess' ? '#DC2626' : '#D97706'}">${inc === 'excess' ? `Exceso (>${expH}h)` : `Déficit (<${expH}h)`}</td>
-      </tr>`;
-  }).join('');
+  const fechaGen = new Date().toLocaleString('es-ES');
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Informe de Incidencias</title>
-<style>
-  body{font-family:Arial,sans-serif;font-size:12px;padding:20px;color:#1E293B}
-  h1{font-size:18px;margin-bottom:4px}
-  p{color:#64748B;margin-bottom:16px}
-  table{width:100%;border-collapse:collapse}
-  th{background:#0F172A;color:#fff;padding:6px 8px;text-align:left;font-size:11px}
-  td{padding:5px 8px;border-bottom:1px solid #E2E8F0}
-  tr:nth-child(even){background:#F8FAFC}
-  @media print{body{padding:0}}
-</style></head><body>
-<h1>Informe de Incidencias de Fichaje</h1>
-<p>Periodo: ${desde || '—'} / ${hasta || '—'} &nbsp;·&nbsp; Generado: ${new Date().toLocaleString('es-ES')}</p>
-<p style="color:#DC2626;font-weight:bold">Total incidencias: ${incidents.length}</p>
-<table>
-<thead><tr>
-  <th>Empleado</th><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Horas Totales</th><th>Tipo Incidencia</th>
-</tr></thead><tbody>${rows}</tbody>
-</table>
-</body></html>`;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 12;
+  const contentW = pageW - margin * 2;
 
-  const w = window.open('', '_blank');
-  if (!w) return;
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  setTimeout(() => { w.print(); }, 400);
+  // Header
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Informe de Incidencias de Fichaje', margin, 18);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Generado el ${fechaGen}`, pageW - margin, 18, { align: 'right' });
+  doc.setDrawColor(15, 23, 42);
+  doc.setLineWidth(0.6);
+  doc.line(margin, 22, pageW - margin, 22);
+
+  let y = 30;
+  doc.setFontSize(11);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Periodo: ${desde || '—'} → ${hasta || '—'}`, margin, y);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(220, 38, 38);
+  doc.text(`Total incidencias: ${incidents.length}`, pageW - margin, y, { align: 'right' });
+  y += 8;
+
+  if (incidents.length === 0) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(12);
+    doc.setTextColor(148, 163, 184);
+    doc.text('No hay incidencias en el periodo seleccionado.', margin, y + 6);
+  } else {
+    const colW = [55, 25, 25, 25, 30, 35];
+    const headers = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Horas Totales', 'Tipo Incidencia'];
+
+    const drawHeader = () => {
+      doc.setFillColor(15, 23, 42);
+      doc.rect(margin, y, contentW, 8, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(255, 255, 255);
+      let x = margin + 2;
+      headers.forEach((h, i) => {
+        doc.text(h, x, y + 5.5);
+        x += colW[i];
+      });
+      y += 8;
+    };
+
+    drawHeader();
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+
+    incidents.forEach((r, idx) => {
+      if (y > pageH - 18) { doc.addPage(); y = margin; drawHeader(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); }
+      const exp = expectedFn ? expectedFn(r.nombre) : 8 * 60;
+      const inc = incidentType(r.duracion_neta, exp);
+      const expH = (exp / 60).toFixed(2);
+      const incText = inc === 'excess' ? `Exceso (>${expH}h)` : `Déficit (<${expH}h)`;
+      const incColor: [number, number, number] = inc === 'excess' ? [220, 38, 38] : [217, 119, 6];
+
+      if (idx % 2 === 1) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(margin, y, contentW, 7, 'F');
+      }
+      doc.setTextColor(30, 41, 59);
+      let x = margin + 2;
+      const vals = [
+        String(r.nombre).slice(0, 30),
+        r.fecha,
+        formatTime(r.entrada),
+        formatTime(r.salida),
+        formatDuration(r.duracion_neta),
+        incText,
+      ];
+      vals.forEach((v, i) => {
+        if (i === 5) doc.setTextColor(...incColor);
+        else doc.setTextColor(30, 41, 59);
+        doc.setFont(i === 4 || i === 5 ? 'helvetica' : 'helvetica', i === 4 || i === 5 ? 'bold' : 'normal');
+        doc.text(String(v), x, y + 5);
+        x += colW[i];
+      });
+      y += 7;
+    });
+  }
+
+  // Footer on every page
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.2);
+    doc.line(margin, pageH - 12, pageW - margin, pageH - 12);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Documento generado automáticamente · ${fechaGen}`, pageW / 2, pageH - 8, { align: 'center' });
+  }
+
+  doc.save(`informe_incidencias_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
 // ── Clock In/Out Panel ───────────────────────────────────────────────────────
@@ -872,18 +996,18 @@ export default function FichajesModule() {
 
           {/* Export buttons */}
           <button
-            onClick={() => viewMode === 'resumen' ? exportCSV(resumenes, expectedMinutesFor) : null}
+            onClick={() => viewMode === 'resumen' ? exportExcel(resumenes, expectedMinutesFor) : null}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
             <Download size={12} />
-            Excel / CSV
+            Excel
           </button>
           <button
-            onClick={() => exportIncidentReport(resumenes, filterDesde, filterHasta, expectedMinutesFor)}
+            onClick={() => exportIncidentPDF(resumenes, filterDesde, filterHasta, expectedMinutesFor)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
             <FileText size={12} />
-            Informe Incidencias
+            Informe Incidencias PDF
           </button>
         </div>
 

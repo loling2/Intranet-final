@@ -30,6 +30,21 @@ export default function ChangePinModal({ onClose }: Props) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No se pudo obtener el usuario.');
 
+      // Check if PIN is already used by another active user
+      const { data: existing } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('pin', pin)
+        .eq('activo', true)
+        .neq('id', user.id)
+        .maybeSingle();
+
+      if (existing) {
+        setError('PIN no disponible. Este PIN ya está en uso por otro usuario activo. Utiliza uno diferente.');
+        setSaving(false);
+        return;
+      }
+
       const { error: updateErr } = await supabase
         .from('user_profiles')
         .update({ pin })

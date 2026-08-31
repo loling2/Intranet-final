@@ -262,6 +262,22 @@ Deno.serve(async (req: Request) => {
     // ── set_pin ───────────────────────────────────────────────────────────────
     if (action === "set_pin") {
       const pinValue = pin ?? Math.floor(1000 + Math.random() * 9000).toString();
+
+      // Check if PIN is already used by another active user
+      const { data: existingPin } = await supabaseAdmin
+        .from("user_profiles")
+        .select("id")
+        .eq("pin", pinValue)
+        .eq("activo", true)
+        .neq("id", userId)
+        .maybeSingle();
+
+      if (existingPin) {
+        return new Response(JSON.stringify({ error: "PIN no disponible. Este PIN ya está en uso por otro usuario activo. Utiliza uno diferente." }), {
+          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const { error } = await supabaseAdmin
         .from("user_profiles")
         .update({ pin: pinValue })

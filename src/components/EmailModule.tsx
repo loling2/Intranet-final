@@ -1237,10 +1237,11 @@ function IncidenciasSection() {
       if (en?.value) setEnabled(en.value !== 'false');
       if (hr?.value) setHour(parseInt(hr.value, 10) || 22);
 
-      // Load supervisors with their assigned centros
+      // Load responsables (supervisor, rrhh, prevencion) with their assigned centros
       const { data: supData } = await supabase
-        .from('user_profiles').select('id, nombre, email')
-        .eq('role', 'supervisor').eq('activo', true).order('nombre');
+        .from('user_profiles').select('id, nombre, email, role, roles')
+        .in('role', ['supervisor', 'rrhh', 'prevencion', 'supervisor_gerontalia', 'rrhh_gerontalia', 'prevencion_gerontalia'])
+        .eq('activo', true).order('nombre');
       const { data: supCentros } = await supabase
         .from('supervisor_centros').select('supervisor_id, centros(nombre)');
       const centrosMap = new Map<string, string[]>();
@@ -1492,21 +1493,21 @@ function IncidenciasSection() {
             <UserCog size={17} style={{ color: '#16A34A' }} />
           </div>
           <div>
-            <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>Informe por supervisor</p>
-            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Cada supervisor recibe el informe de fichajes de sus centros asignados</p>
+            <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>Informe por responsable</p>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Cada responsable (supervisor, RRHH o prevención) recibe el informe de fichajes de sus centros asignados</p>
           </div>
         </div>
 
         {supervisors.length === 0 ? (
           <div className="rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
-            No hay supervisores activos. Crea usuarios con rol supervisor y asígnales centros desde la pestaña Centros.
+            No hay responsables activos. Crea usuarios con rol supervisor, RRHH o prevención y asígnales centros desde la pestaña Centros.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid #E2E8F0' }}>
-                  <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Supervisor</th>
+                  <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Responsable</th>
                   <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Correo de informe</th>
                   <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Centros</th>
                   <th className="text-right py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Acciones</th>
@@ -1623,7 +1624,7 @@ function IncidenciasSection() {
       )}
 
       <div className="rounded-xl px-4 py-3 mt-3 text-xs" style={{ backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD', color: '#0369A1' }}>
-        <strong>Correo de informe por supervisor:</strong> El correo que edites aquí se usa únicamente para enviar el informe diario de incidencias. No modifica el correo de la ficha del usuario. Si lo dejas en blanco, se usará el correo del perfil del supervisor.
+        <strong>Correo de informe por responsable:</strong> El correo que edites aquí se usa únicamente para enviar el informe diario de incidencias. No modifica el correo de la ficha del usuario. Si lo dejas en blanco, se usará el correo del perfil del responsable.
       </div>
     </>
   );

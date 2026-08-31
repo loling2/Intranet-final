@@ -58,7 +58,7 @@ function buildReportHtml(
   const totalIncidencias = incidencias.length;
   const totalCorrectos = correctos.length;
   const hasFichajes = totalFicharon > 0;
-  const subtitle = isSupervisor && supervisorName ? `Supervisor: ${supervisorName}` : "";
+  const subtitle = isSupervisor && supervisorName ? `Responsable: ${supervisorName}` : "";
 
   // Stats bar
   const statsBar = `
@@ -479,8 +479,9 @@ Deno.serve(async (req: Request) => {
       supervisors = singleSup ? [singleSup] : [];
     } else {
       const { data } = await supabase
-        .from("user_profiles").select("id, email, nombre")
-        .eq("role", "supervisor").eq("activo", true);
+        .from("user_profiles").select("id, email, nombre, role, roles")
+        .in("role", ["supervisor", "rrhh", "prevencion", "supervisor_gerontalia", "rrhh_gerontalia", "prevencion_gerontalia"])
+        .eq("activo", true);
       supervisors = data;
     }
 
@@ -607,7 +608,7 @@ Deno.serve(async (req: Request) => {
 
         // Build the supervisor's email (reuse the same HTML structure)
         const supHtml = buildReportHtml(targetDate, supIncidencias, supCorrectos, supSummaries.size, true, sup.nombre);
-        const supSubject = `📋 Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)} (Supervisor: ${sup.nombre})`;
+        const supSubject = `📋 Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)} (Responsable: ${sup.nombre})`;
 
         const supResp = await sendSmtp({
           host: cuenta.smtp_host, port: cuenta.smtp_port, security: cuenta.seguridad,

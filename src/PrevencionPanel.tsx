@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ShieldCheck, Users, FileText, LogOut, Search, Plus, X, ChevronLeft, Tag, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Upload, RefreshCw, CircleUser as UserCircle, KeyRound, Building2, Trash2, CreditCard as Edit2, HeartPulse, Activity, HelpCircle, Eye, File, Image as ImageIcon, FileSpreadsheet, XCircle } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase, type Empleado, type Sociedad, type Tag as TagType } from './supabaseClient';
+import ProfileSwitcher, { type ProfileOption } from './components/ProfileSwitcher';
 import { getWasabiBlobUrl, uploadToWasabi } from './lib/wasabi';
 import SocietySwitcher from './SocietySwitcher';
 import PrlDocsModule from './components/PrlDocsModule';
@@ -16,6 +17,8 @@ interface Props {
   email: string;
   onLogout: () => void;
   onNavigateEmployee?: () => void;
+  availableProfiles?: ProfileOption[];
+  onNavigateProfile?: (view: string) => void;
 }
 
 type PrevTab = 'empleados' | 'tags' | 'documentos' | 'trazabilidad' | 'departamentos' | 'reconocimiento' | 'vitaly' | 'users' | 'ayuda';
@@ -163,7 +166,7 @@ function PrevencionDocumentsModal({ employeeId, employeeName, refreshKey, onClos
   );
 }
 
-export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }: Props) {
+export default function PrevencionPanel({ email, onLogout, onNavigateEmployee, availableProfiles, onNavigateProfile }: Props) {
   const [activeTab, setActiveTab] = useState<PrevTab>('empleados');
   const [showChangePassword, setShowChangePassword] = useState(false);
 
@@ -189,14 +192,23 @@ export default function PrevencionPanel({ email, onLogout, onNavigateEmployee }:
       >
         <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button
-              onClick={onNavigateEmployee ?? onLogout}
-              title="Volver al panel de empleado"
-              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 hover:opacity-80"
-              style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#A7F3D0' }}
-            >
-              <ChevronLeft size={18} />
-            </button>
+            {availableProfiles && onNavigateProfile ? (
+              <ProfileSwitcher
+                currentLabel="Prevencion"
+                options={availableProfiles}
+                onNavigate={onNavigateProfile}
+                headerText="#A7F3D0"
+              />
+            ) : (
+              <button
+                onClick={onNavigateEmployee ?? onLogout}
+                title="Volver al panel de empleado"
+                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 hover:opacity-80"
+                style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#A7F3D0' }}
+              >
+                <ChevronLeft size={18} />
+              </button>
+            )}
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)' }}>
               <ShieldCheck size={20} className="text-white" />
             </div>

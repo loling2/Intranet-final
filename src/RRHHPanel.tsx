@@ -26,6 +26,7 @@ import SupervisorEmpleados from './components/SupervisorEmpleados';
 import HelpPanel from './components/HelpPanel';
 
 import { supabase } from './supabaseClient';
+import ProfileSwitcher, { type ProfileOption } from './components/ProfileSwitcher';
 
 interface Props {
   email: string;
@@ -36,11 +37,13 @@ interface Props {
   role?: string;
   onNavigateEmployee?: () => void;
   allowedSocietyId?: string;
+  availableProfiles?: ProfileOption[];
+  onNavigateProfile?: (view: string) => void;
 }
 
 type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'centros' | 'facturas' | 'incidencias' | 'fichajes' | 'kiosk-devices' | 'devices' | 'bajas' | 'supervisor-empleados' | 'ayuda';
 
-export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, role, onNavigateEmployee, allowedSocietyId }: Props) {
+export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, role, onNavigateEmployee, allowedSocietyId, availableProfiles, onNavigateProfile }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -182,15 +185,24 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
       >
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* Universal back button */}
-            <button
-              onClick={isAdmin && onNavigateAdmin ? onNavigateAdmin : onNavigateEmployee ?? onLogout}
-              title={isAdmin && onNavigateAdmin ? 'Volver a Admin' : 'Volver al panel de empleado'}
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 hover:opacity-80"
-              style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: supervisorTheme.headerText }}
-            >
-              <ChevronLeft size={16} />
-            </button>
+            {/* Profile switcher */}
+            {availableProfiles && onNavigateProfile ? (
+              <ProfileSwitcher
+                currentLabel={isSupervisor ? 'Supervisor' : 'RRHH'}
+                options={availableProfiles}
+                onNavigate={onNavigateProfile}
+                headerText={supervisorTheme.headerText}
+              />
+            ) : (
+              <button
+                onClick={isAdmin && onNavigateAdmin ? onNavigateAdmin : onNavigateEmployee ?? onLogout}
+                title={isAdmin && onNavigateAdmin ? 'Volver a Admin' : 'Volver al panel de empleado'}
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 hover:opacity-80"
+                style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: supervisorTheme.headerText }}
+              >
+                <ChevronLeft size={16} />
+              </button>
+            )}
             <div
               className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ backgroundColor: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)' }}

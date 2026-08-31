@@ -4,11 +4,14 @@ import type { LucideIcon } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import HelpPanel from './components/HelpPanel';
+import ProfileSwitcher, { type ProfileOption } from './components/ProfileSwitcher';
 
 interface Props {
   email: string;
   onLogout: () => void;
   onNavigateEmployee?: () => void;
+  availableProfiles?: ProfileOption[];
+  onNavigateProfile?: (view: string) => void;
 }
 
 interface Examen {
@@ -63,7 +66,7 @@ const estadoConfig: Record<string, { label: string; color: string; bg: string; b
   suspendido: { label: 'Suspendido', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
 };
 
-export default function FormacionPanel({ email, onLogout, onNavigateEmployee }: Props) {
+export default function FormacionPanel({ email, onLogout, onNavigateEmployee, availableProfiles, onNavigateProfile }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('examenes');
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
@@ -348,14 +351,18 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee }: 
       >
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <button
-              onClick={onNavigateEmployee ?? onLogout}
-              title="Volver al panel de empleado"
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 hover:opacity-80"
-              style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#A7F3D0' }}
-            >
-              <ChevronLeft size={16} />
-            </button>
+            {availableProfiles && onNavigateProfile ? (
+              <ProfileSwitcher currentLabel="Formacion" options={availableProfiles} onNavigate={onNavigateProfile} headerText="#A7F3D0" />
+            ) : (
+              <button
+                onClick={onNavigateEmployee ?? onLogout}
+                title="Volver al panel de empleado"
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-200 hover:opacity-80"
+                style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#A7F3D0' }}
+              >
+                <ChevronLeft size={16} />
+              </button>
+            )}
             <div
               className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ backgroundColor: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)' }}

@@ -28,6 +28,7 @@ import IncidenciasModule from './components/IncidenciasModule';
 import MisFichajesView from './components/MisFichajesView';
 import VacationsModule from './components/VacationsModule';
 import HelpPanel from './components/HelpPanel';
+import ProfileSwitcher, { type ProfileOption } from './components/ProfileSwitcher';
 
 const iconMap: Record<string, LucideIcon> = {
   'building-2': Building2,
@@ -1520,6 +1521,16 @@ export default function LoginPage() {
       );
     }
 
+    const profileOptions: ProfileOption[] = [];
+    if (sessionRoles.includes('admin')) profileOptions.push({ label: 'Admin', view: 'admin', icon: ShieldCheck, color: '#EF4444' });
+    if (sessionRoles.includes('rrhh') || sessionRoles.includes('rrhh_gerontalia')) profileOptions.push({ label: 'RRHH', view: 'rrhh', icon: Users, color: '#0369A1' });
+    if (sessionRoles.includes('prevencion') || sessionRoles.includes('prevencion_gerontalia')) profileOptions.push({ label: 'Prevencion', view: 'prevencion', icon: ShieldCheck, color: '#059669' });
+    if (sessionRoles.includes('supervisor') || sessionRoles.includes('supervisor_gerontalia')) profileOptions.push({ label: 'Supervisor', view: 'supervisor', icon: UserCog, color: '#7C3AED' });
+    if (sessionRoles.includes('administracion')) profileOptions.push({ label: 'Administracion', view: 'administracion', icon: Building2, color: '#2563EB' });
+    if (sessionRoles.includes('calidad')) profileOptions.push({ label: 'Calidad', view: 'calidad', icon: CheckCircle2, color: '#0369A1' });
+    if (sessionRoles.includes('formacion')) profileOptions.push({ label: 'Formacion', view: 'formacion', icon: ClipboardCheck, color: '#0D9488' });
+    profileOptions.push({ label: 'Empleado', view: 'dashboard', icon: Users, color: '#16A34A' });
+
     if (session.view === 'prevencion') {
       return (
         <AuthProvider>
@@ -1528,6 +1539,8 @@ export default function LoginPage() {
               email={session.email}
               onLogout={handleLogout}
               onNavigateEmployee={() => handleNavigate('dashboard')}
+              availableProfiles={profileOptions}
+              onNavigateProfile={(v) => handleNavigate(v as AppView)}
             />
           </SocietyProvider>
         </AuthProvider>
@@ -1548,6 +1561,8 @@ export default function LoginPage() {
               role={sessionRoles.includes('admin') ? 'admin' : (sessionRoles.includes('rrhh') ? 'rrhh' : session.role)}
               onNavigateEmployee={() => handleNavigate('dashboard')}
               allowedSocietyId={sessionRoles.includes('rrhh_gerontalia') ? GERONTALIA_ID : undefined}
+              availableProfiles={profileOptions}
+              onNavigateProfile={(v) => handleNavigate(v as AppView)}
             />
           </SocietyProvider>
         </AuthProvider>
@@ -1566,6 +1581,8 @@ export default function LoginPage() {
               role="supervisor"
               onNavigateEmployee={() => handleNavigate('dashboard')}
               allowedSocietyId={sessionRoles.includes('supervisor_gerontalia') ? GERONTALIA_ID : undefined}
+              availableProfiles={profileOptions}
+              onNavigateProfile={(v) => handleNavigate(v as AppView)}
             />
           </SocietyProvider>
         </AuthProvider>
@@ -1580,6 +1597,8 @@ export default function LoginPage() {
               email={session.email}
               onLogout={handleLogout}
               onNavigateEmployee={() => handleNavigate('dashboard')}
+              availableProfiles={profileOptions}
+              onNavigateProfile={(v) => handleNavigate(v as AppView)}
             />
           </SocietyProvider>
         </AuthProvider>
@@ -1594,6 +1613,8 @@ export default function LoginPage() {
               email={session.email}
               onLogout={handleLogout}
               onNavigateEmployee={() => handleNavigate('dashboard')}
+              availableProfiles={profileOptions}
+              onNavigateProfile={(v) => handleNavigate(v as AppView)}
             />
           </SocietyProvider>
         </AuthProvider>
@@ -1608,6 +1629,8 @@ export default function LoginPage() {
               email={session.email}
               onLogout={handleLogout}
               onNavigateEmployee={() => handleNavigate('dashboard')}
+              availableProfiles={profileOptions}
+              onNavigateProfile={(v) => handleNavigate(v as AppView)}
             />
           </SocietyProvider>
         </AuthProvider>
@@ -1664,6 +1687,8 @@ export default function LoginPage() {
                     onNavigateAdmin={!impersonating && sessionRoles.includes('admin') ? () => handleNavigate('admin') : undefined}
                     onNavigateRrhh={!impersonating && (sessionRoles.includes('rrhh') || sessionRoles.includes('rrhh_gerontalia')) ? () => handleNavigate('rrhh') : undefined}
                     onNavigateSupervisor={!impersonating && (sessionRoles.includes('supervisor') || sessionRoles.includes('supervisor_gerontalia')) ? () => handleNavigate('supervisor') : undefined}
+                    availableProfiles={!impersonating ? profileOptions : undefined}
+                    onNavigateProfile={!impersonating ? (v) => handleNavigate(v as AppView) : undefined}
                     onNavigateBack={!impersonating && backNav ? () => handleNavigate(backNav.view) : undefined}
                     backLabel={backNav?.label}
                     backColor={backNav?.color}
@@ -2638,6 +2663,8 @@ function Dashboard({
   onNavigateRrhh,
   onNavigateSupervisor,
   onNavigateBack,
+  availableProfiles,
+  onNavigateProfile,
   backLabel,
   backColor,
   backBorder,
@@ -2651,6 +2678,8 @@ function Dashboard({
   onNavigateRrhh?: () => void;
   onNavigateSupervisor?: () => void;
   onNavigateBack?: () => void;
+  availableProfiles?: ProfileOption[];
+  onNavigateProfile?: (view: string) => void;
   backLabel?: string;
   backColor?: string;
   backBorder?: string;
@@ -2848,15 +2877,19 @@ useEffect(() => {
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {onNavigateBack && (
-              <button
-                onClick={onNavigateBack}
-                className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 flex-shrink-0"
-                style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: backColor ?? '#FFFFFF', border: `1px solid ${backBorder ?? 'rgba(255,255,255,0.2)'}` }}
-              >
-                <ArrowRight size={12} style={{ transform: 'rotate(180deg)' }} />
-                <span className="hidden sm:inline">{backLabel ?? 'Volver'}</span>
-              </button>
+            {availableProfiles && onNavigateProfile ? (
+              <ProfileSwitcher currentLabel="Empleado" options={availableProfiles} onNavigate={onNavigateProfile} headerText="#FFFFFF" />
+            ) : (
+              onNavigateBack && (
+                <button
+                  onClick={onNavigateBack}
+                  className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200 flex-shrink-0"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: backColor ?? '#FFFFFF', border: `1px solid ${backBorder ?? 'rgba(255,255,255,0.2)'}` }}
+                >
+                  <ArrowRight size={12} style={{ transform: 'rotate(180deg)' }} />
+                  <span className="hidden sm:inline">{backLabel ?? 'Volver'}</span>
+                </button>
+              )
             )}
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center bg-white/15 backdrop-blur-sm border border-white/20 flex-shrink-0">
               {Icon ? <Icon size={18} className="text-white" /> : null}

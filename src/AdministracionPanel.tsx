@@ -5,14 +5,17 @@ import { SocietyProvider } from './context/SocietyContext';
 import FacturasModule from './components/FacturasModule';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import HelpPanel from './components/HelpPanel';
+import ProfileSwitcher, { type ProfileOption } from './components/ProfileSwitcher';
 
 interface Props {
   email: string;
   onLogout: () => void;
   onNavigateEmployee?: () => void;
+  availableProfiles?: ProfileOption[];
+  onNavigateProfile?: (view: string) => void;
 }
 
-export default function AdministracionPanel({ email, onLogout, onNavigateEmployee }: Props) {
+export default function AdministracionPanel({ email, onLogout, onNavigateEmployee, availableProfiles, onNavigateProfile }: Props) {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [activeTab, setActiveTab] = useState<'facturas' | 'ayuda'>('facturas');
 
@@ -35,6 +38,9 @@ export default function AdministracionPanel({ email, onLogout, onNavigateEmploye
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {availableProfiles && onNavigateProfile ? (
+              <ProfileSwitcher currentLabel="Administracion" options={availableProfiles} onNavigate={onNavigateProfile} headerText="#E0F2FE" />
+            ) : null}
             {onNavigateEmployee && (
               <button
                 onClick={onNavigateEmployee}

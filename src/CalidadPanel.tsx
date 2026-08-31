@@ -10,12 +10,15 @@ import { SocietyProvider } from './context/SocietyContext';
 import { AuthProvider } from './context/AuthContext';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import HelpPanel from './components/HelpPanel';
+import ProfileSwitcher, { type ProfileOption } from './components/ProfileSwitcher';
 import { societies } from './themes';
 
 interface Props {
   email: string;
   onLogout: () => void;
   onNavigateEmployee?: () => void;
+  availableProfiles?: ProfileOption[];
+  onNavigateProfile?: (view: string) => void;
 }
 
 interface CalidadDoc {
@@ -58,7 +61,7 @@ function formatSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export default function CalidadPanel({ email, onLogout, onNavigateEmployee }: Props) {
+export default function CalidadPanel({ email, onLogout, onNavigateEmployee, availableProfiles, onNavigateProfile }: Props) {
   const [activeTab, setActiveTab] = useState<'documentos' | 'subir' | 'ayuda'>('documentos');
   const [docs, setDocs] = useState<CalidadDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -213,6 +216,9 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee }: Pr
                 </div>
               </div>
               <div className="flex items-center gap-3">
+                {availableProfiles && onNavigateProfile ? (
+                  <ProfileSwitcher currentLabel="Calidad" options={availableProfiles} onNavigate={onNavigateProfile} headerText="#E0F2FE" />
+                ) : null}
                 {onNavigateEmployee && (
                   <button
                     onClick={onNavigateEmployee}

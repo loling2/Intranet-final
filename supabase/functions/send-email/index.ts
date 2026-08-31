@@ -239,7 +239,7 @@ function buildCorreccionHtml(
 
 function buildAccessHtml(subject: string, textBody: string, vars: Record<string, string>): string {
   const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const escapePlain = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>");
+  const escapePlain = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color:#0369A1;text-decoration:none;">$1</a>').replace(/\n/g, "<br/>");
 
   const urlAcceso = vars.url_acceso || "";
   const email = escapeHtml(vars.email || "");

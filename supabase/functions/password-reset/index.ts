@@ -63,7 +63,7 @@ function buildHtmlEmail(resetUrl: string): string {
               <p style="margin:0 0 24px;font-size:14px;color:#475569;line-height:1.6;">
                 Hemos recibido una solicitud para restablecer la contraseña de tu cuenta.
                 Haz clic en el botón de abajo para establecer una nueva contraseña.
-                Este enlace es válido durante <strong>30 minutos</strong>.
+                Este enlace es válido durante <strong>72 horas</strong>.
               </p>
               <!-- Button -->
               <table width="100%" cellpadding="0" cellspacing="0">
@@ -80,7 +80,7 @@ function buildHtmlEmail(resetUrl: string): string {
                 Si el botón no funciona, copia y pega este enlace en tu navegador:
               </p>
               <p style="margin:0 0 28px;font-size:12px;color:#64748B;word-break:break-all;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;">
-                ${resetUrl}
+                <a href="${resetUrl}" style="color:#0369A1;text-decoration:none;">${resetUrl}</a>
               </p>
               <p style="margin:0;font-size:13px;color:#94A3B8;line-height:1.5;">
                 Si no has solicitado este cambio, puedes ignorar este correo.
@@ -199,7 +199,7 @@ Deno.serve(async (req: Request) => {
       if (emailExistsInEmpleados && emailExistsInAuth && userId) {
         const token = generateToken();
         const tokenHash = await sha256(token);
-        const expiresAt = new Date(now.getTime() + 30 * 60 * 1000);
+        const expiresAt = new Date(now.getTime() + 72 * 60 * 60 * 1000);
 
         // Invalidate previous unused tokens
         await admin
@@ -244,7 +244,7 @@ Deno.serve(async (req: Request) => {
         if (cuenta) {
           const subject = "Establece tu nueva contraseña de acceso";
           const htmlBody = buildHtmlEmail(resetUrl);
-          const textBody = `Has solicitado restablecer tu contraseña.\n\nHaz clic en el siguiente enlace para establecer una nueva contraseña (válido 30 minutos):\n\n${resetUrl}\n\nSi no solicitaste este cambio, ignora este correo.`;
+          const textBody = `Has solicitado restablecer tu contraseña.\n\nHaz clic en el siguiente enlace para establecer una nueva contraseña (válido 72 horas):\n\n${resetUrl}\n\nSi no solicitaste este cambio, ignora este correo.`;
 
           try {
             await sendSmtp({

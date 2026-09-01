@@ -51,6 +51,7 @@ interface JornadaResumen {
   dispositivo: string | null;
   ubicacion: string | null;
   empleado_id: string | null;
+  es_nocturno: boolean;
 }
 
 interface Empleado {
@@ -126,6 +127,7 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
         duracion_bruta: null, duracion_neta: null,
         dispositivo: f.dispositivo ?? null, ubicacion: f.ubicacion ?? null,
         empleado_id: f.empleado_id,
+        es_nocturno: false,
       });
     }
     const r = map.get(key)!;
@@ -149,13 +151,40 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
     const salidas = dayEvents.filter((ev) => ev.tipo === 'salida').sort((a, b) => b.eff.localeCompare(a.eff));
 
     const firstEntrada = entradas[0] ?? null;
-    const lastSalida = salidas[0] ?? null; // sorted desc → [0] is latest
+    let lastSalida = salidas[0] ?? null; // sorted desc → [0] is latest
 
     if (firstEntrada) {
       r.entrada = firstEntrada.eff;
       r.entrada_original = firstEntrada.corregida ? firstEntrada.orig : null;
       r.entrada_corregida = firstEntrada.corregida;
     }
+
+    // ── Night shift: if entrada without salida, look for salida next day ──
+    if (firstEntrada && !lastSalida) {
+      const [nombre, fecha] = key.split('|');
+      const nextDate = new Date(fecha + 'T00:00:00');
+      nextDate.setDate(nextDate.getDate() + 1);
+      const nextDateStr = nextDate.toISOString().split('T')[0];
+      const nextKey = `${nombre}|${nextDateStr}`;
+
+      const nextDaySalidas = sorted
+        .filter((f) => `${f.nombre_empleado}|${f.fecha}` === nextKey && f.tipo_evento === 'salida')
+        .map((f) => ({ eff: effectiveTs(f), orig: f.timestamp, corregida: !!f.timestamp_corregido }))
+        .sort((a, b) => a.eff.localeCompare(b.eff));
+
+      if (nextDaySalidas.length > 0) {
+        const entradaTs = new Date(firstEntrada.eff).getTime();
+        const candidate = nextDaySalidas.find((s) => {
+          const diffH = (new Date(s.eff).getTime() - entradaTs) / 3600000;
+          return diffH > 0 && diffH <= 16;
+        });
+        if (candidate) {
+          lastSalida = candidate;
+          r.es_nocturno = true;
+        }
+      }
+    }
+
     if (lastSalida) {
       r.salida = lastSalida.eff;
       r.salida_original = lastSalida.corregida ? lastSalida.orig : null;
@@ -235,7 +264,7 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (nombre: string) 
     fill: { fgColor: { rgb: 'F0FDF4' } },
   };
 
-  const headers = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Pausa inicio', 'Pausa fin', 'Permiso', 'Horas Totales', 'Incidencia', 'Dispositivo', 'Ubicación'];
+  const headers = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Pausa inicio', 'Pausa fin', 'Permiso', 'Horas Totales', 'Incidencia', 'Turno', 'Dispositivo', 'Ubicación'];
   const aoa: (string | number)[][] = [headers];
 
   resumenes.forEach((r) => {
@@ -249,6 +278,7 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (nombre: string) 
       r.permiso ? formatTime(r.permiso) : '—',
       formatDuration(r.duracion_neta),
       inc === 'excess' ? `Exceso (>${expH}h)` : inc === 'deficit' ? `Déficit (<${expH}h)` : '—',
+      r.es_nocturno ? 'Nocturno' : '—',
       r.dispositivo ?? '—', r.ubicacion ?? '—',
     ]);
   });
@@ -256,7 +286,7 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (nombre: string) 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = [
     { wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
-    { wch: 10 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 22 },
+    { wch: 10 }, { wch: 14 }, { wch: 18 }, { wch: 10 }, { wch: 18 }, { wch: 22 },
   ];
 
   // Style header row
@@ -278,6 +308,11 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (nombre: string) 
     if (!isInc) {
       const hRef = XLSX.utils.encode_cell({ r, c: 7 });
       if (ws[hRef]) ws[hRef].s = okStyle;
+    }
+    // Night shift badge
+    const nRef = XLSX.utils.encode_cell({ r, c: 9 });
+    if (nRef && ws[nRef]?.v === 'Nocturno') {
+      ws[nRef].s = { ...cellStyle, font: { sz: 10, bold: true, color: { rgb: '312E81' } }, fill: { fgColor: { rgb: 'E0E7FF' } } };
     }
   }
 
@@ -1082,7 +1117,14 @@ export default function FichajesModule() {
                             ) : <span style={{ color: '#CBD5E1' }}>—</span>}
                           </td>
                           <td className="px-4 py-3 text-sm font-bold" style={{ color: r.duracion_neta !== null ? (inc ? '#DC2626' : '#0369A1') : '#CBD5E1' }}>
-                            {formatDuration(r.duracion_neta)}
+                            <div className="flex items-center gap-1.5">
+                              {formatDuration(r.duracion_neta)}
+                              {r.es_nocturno && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: '#1E1B4B', color: '#A5B4FC', border: '1px solid #312E81' }} title="Turno nocturno: la salida se registró al día siguiente">
+                                  Nocturno
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3">
                             {inc === 'excess' && (

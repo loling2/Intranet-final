@@ -1414,7 +1414,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState<string>('');
-  const [filterStatus, setFilterStatus] = useState<string>('');
+  const [statusTab, setStatusTab] = useState<'activo' | 'inactivo'>('activo');
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [sendEmailUser, setSendEmailUser] = useState<UserProfile | null>(null);
@@ -1434,7 +1434,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   }, []);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
-  useEffect(() => { setPage(1); }, [search, filterRole, filterStatus]);
+  useEffect(() => { setPage(1); }, [search, filterRole, statusTab]);
 
   const userIds = new Set(users.map((u) => u.id));
   // Empleados that don't have a linked user_profiles entry
@@ -1443,14 +1443,14 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   const filtered = users.filter((u) => {
     const matchSearch = !search || u.nombre.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
     const matchRole = !filterRole || u.role === filterRole || (u.roles && u.roles.includes(filterRole));
-    const matchStatus = filterStatus === '' ? true : filterStatus === 'activo' ? u.activo : !u.activo;
+    const matchStatus = statusTab === 'activo' ? u.activo : !u.activo;
     return matchSearch && matchRole && matchStatus;
   });
 
   const filteredEmpleados = empleadosSinCuenta.filter((e) => {
     if (filterRole && filterRole !== 'employee') return false;
-    if (filterStatus === 'inactivo' && e.activo) return false;
-    if (filterStatus === 'activo' && !e.activo) return false;
+    if (statusTab === 'inactivo' && e.activo) return false;
+    if (statusTab === 'activo' && !e.activo) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return e.nombre.toLowerCase().includes(q) || (e.email ?? '').toLowerCase().includes(q);
@@ -1529,12 +1529,34 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
           <option value="employee">Empleado</option>
           <option value="prevencion_gerontalia">Prevencion Gerontalia</option>
         </select>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-3 py-2.5 rounded-xl text-xs outline-none cursor-pointer" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
-          <option value="">Todos los estados</option>
-          <option value="activo">Activos</option>
-          <option value="inactivo">Inactivos</option>
-        </select>
+      </div>
+
+      {/* Status tabs */}
+      <div className="flex items-center gap-2 mb-4">
+        {(['activo', 'inactivo'] as const).map((tab) => {
+          const count = tab === 'activo'
+            ? users.filter((u) => u.activo).length + empleadosSinCuenta.filter((e) => e.activo).length
+            : users.filter((u) => !u.activo).length + empleadosSinCuenta.filter((e) => !e.activo).length;
+          const isActiveTab = statusTab === tab;
+          return (
+            <button
+              key={tab}
+              onClick={() => setStatusTab(tab)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-all duration-200"
+              style={{
+                backgroundColor: isActiveTab ? (tab === 'activo' ? '#F0FDF4' : '#FEF2F2') : '#FFFFFF',
+                color: isActiveTab ? (tab === 'activo' ? '#16A34A' : '#DC2626') : '#64748B',
+                border: `1.5px solid ${isActiveTab ? (tab === 'activo' ? '#BBF7D0' : '#FECACA') : '#E2E8F0'}`,
+              }}
+            >
+              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isActiveTab ? (tab === 'activo' ? '#22C55E' : '#EF4444') : '#CBD5E1' }} />
+              {tab === 'activo' ? 'Activos' : 'Inactivos'}
+              <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: isActiveTab ? (tab === 'activo' ? '#BBF7D0' : '#FECACA') : '#F1F5F9', color: isActiveTab ? (tab === 'activo' ? '#16A34A' : '#DC2626') : '#94A3B8' }}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
@@ -1545,7 +1567,9 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
         ) : totalVisible === 0 ? (
           <div className="flex flex-col items-center py-16">
             <Users size={32} style={{ color: '#E2E8F0' }} />
-            <p className="text-sm mt-3" style={{ color: '#94A3B8' }}>No se encontraron usuarios</p>
+            <p className="text-sm mt-3" style={{ color: '#94A3B8' }}>
+              No hay usuarios {statusTab === 'activo' ? 'activos' : 'inactivos'}
+            </p>
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>

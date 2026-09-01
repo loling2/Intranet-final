@@ -360,52 +360,62 @@ async function sendSmtp(opts: {
       await writeAll(enc.encode(line + "\r\n"));
       return await readResponse();
     };
+    const expect = (response: string, code: string, label: string) => {
+      if (!response.startsWith(code)) throw new Error(`${label}: ${response}`);
+    };
 
-    // Greeting
-    await readResponse();
-    await cmd(`EHLO localhost`);
+    const greeting = await readResponse();
+    expect(greeting, "220", "SMTP greeting failed");
+    expect(await cmd("EHLO localhost"), "250", "EHLO failed");
 
     if (useStartTLS) {
       const r = await cmd("STARTTLS");
-      if (!r.startsWith("220")) throw new Error("STARTTLS failed: " + r);
+      expect(r, "220", "STARTTLS failed");
       conn = await Deno.startTls(conn as Deno.TcpConn, { hostname: opts.host });
-      await cmd("EHLO localhost");
+      expect(await cmd("EHLO localhost"), "250", "EHLO after STARTTLS failed");
     }
 
-    // AUTH LOGIN
-    await cmd("AUTH LOGIN");
-    await cmd(btoa(opts.user));
+    expect(await cmd("AUTH LOGIN"), "334", "SMTP auth was not accepted");
+    expect(await cmd(btoa(opts.user)), "334", "SMTP username was not accepted");
     const authResp = await cmd(btoa(opts.password));
-    if (!authResp.startsWith("235")) throw new Error("Auth failed: " + authResp);
+    expect(authResp, "235", "SMTP password was not accepted");
 
-    await cmd(`MAIL FROM:<${opts.from}>`);
-    await cmd(`RCPT TO:<${opts.to}>`);
-    await cmd("DATA");
+    expect(await cmd(`MAIL FROM:<${opts.from}>`), "250", "Sender was rejected");
+    const recipientResp = await cmd(`RCPT TO:<${opts.to}>`);
+    if (!recipientResp.startsWith("250") && !recipientResp.startsWith("251")) throw new Error(`Recipient was rejected: ${recipientResp}`);
+    expect(await cmd("DATA"), "354", "SMTP data was not accepted");
 
     const boundary = crypto.randomUUID().replace(/-/g, "");
     const date = new Date().toUTCString();
+    const encodeUtf8Base64 = (value: string) => {
+      const bytes = enc.encode(value);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(binary).match(/.{1,76}/g)!.join("\r\n");
+    };
+    const encodedSubject = `=?UTF-8?B?${encodeUtf8Base64(opts.subject).replace(/\r\n/g, "")}?=`;
 
     let message: string;
     if (opts.html) {
       message = [
         `From: ${opts.from}`,
         `To: ${opts.to}`,
-        `Subject: ${opts.subject}`,
+        `Subject: ${encodedSubject}`,
         `Date: ${date}`,
         `MIME-Version: 1.0`,
         `Content-Type: multipart/alternative; boundary="${boundary}"`,
         ``,
         `--${boundary}`,
         `Content-Type: text/plain; charset=UTF-8`,
-        `Content-Transfer-Encoding: 7bit`,
+        `Content-Transfer-Encoding: base64`,
         ``,
-        opts.text,
+        encodeUtf8Base64(opts.text),
         ``,
         `--${boundary}`,
         `Content-Type: text/html; charset=UTF-8`,
-        `Content-Transfer-Encoding: 7bit`,
+        `Content-Transfer-Encoding: base64`,
         ``,
-        opts.html,
+        encodeUtf8Base64(opts.html),
         ``,
         `--${boundary}--`,
         ``,
@@ -415,12 +425,13 @@ async function sendSmtp(opts: {
       message = [
         `From: ${opts.from}`,
         `To: ${opts.to}`,
-        `Subject: ${opts.subject}`,
+        `Subject: ${encodedSubject}`,
         `Date: ${date}`,
         `MIME-Version: 1.0`,
         `Content-Type: text/plain; charset=UTF-8`,
+        `Content-Transfer-Encoding: base64`,
         ``,
-        opts.text,
+        encodeUtf8Base64(opts.text),
         ``,
         `.`,
       ].join("\r\n");

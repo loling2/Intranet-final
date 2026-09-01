@@ -133,8 +133,17 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Default flow: admin/rrhh/gerontalia only ───────────────────────────────
-    const staffRoles = ["admin", "rrhh", "rrhh_gerontalia", "prevencion_gerontalia", "supervisor_gerontalia"];
-    if (!callerProfile || !staffRoles.includes(callerProfile.role)) {
+    const staffRoles = [
+      "admin", "rrhh", "rrhh_gerontalia", "prevencion_gerontalia",
+      "supervisor_gerontalia", "administrador_gerontalia", "administracion",
+      "prevencion", "supervisor",
+    ];
+    const callerRoles: string[] = callerProfile?.roles && Array.isArray(callerProfile.roles)
+      ? callerProfile.roles as string[]
+      : [];
+    const callerRole = callerProfile?.role ?? "";
+    const hasStaffAccess = staffRoles.includes(callerRole) || callerRoles.some((r) => staffRoles.includes(r));
+    if (!callerProfile || !hasStaffAccess) {
       return json({ error: "Acceso denegado" }, 403);
     }
 

@@ -1360,6 +1360,23 @@ export default function LoginPage() {
           access_token: body.access_token as string,
           refresh_token: body.refresh_token as string,
         });
+        // Log the access — this is the reliable path since the session is fully established
+        try {
+          const ua = navigator.userAgent;
+          const mobile = /Android|iPhone|iPad|iPod/i.test(ua);
+          const tablet = /iPad|Android(?!.*Mobile)/i.test(ua);
+          const type = tablet ? 'Tablet' : mobile ? 'Móvil' : 'Escritorio';
+          const browser = /Edg/i.test(ua) ? 'Edge' : /Chrome/i.test(ua) ? 'Chrome' : /Firefox/i.test(ua) ? 'Firefox' : /Safari/i.test(ua) ? 'Safari' : 'Navegador';
+          const os = /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'macOS' : /Android/i.test(ua) ? 'Android' : /iOS|iPhone|iPad/i.test(ua) ? 'iOS' : /Linux/i.test(ua) ? 'Linux' : 'Sistema';
+          await supabase.rpc('log_access', {
+            p_ip_address: null,
+            p_device_info: `${type} · ${browser} · ${os}`,
+            p_user_agent: ua,
+            p_session_id: (body.access_token as string).slice(0, 16),
+          });
+        } catch (e) {
+          console.warn('log_access failed after login:', e);
+        }
       } catch (sessionErr) {
         const errMsg = sessionErr instanceof Error ? sessionErr.message : String(sessionErr);
         console.error('Session setup error:', errMsg);

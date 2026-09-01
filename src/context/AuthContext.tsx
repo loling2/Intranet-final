@@ -84,18 +84,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         fetchProfile(s.user.id).catch(() => setProfile(null));
         if (event === 'SIGNED_IN' && lastLoggedSessionId !== s.access_token?.slice(0, 16)) {
           lastLoggedSessionId = s.access_token?.slice(0, 16) ?? null;
-          (async () => {
-            try {
-              await supabase.rpc('log_access', {
-                p_ip_address: null,
-                p_device_info: getDeviceInfo(),
-                p_user_agent: navigator.userAgent,
-                p_session_id: s.access_token?.slice(0, 16) ?? null,
-              });
-            } catch {
-              // Silent fail — login tracking is best-effort
-            }
-          })();
+          const token = s.access_token?.slice(0, 16) ?? null;
+          const deviceInfo = getDeviceInfo();
+          const userAgent = navigator.userAgent;
+          setTimeout(() => {
+            (async () => {
+              try {
+                await supabase.rpc('log_access', {
+                  p_ip_address: null,
+                  p_device_info: deviceInfo,
+                  p_user_agent: userAgent,
+                  p_session_id: token,
+                });
+              } catch (e) {
+                console.warn('log_access failed:', e);
+              }
+            })();
+          }, 100);
         }
       } else {
         setProfile(null);

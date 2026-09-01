@@ -43,14 +43,30 @@ Deno.serve(async (req: Request) => {
     }
     if (!recipient) return json({ error: "No recipient email configured" }, 400);
 
+    const url = new URL(req.url);
+    let overrideCuentaId: string | null = null;
+    if (req.method === "POST") {
+      try {
+        const body = await req.json();
+        overrideCuentaId = body?.sender_cuenta_id ?? null;
+      } catch { /* no body */ }
+    }
+
     // ── 2. Active SMTP account (or sender-selected) ─────────────────────────
-    const { data: senderSetting } = await supabase
-      .from("ui_settings").select("value").eq("key", "prl_report_sender_cuenta_id").maybeSingle();
     let cuenta;
-    if (senderSetting?.value) {
-      const { data: selCuenta } = await supabase
-        .from("email_cuentas").select("*").eq("id", senderSetting.value).maybeSingle();
-      cuenta = selCuenta;
+    if (overrideCuentaId) {
+      const { data: ovCuenta } = await supabase
+        .from("email_cuentas").select("*").eq("id", overrideCuentaId).maybeSingle();
+      cuenta = ovCuenta;
+    }
+    if (!cuenta) {
+      const { data: senderSetting } = await supabase
+        .from("ui_settings").select("value").eq("key", "prl_report_sender_cuenta_id").maybeSingle();
+      if (senderSetting?.value) {
+        const { data: selCuenta } = await supabase
+          .from("email_cuentas").select("*").eq("id", senderSetting.value).maybeSingle();
+        cuenta = selCuenta;
+      }
     }
     if (!cuenta) {
       const { data: activeCuenta } = await supabase

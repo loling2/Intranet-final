@@ -1146,7 +1146,7 @@ function PlantillasSection() {
 
 // ─── Main Module ──────────────────────────────────────────────────────────────
 
-type Section = 'cuentas' | 'notificaciones' | 'plantillas' | 'incidencias' | 'prl';
+type Section = 'cuentas' | 'notificaciones' | 'plantillas' | 'comunicados' | 'incidencias' | 'prl';
 
 export default function EmailModule() {
   const [section, setSection] = useState<Section>('cuentas');
@@ -1155,6 +1155,7 @@ export default function EmailModule() {
     { id: 'cuentas',        label: 'Cuentas SMTP',   icon: Server   },
     { id: 'notificaciones', label: 'Notificaciones', icon: Bell     },
     { id: 'plantillas',     label: 'Plantillas',     icon: FileText },
+    { id: 'comunicados',    label: 'Comunicados',    icon: Send     },
     { id: 'incidencias',    label: 'Informe Incidencias', icon: Clock },
     { id: 'prl',            label: 'Informe PRL',         icon: Shield },
   ];
@@ -1193,9 +1194,194 @@ export default function EmailModule() {
       {section === 'cuentas' && <CuentasSection />}
       {section === 'notificaciones' && <NotificacionesSection />}
       {section === 'plantillas' && <PlantillasSection />}
+      {section === 'comunicados' && <ComunicadosSection />}
       {section === 'incidencias' && <IncidenciasSection />}
       {section === 'prl' && <PrlReportSection />}
     </div>
+  );
+}
+
+// ─── Comunicados (Individual Email) Section ───────────────────────────────────
+
+function ComunicadosSection() {
+  const [cuentas, setCuentas] = useState<EmailCuenta[]>([]);
+  const [plantillas, setPlantillas] = useState<EmailPlantilla[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [msgType, setMsgType] = useState<'ok' | 'err'>('ok');
+
+  const [cuentaId, setCuentaId] = useState('');
+  const [toEmail, setToEmail] = useState('');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [plantillaId, setPlantillaId] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const [{ data: c }, { data: p }] = await Promise.all([
+        supabase.from('email_cuentas').select('*').eq('activo', true).order('nombre'),
+        supabase.from('email_plantillas').select('*').eq('activo', true).order('nombre'),
+      ]);
+      setCuentas((c ?? []) as EmailCuenta[]);
+      setPlantillas((p ?? []) as EmailPlantilla[]);
+      if (c && c.length > 0) setCuentaId((c as EmailCuenta[])[0].id);
+      setLoading(false);
+    })();
+  }, []);
+
+  const showMsg = (text: string, type: 'ok' | 'err') => {
+    setMsg(text); setMsgType(type);
+    setTimeout(() => setMsg(''), 6000);
+  };
+
+  const handleSelectPlantilla = (id: string) => {
+    setPlantillaId(id);
+    if (!id) return;
+    const p = plantillas.find((x) => x.id === id);
+    if (p) {
+      setSubject(p.asunto);
+      setBody(p.cuerpo);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!cuentaId) { showMsg('Selecciona una cuenta SMTP', 'err'); return; }
+    if (!toEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail.trim())) { showMsg('Introduce un correo destinatario válido', 'err'); return; }
+    if (!subject.trim()) { showMsg('El asunto es obligatorio', 'err'); return; }
+    if (!body.trim()) { showMsg('El cuerpo del mensaje es obligatorio', 'err'); return; }
+    setSending(true);
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const token = session?.access_token ?? (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+      const url = (import.meta as any).env?.VITE_SUPABASE_URL;
+      const resp = await fetch(`${url}/functions/v1/send-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          cuenta_id: cuentaId,
+          to_email: toEmail.trim(),
+          subject_override: subject,
+          html_override: body.replace(/\n/g, '<br/>'),
+          plantilla_id: plantillaId || undefined,
+        }),
+      });
+      const text = await resp.text();
+      let result: { ok?: boolean; error?: string; message?: string };
+      try { result = JSON.parse(text); } catch { result = { error: `Error (${resp.status})` }; }
+      if (result.ok) {
+        showMsg(`Correo enviado a ${toEmail.trim()}`, 'ok');
+        setToEmail(''); setSubject(''); setBody(''); setPlantillaId('');
+      } else {
+        showMsg(result.error || `Error (${resp.status})`, 'err');
+      }
+    } catch (e: unknown) {
+      const m = e instanceof Error ? e.message : String(e);
+      showMsg(`Error de conexión: ${m}`, 'err');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 size={26} className="animate-spin" style={{ color: '#0EA5E9' }} />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <p className="text-sm mb-5" style={{ color: '#64748B' }}>
+        Envía un correo individual a cualquier dirección usando una de tus cuentas SMTP. Puedes partir de una plantilla o escribir el mensaje directamente.
+      </p>
+
+      <div className="rounded-2xl p-5 space-y-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+        {cuentas.length === 0 ? (
+          <div className="px-3 py-2.5 rounded-xl text-sm" style={{ backgroundColor: '#FEF3C7', border: '1px solid #FDE68A', color: '#92400E' }}>
+            No hay cuentas SMTP activas. Crea una primero en la sección "Cuentas SMTP".
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Cuenta emisora *</label>
+                <select value={cuentaId} onChange={(e) => setCuentaId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer"
+                  style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }}>
+                  {cuentas.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nombre} ({c.email})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Plantilla (opcional)</label>
+                <select value={plantillaId} onChange={(e) => handleSelectPlantilla(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer"
+                  style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: plantillaId ? '#1E293B' : '#94A3B8' }}>
+                  <option value="">Sin plantilla (escribir desde cero)</option>
+                  {plantillas.map((p) => (
+                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Destinatario *</label>
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+                <Mail size={15} style={{ color: '#94A3B8' }} />
+                <input type="email" value={toEmail} onChange={(e) => setToEmail(e.target.value)}
+                  placeholder="correo@ejemplo.com"
+                  className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1E293B' }} />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Asunto *</label>
+              <input value={subject} onChange={(e) => setSubject(e.target.value)}
+                placeholder="Asunto del correo"
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Mensaje *</label>
+              <textarea value={body} onChange={(e) => setBody(e.target.value)}
+                placeholder="Escribe el contenido del correo..."
+                rows={8}
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-y"
+                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
+            </div>
+
+            {msg && (
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm" style={{
+                backgroundColor: msgType === 'ok' ? '#F0FDF4' : '#FEF2F2',
+                color: msgType === 'ok' ? '#16A34A' : '#B91C1C',
+                border: `1px solid ${msgType === 'ok' ? '#BBF7D0' : '#FECACA'}`,
+              }}>
+                {msgType === 'ok' ? <Check size={14} /> : <AlertCircle size={14} />}
+                {msg}
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button onClick={handleSend} disabled={sending}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60"
+                style={{ backgroundColor: '#0EA5E9', color: '#FFFFFF' }}>
+                {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                Enviar correo
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -1298,7 +1484,7 @@ function IncidenciasSection() {
           'Content-Type': 'application/json',
           ...(anonKey ? { Authorization: `Bearer ${anonKey}`, Apikey: anonKey } : {}),
         },
-        body: JSON.stringify({ supervisor_id: supervisorId }),
+        body: JSON.stringify({ supervisor_id: supervisorId, sender_cuenta_id: senderCuentaId || undefined }),
       });
       const text = await resp.text();
       let result: { ok?: boolean; error?: string; supervisor_reports?: { email: string; ok: boolean; error?: string }[] };
@@ -1371,6 +1557,7 @@ function IncidenciasSection() {
           'Content-Type': 'application/json',
           ...(anonKey ? { Authorization: `Bearer ${anonKey}`, Apikey: anonKey } : {}),
         },
+        body: JSON.stringify({ sender_cuenta_id: senderCuentaId || undefined }),
       });
       const text = await resp.text();
       let result: { ok?: boolean; error?: string; recipient?: string; total_incidencias?: number; disabled?: boolean };
@@ -1727,6 +1914,7 @@ function PrlReportSection() {
           'Content-Type': 'application/json',
           ...(anonKey ? { Authorization: `Bearer ${anonKey}`, Apikey: anonKey } : {}),
         },
+        body: JSON.stringify({ sender_cuenta_id: senderCuentaId || undefined }),
       });
       const text = await resp.text();
       let result: { ok?: boolean; error?: string; recipient?: string; total_empleados?: number; disabled?: boolean };

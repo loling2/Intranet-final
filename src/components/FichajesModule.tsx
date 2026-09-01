@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Clock, Search, RefreshCw, Download, FileText, Calendar,
-  AlertTriangle, LogIn, LogOut, ChevronDown, ChevronUp, MapPin,
+  AlertTriangle, LogIn, LogOut, ChevronDown, ChevronUp, MapPin, Moon,
 } from 'lucide-react';
 import * as XLSX from 'xlsx-js-style';
 import { jsPDF } from 'jspdf';
@@ -438,6 +438,7 @@ interface ClockPanelProps {
 
 function ClockPanel({ profile, onChanged }: ClockPanelProps) {
   const [todayLogs, setTodayLogs] = useState<Fichaje[]>([]);
+  const [yesterdayLogs, setYesterdayLogs] = useState<Fichaje[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -445,15 +446,16 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
 
   const loadToday = useCallback(async (): Promise<Fichaje[]> => {
     const today = new Date().toISOString().split('T')[0];
-    const { data } = await supabase
-      .from('fichajes')
-      .select('*')
-      .eq('empleado_id', profile.id)
-      .eq('fecha', today)
-      .order('timestamp', { ascending: true });
-    const logs = (data ?? []) as Fichaje[];
-    setTodayLogs(logs);
-    return logs;
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const [todayRes, yesterdayRes] = await Promise.all([
+      supabase.from('fichajes').select('*').eq('empleado_id', profile.id).eq('fecha', today).order('timestamp', { ascending: true }),
+      supabase.from('fichajes').select('*').eq('empleado_id', profile.id).eq('fecha', yesterday).order('timestamp', { ascending: true }),
+    ]);
+    const tLogs = (todayRes.data ?? []) as Fichaje[];
+    const yLogs = (yesterdayRes.data ?? []) as Fichaje[];
+    setTodayLogs(tLogs);
+    setYesterdayLogs(yLogs);
+    return tLogs;
   }, [profile.id]);
 
   useEffect(() => { loadToday(); }, [loadToday]);
@@ -470,8 +472,12 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
   }, [profile.id]);
 
   const relevantLogs = todayLogs.filter((f) => f.tipo_evento === 'entrada' || f.tipo_evento === 'salida');
-  const lastEvent = relevantLogs.length > 0 ? relevantLogs[relevantLogs.length - 1].tipo_evento : null;
-  const canEntrada = !lastEvent || lastEvent === 'salida';
+  const yesterdayRelevant = yesterdayLogs.filter((f) => f.tipo_evento === 'entrada' || f.tipo_evento === 'salida');
+  const allRelevant = [...yesterdayRelevant, ...relevantLogs];
+  const lastEvent = allRelevant.length > 0 ? allRelevant[allRelevant.length - 1].tipo_evento : null;
+  const lastEventTs = allRelevant.length > 0 ? new Date(allRelevant[allRelevant.length - 1].timestamp_corregido ?? allRelevant[allRelevant.length - 1].timestamp) : null;
+  const nightShiftOpen = lastEvent === 'entrada' && lastEventTs && (Date.now() - lastEventTs.getTime()) <= 16 * 3600000;
+  const canEntrada = !lastEvent || lastEvent === 'salida' || (lastEvent === 'entrada' && !nightShiftOpen);
   const canSalida = lastEvent === 'entrada';
 
   // Permiso state: if the last permiso event has no matching permiso_fin, we're "in permiso"
@@ -545,7 +551,7 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
         const msg = rpcData?.[0]?.error_msg || rpcErr?.message || 'Error al fichar';
         throw new Error(msg);
       }
-      const rpcResult = rpcData[0] as { success: boolean; error_msg: string };
+      const rpcResult = rpcData[0] as { success: boolean; tipo: string; nombre_empleado: string; error_msg: string };
       if (!rpcResult.success) {
         const msg = rpcResult.error_msg || 'Error al fichar';
         if (msg === 'DEVICE_NOT_AUTHORIZED') {
@@ -558,9 +564,10 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
           throw new Error(msg);
         }
       }
-      const tipoLabel = tipo === 'entrada' ? 'entrada' : tipo === 'salida' ? 'salida' : tipo === 'permiso' ? 'inicio de permiso' : 'fin de permiso';
+      const actualTipo = rpcResult.tipo || tipo;
+      const tipoLabel = actualTipo === 'entrada' ? 'entrada' : actualTipo === 'salida' ? 'salida' : actualTipo === 'permiso' ? 'inicio de permiso' : 'fin de permiso';
       const updatedLogs = await loadToday();
-      if (tipo === 'salida') {
+      if (actualTipo === 'salida') {
         const updatedEntradas = updatedLogs.filter((f) => f.tipo_evento === 'entrada').map((f) => f.timestamp_corregido ?? f.timestamp);
         const updatedSalidas = updatedLogs.filter((f) => f.tipo_evento === 'salida').map((f) => f.timestamp_corregido ?? f.timestamp);
         const workedMinutes = updatedSalidas.reduce((total, salida, index) => {
@@ -624,6 +631,13 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {nightShiftOpen && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3" style={{ backgroundColor: '#1E1B4B', border: '1px solid #312E81' }}>
+          <Moon size={13} style={{ color: '#A5B4FC' }} />
+          <p className="text-xs" style={{ color: '#A5B4FC' }}>Turno nocturno abierto. El próximo fichaje se registrará como salida.</p>
         </div>
       )}
 

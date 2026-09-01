@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Shield, Search, RefreshCw, User, Car, FileText, Key, AlertTriangle, Clock, Activity } from 'lucide-react';
+import { Shield, Search, RefreshCw, User, Car, FileText, Key, AlertTriangle, Clock, Activity, LogIn } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './components/Pagination';
 import { supabase, AuditLog } from './supabaseClient';
 import { useSociety } from './context/SocietyContext';
+import AccessLogsPanel from './components/AccessLogsPanel';
 
 const EVENT_ICONS: Record<string, { Icon: LucideIcon; color: string; bg: string }> = {
   user_invited:         { Icon: User,         color: '#2563EB', bg: '#EFF6FF' },
@@ -22,6 +23,7 @@ const DEFAULT_ICON = { Icon: Activity, color: '#64748B', bg: '#F8FAFC' };
 
 export default function AuditLogPanel() {
   const { activeSocietyId } = useSociety();
+  const [subTab, setSubTab] = useState<'eventos' | 'accesos'>('eventos');
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -64,22 +66,54 @@ export default function AuditLogPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Registro de Auditoria</h2>
-          <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{logs.length} eventos registrados</p>
-        </div>
+      {/* Sub-tabs */}
+      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: '#F1F5F9' }}>
         <button
-          onClick={load}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium cursor-pointer"
-          style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}
+          onClick={() => setSubTab('eventos')}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+          style={{
+            backgroundColor: subTab === 'eventos' ? '#FFFFFF' : 'transparent',
+            color: subTab === 'eventos' ? '#0F172A' : '#64748B',
+            boxShadow: subTab === 'eventos' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+          }}
         >
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-          Actualizar
+          <Activity size={14} />
+          Eventos del sistema
+        </button>
+        <button
+          onClick={() => setSubTab('accesos')}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+          style={{
+            backgroundColor: subTab === 'accesos' ? '#FFFFFF' : 'transparent',
+            color: subTab === 'accesos' ? '#0F172A' : '#64748B',
+            boxShadow: subTab === 'accesos' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+          }}
+        >
+          <LogIn size={14} />
+          Historial de accesos
         </button>
       </div>
 
-      {/* Filters */}
+      {subTab === 'accesos' ? (
+        <AccessLogsPanel />
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Registro de Auditoria</h2>
+              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{logs.length} eventos registrados</p>
+            </div>
+            <button
+              onClick={load}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium cursor-pointer"
+              style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              Actualizar
+            </button>
+          </div>
+
+          {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[180px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
@@ -161,6 +195,8 @@ export default function AuditLogPanel() {
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

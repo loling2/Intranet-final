@@ -2,6 +2,27 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { Session, User } from '@supabase/supabase-js';
 import { supabase, UserProfile, AppRole } from '../supabaseClient';
 
+function getDeviceInfo(): string {
+  const ua = navigator.userAgent;
+  const mobile = /Android|iPhone|iPad|iPod/i.test(ua);
+  const tablet = /iPad|Android(?!.*Mobile)/i.test(ua);
+  const type = tablet ? 'Tablet' : mobile ? 'Móvil' : 'Escritorio';
+  const browser = /Edg/i.test(ua) ? 'Edge'
+    : /Chrome/i.test(ua) ? 'Chrome'
+    : /Firefox/i.test(ua) ? 'Firefox'
+    : /Safari/i.test(ua) ? 'Safari'
+    : 'Navegador';
+  const os = /Windows/i.test(ua) ? 'Windows'
+    : /Mac/i.test(ua) ? 'macOS'
+    : /Android/i.test(ua) ? 'Android'
+    : /iOS|iPhone|iPad/i.test(ua) ? 'iOS'
+    : /Linux/i.test(ua) ? 'Linux'
+    : 'Sistema';
+  return `${type} · ${browser} · ${os}`;
+}
+
+let lastLoggedSessionId: string | null = null;
+
 interface AuthContextValue {
   session: Session | null;
   user: User | null;
@@ -61,8 +82,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(s?.user ?? null);
       if (s?.user) {
         fetchProfile(s.user.id).catch(() => setProfile(null));
+        if (event === 'SIGNED_IN' && lastLoggedSessionId !== s.access_token?.slice(0, 16)) {
+          lastLoggedSessionId = s.access_token?.slice(0, 16) ?? null;
+          (async () => {
+            try {
+              await supabase.rpc('log_access', {
+                p_ip_address: null,
+                p_device_info: getDeviceInfo(),
+                p_user_agent: navigator.userAgent,
+                p_session_id: s.access_token?.slice(0, 16) ?? null,
+              });
+            } catch {
+              // Silent fail — login tracking is best-effort
+            }
+          })();
+        }
       } else {
         setProfile(null);
+        lastLoggedSessionId = null;
       }
     });
 

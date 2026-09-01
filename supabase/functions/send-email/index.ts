@@ -132,8 +132,9 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, message: `Notificación enviada a ${recipient}` });
     }
 
-    // ── Default flow: admin/rrhh only ─────────────────────────────────────────
-    if (!callerProfile || !["admin", "rrhh"].includes(callerProfile.role)) {
+    // ── Default flow: admin/rrhh/gerontalia only ───────────────────────────────
+    const staffRoles = ["admin", "rrhh", "rrhh_gerontalia", "prevencion_gerontalia", "supervisor_gerontalia"];
+    if (!callerProfile || !staffRoles.includes(callerProfile.role)) {
       return json({ error: "Acceso denegado" }, 403);
     }
 

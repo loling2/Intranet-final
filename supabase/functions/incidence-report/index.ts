@@ -635,13 +635,22 @@ Deno.serve(async (req: Request) => {
           html: supHtml,
         });
 
-        supervisorResults.push({ email: supRecipient, ok: supResp.ok, error: supResp.error });
+        const supDiag: Record<string, unknown> = {
+          from: cuenta.email,
+          to: supRecipient,
+          num_empleados: supEmpIds.length,
+          num_fichajes: supFichajes?.length ?? 0,
+          num_incidencias: supIncidencias.length,
+          num_correctos: supCorrectos.length,
+          same_from_to: cuenta.email.toLowerCase() === supRecipient.toLowerCase(),
+        };
+        supervisorResults.push({ email: supRecipient, ok: supResp.ok, error: supResp.error, diagnostics: supDiag });
       } catch (e) {
         supervisorResults.push({ email: sup.email, ok: false, error: e instanceof Error ? e.message : "Error" });
       }
     }
 
-    return json({ ok: true, total_incidencias: incidencias.length, total_correctos: correctos.length, recipient: testSupervisorId ? supervisorResults[0]?.email ?? recipient : recipient, date: targetDate, supervisor_reports: supervisorResults, test_mode: !!testSupervisorId });
+    return json({ ok: true, total_incidencias: incidencias.length, total_correctos: correctos.length, recipient: testSupervisorId ? supervisorResults[0]?.email ?? recipient : recipient, date: targetDate, supervisor_reports: supervisorResults, test_mode: !!testSupervisorId, sender_email: cuenta.email });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "Error interno" }, 500);
   }

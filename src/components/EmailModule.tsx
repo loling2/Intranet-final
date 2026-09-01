@@ -1303,14 +1303,28 @@ function IncidenciasSection() {
         body: JSON.stringify({ supervisor_id: supervisorId, sender_cuenta_id: senderCuentaId || undefined }),
       });
       const text = await resp.text();
-      let result: { ok?: boolean; error?: string; supervisor_reports?: { email: string; ok: boolean; error?: string }[] };
+      let result: { ok?: boolean; error?: string; sender_email?: string; supervisor_reports?: { email: string; ok: boolean; error?: string; diagnostics?: Record<string, unknown> }[] };
       try { result = JSON.parse(text); } catch { result = { error: `Respuesta no válida (${resp.status})` }; }
       if (result.ok && result.supervisor_reports?.length) {
         const r = result.supervisor_reports[0];
-        if (r.ok) setSupMsg(`Correo de prueba enviado a ${r.email}.`);
-        else setSupMsg(`Error al enviar: ${r.error ?? 'desconocido'}.`);
+        const d = r.diagnostics ?? {};
+        const from = (d.from as string) ?? result.sender_email ?? '?';
+        const to = (d.to as string) ?? r.email ?? '?';
+        const nEmp = (d.num_empleados as number) ?? 0;
+        const nInc = (d.num_incidencias as number) ?? 0;
+        const nCorr = (d.num_correctos as number) ?? 0;
+        const sameFromTo = (d.same_from_to as boolean) ?? (from.toLowerCase() === to.toLowerCase());
+        if (r.ok) {
+          let m = `Correo enviado desde ${from} a ${to}. ${nEmp} empleado(s), ${nInc} incidencia(s), ${nCorr} correcto(s).`;
+          if (sameFromTo) {
+            m += ' AVISO: el remitente y el destinatario son el mismo correo. Algunos servidores (como Hostinger) descartan silenciosamente estos correos. Cambia el destinatario o usa otra cuenta emisora.';
+          }
+          setSupMsg(m);
+        } else {
+          setSupMsg(`Error al enviar a ${to}: ${r.error ?? 'desconocido'}.`);
+        }
       } else if (result.ok && (!result.supervisor_reports || result.supervisor_reports.length === 0)) {
-        setSupMsg('El supervisor no tiene empleados asignados. No se envió ningún correo.');
+        setSupMsg('El responsable no tiene empleados asignados. No se envió ningún correo.');
       } else {
         setSupMsg(result.error || `Error (${resp.status}).`);
       }
@@ -1643,12 +1657,13 @@ function IncidenciasSection() {
       </div>
 
       {supMsg && (
-        <div className="mt-3 flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm" style={{
-          backgroundColor: '#F0FDF4',
-          color: '#15803D',
-          border: '1px solid #BBF7D0',
+        <div className="mt-3 flex items-start gap-2 px-3 py-2.5 rounded-lg text-sm" style={{
+          backgroundColor: supMsg.startsWith('Error') || supMsg.startsWith('AVISO') || supMsg.includes('AVISO') ? '#FEF2F2' : '#F0FDF4',
+          color: supMsg.startsWith('Error') || supMsg.includes('AVISO') ? '#B91C1C' : '#15803D',
+          border: `1px solid ${supMsg.startsWith('Error') || supMsg.includes('AVISO') ? '#FECACA' : '#BBF7D0'}`,
         }}>
-          <Check size={14} /> {supMsg}
+          {supMsg.startsWith('Error') || supMsg.includes('AVISO') ? <AlertCircle size={14} className="mt-0.5 flex-shrink-0" /> : <Check size={14} className="mt-0.5 flex-shrink-0" />}
+          <span>{supMsg}</span>
         </div>
       )}
 

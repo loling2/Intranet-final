@@ -43,8 +43,20 @@ Deno.serve(async (req: Request) => {
     }
     if (!recipient) return json({ error: "No recipient email configured" }, 400);
 
-    const { data: cuenta } = await supabase
-      .from("email_cuentas").select("*").eq("activo", true).limit(1).maybeSingle();
+    // ── 2. Active SMTP account (or sender-selected) ─────────────────────────
+    const { data: senderSetting } = await supabase
+      .from("ui_settings").select("value").eq("key", "prl_report_sender_cuenta_id").maybeSingle();
+    let cuenta;
+    if (senderSetting?.value) {
+      const { data: selCuenta } = await supabase
+        .from("email_cuentas").select("*").eq("id", senderSetting.value).maybeSingle();
+      cuenta = selCuenta;
+    }
+    if (!cuenta) {
+      const { data: activeCuenta } = await supabase
+        .from("email_cuentas").select("*").eq("activo", true).limit(1).maybeSingle();
+      cuenta = activeCuenta;
+    }
     if (!cuenta) return json({ error: "No active SMTP account" }, 400);
 
     const { data: traceRows, error: traceErr } = await supabase.rpc("get_prl_trazabilidad_stats", {});

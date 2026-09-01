@@ -1218,6 +1218,8 @@ function IncidenciasSection() {
   const [testing, setTesting] = useState(false);
   const [msg, setMsg] = useState('');
   const [msgType, setMsgType] = useState<'ok' | 'err'>('ok');
+  const [cuentas, setCuentas] = useState<EmailCuenta[]>([]);
+  const [senderCuentaId, setSenderCuentaId] = useState<string>('');
 
   const [supervisors, setSupervisors] = useState<SupervisorInfo[]>([]);
   const [supMsg, setSupMsg] = useState('');
@@ -1228,14 +1230,19 @@ function IncidenciasSection() {
 
   useEffect(() => {
     (async () => {
-      const [{ data: ed }, { data: en }, { data: hr }] = await Promise.all([
+      const [{ data: ed }, { data: en }, { data: hr }, { data: sc }, { data: ci }, { data: cuentasData }] = await Promise.all([
         supabase.from('ui_settings').select('value').eq('key', 'incidence_report_email').maybeSingle(),
         supabase.from('ui_settings').select('value').eq('key', 'incidence_report_enabled').maybeSingle(),
         supabase.from('ui_settings').select('value').eq('key', 'incidence_report_hour').maybeSingle(),
+        supabase.from('ui_settings').select('value').eq('key', 'incidence_report_sender_cuenta_id').maybeSingle(),
+        supabase.from('ui_settings').select('value').eq('key', 'incidence_report_sender_cuenta_id').maybeSingle(),
+        supabase.from('email_cuentas').select('*').order('nombre'),
       ]);
       if (ed?.value) setEmail(ed.value);
       if (en?.value) setEnabled(en.value !== 'false');
       if (hr?.value) setHour(parseInt(hr.value, 10) || 22);
+      if (sc?.value) setSenderCuentaId(sc.value);
+      setCuentas((cuentasData ?? []) as EmailCuenta[]);
 
       // Load responsables (supervisor, rrhh, prevencion) with their assigned centros
       const { data: supData } = await supabase
@@ -1341,6 +1348,7 @@ function IncidenciasSection() {
       await Promise.all([
         supabase.from('ui_settings').upsert({ key: 'incidence_report_email', value: email }, { onConflict: 'key' }),
         supabase.from('ui_settings').upsert({ key: 'incidence_report_enabled', value: enabled ? 'true' : 'false' }, { onConflict: 'key' }),
+        supabase.from('ui_settings').upsert({ key: 'incidence_report_sender_cuenta_id', value: senderCuentaId }, { onConflict: 'key' }),
         supabase.rpc('reschedule_incidence_report', { p_hour: hour }),
       ]);
       showMsg('Configuración guardada. El informe se enviará a las ' + String(hour).padStart(2, '0') + ':00.', 'ok');
@@ -1419,6 +1427,25 @@ function IncidenciasSection() {
               />
             </div>
             <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Correo principal que recibe el informe global de todos los centros.</p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Cuenta emisora</label>
+            {cuentas.length === 0 ? (
+              <div className="px-3 py-2.5 rounded-xl text-sm" style={{ backgroundColor: '#FEF3C7', border: '1px solid #FDE68A', color: '#92400E' }}>
+                No hay cuentas SMTP configuradas. Crea una primero en la seccion "Cuentas SMTP".
+              </div>
+            ) : (
+              <select value={senderCuentaId} onChange={(e) => setSenderCuentaId(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer"
+                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: senderCuentaId ? '#1E293B' : '#94A3B8' }}>
+                <option value="">Primera cuenta activa (por defecto)</option>
+                {cuentas.filter((c) => c.activo).map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre} ({c.email})</option>
+                ))}
+              </select>
+            )}
+            <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Cuenta de correo desde la que se envian los informes de incidencias.</p>
           </div>
 
           <div>
@@ -1642,19 +1669,25 @@ function PrlReportSection() {
   const [testing, setTesting] = useState(false);
   const [msg, setMsg] = useState('');
   const [msgType, setMsgType] = useState<'ok' | 'err'>('ok');
+  const [cuentas, setCuentas] = useState<EmailCuenta[]>([]);
+  const [senderCuentaId, setSenderCuentaId] = useState<string>('');
 
   useEffect(() => {
     (async () => {
-      const [{ data: ed }, { data: en }, { data: hr }, { data: fq }] = await Promise.all([
+      const [{ data: ed }, { data: en }, { data: hr }, { data: fq }, { data: sc }, { data: cuentasData }] = await Promise.all([
         supabase.from('ui_settings').select('value').eq('key', 'prl_report_email').maybeSingle(),
         supabase.from('ui_settings').select('value').eq('key', 'prl_report_enabled').maybeSingle(),
         supabase.from('ui_settings').select('value').eq('key', 'prl_report_hour').maybeSingle(),
         supabase.from('ui_settings').select('value').eq('key', 'prl_report_frequency').maybeSingle(),
+        supabase.from('ui_settings').select('value').eq('key', 'prl_report_sender_cuenta_id').maybeSingle(),
+        supabase.from('email_cuentas').select('*').order('nombre'),
       ]);
       if (ed?.value) setEmail(ed.value);
       if (en?.value) setEnabled(en.value !== 'false');
       if (hr?.value) setHour(parseInt(hr.value, 10) || 8);
       if (fq?.value && ['daily', 'weekly', 'every3'].includes(fq.value)) setFrequency(fq.value as 'daily' | 'weekly' | 'every3');
+      if (sc?.value) setSenderCuentaId(sc.value);
+      setCuentas((cuentasData ?? []) as EmailCuenta[]);
       setLoading(false);
     })();
   }, []);
@@ -1670,6 +1703,7 @@ function PrlReportSection() {
       await Promise.all([
         supabase.from('ui_settings').upsert({ key: 'prl_report_email', value: email }, { onConflict: 'key' }),
         supabase.from('ui_settings').upsert({ key: 'prl_report_enabled', value: enabled ? 'true' : 'false' }, { onConflict: 'key' }),
+        supabase.from('ui_settings').upsert({ key: 'prl_report_sender_cuenta_id', value: senderCuentaId }, { onConflict: 'key' }),
         supabase.rpc('reschedule_prl_report', { p_hour: hour, p_frequency: frequency }),
       ]);
       const freqLabel = frequency === 'daily' ? 'cada día' : frequency === 'weekly' ? 'cada semana (lunes)' : 'cada 3 días';
@@ -1754,6 +1788,25 @@ function PrlReportSection() {
                 className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1E293B' }}
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#475569' }}>Cuenta emisora</label>
+            {cuentas.length === 0 ? (
+              <div className="px-3 py-2.5 rounded-xl text-sm" style={{ backgroundColor: '#FEF3C7', border: '1px solid #FDE68A', color: '#92400E' }}>
+                No hay cuentas SMTP configuradas. Crea una primero en la seccion "Cuentas SMTP".
+              </div>
+            ) : (
+              <select value={senderCuentaId} onChange={(e) => setSenderCuentaId(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer"
+                style={{ border: '1.5px solid #E2E8F0', backgroundColor: '#F8FAFC', color: senderCuentaId ? '#1E293B' : '#94A3B8' }}>
+                <option value="">Primera cuenta activa (por defecto)</option>
+                {cuentas.filter((c) => c.activo).map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre} ({c.email})</option>
+                ))}
+              </select>
+            )}
+            <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Cuenta de correo desde la que se envian los informes PRL.</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -80,6 +80,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false, in
   const [uploadModal, setUploadModal] = useState<UploadModal | null>(null);
   const [uploadQueue, setUploadQueue] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<Record<string, 'pending' | 'done' | 'error'>>({});
+  const [uploadErrors, setUploadErrors] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -368,6 +369,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false, in
   function removeFromQueue(name: string) {
     setUploadQueue(prev => prev.filter(f => f.name !== name));
     setUploadProgress(prev => { const n = { ...prev }; delete n[name]; return n; });
+    setUploadErrors(prev => { const n = { ...prev }; delete n[name]; return n; });
   }
 
   function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
@@ -392,6 +394,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false, in
     if (!uploadQueue.length || !selected?.dni || !uploadModal) return;
     setUploading(true);
     setUploadError('');
+    setUploadErrors({});
     const progress: Record<string, 'pending' | 'done' | 'error'> = {};
     uploadQueue.forEach(f => { progress[f.name] = 'pending'; });
     setUploadProgress({ ...progress });
@@ -412,6 +415,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false, in
     }
 
     let anyError = false;
+    const failedFiles: File[] = [];
     for (const file of uploadQueue) {
       try {
         let key: string;
@@ -424,14 +428,18 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false, in
         }
         await uploadToWasabiKey(file, key);
         setUploadProgress(prev => ({ ...prev, [file.name]: 'done' }));
-      } catch {
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Error desconocido al subir el archivo';
         setUploadProgress(prev => ({ ...prev, [file.name]: 'error' }));
+        setUploadErrors(prev => ({ ...prev, [file.name]: message }));
+        failedFiles.push(file);
         anyError = true;
       }
     }
 
     if (anyError) {
-      setUploadError('Algunos archivos no se pudieron subir');
+      setUploadQueue(failedFiles);
+      setUploadError(`${failedFiles.length} archivo${failedFiles.length !== 1 ? 's' : ''} no se pudo${failedFiles.length !== 1 ? 'ieron' : ''} subir. Los demás ya están guardados.`);
     } else {
       if (uploadModal.folder !== 'privado' && selected.dni) {
         const y = uploadModal.anio ?? anio;
@@ -468,6 +476,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false, in
     setUploadModal(null);
     setUploadQueue([]);
     setUploadProgress({});
+    setUploadErrors({});
     setUploadError('');
   }
 
@@ -1237,6 +1246,11 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false, in
                       <span className="text-xs flex-shrink-0" style={{ color: '#94A3B8' }}>
                         {(file.size / 1024).toFixed(0)} KB
                       </span>
+                      {status === 'error' && uploadErrors[file.name] && (
+                        <span className="max-w-48 truncate text-[10px]" title={uploadErrors[file.name]} style={{ color: '#DC2626' }}>
+                          {uploadErrors[file.name]}
+                        </span>
+                      )}
                       {status === 'pending' && uploading && <Loader2 size={13} className="animate-spin flex-shrink-0" style={{ color: '#0369A1' }} />}
                       {status === 'done' && <CheckCircle2 size={13} className="flex-shrink-0" style={{ color: '#16A34A' }} />}
                       {status === 'error' && <AlertCircle size={13} className="flex-shrink-0" style={{ color: '#DC2626' }} />}
@@ -1276,7 +1290,7 @@ export default function PersonalDocumentsPanel({ employeeDni, isRrhh = false, in
                   style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
                 >
                   {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                  {uploading ? 'Subiendo...' : `Subir${uploadQueue.length > 1 ? ` (${uploadQueue.length})` : ''}`}
+                  {uploading ? 'Subiendo...' : uploadError ? `Reintentar${uploadQueue.length > 1 ? ` (${uploadQueue.length})` : ''}` : `Subir${uploadQueue.length > 1 ? ` (${uploadQueue.length})` : ''}`}
                 </button>
               </div>
             </div>

@@ -106,7 +106,8 @@ Deno.serve(async (req: Request) => {
       const contentType = url.searchParams.get("contentType") || "application/octet-stream";
       const body = await req.arrayBuffer();
 
-      const objectUrl = `${endpoint}/${bucket}/${key}`;
+      const encodedKey = key.split("/").map((segment) => encodeURIComponent(segment)).join("/");
+      const objectUrl = `${endpoint}/${bucket}/${encodedKey}`;
       const signed = await aws.sign(new Request(objectUrl, {
         method: "PUT",
         headers: { "Content-Type": contentType, "Content-Length": String(body.byteLength) },

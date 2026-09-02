@@ -45,11 +45,19 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerProfile } = await supabaseAdmin
       .from("user_profiles")
-      .select("role")
+      .select("role, roles")
       .eq("id", callerUser.id)
       .maybeSingle();
 
-    if (!callerProfile || !["admin", "rrhh", "prevencion"].includes(callerProfile.role)) {
+    const callerRoles = [
+      callerProfile?.role,
+      ...(Array.isArray(callerProfile?.roles) ? callerProfile.roles : []),
+    ];
+    const canManageUsers = callerRoles.some((callerRole) =>
+      ["admin", "rrhh", "prevencion", "rrhh_gerontalia"].includes(callerRole),
+    );
+
+    if (!callerProfile || !canManageUsers) {
       return new Response(JSON.stringify({ error: "Permiso denegado" }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

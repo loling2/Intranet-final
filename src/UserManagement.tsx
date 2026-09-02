@@ -1007,7 +1007,7 @@ function BulkCreateAccessModal({ employees, onClose, onCreated }: BulkCreateAcce
         if (profile) {
           await writeAuditLog({
             evento: 'user_invited',
-            descripcion: `Acceso web creado para empleado: ${emp.email} con rol ${role}`,
+            descripcion: `Acceso web creado para empleado: ${emp.email} con rol ${Array.from(selectedRoles).join(', ') || 'employee'}`,
             autor: profile,
             entidad: 'user',
             entidad_id: result.userId,

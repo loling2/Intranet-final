@@ -729,7 +729,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
 
         {/* Kiosk Devices Tab */}
         {activeTab === 'kiosk-devices' && (
-          <KioskDevicesPanel />
+          <KioskDevicesPanel allowedSocietyId={allowedSocietyId} />
         )}
 
         {/* Bajas/Ausencias Tab */}

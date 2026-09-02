@@ -48,6 +48,7 @@ interface Empleado {
   id: string;
   nombre: string;
   fichaje_mode: 'kiosk_only' | 'kiosk_or_corporate' | 'any';
+  id_sociedad?: string | null;
 }
 
 type PanelTab = 'kiosk' | 'corporate' | 'permissions' | 'solicitudes' | 'telemetria';
@@ -530,7 +531,7 @@ function CorporateTab() {
 
 // ── Permissions sub-panel ──────────────────────────────────────────────────────
 
-function PermissionsTab() {
+function PermissionsTab({ allowedSocietyId }: { allowedSocietyId?: string }) {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -546,7 +547,11 @@ function PermissionsTab() {
       supabase.rpc('get_employees_fichaje_modes'),
       supabase.from('employee_registered_devices').select('*').eq('is_active', true),
     ]);
-    setEmpleados((emps ?? []) as Empleado[]);
+    const allEmps = (emps ?? []) as Empleado[];
+    const filteredEmps = allowedSocietyId
+      ? allEmps.filter(e => e.id_sociedad === allowedSocietyId)
+      : allEmps;
+    setEmpleados(filteredEmps);
     const grouped: Record<string, CorporateDevice[]> = {};
     for (const d of (devs ?? []) as CorporateDevice[]) {
       if (!grouped[d.empleado_id]) grouped[d.empleado_id] = [];
@@ -1330,7 +1335,7 @@ function TelemetriaTab() {
 
 // ── Main panel ─────────────────────────────────────────────────────────────────
 
-export default function KioskDevicesPanel() {
+export default function KioskDevicesPanel({ allowedSocietyId }: { allowedSocietyId?: string }) {
   const [activeTab, setActiveTab] = useState<PanelTab>('kiosk');
 
   const tabs: { id: PanelTab; label: string; icon: React.ElementType; desc: string }[] = [
@@ -1380,7 +1385,7 @@ export default function KioskDevicesPanel() {
       <div className="p-6">
         {activeTab === 'kiosk' && <KioskTab />}
         {activeTab === 'corporate' && <CorporateTab />}
-        {activeTab === 'permissions' && <PermissionsTab />}
+        {activeTab === 'permissions' && <PermissionsTab allowedSocietyId={allowedSocietyId} />}
         {activeTab === 'solicitudes' && <SolicitudesTab />}
         {activeTab === 'telemetria' && <TelemetriaTab />}
       </div>

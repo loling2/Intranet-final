@@ -136,12 +136,12 @@ function formFromEmpleado(e: Empleado): typeof EMPTY_FORM {
 // Template A: Auth users (email + password → creates login access)
 const CSV_AUTH_HEADERS = ['email', 'nombre', 'dni', 'contrasena', 'rol', 'empresa'];
 const CSV_AUTH_EXAMPLE = [
-  ['empleado@empresa.com', 'Juan Garcia Lopez', '12345678A', 'Contrasena123!', 'employee', '100'],
-  ['supervisor@empresa.com', 'Maria Perez Ruiz', '87654321B', 'Contrasena456!', 'supervisor', '72'],
+  ['empleado@empresa.com', 'GARCIA LOPEZ JUAN', '12345678A', 'Contrasena123!', 'employee', '100'],
+  ['supervisor@empresa.com', 'PEREZ RUIZ MARIA', '87654321B', 'Contrasena456!', 'supervisor', '72'],
 ];
 
 // Template B: HR data — matches the real RRHH export format
-// Name format: "APELLIDOS, NOMBRE" → stored as "NOMBRE APELLIDOS"
+// Name format: "APELLIDOS, NOMBRE" → stored as "APELLIDOS NOMBRE" (surname first)
 const CSV_HR_HEADERS = [
   'Nombre Completo', 'Puesto de trabajo', 'NASS', 'NIF',
   'Codigo Contrato', 'Fecha de alta en compania', 'Fecha Antiguedad en la empresa',
@@ -241,7 +241,7 @@ function parseCsv(text: string): { rows: Record<string, string>[]; mode: 'auth' 
 
 
 // Convert a parsed HR CSV row into an empleados insert/update payload.
-// "APELLIDOS, NOMBRE" → "NOMBRE APELLIDOS"; dates dd/mm/yyyy → yyyy-mm-dd.
+// "APELLIDOS, NOMBRE" → "APELLIDOS NOMBRE" (surname first); dates dd/mm/yyyy → yyyy-mm-dd.
 function hrRowToEmpleado(r: Record<string, string>, sociedadId: string, sociedades: Sociedad[] = []): Record<string, string | null> {
   const get = (...keys: string[]) => {
     for (const k of keys) {
@@ -254,14 +254,14 @@ function hrRowToEmpleado(r: Record<string, string>, sociedadId: string, sociedad
   const empresaRaw = get('Código empresa', 'Codigo empresa', 'codigo_empresa', 'cod_empresa', 'Empresa', 'empresa', 'sociedad');
   const resolvedSociedadId = resolveSociedadId(empresaRaw, sociedades, sociedadId);
 
-  // Parse "APELLIDOS, NOMBRE" → "NOMBRE APELLIDOS"
+  // Parse "APELLIDOS, NOMBRE" → "APELLIDOS NOMBRE" (keep surname-first order)
   function parseName(raw: string): string {
     const s = raw.trim();
     const commaIdx = s.indexOf(',');
     if (commaIdx > 0 && commaIdx < s.length - 1) {
       const apellidos = s.slice(0, commaIdx).trim();
       const nombre = s.slice(commaIdx + 1).trim();
-      return `${nombre} ${apellidos}`.trim();
+      return `${apellidos} ${nombre}`.trim();
     }
     return s;
   }

@@ -377,9 +377,14 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
           <div className="h-14 mb-3 flex items-center justify-center w-full max-w-xs">
             {status === 'success' && (
               <div className="flex items-center gap-3 px-5 py-3 rounded-2xl w-full justify-center"
-                style={{ backgroundColor: 'rgba(22,163,74,0.12)', border: '1.5px solid rgba(22,163,74,0.35)' }}>
-                {lastEvent === 'entrada' ? <LogIn size={18} style={{ color: '#16A34A' }} /> : <LogOut size={18} style={{ color: '#16A34A' }} />}
-                <span className="text-sm font-semibold" style={{ color: '#15803D' }}>{message}</span>
+                style={{
+                  backgroundColor: lastEvent === 'entrada' ? 'rgba(22,163,74,0.12)' : 'rgba(220,38,38,0.12)',
+                  border: lastEvent === 'entrada' ? '1.5px solid rgba(22,163,74,0.35)' : '1.5px solid rgba(220,38,38,0.35)',
+                }}>
+                {lastEvent === 'entrada'
+                  ? <LogIn size={22} style={{ color: '#16A34A' }} />
+                  : <LogOut size={22} style={{ color: '#DC2626' }} />}
+                <span className="text-base font-bold" style={{ color: lastEvent === 'entrada' ? '#15803D' : '#B91C1C' }}>{message}</span>
               </div>
             )}
             {status === 'error' && (

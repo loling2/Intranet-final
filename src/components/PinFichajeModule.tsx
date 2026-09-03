@@ -115,6 +115,7 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
   const [logos, setLogos] = useState<Record<string, string>>({});
   const [showSetup, setShowSetup] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const submittingRef = useRef(false);
   const cachedGeo = useRef<{ latitud: number | null; longitud: number | null; ubicacion: string | null }>({
     latitud: null, longitud: null, ubicacion: null,
   });
@@ -184,6 +185,7 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
 
   const reset = useCallback(() => {
     if (resetTimer.current) clearTimeout(resetTimer.current);
+    submittingRef.current = false;
     setPin(''); setStatus('idle'); setMessage(''); setLastEvent(null);
   }, []);
 
@@ -201,6 +203,8 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
 
   const submit = useCallback(async (pinValue: string) => {
     if (!pinValue) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
 
     // GPS check: only required for non-kiosk devices
     if (gpsRequired) {

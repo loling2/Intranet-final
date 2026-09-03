@@ -42,6 +42,7 @@ interface JornadaResumen {
   empleado_id: string | null;
   fichaje_entrada_id: string | null;
   fichaje_salida_id: string | null;
+  es_nocturno: boolean;
 }
 
 interface Correccion {
@@ -133,6 +134,7 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
         duracion_bruta: null, duracion_neta: null,
         empleado_id: f.empleado_id,
         fichaje_entrada_id: null, fichaje_salida_id: null,
+        es_nocturno: false,
       });
     }
     const r = map.get(key)!;
@@ -154,7 +156,7 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
     const salidas = dayEvents.filter((ev) => ev.tipo === 'salida').sort((a, b) => b.eff.localeCompare(a.eff));
 
     const firstEntrada = entradas[0] ?? null;
-    const lastSalida = salidas[0] ?? null; // sorted desc → [0] is latest
+    let lastSalida = salidas[0] ?? null; // sorted desc → [0] is latest
 
     if (firstEntrada) {
       r.entrada = firstEntrada.eff;
@@ -162,6 +164,32 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
       r.entrada_corregida = firstEntrada.corregida;
       r.fichaje_entrada_id = firstEntrada.id;
     }
+
+    // ── Night shift: if entrada without salida, look for salida next day ──
+    if (firstEntrada && !lastSalida) {
+      const nextDate = new Date(key + 'T00:00:00');
+      nextDate.setDate(nextDate.getDate() + 1);
+      const nextDateStr = nextDate.toISOString().split('T')[0];
+      const nextKey = nextDateStr;
+
+      const nextDaySalidas = sorted
+        .filter((f) => f.fecha === nextKey && f.tipo_evento === 'salida')
+        .map((f) => ({ eff: effectiveTs(f), orig: f.timestamp, id: f.id, corregida: !!f.timestamp_corregido }))
+        .sort((a, b) => a.eff.localeCompare(b.eff));
+
+      if (nextDaySalidas.length > 0) {
+        const entradaTs = new Date(firstEntrada.eff).getTime();
+        const candidate = nextDaySalidas.find((s) => {
+          const diffH = (new Date(s.eff).getTime() - entradaTs) / 3600000;
+          return diffH > 0 && diffH <= 16;
+        });
+        if (candidate) {
+          lastSalida = candidate;
+          r.es_nocturno = true;
+        }
+      }
+    }
+
     if (lastSalida) {
       r.salida = lastSalida.eff;
       r.salida_original = lastSalida.corregida ? lastSalida.orig : null;
@@ -178,7 +206,38 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
       r.duracion_permiso = pDiff > 0 ? Math.round(pDiff / 60000) : 0;
     }
   }
-  return Array.from(map.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
+
+  // ── For night shifts, move the horas totales to the salida day ──
+  for (const [key, r] of map.entries()) {
+    if (r.es_nocturno && r.salida) {
+      const salidaDate = r.salida.split('T')[0];
+      if (salidaDate !== key && map.has(salidaDate)) {
+        const salidaDay = map.get(salidaDate)!;
+        salidaDay.duracion_neta = r.duracion_neta;
+        salidaDay.duracion_bruta = r.duracion_bruta;
+        salidaDay.es_nocturno = true;
+        salidaDay.salida = r.salida;
+        salidaDay.salida_original = r.salida_original;
+        salidaDay.salida_corregida = r.salida_corregida;
+        salidaDay.fichaje_salida_id = r.fichaje_salida_id;
+        salidaDay.entrada = r.entrada;
+        salidaDay.entrada_original = r.entrada_original;
+        salidaDay.entrada_corregida = r.entrada_corregida;
+        salidaDay.fichaje_entrada_id = r.fichaje_entrada_id;
+        // Clear the entrada day since hours moved to salida day
+        r.duracion_neta = null;
+        r.duracion_bruta = null;
+        r.salida = null;
+        r.salida_original = null;
+        r.salida_corregida = false;
+        r.fichaje_salida_id = null;
+      }
+    }
+  }
+
+  return Array.from(map.values())
+    .filter((r) => r.duracion_neta !== null || r.entrada !== null)
+    .sort((a, b) => b.fecha.localeCompare(a.fecha));
 }
 
 function toLocalTimeInputValue(iso: string | null): string {
@@ -296,8 +355,7 @@ function exportPDF(
     const inc = incidentType(r.duracion_neta);
     const incidentLabel = inc === 'excess' ? 'Exceso' : inc === 'deficit' ? 'Déficit' : 'Normal';
     const status = r.entrada_corregida || r.salida_corregida ? 'Corregido' : 'Registrado';
-    const values = [formatPdfDate(r.fecha), formatTime(r.entrada), formatTime(r.salida), formatDuration(r.duracion_neta), incidentLabel, status];
-    let x = margin + 3;
+    const values = [formatPdfDate(r.fecha), formatTime(r.entrada), formatTime(r.salida), formatDuration(r.duracion_neta), incidentLabel, status];    let x = margin + 3;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     values.forEach((value, valueIndex) => {
@@ -899,7 +957,14 @@ export default function MisFichajesView({ theme, userId }: Props) {
                         ) : <span style={{ color: '#CBD5E1' }}>—</span>}
                       </td>
                       <td className="px-4 py-3 text-sm font-bold" style={{ color: r.duracion_neta !== null ? (inc ? '#DC2626' : theme.primary) : '#CBD5E1' }}>
-                        {formatDuration(r.duracion_neta)}
+                        <div className="flex items-center gap-1.5">
+                          {formatDuration(r.duracion_neta)}
+                          {r.es_nocturno && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: '#1E1B4B', color: '#A5B4FC', border: '1px solid #312E81' }} title="Turno nocturno: la salida se registró al día siguiente">
+                              Nocturno
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         {inc === 'excess' && (

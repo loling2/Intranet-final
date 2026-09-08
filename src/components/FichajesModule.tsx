@@ -634,32 +634,24 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
         </div>
       )}
 
-      {nightShiftOpen && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3" style={{ backgroundColor: '#1E1B4B', border: '1px solid #312E81' }}>
-          <Moon size={13} style={{ color: '#A5B4FC' }} />
-          <p className="text-xs" style={{ color: '#A5B4FC' }}>Turno nocturno abierto. El próximo fichaje se registrará como salida.</p>
-        </div>
-      )}
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3" style={{ backgroundColor: '#1E1B4B', border: '1px solid #312E81', display: nightShiftOpen ? 'flex' : 'none' }}>
+        <Moon size={13} style={{ color: '#A5B4FC' }} />
+        <p className="text-xs" style={{ color: '#A5B4FC' }}>Turno nocturno abierto. El próximo fichaje se registrará como salida.</p>
+      </div>
 
-      {error && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
-          <AlertTriangle size={13} style={{ color: '#DC2626' }} />
-          <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
-        </div>
-      )}
-      {success && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-          <Clock size={13} style={{ color: '#16A34A' }} />
-          <p className="text-xs" style={{ color: '#16A34A' }}>{success}</p>
-        </div>
-      )}
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', display: error ? 'flex' : 'none' }}>
+        <AlertTriangle size={13} style={{ color: '#DC2626' }} />
+        <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>
+      </div>
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', display: success ? 'flex' : 'none' }}>
+        <Clock size={13} style={{ color: '#16A34A' }} />
+        <p className="text-xs" style={{ color: '#16A34A' }}>{success}</p>
+      </div>
 
-      {!deviceAuthorized && (
-        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg mb-3" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
-          <AlertTriangle size={13} style={{ color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
-          <p className="text-xs" style={{ color: '#DC2626' }}>Este dispositivo no está autorizado para fichar. Contacta con RRHH para registrar este dispositivo.</p>
-        </div>
-      )}
+      <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg mb-3" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', display: !deviceAuthorized ? 'flex' : 'none' }}>
+        <AlertTriangle size={13} style={{ color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
+        <p className="text-xs" style={{ color: '#DC2626' }}>Este dispositivo no está autorizado para fichar. Contacta con RRHH para registrar este dispositivo.</p>
+      </div>
 
       <div className="flex gap-3">
         <button

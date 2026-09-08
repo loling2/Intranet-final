@@ -154,6 +154,8 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
           if (cancelled) return;
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
+          cachedGeo.current = { latitud: lat, longitud: lon, ubicacion: null };
+          setGpsStatus('ready');
           let direccion: string | null = null;
           try {
             const res = await fetch(
@@ -169,7 +171,6 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
           } catch { direccion = null; }
           if (cancelled) return;
           cachedGeo.current = { latitud: lat, longitud: lon, ubicacion: direccion };
-          setGpsStatus('ready');
         },
         () => { if (cancelled) return; setGpsStatus('denied'); },
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 },
@@ -208,16 +209,16 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
 
     // GPS check: only required for non-kiosk devices
     if (gpsRequired) {
-      if (gpsStatus !== 'ready') {
-        setStatus('error');
-        setMessage('Esperando ubicación GPS... Activa el permiso de ubicación para fichar.');
-        resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
-        return;
-      }
       const geo = cachedGeo.current;
       if (geo.latitud === null || geo.longitud === null) {
+        if (gpsStatus === 'denied' || gpsStatus === 'unsupported') {
+          setStatus('error');
+          setMessage('No se pudo obtener la ubicación. Activa el GPS e inténtalo de nuevo.');
+          resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
+          return;
+        }
         setStatus('error');
-        setMessage('No se pudo obtener la ubicación. Activa el GPS e inténtalo de nuevo.');
+        setMessage('Esperando ubicación GPS... Activa el permiso de ubicación para fichar.');
         resetTimer.current = setTimeout(reset, RESET_DELAY_MS);
         return;
       }

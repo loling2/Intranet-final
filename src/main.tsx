@@ -3,6 +3,22 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
+const APP_VERSION_KEY = 'app_version';
+const APP_VERSION = '20260909a';
+
+function checkAppVersion() {
+  try {
+    const stored = localStorage.getItem(APP_VERSION_KEY);
+    if (stored !== APP_VERSION) {
+      localStorage.setItem(APP_VERSION_KEY, APP_VERSION);
+      if ('caches' in window) {
+        caches.keys().then((keys) => keys.forEach((key) => caches.delete(key)));
+      }
+      window.location.reload();
+    }
+  } catch { /* ignore */ }
+}
+
 interface EBState { hasError: boolean; message: string }
 
 class ErrorBoundary extends Component<{ children: ReactNode }, EBState> {
@@ -30,6 +46,8 @@ class ErrorBoundary extends Component<{ children: ReactNode }, EBState> {
     return this.props.children;
   }
 }
+
+checkAppVersion();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

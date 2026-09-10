@@ -372,6 +372,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
           throw new Error(msg);
         }
       }
+      const actualTipo = result.tipo || tipoEvento;
       const actualTipoLabel = actualTipo === 'entrada' ? 'Entrada'
         : actualTipo === 'salida' ? 'Salida'
         : actualTipo === 'pausa_inicio' ? 'Descanso iniciado'

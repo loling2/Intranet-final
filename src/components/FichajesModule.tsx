@@ -115,131 +115,111 @@ function incidentType(minutes: number | null, expectedMinutes: number = 8 * 60):
 }
 
 function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
-  const map = new Map<string, JornadaResumen>();
   const sorted = [...fichajes].sort((a, b) => effectiveTs(a).localeCompare(effectiveTs(b)));
+
+  // Group all events by employee
+  const byEmployee = new Map<string, Fichaje[]>();
   for (const f of sorted) {
     const empKey = f.empleado_id ?? f.nombre_empleado;
-    const key = `${empKey}|${f.fecha}`;
-    if (!map.has(key)) {
-      map.set(key, {
-        nombre: f.nombre_empleado, fecha: f.fecha,
-        entrada: null, salida: null, entrada_original: null, salida_original: null,
-        entrada_corregida: false, salida_corregida: false, motivo_correccion: null,
-        pausa_inicio: null, pausa_fin: null, permiso: null, permiso_fin: null, duracion_permiso: null,
-        duracion_bruta: null, duracion_neta: null,
-        dispositivo: f.dispositivo ?? null, ubicacion: f.ubicacion ?? null,
-        empleado_id: f.empleado_id,
-        es_nocturno: false,
-      });
-    }
-    const r = map.get(key)!;
-    const eff = effectiveTs(f);
-    const corregida = !!f.timestamp_corregido;
-    if (f.tipo_evento === 'pausa_inicio' && !r.pausa_inicio) r.pausa_inicio = eff;
-    if (f.tipo_evento === 'pausa_fin' && !r.pausa_fin) r.pausa_fin = eff;
-    if (f.tipo_evento === 'permiso' && !r.permiso) r.permiso = eff;
-    if (f.tipo_evento === 'permiso_fin' && !r.permiso_fin) r.permiso_fin = eff;
-    if (corregida && f.motivo_correccion && !r.motivo_correccion) r.motivo_correccion = f.motivo_correccion;
-    if (!r.dispositivo && f.dispositivo) r.dispositivo = f.dispositivo;
-    if (!r.ubicacion && f.ubicacion) r.ubicacion = f.ubicacion;
+    if (!byEmployee.has(empKey)) byEmployee.set(empKey, []);
+    byEmployee.get(empKey)!.push(f);
   }
 
-  for (const [key, r] of map.entries()) {
-    const empKey = r.empleado_id ?? r.nombre;
-    const dayEvents = sorted
-      .filter((f) => {
-        const fEmpKey = f.empleado_id ?? f.nombre_empleado;
-        return `${fEmpKey}|${f.fecha}` === key && (f.tipo_evento === 'entrada' || f.tipo_evento === 'salida');
-      })
-      .map((f) => ({ tipo: f.tipo_evento, eff: effectiveTs(f), orig: f.timestamp, id: f.id, corregida: !!f.timestamp_corregido }));
+  const resumenes: JornadaResumen[] = [];
 
-    const entradas = dayEvents.filter((ev) => ev.tipo === 'entrada').sort((a, b) => a.eff.localeCompare(b.eff));
-    const salidas = dayEvents.filter((ev) => ev.tipo === 'salida').sort((a, b) => b.eff.localeCompare(a.eff));
+  for (const [, empEvents] of byEmployee) {
+    const events = [...empEvents].sort((a, b) => effectiveTs(a).localeCompare(effectiveTs(b)));
+    const nombre = events[0]?.nombre_empleado ?? '';
+    const empleado_id = events[0]?.empleado_id ?? null;
 
-    const firstEntrada = entradas[0] ?? null;
-    let lastSalida = salidas[0] ?? null; // sorted desc → [0] is latest
+    // ── Pair entradas with salidas chronologically ──
+    // Each entrada is matched with the next salida that comes after it in time,
+    // regardless of calendar day. This correctly handles consecutive night shifts:
+    //   Lun 22:00 → Mar 07:00  (shift 1)
+    //   Mar 22:00 → Mié 07:00  (shift 2)
+    // The 07:00 salida on Tuesday belongs to shift 1, NOT shift 2.
+    const pairs: { entrada: Fichaje; salida: Fichaje | null }[] = [];
+    let currentEntrada: Fichaje | null = null;
 
-    if (firstEntrada) {
-      r.entrada = firstEntrada.eff;
-      r.entrada_original = firstEntrada.corregida ? firstEntrada.orig : null;
-      r.entrada_corregida = firstEntrada.corregida;
-    }
-
-    // ── Night shift: if entrada without salida, look for salida next day ──
-    if (firstEntrada && !lastSalida) {
-      const [_emp, fecha] = key.split('|');
-      const nextDate = new Date(fecha + 'T00:00:00');
-      nextDate.setDate(nextDate.getDate() + 1);
-      const nextDateStr = nextDate.toISOString().split('T')[0];
-      const nextKey = `${empKey}|${nextDateStr}`;
-
-      const nextDaySalidas = sorted
-        .filter((f) => {
-          const fEmpKey = f.empleado_id ?? f.nombre_empleado;
-          return `${fEmpKey}|${f.fecha}` === nextKey && f.tipo_evento === 'salida';
-        })
-        .map((f) => ({ eff: effectiveTs(f), orig: f.timestamp, corregida: !!f.timestamp_corregido }))
-        .sort((a, b) => a.eff.localeCompare(b.eff));
-
-      if (nextDaySalidas.length > 0) {
-        const entradaTs = new Date(firstEntrada.eff).getTime();
-        const candidate = nextDaySalidas.find((s) => {
-          const diffH = (new Date(s.eff).getTime() - entradaTs) / 3600000;
-          return diffH > 0 && diffH <= 16;
-        });
-        if (candidate) {
-          lastSalida = candidate;
-          r.es_nocturno = true;
+    for (const f of events) {
+      if (f.tipo_evento === 'entrada') {
+        if (currentEntrada) {
+          pairs.push({ entrada: currentEntrada, salida: null });
+        }
+        currentEntrada = f;
+      } else if (f.tipo_evento === 'salida') {
+        if (currentEntrada) {
+          pairs.push({ entrada: currentEntrada, salida: f });
+          currentEntrada = null;
         }
       }
     }
+    if (currentEntrada) {
+      pairs.push({ entrada: currentEntrada, salida: null });
+    }
 
-    if (lastSalida) {
-      r.salida = lastSalida.eff;
-      r.salida_original = lastSalida.corregida ? lastSalida.orig : null;
-      r.salida_corregida = lastSalida.corregida;
-    }
-    if (firstEntrada && lastSalida) {
-      const diff = new Date(lastSalida.eff).getTime() - new Date(firstEntrada.eff).getTime();
-      r.duracion_neta = diff > 0 ? Math.round(diff / 60000) : null;
-    }
-    r.duracion_bruta = r.duracion_neta;
-    if (r.permiso && r.permiso_fin) {
-      const pDiff = new Date(r.permiso_fin).getTime() - new Date(r.permiso).getTime();
-      r.duracion_permiso = pDiff > 0 ? Math.round(pDiff / 60000) : 0;
-    }
-  }
+    for (const pair of pairs) {
+      const entradaF = pair.entrada;
+      const salidaF = pair.salida;
+      const entradaEff = effectiveTs(entradaF);
+      const salidaEff = salidaF ? effectiveTs(salidaF) : null;
+      const entradaDate = entradaF.fecha;
+      const salidaDate = salidaF?.fecha ?? null;
+      const isNocturno = salidaDate !== null && salidaDate !== entradaDate;
+      // Night shift: display on the salida day; day shift: on the entrada day
+      const displayDate = isNocturno ? salidaDate! : entradaDate;
 
-  // ── Night shift: move horas totales to the salida day ──
-  for (const [key, r] of map.entries()) {
-    if (r.es_nocturno && r.salida) {
-      const salidaDate = r.salida.split('T')[0];
-      if (salidaDate !== key && map.has(salidaDate)) {
-        const salidaDay = map.get(salidaDate)!;
-        salidaDay.duracion_neta = r.duracion_neta;
-        salidaDay.duracion_bruta = r.duracion_bruta;
-        salidaDay.es_nocturno = true;
-        salidaDay.salida = r.salida;
-        salidaDay.salida_original = r.salida_original;
-        salidaDay.salida_corregida = r.salida_corregida;
-        salidaDay.entrada = r.entrada;
-        salidaDay.entrada_original = r.entrada_original;
-        salidaDay.entrada_corregida = r.entrada_corregida;
-        r.duracion_neta = null;
-        r.duracion_bruta = null;
-        r.salida = null;
-        r.salida_original = null;
-        r.salida_corregida = false;
+      // Find pausas/permisos within this pair's time range
+      const pausaInicioEv = events.find((f) =>
+        f.tipo_evento === 'pausa_inicio' && effectiveTs(f) >= entradaEff && (!salidaEff || effectiveTs(f) <= salidaEff));
+      const pausaFinEv = events.find((f) =>
+        f.tipo_evento === 'pausa_fin' && effectiveTs(f) >= entradaEff && (!salidaEff || effectiveTs(f) <= salidaEff));
+      const permisoEv = events.find((f) =>
+        f.tipo_evento === 'permiso' && effectiveTs(f) >= entradaEff && (!salidaEff || effectiveTs(f) <= salidaEff));
+      const permisoFinEv = events.find((f) =>
+        f.tipo_evento === 'permiso_fin' && effectiveTs(f) >= entradaEff && (!salidaEff || effectiveTs(f) <= salidaEff));
+
+      let duracionNeta: number | null = null;
+      if (salidaEff) {
+        const diff = new Date(salidaEff).getTime() - new Date(entradaEff).getTime();
+        duracionNeta = diff > 0 ? Math.round(diff / 60000) : null;
       }
+
+      let duracionPermiso: number | null = null;
+      if (permisoEv && permisoFinEv) {
+        const pDiff = new Date(effectiveTs(permisoFinEv)).getTime() - new Date(effectiveTs(permisoEv)).getTime();
+        duracionPermiso = pDiff > 0 ? Math.round(pDiff / 60000) : 0;
+      }
+
+      resumenes.push({
+        nombre,
+        fecha: displayDate,
+        entrada: entradaEff,
+        salida: salidaEff,
+        entrada_original: entradaF.timestamp_corregido ? entradaF.timestamp : null,
+        salida_original: salidaF?.timestamp_corregido ? salidaF.timestamp : null,
+        entrada_corregida: !!entradaF.timestamp_corregido,
+        salida_corregida: !!salidaF?.timestamp_corregido,
+        motivo_correccion: entradaF.motivo_correccion ?? salidaF?.motivo_correccion ?? null,
+        pausa_inicio: pausaInicioEv ? effectiveTs(pausaInicioEv) : null,
+        pausa_fin: pausaFinEv ? effectiveTs(pausaFinEv) : null,
+        permiso: permisoEv ? effectiveTs(permisoEv) : null,
+        permiso_fin: permisoFinEv ? effectiveTs(permisoFinEv) : null,
+        duracion_permiso: duracionPermiso,
+        duracion_bruta: duracionNeta,
+        duracion_neta: duracionNeta,
+        dispositivo: entradaF.dispositivo ?? salidaF?.dispositivo ?? null,
+        ubicacion: entradaF.ubicacion ?? salidaF?.ubicacion ?? null,
+        empleado_id,
+        es_nocturno: isNocturno,
+      });
     }
   }
 
-  return Array.from(map.values())
-    .filter((r) => r.duracion_neta !== null || r.entrada !== null)
-    .sort((a, b) => {
-      const d = b.fecha.localeCompare(a.fecha);
-      return d !== 0 ? d : a.nombre.localeCompare(b.nombre);
-    });
+  return resumenes.sort((a, b) => {
+    const d = b.fecha.localeCompare(a.fecha);
+    return d !== 0 ? d : a.nombre.localeCompare(b.nombre);
+  });
 }
 
 function getWeekRange(date: string): { start: string; end: string } {

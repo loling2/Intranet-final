@@ -371,7 +371,15 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
           throw new Error(msg);
         }
       }
-      setDoneMsg(`${tipo === 'entrada' ? 'Entrada' : tipo === 'salida' ? 'Salida' : tipo === 'descanso' ? 'Descanso iniciado' : tipo === 'fin_descanso' ? 'Descanso finalizado' : 'Permiso'} registrado — ${usuarioPin.nombre}`);
+      const actualTipoLabel = actualTipo === 'entrada' ? 'Entrada'
+        : actualTipo === 'salida' ? 'Salida'
+        : actualTipo === 'pausa_inicio' ? 'Descanso iniciado'
+        : actualTipo === 'pausa_fin' ? 'Descanso finalizado'
+        : 'Permiso';
+      const alternatedMessage = actualTipo !== tipoEvento
+        ? `El sistema ha registrado ${actualTipoLabel.toLowerCase()} porque ya había una entrada abierta.`
+        : `${actualTipoLabel} registrada`;
+      setDoneMsg(`${alternatedMessage} — ${usuarioPin.nombre}`);
       setDoneColor(tipo === 'salida' ? '#DC2626' : '#16A34A');
       setStep('done');
     } catch (err: any) { setError(err.message ?? 'Error al registrar'); }

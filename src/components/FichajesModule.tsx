@@ -60,6 +60,7 @@ interface Empleado {
   nombre: string;
   id_sociedad: string | null;
   centro_trabajo: string | null;
+  horas_diarias: number | null;
 }
 
 interface Sociedad { id: string; nombre: string; }
@@ -117,7 +118,8 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
   const map = new Map<string, JornadaResumen>();
   const sorted = [...fichajes].sort((a, b) => effectiveTs(a).localeCompare(effectiveTs(b)));
   for (const f of sorted) {
-    const key = `${f.nombre_empleado}|${f.fecha}`;
+    const empKey = f.empleado_id ?? f.nombre_empleado;
+    const key = `${empKey}|${f.fecha}`;
     if (!map.has(key)) {
       map.set(key, {
         nombre: f.nombre_empleado, fecha: f.fecha,
@@ -143,8 +145,12 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
   }
 
   for (const [key, r] of map.entries()) {
+    const empKey = r.empleado_id ?? r.nombre;
     const dayEvents = sorted
-      .filter((f) => `${f.nombre_empleado}|${f.fecha}` === key && (f.tipo_evento === 'entrada' || f.tipo_evento === 'salida'))
+      .filter((f) => {
+        const fEmpKey = f.empleado_id ?? f.nombre_empleado;
+        return `${fEmpKey}|${f.fecha}` === key && (f.tipo_evento === 'entrada' || f.tipo_evento === 'salida');
+      })
       .map((f) => ({ tipo: f.tipo_evento, eff: effectiveTs(f), orig: f.timestamp, id: f.id, corregida: !!f.timestamp_corregido }));
 
     const entradas = dayEvents.filter((ev) => ev.tipo === 'entrada').sort((a, b) => a.eff.localeCompare(b.eff));
@@ -161,14 +167,17 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
 
     // ── Night shift: if entrada without salida, look for salida next day ──
     if (firstEntrada && !lastSalida) {
-      const [nombre, fecha] = key.split('|');
+      const [_emp, fecha] = key.split('|');
       const nextDate = new Date(fecha + 'T00:00:00');
       nextDate.setDate(nextDate.getDate() + 1);
       const nextDateStr = nextDate.toISOString().split('T')[0];
-      const nextKey = `${nombre}|${nextDateStr}`;
+      const nextKey = `${empKey}|${nextDateStr}`;
 
       const nextDaySalidas = sorted
-        .filter((f) => `${f.nombre_empleado}|${f.fecha}` === nextKey && f.tipo_evento === 'salida')
+        .filter((f) => {
+          const fEmpKey = f.empleado_id ?? f.nombre_empleado;
+          return `${fEmpKey}|${f.fecha}` === nextKey && f.tipo_evento === 'salida';
+        })
         .map((f) => ({ eff: effectiveTs(f), orig: f.timestamp, corregida: !!f.timestamp_corregido }))
         .sort((a, b) => a.eff.localeCompare(b.eff));
 
@@ -232,7 +241,7 @@ function getMonthRange(date: string): { start: string; end: string } {
 
 // ── Export helpers ───────────────────────────────────────────────────────────
 
-function exportExcel(resumenes: JornadaResumen[], expectedFn?: (nombre: string) => number) {
+function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | null) => number) {
   const headerStyle = {
     font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } },
     fill: { fgColor: { rgb: '0F172A' } },
@@ -268,7 +277,7 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (nombre: string) 
   const aoa: (string | number)[][] = [headers];
 
   resumenes.forEach((r) => {
-    const exp = expectedFn ? expectedFn(r.nombre) : 8 * 60;
+    const exp = expectedFn ? expectedFn(r.empleado_id) : 8 * 60;
     const inc = incidentType(r.duracion_neta, exp);
     const expH = (exp / 60).toFixed(2);
     aoa.push([
@@ -321,8 +330,8 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (nombre: string) 
   XLSX.writeFile(wb, `fichajes_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
-function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (nombre: string) => number) {
-  const incidents = resumenes.filter((r) => isIncident(r.duracion_neta, expectedFn ? expectedFn(r.nombre) : 8 * 60));
+function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (empId: string | null) => number) {
+  const incidents = resumenes.filter((r) => isIncident(r.duracion_neta, expectedFn ? expectedFn(r.empleado_id) : 8 * 60));
   const fechaGen = new Date().toLocaleString('es-ES');
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
@@ -382,7 +391,7 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
 
     incidents.forEach((r, idx) => {
       if (y > pageH - 18) { doc.addPage(); y = margin; drawHeader(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); }
-      const exp = expectedFn ? expectedFn(r.nombre) : 8 * 60;
+      const exp = expectedFn ? expectedFn(r.empleado_id) : 8 * 60;
       const inc = incidentType(r.duracion_neta, exp);
       const expH = (exp / 60).toFixed(2);
       const incText = inc === 'excess' ? `Exceso (>${expH}h)` : `Déficit (<${expH}h)`;
@@ -717,11 +726,11 @@ type PeriodFilter = 'hoy' | 'semana' | 'mes' | 'personalizado';
 const getGeolocation = (): Promise<string | null> =>
   new Promise((resolve) => {
     if (!navigator.geolocation) { resolve(null); return; }
-    const timer = setTimeout(() => resolve(null), 4000);
+    const timer = setTimeout(() => resolve(null), 15000);
     navigator.geolocation.getCurrentPosition(
       (pos) => { clearTimeout(timer); resolve(`${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`); },
       () => { clearTimeout(timer); resolve(null); },
-      { timeout: 4000, maximumAge: 60000 }
+      { timeout: 15000, maximumAge: 30000, enableHighAccuracy: true }
     );
   });
 
@@ -832,13 +841,14 @@ export default function FichajesModule() {
 
   useEffect(() => { setPage(1); }, [search, filterTipo, filterDesde, filterHasta, viewMode, filterEmpleado, filterSociedad, filterCentro, showIncidentOnly]);
 
-  // Build a lookup from empleado nombre -> empleado info for sociedad/centro filtering
-  const empleadoByName = new Map<string, Empleado>();
-  for (const e of empleados) empleadoByName.set(e.nombre, e);
+  // Build lookup by empleado_id (robust against name variations like with/without comma)
+  const empleadoById = new Map<string, Empleado>();
+  for (const e of empleados) empleadoById.set(e.id, e);
 
-  // Helper: expected daily minutes for a given employee name
-  const expectedMinutesFor = (nombre: string): number => {
-    const emp = empleadoByName.get(nombre);
+  // Helper: expected daily minutes for a given employee ID
+  const expectedMinutesFor = (empId: string | null): number => {
+    if (!empId) return 8 * 60;
+    const emp = empleadoById.get(empId);
     const horas = emp?.horas_diarias;
     return horas != null && !isNaN(horas) && horas > 0 ? Math.round(horas * 60) : 8 * 60;
   };
@@ -850,9 +860,9 @@ export default function FichajesModule() {
   };
 
   const applyEmpleadoSociedadCentro = (f: Fichaje) => {
-    if (filterEmpleado && f.nombre_empleado !== filterEmpleado) return false;
+    if (filterEmpleado && f.empleado_id !== filterEmpleado) return false;
     if (filterSociedad || filterCentro) {
-      const emp = empleadoByName.get(f.nombre_empleado);
+      const emp = f.empleado_id ? empleadoById.get(f.empleado_id) : undefined;
       if (!emp) return false;
       if (filterSociedad && emp.id_sociedad !== filterSociedad) return false;
       if (filterCentro) {
@@ -880,7 +890,7 @@ export default function FichajesModule() {
 
   let resumenes = buildResumenes(resumenesBase);
   if (showIncidentOnly) {
-    resumenes = resumenes.filter((r) => isIncident(r.duracion_neta, expectedMinutesFor(r.nombre)));
+    resumenes = resumenes.filter((r) => isIncident(r.duracion_neta, expectedMinutesFor(r.empleado_id)));
   }
 
   const tp = viewMode === 'eventos'
@@ -891,7 +901,7 @@ export default function FichajesModule() {
   const pagedResumenes = paginate(resumenes, safePage, 25);
 
   const totalDuracion = resumenes.reduce((acc, r) => acc + (r.duracion_neta ?? 0), 0);
-  const incidentCount = resumenes.filter((r) => isIncident(r.duracion_neta, expectedMinutesFor(r.nombre))).length;
+  const incidentCount = resumenes.filter((r) => isIncident(r.duracion_neta, expectedMinutesFor(r.empleado_id))).length;
   const today = new Date().toISOString().split('T')[0];
 
   const filteredCentros = filterSociedad
@@ -971,7 +981,7 @@ export default function FichajesModule() {
             style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569' }}>
             <option value="">Todos los trabajadores</option>
             {empleados.map((e) => (
-              <option key={e.id} value={e.nombre}>{e.nombre}</option>
+              <option key={e.id} value={e.id}>{e.nombre}</option>
             ))}
           </select>
 
@@ -1079,7 +1089,7 @@ export default function FichajesModule() {
                       const pausaMin = (r.pausa_inicio && r.pausa_fin)
                         ? Math.round((new Date(r.pausa_fin).getTime() - new Date(r.pausa_inicio).getTime()) / 60000)
                         : null;
-                      const inc = incidentType(r.duracion_neta, expectedMinutesFor(r.nombre));
+                      const inc = incidentType(r.duracion_neta, expectedMinutesFor(r.empleado_id));
                       return (
                         <tr key={i} className="hover:bg-slate-50 transition-colors">
                           <td className="px-4 py-3 font-semibold" style={{ color: '#1E293B' }}>{r.nombre}</td>

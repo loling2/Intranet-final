@@ -272,6 +272,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
       });
       setDeviceAuthorized(devData?.authorized ?? false);
       setFichajeMode(devData?.mode ?? data[0]?.fichaje_mode ?? 'kiosk_only');
+      prefetchGPS();
       setStep('menu');
     } catch { setError('Error al validar PIN'); }
     finally { setLoading(false); }
@@ -297,16 +298,29 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     return key;
   };
 
-  const getGeolocation = (): Promise<string | null> =>
+  const getGeolocation = (): Promise<{ ubicacion: string; lat: number; lon: number } | null> =>
     new Promise((resolve) => {
       if (!navigator.geolocation) { resolve(null); return; }
-      const timer = setTimeout(() => resolve(null), 4000);
+      const timer = setTimeout(() => resolve(null), 15000);
       navigator.geolocation.getCurrentPosition(
-        (pos) => { clearTimeout(timer); resolve(`${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`); },
+        (pos) => {
+          clearTimeout(timer);
+          resolve({
+            ubicacion: `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`,
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+          });
+        },
         () => { clearTimeout(timer); resolve(null); },
-        { timeout: 4000, maximumAge: 60000 }
+        { timeout: 15000, maximumAge: 30000, enableHighAccuracy: true }
       );
     });
+
+  // Pre-fetch GPS as soon as PIN is validated so it's ready when the user presses a button
+  const cachedGeoRef = useRef<{ ubicacion: string; lat: number; lon: number } | null>(null);
+  const prefetchGPS = () => {
+    getGeolocation().then((geo) => { cachedGeoRef.current = geo; });
+  };
 
   // ── Fichaje save ──
   const handleSaveFichaje = async (tipo: JornadaAction) => {
@@ -320,9 +334,10 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
         : tipo === 'fin_descanso' ? 'pausa_fin'
         : 'permiso';
 
-      // For entrada, we must have GPS location before attempting to register
-      let ubicacion = await getGeolocation();
-      if (tipo === 'entrada' && !ubicacion) {
+      // For entrada, use cached GPS if available, otherwise request fresh
+      let geo = cachedGeoRef.current;
+      if (!geo) geo = await getGeolocation();
+      if (tipo === 'entrada' && !geo) {
         setError('No se pudo obtener tu ubicación GPS. Activa la ubicación e inténtalo de nuevo. Sin ubicación no se puede registrar la entrada.');
         setLoading(false);
         return;
@@ -330,7 +345,9 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 
       const { data: rpcData, error: rpcErr } = await supabase.rpc('web_register_fichaje', {
         p_tipo_evento: tipoEvento,
-        p_ubicacion: ubicacion,
+        p_latitud: geo?.lat ?? null,
+        p_longitud: geo?.lon ?? null,
+        p_ubicacion: geo?.ubicacion ?? null,
         p_dispositivo: getDeviceInfo(),
         p_user_agent: navigator.userAgent,
         p_device_key: getDeviceKey(),
@@ -497,6 +514,9 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     try {
       const { data: rpcData, error: rpcErr } = await supabase.rpc('web_register_fichaje', {
         p_tipo_evento: 'entrada',
+        p_latitud: cachedGeoRef.current?.lat ?? null,
+        p_longitud: cachedGeoRef.current?.lon ?? null,
+        p_ubicacion: cachedGeoRef.current?.ubicacion ?? null,
         p_dispositivo: getDeviceInfo(),
         p_user_agent: navigator.userAgent,
         p_device_key: getDeviceKey(),

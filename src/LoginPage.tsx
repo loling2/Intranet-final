@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ChevronLeft, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle, Tablet, Timer, Send, Calendar, ToggleLeft, ToggleRight, UserCog } from 'lucide-react';
-import { APP_VERSION, getStoredVersion, isLatestVersion } from './version';
+import { APP_VERSION, getStoredVersion, getPreviousVersion, isLatestVersion } from './version';
 import type { LucideIcon } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
@@ -1269,6 +1269,12 @@ export default function LoginPage() {
   const [bgImage, setBgImage] = useState<string>('/foto1_(2).png');
   const [societies, setSocieties] = useState<SocietyTheme[]>(staticSocieties);
   const [impersonating, setImpersonating] = useState<{ nombre: string; email: string; userId: string } | null>(null);
+  const [showUpdateBanner, setShowUpdateBanner] = useState<boolean>(() => {
+    try {
+      const prev = localStorage.getItem('previous_app_version');
+      return prev !== null && prev !== APP_VERSION;
+    } catch { return false; }
+  });
 
 
   useEffect(() => {
@@ -1940,15 +1946,29 @@ export default function LoginPage() {
             </button>
             <div className="flex items-center justify-center gap-1.5 mt-1">
               <span className="text-[10px] font-mono" style={{ color: '#94A3B8' }}>Versión {APP_VERSION}</span>
-              {isLatestVersion(getStoredVersion()) ? (
-                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold" style={{ color: '#16A34A' }}>
-                  <CheckCircle2 size={9} /> Actualizado
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold" style={{ color: '#D97706' }}>
-                  <RefreshCw size={9} /> Actualiza la página
-                </span>
-              )}
+              {(() => {
+                const prev = getPreviousVersion();
+                const justUpdated = prev && prev !== APP_VERSION;
+                if (justUpdated) {
+                  return (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold" style={{ color: '#DC2626' }}>
+                      <RefreshCw size={9} /> Actualizado de {prev} — recarga para ver cambios
+                    </span>
+                  );
+                }
+                if (isLatestVersion(getStoredVersion())) {
+                  return (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold" style={{ color: '#16A34A' }}>
+                      <CheckCircle2 size={9} /> Actualizado
+                    </span>
+                  );
+                }
+                return (
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold" style={{ color: '#DC2626' }}>
+                    <AlertCircle size={9} /> Versión obsoleta — actualiza la página
+                  </span>
+                );
+              })()}
             </div>
           </div>
         </div>

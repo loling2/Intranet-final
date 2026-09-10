@@ -1,4 +1,4 @@
-export const APP_VERSION = 'v1.0.1';
+export const APP_VERSION = 'v1.0.2';
 
 export const VERSION_HISTORY: { version: string; date: string; changes: string[] }[] = [
   {
@@ -19,6 +19,14 @@ export const VERSION_HISTORY: { version: string; date: string; changes: string[]
       'Historial de versiones accesible para verificar si el trabajador tiene la última',
     ],
   },
+  {
+    version: 'v1.0.2',
+    date: '2026-09-10',
+    changes: [
+      'Cálculo correcto de turnos nocturnos consecutivos',
+      'Horas totales mostradas en el día de la salida del turno',
+    ],
+  },
 ];
 
 export function isLatestVersion(stored: string | null): boolean {
@@ -28,4 +36,8 @@ export function isLatestVersion(stored: string | null): boolean {
 
 export function getStoredVersion(): string | null {
   try { return localStorage.getItem('app_version'); } catch { return null; }
+}
+
+export function getPreviousVersion(): string | null {
+  try { return localStorage.getItem('previous_app_version'); } catch { return null; }
 }

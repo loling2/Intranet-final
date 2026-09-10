@@ -5,11 +5,13 @@ import './index.css';
 import { APP_VERSION } from './version';
 
 const APP_VERSION_KEY = 'app_version';
+const PREVIOUS_APP_VERSION_KEY = 'previous_app_version';
 
 function checkAppVersion() {
   try {
     const stored = localStorage.getItem(APP_VERSION_KEY);
     if (stored !== APP_VERSION) {
+      if (stored) localStorage.setItem(PREVIOUS_APP_VERSION_KEY, stored);
       localStorage.setItem(APP_VERSION_KEY, APP_VERSION);
       if ('caches' in window) {
         caches.keys().then((keys) => keys.forEach((key) => caches.delete(key)));

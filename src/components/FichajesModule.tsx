@@ -209,10 +209,37 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
       r.duracion_permiso = pDiff > 0 ? Math.round(pDiff / 60000) : 0;
     }
   }
-  return Array.from(map.values()).sort((a, b) => {
-    const d = b.fecha.localeCompare(a.fecha);
-    return d !== 0 ? d : a.nombre.localeCompare(b.nombre);
-  });
+
+  // ── Night shift: move horas totales to the salida day ──
+  for (const [key, r] of map.entries()) {
+    if (r.es_nocturno && r.salida) {
+      const salidaDate = r.salida.split('T')[0];
+      if (salidaDate !== key && map.has(salidaDate)) {
+        const salidaDay = map.get(salidaDate)!;
+        salidaDay.duracion_neta = r.duracion_neta;
+        salidaDay.duracion_bruta = r.duracion_bruta;
+        salidaDay.es_nocturno = true;
+        salidaDay.salida = r.salida;
+        salidaDay.salida_original = r.salida_original;
+        salidaDay.salida_corregida = r.salida_corregida;
+        salidaDay.entrada = r.entrada;
+        salidaDay.entrada_original = r.entrada_original;
+        salidaDay.entrada_corregida = r.entrada_corregida;
+        r.duracion_neta = null;
+        r.duracion_bruta = null;
+        r.salida = null;
+        r.salida_original = null;
+        r.salida_corregida = false;
+      }
+    }
+  }
+
+  return Array.from(map.values())
+    .filter((r) => r.duracion_neta !== null || r.entrada !== null)
+    .sort((a, b) => {
+      const d = b.fecha.localeCompare(a.fecha);
+      return d !== 0 ? d : a.nombre.localeCompare(b.nombre);
+    });
 }
 
 function getWeekRange(date: string): { start: string; end: string } {

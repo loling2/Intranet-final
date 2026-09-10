@@ -3,6 +3,7 @@ import { Delete, Check, Fingerprint, LogIn, LogOut, MapPin, Shield, Lock, Loader
 import { supabase } from '../supabaseClient';
 import { useDeviceAuth } from '../hooks/useDeviceAuth';
 import { loadSocietyLogos } from '../lib/societyLogos';
+import { APP_VERSION } from '../version';
 
 const PIN_LENGTH = 6;
 const RESET_DELAY_MS = 2500;
@@ -481,6 +482,9 @@ function PinFichajeModule({ onClose }: { onClose?: () => void } = {}) {
           {Object.keys(logos).length === 0 && (
             <span className="text-sm" style={{ color: '#94A3B8' }}>Cargando logos...</span>
           )}
+        </div>
+        <div className="flex-shrink-0 text-center py-1" style={{ backgroundColor: '#FFFFFF' }}>
+          <span className="text-[10px] font-mono" style={{ color: '#94A3B8' }}>Versión {APP_VERSION}</span>
         </div>
       </div>
 

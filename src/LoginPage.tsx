@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ChevronLeft, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle, Tablet, Timer, Send, Calendar, ToggleLeft, ToggleRight, UserCog } from 'lucide-react';
+import { APP_VERSION, getStoredVersion, isLatestVersion } from './version';
 import type { LucideIcon } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
@@ -584,6 +585,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
             <div>
               <h2 className="text-white font-semibold text-sm">Registro de Jornada</h2>
               <p className="text-white/60 text-xs">Acceso rápido sin login</p>
+              <span className="text-white/30 text-[10px] font-mono">v{APP_VERSION.replace('v', '')}</span>
             </div>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#fff' }}>
@@ -1935,6 +1937,18 @@ export default function LoginPage() {
               <Clock size={15} />
               REGISTRO DE JORNADA
             </button>
+            <div className="flex items-center justify-center gap-1.5 mt-1">
+              <span className="text-[10px] font-mono" style={{ color: '#94A3B8' }}>Versión {APP_VERSION}</span>
+              {isLatestVersion(getStoredVersion()) ? (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold" style={{ color: '#16A34A' }}>
+                  <CheckCircle2 size={9} /> Actualizado
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold" style={{ color: '#D97706' }}>
+                  <RefreshCw size={9} /> Actualiza la página
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>

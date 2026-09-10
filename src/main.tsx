@@ -2,9 +2,9 @@ import { StrictMode, Component, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { APP_VERSION } from './version';
 
 const APP_VERSION_KEY = 'app_version';
-const APP_VERSION = '20260910c';
 
 function checkAppVersion() {
   try {

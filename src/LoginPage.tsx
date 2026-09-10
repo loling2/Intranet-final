@@ -608,15 +608,19 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
               <div>
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>PIN</label>
                 <input
-                  type="password"
+                  type="text"
                   value={pin}
                   onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   onKeyDown={(e) => e.key === 'Enter' && handleValidatePin()}
                   placeholder="••••••"
                   maxLength={6}
                   inputMode="numeric"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   className="w-full px-4 py-2.5 rounded-xl text-sm outline-none text-center font-mono font-bold tracking-widest"
-                  style={{ ...inputStyle, fontSize: '18px' }}
+                  style={{ ...inputStyle, fontSize: '18px', WebkitTextSecurity: 'disc' } as React.CSSProperties}
                 />
               </div>
               {errBox}

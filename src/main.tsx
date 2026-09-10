@@ -4,7 +4,7 @@ import App from './App.tsx';
 import './index.css';
 
 const APP_VERSION_KEY = 'app_version';
-const APP_VERSION = '20260910a';
+const APP_VERSION = '20260910b';
 
 function checkAppVersion() {
   try {

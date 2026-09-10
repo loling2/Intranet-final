@@ -38,6 +38,3 @@ export function getStoredVersion(): string | null {
   try { return localStorage.getItem('app_version'); } catch { return null; }
 }
 
-export function getPreviousVersion(): string | null {
-  try { return localStorage.getItem('previous_app_version'); } catch { return null; }
-}

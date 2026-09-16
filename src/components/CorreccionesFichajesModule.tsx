@@ -46,7 +46,7 @@ export default function CorreccionesFichajesModule() {
   const [respuestaModal, setRespuestaModal] = useState<{ correccion: Correccion; accion: 'aprobar' | 'rechazar' } | null>(null);
   const [respuesta, setRespuesta] = useState('');
   const [saving, setSaving] = useState(false);
-  const [clasificacion, setClasificacion] = useState<'no_fichado' | 'dia_libre' | 'asuntos_propios' | ''>('');
+  const [clasificaciones, setClasificaciones] = useState<Record<string, 'no_fichado' | 'dia_libre' | 'asuntos_propios'>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -90,8 +90,35 @@ export default function CorreccionesFichajesModule() {
   const openModal = (c: Correccion, accion: 'aprobar' | 'rechazar') => {
     setRespuestaModal({ correccion: c, accion });
     setRespuesta('');
-    // Pre-select clasificacion when the correction has no proposed times ("no fichado" case)
-    setClasificacion(c.entrada_propuesta === null && c.salida_propuesta === null ? 'no_fichado' : '');
+  };
+
+  const handleClasificacion = async (c: Correccion, clasificacion: 'dia_libre' | 'asuntos_propios') => {
+    setSaving(true);
+    setError('');
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Sin sesión activa');
+      const { data: profile } = await supabase.from('user_profiles').select('nombre').eq('id', user.id).maybeSingle();
+      const validadorNombre = (profile as { nombre?: string } | null)?.nombre ?? user.email ?? '';
+      const now = new Date().toISOString();
+      const { error: updateError } = await supabase
+        .from('fichajes_correcciones')
+        .update({
+          estado: 'aprobada',
+          clasificacion_ausencia: clasificacion,
+          validado_por: user.id,
+          validado_por_nombre: validadorNombre,
+          validado_at: now,
+          updated_at: now,
+        })
+        .eq('id', c.id);
+      if (updateError) throw updateError;
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al clasificar la petición');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleConfirm = async () => {
@@ -115,9 +142,6 @@ export default function CorreccionesFichajesModule() {
         validado_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
-      if (respuestaModal.accion === 'aprobar' && clasificacion) {
-        updatePayload.clasificacion_ausencia = clasificacion;
-      }
       const { error: updErr } = await supabase
         .from('fichajes_correcciones')
         .update(updatePayload)
@@ -187,7 +211,6 @@ export default function CorreccionesFichajesModule() {
 
       setRespuestaModal(null);
       setRespuesta('');
-      setClasificacion('');
       await load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al validar la petición');
@@ -288,7 +311,23 @@ export default function CorreccionesFichajesModule() {
                       </p>
                     </div>
                     {c.estado === 'pendiente' && (
-                      <div className="flex gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <select
+                          value={clasificaciones[c.id] ?? 'no_fichado'}
+                          onChange={(e) => {
+                            const value = e.target.value as 'no_fichado' | 'dia_libre' | 'asuntos_propios';
+                            setClasificaciones((current) => ({ ...current, [c.id]: value }));
+                            if (value !== 'no_fichado') void handleClasificacion(c, value);
+                          }}
+                          disabled={saving}
+                          aria-label={`Clasificar ausencia del ${c.fecha}`}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer outline-none"
+                          style={{ border: '1px solid #BFDBFE', backgroundColor: '#EFF6FF', color: '#2563EB' }}
+                        >
+                          <option value="no_fichado">No fichado</option>
+                          <option value="dia_libre">Día libre</option>
+                          <option value="asuntos_propios">Asuntos propios</option>
+                        </select>
                         <button
                           onClick={() => openModal(c, 'aprobar')}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all hover:opacity-80"
@@ -375,28 +414,7 @@ export default function CorreccionesFichajesModule() {
                 <p style={{ color: '#64748B' }}>Fecha: <strong style={{ color: '#1E293B' }}>{respuestaModal.correccion.fecha}</strong></p>
                 <p style={{ color: '#64748B', marginTop: 4 }}>Motivo: <span style={{ color: '#1E293B' }}>{respuestaModal.correccion.motivo}</span></p>
               </div>
-              {respuestaModal.accion === 'aprobar' &&
-               respuestaModal.correccion.entrada_propuesta === null &&
-               respuestaModal.correccion.salida_propuesta === null && (
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
-                    Clasificación del día
-                  </label>
-                  <select
-                    value={clasificacion}
-                    onChange={(e) => setClasificacion(e.target.value as 'no_fichado' | 'dia_libre' | 'asuntos_propios' | '')}
-                    className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer"
-                    style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
-                  >
-                    <option value="no_fichado">No fichado (mantiene incidencia)</option>
-                    <option value="dia_libre">Día libre</option>
-                    <option value="asuntos_propios">Asuntos propios</option>
-                  </select>
-                  <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
-                    Si seleccionas «Día libre» o «Asuntos propios», el día dejará de contar como incidencia para el trabajador.
-                  </p>
-                </div>
-              )}
+
               <div>
                 <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
                   Respuesta para el trabajador (opcional)

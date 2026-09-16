@@ -1613,6 +1613,17 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         observaciones: form.observaciones?.trim() || null,
         observaciones_contrato: form.observaciones_contrato?.trim() || null,
       };
+      // Check DNI uniqueness before saving
+      if (payload.dni) {
+        const { data: existingDni } = await supabase
+          .from('empleados')
+          .select('id, nombre')
+          .eq('dni', payload.dni)
+          .maybeSingle();
+        if (existingDni && existingDni.id !== editingId) {
+          throw new Error(`Ya existe un empleado con el DNI "${payload.dni}": ${existingDni.nombre}. No se puede usar porque ya existe.`);
+        }
+      }
       if (editingId) {
         // Detect activo true → false to move Wasabi folder to bajas
         const original = empleados.find(e => e.id === editingId);
@@ -1620,6 +1631,12 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         const nowInactivo = payload.activo === false;
         const { error: err } = await supabase.from('empleados').update(payload).eq('id', editingId);
         if (err) {
+          if (err.code === '23505' || err.message?.includes('dni_unique') || err.message?.includes('duplicate')) {
+            throw new Error(`Ya existe otro empleado con el DNI "${payload.dni}". No se puede usar porque ya existe.`);
+          }
+          if (err.code === '23514' && err.message?.includes('check_dni_nie')) {
+            throw new Error(`El DNI "${payload.dni}" no es válido. Comprueba el formato e inténtalo de nuevo.`);
+          }
           if (err.code === '42501' || err.message?.includes('security')) throw new Error('Sin permiso para modificar empleados. Vuelve a iniciar sesion.');
           throw err;
         }
@@ -1661,6 +1678,12 @@ export default function EmployeesModule({ currentUserRole }: Props) {
       } else {
         const { data: inserted, error: err } = await supabase.from('empleados').insert(payload).select('id').maybeSingle();
         if (err) {
+          if (err.code === '23505' || err.message?.includes('dni_unique') || err.message?.includes('duplicate')) {
+            throw new Error(`Ya existe un empleado con el DNI "${payload.dni}". No se puede usar porque ya existe.`);
+          }
+          if (err.code === '23514' && err.message?.includes('check_dni_nie')) {
+            throw new Error(`El DNI "${payload.dni}" no es válido. Comprueba el formato e inténtalo de nuevo.`);
+          }
           if (err.code === '42501' || err.message?.includes('security')) throw new Error('Sin permiso para crear empleados. Vuelve a iniciar sesion.');
           throw err;
         }

@@ -81,7 +81,7 @@ interface VehicleLogEntry {
 
 const NORMAL_HOURS_MIN = 6 * 60;
 const NORMAL_HOURS_MAX = 8 * 60;
-const MAX_RANGE_DAYS = 90; // 3 months
+const MAX_RANGE_DAYS = 30; // 1 month
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -716,7 +716,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Validate date range: max 3 months
+  // Validate date range: max 1 month
   const rangeValid = (() => {
     if (!desde || !hasta) return true;
     const d = new Date(desde);
@@ -894,11 +894,11 @@ export default function MisFichajesView({ theme, userId }: Props) {
             style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.textPrimary }}
           />
           <span className="text-xs" style={{ color: theme.textSecondary }}>
-            Máximo 3 meses (90 días)
+            Máximo 1 mes (30 días)
           </span>
           {!rangeValid && (
             <span className="text-xs font-medium" style={{ color: '#DC2626' }}>
-              El rango no puede superar los 90 días
+              El rango no puede superar los 30 días
             </span>
           )}
         </div>

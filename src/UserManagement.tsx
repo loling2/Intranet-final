@@ -1414,6 +1414,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState<string>('');
+  const [filterSociety, setFilterSociety] = useState<string>('');
   const [statusTab, setStatusTab] = useState<'activo' | 'inactivo'>('activo');
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
@@ -1434,7 +1435,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   }, []);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
-  useEffect(() => { setPage(1); }, [search, filterRole, statusTab]);
+  useEffect(() => { setPage(1); }, [search, filterRole, filterSociety, statusTab]);
 
   const userIds = new Set(users.map((u) => u.id));
   // Empleados that don't have a linked user_profiles entry
@@ -1443,14 +1444,16 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   const filtered = users.filter((u) => {
     const matchSearch = !search || u.nombre.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
     const matchRole = !filterRole || u.role === filterRole || (u.roles && u.roles.includes(filterRole));
+    const matchSociety = !filterSociety || (u.societies && u.societies.includes(filterSociety));
     const matchStatus = statusTab === 'activo' ? u.activo : !u.activo;
-    return matchSearch && matchRole && matchStatus;
+    return matchSearch && matchRole && matchSociety && matchStatus;
   });
 
   const filteredEmpleados = empleadosSinCuenta.filter((e) => {
     if (filterRole && filterRole !== 'employee') return false;
     if (statusTab === 'inactivo' && e.activo) return false;
     if (statusTab === 'activo' && !e.activo) return false;
+    if (filterSociety && e.id_sociedad !== filterSociety) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return e.nombre.toLowerCase().includes(q) || (e.email ?? '').toLowerCase().includes(q);
@@ -1528,6 +1531,13 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
           <option value="formacion">Formacion</option>
           <option value="employee">Empleado</option>
           <option value="prevencion_gerontalia">Prevencion Gerontalia</option>
+        </select>
+        <select value={filterSociety} onChange={(e) => setFilterSociety(e.target.value)}
+          className="px-3 py-2.5 rounded-xl text-xs outline-none cursor-pointer" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>
+          <option value="">Todas las sociedades</option>
+          {societies.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
         </select>
       </div>
 

@@ -47,7 +47,7 @@ export default function ChangePinModal({ onClose }: Props) {
 
       const { error: updateErr } = await supabase
         .from('user_profiles')
-        .update({ pin })
+        .update({ pin, pin_created_at: new Date().toISOString() })
         .eq('id', user.id);
 
       if (updateErr) throw updateErr;

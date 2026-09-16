@@ -59,6 +59,7 @@ interface Correccion {
   respuesta_rrhh: string | null;
   validado_at: string | null;
   created_at: string;
+  clasificacion_ausencia: 'no_fichado' | 'dia_libre' | 'asuntos_propios' | null;
 }
 
 interface VehicleLogEntry {
@@ -639,6 +640,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
   const [correctionTarget, setCorrectionTarget] = useState<JornadaResumen | null>(null);
   const [vehicleLogs, setVehicleLogs] = useState<VehicleLogEntry[]>([]);
   const [viewMode, setViewMode] = useState<'asistencia' | 'vehiculos'>('asistencia');
+  const [empleadoSociedadId, setEmpleadoSociedadId] = useState<string | null>(null);
 
   // Default: last 30 days
   useEffect(() => {
@@ -665,11 +667,12 @@ export default function MisFichajesView({ theme, userId }: Props) {
       // Also try empleados for the name fallback
       const { data: emp } = await supabase
         .from('empleados')
-        .select('id, nombre')
+        .select('id, nombre, id_sociedad')
         .eq('user_id', userId)
         .maybeSingle();
 
       setNombreEmpleado(resolvedNombre || emp?.nombre || '');
+      setEmpleadoSociedadId(emp?.id_sociedad ?? null);
 
       // Load fichajes — filter by empleado_id (more reliable than nombre_empleado which can differ between user_profiles and empleados)
       const fichajeEmpleadoId = emp?.id ?? null;
@@ -729,9 +732,64 @@ export default function MisFichajesView({ theme, userId }: Props) {
     return true;
   });
 
-  const resumenes = buildResumenes(filteredFichajes);
-  const totalHoras = resumenes.reduce((acc, r) => acc + (r.duracion_neta ?? 0), 0);
-  const incidentCount = resumenes.filter((r) => isIncident(r.duracion_neta)).length;
+  const resumenesBase = buildResumenes(filteredFichajes);
+
+  // ── Missing-day detection for Gerontalia employees ──
+  // From 2026-09-01 onwards, if a Gerontalia employee has no fichaje on a day
+  // (and no existing correction for that day), show an empty row so they can
+  // request a correction.
+  const GERONTALIA_ID = '6632d8d1-c4e7-4540-aab7-515b9d7913f7';
+  const MISSING_DAYS_START = '2026-09-01';
+  const isGerontalia = empleadoSociedadId === GERONTALIA_ID;
+
+  const missingDays: JornadaResumen[] = (() => {
+    if (!isGerontalia || !desde || !hasta) return [];
+    const startDate = desde < MISSING_DAYS_START ? MISSING_DAYS_START : desde;
+    if (startDate > hasta) return [];
+
+    // Build a set of dates that already have a fichaje or a correction
+    const fichadoDates = new Set(filteredFichajes.map((f) => f.fecha));
+    const correccionDates = new Set(correcciones.map((c) => c.fecha));
+
+    const result: JornadaResumen[] = [];
+    const today = new Date().toISOString().split('T')[0];
+    const cursor = new Date(startDate + 'T00:00:00');
+    const end = new Date((hasta < today ? hasta : today) + 'T00:00:00');
+
+    while (cursor <= end) {
+      const dateStr = cursor.toISOString().split('T')[0];
+      // Skip Sundays (0 = Sunday)
+      if (cursor.getDay() !== 0 && !fichadoDates.has(dateStr) && !correccionDates.has(dateStr)) {
+        result.push({
+          fecha: dateStr,
+          entrada: null,
+          salida: null,
+          entrada_original: null,
+          salida_original: null,
+          entrada_corregida: false,
+          salida_corregida: false,
+          motivo_correccion: null,
+          pausa_inicio: null,
+          pausa_fin: null,
+          permiso: null,
+          permiso_fin: null,
+          duracion_permiso: null,
+          duracion_bruta: null,
+          duracion_neta: null,
+          empleado_id: fichajes[0]?.empleado_id ?? null,
+          fichaje_entrada_id: null,
+          fichaje_salida_id: null,
+          es_nocturno: false,
+        });
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return result;
+  })();
+
+  const resumenes = [...resumenesBase, ...missingDays].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const totalHoras = resumenesBase.reduce((acc, r) => acc + (r.duracion_neta ?? 0), 0);
+  const incidentCount = resumenesBase.filter((r) => isIncident(r.duracion_neta)).length;
   const pendientesCount = correcciones.filter((c) => c.estado === 'pendiente').length;
 
   // Correcciones for the selected date range
@@ -896,6 +954,8 @@ export default function MisFichajesView({ theme, userId }: Props) {
                   const corrForDate = correcciones.filter((c) => c.fecha === r.fecha);
                   const hasPendiente = corrForDate.some((c) => c.estado === 'pendiente');
                   const hasAprobada = corrForDate.some((c) => c.estado === 'aprobada');
+                  const ausenciaAprobada = corrForDate.find((c) => c.estado === 'aprobada' && (c.clasificacion_ausencia === 'dia_libre' || c.clasificacion_ausencia === 'asuntos_propios'));
+                  const ausenciaLabel = ausenciaAprobada?.clasificacion_ausencia === 'dia_libre' ? 'Día libre' : ausenciaAprobada?.clasificacion_ausencia === 'asuntos_propios' ? 'Asuntos propios' : null;
                   return (
                     <tr key={i} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 text-xs font-medium" style={{ color: theme.textPrimary }}>{r.fecha}</td>
@@ -954,7 +1014,17 @@ export default function MisFichajesView({ theme, userId }: Props) {
                             <CheckCircle2 size={11} /> Normal
                           </span>
                         )}
-                        {r.duracion_neta === null && <span style={{ color: '#CBD5E1' }}>—</span>}
+                        {ausenciaLabel && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE' }}>
+                            {ausenciaLabel}
+                          </span>
+                        )}
+                        {!ausenciaLabel && r.duracion_neta === null && r.entrada === null && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
+                            <AlertTriangle size={10} /> No fichado
+                          </span>
+                        )}
+                        {!ausenciaLabel && r.duracion_neta === null && r.entrada !== null && <span style={{ color: '#CBD5E1' }}>—</span>}
                       </td>
                       <td className="px-4 py-3">
                         {hasAprobada ? (
@@ -1067,6 +1137,13 @@ export default function MisFichajesView({ theme, userId }: Props) {
                       <p className="text-xs mt-0.5" style={{ color: theme.textSecondary }}>
                         Original: {formatTime(c.entrada_original)} → {formatTime(c.salida_original)} · Propuesta: {formatTime(c.entrada_propuesta)} → {formatTime(c.salida_propuesta)}
                       </p>
+                      {c.clasificacion_ausencia && c.clasificacion_ausencia !== 'no_fichado' && (
+                        <p className="text-xs mt-1 inline-flex items-center gap-1.5">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE' }}>
+                            {c.clasificacion_ausencia === 'dia_libre' ? 'Día libre' : 'Asuntos propios'}
+                          </span>
+                        </p>
+                      )}
                     </div>
                     <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold flex-shrink-0" style={{ backgroundColor: estadoBg, color: estadoColor, border: `1px solid ${estadoBorder}` }}>
                       {estadoLabel}

@@ -403,7 +403,7 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | 
   XLSX.writeFile(wb, `fichajes_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
-function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (empId: string | null) => number, workerResumenes?: JornadaResumen[], workerName?: string) {
+function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (empId: string | null) => number, allResumenes: JornadaResumen[] = [], workerName?: string) {
   const incidents = resumenes.filter((r) => isIncident(r.duracion_neta, expectedFn ? expectedFn(r.empleado_id) : 8 * 60));
   const fechaGen = new Date().toLocaleString('es-ES');
 
@@ -426,15 +426,17 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
   doc.setLineWidth(0.6);
   doc.line(margin, 22, pageW - margin, 22);
 
-  // Period hour totals
-  const baseResumenes = workerResumenes ?? [];
   const todayStr = new Date().toISOString().split('T')[0];
   const wRange = getWeekRange(todayStr);
   const mRange = getMonthRange(todayStr);
   const yRange = getYearRange(todayStr);
-  const wMin = sumMinutesInRange(baseResumenes, wRange.start, wRange.end);
-  const mMin = sumMinutesInRange(baseResumenes, mRange.start, mRange.end);
-  const yMin = sumMinutesInRange(baseResumenes, yRange.start, yRange.end);
+  const summariesByWorker = new Map<string, JornadaResumen[]>();
+  allResumenes.forEach((summary) => {
+    const key = summary.empleado_id ?? summary.nombre;
+    const workerSummaries = summariesByWorker.get(key) ?? [];
+    workerSummaries.push(summary);
+    summariesByWorker.set(key, workerSummaries);
+  });
 
   let y = 30;
   doc.setFontSize(11);
@@ -450,26 +452,7 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
     doc.text(`Trabajador: ${workerName}`, margin, y);
     y += 6;
   }
-  y += 2;
-
-  // Period totals box
-  doc.setFillColor(248, 250, 252);
-  doc.rect(margin, y, contentW, 12, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(3, 105, 161);
-  doc.text(`Horas semana (${wRange.start} → ${wRange.end}):`, margin + 3, y + 5);
-  doc.setTextColor(15, 23, 42);
-  doc.text(formatDuration(wMin), margin + 3 + 65, y + 5);
-  doc.setTextColor(22, 163, 74);
-  doc.text(`Horas mes (${mRange.start} → ${mRange.end}):`, margin + 110, y + 5);
-  doc.setTextColor(15, 23, 42);
-  doc.text(formatDuration(mMin), margin + 110 + 60, y + 5);
-  doc.setTextColor(217, 119, 6);
-  doc.text(`Horas año (${yRange.start} → ${yRange.end}):`, margin + 220, y + 5);
-  doc.setTextColor(15, 23, 42);
-  doc.text(formatDuration(yMin), margin + 220 + 58, y + 5);
-  y += 16;
+  y += 4;
 
   if (incidents.length === 0) {
     doc.setFont('helvetica', 'italic');
@@ -477,14 +460,14 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
     doc.setTextColor(148, 163, 184);
     doc.text('No hay incidencias en el periodo seleccionado.', margin, y + 6);
   } else {
-    const colW = [55, 25, 25, 25, 30, 35];
-    const headers = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Horas Totales', 'Tipo Incidencia'];
+    const colW = [48, 22, 20, 20, 24, 24, 24, 24, 38];
+    const headers = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Horas Totales', 'Horas sem', 'Horas mes', 'Horas año', 'Tipo Incidencia'];
 
     const drawHeader = () => {
       doc.setFillColor(15, 23, 42);
       doc.rect(margin, y, contentW, 8, 'F');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
+      doc.setFontSize(8);
       doc.setTextColor(255, 255, 255);
       let x = margin + 2;
       headers.forEach((h, i) => {
@@ -496,15 +479,21 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
 
     drawHeader();
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
+    doc.setFontSize(8);
 
     incidents.forEach((r, idx) => {
-      if (y > pageH - 18) { doc.addPage(); y = margin; drawHeader(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); }
+      if (y > pageH - 18) { doc.addPage(); y = margin; drawHeader(); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); }
       const exp = expectedFn ? expectedFn(r.empleado_id) : 8 * 60;
       const inc = incidentType(r.duracion_neta, exp);
       const expH = (exp / 60).toFixed(2);
       const incText = inc === 'excess' ? `Exceso (>${expH}h)` : `Déficit (<${expH}h)`;
       const incColor: [number, number, number] = inc === 'excess' ? [220, 38, 38] : [217, 119, 6];
+
+      const workerKey = r.empleado_id ?? r.nombre;
+      const workerSummaries = summariesByWorker.get(workerKey) ?? [];
+      const wMin = sumMinutesInRange(workerSummaries, wRange.start, wRange.end);
+      const mMin = sumMinutesInRange(workerSummaries, mRange.start, mRange.end);
+      const yMin = sumMinutesInRange(workerSummaries, yRange.start, yRange.end);
 
       if (idx % 2 === 1) {
         doc.setFillColor(248, 250, 252);
@@ -513,17 +502,20 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
       doc.setTextColor(30, 41, 59);
       let x = margin + 2;
       const vals = [
-        String(r.nombre).slice(0, 30),
+        String(r.nombre).slice(0, 28),
         r.fecha,
         formatTime(r.entrada),
         formatTime(r.salida),
         formatDuration(r.duracion_neta),
+        formatDuration(wMin),
+        formatDuration(mMin),
+        formatDuration(yMin),
         incText,
       ];
       vals.forEach((v, i) => {
-        if (i === 5) doc.setTextColor(...incColor);
+        if (i === 8) doc.setTextColor(...incColor);
         else doc.setTextColor(30, 41, 59);
-        doc.setFont(i === 4 || i === 5 ? 'helvetica' : 'helvetica', i === 4 || i === 5 ? 'bold' : 'normal');
+        doc.setFont(i >= 4 && i <= 7 ? 'helvetica' : 'helvetica', i >= 4 && i <= 8 ? 'bold' : 'normal');
         doc.text(String(v), x, y + 5);
         x += colW[i];
       });
@@ -1195,7 +1187,7 @@ export default function FichajesModule() {
             Excel
           </button>
           <button
-            onClick={() => exportIncidentPDF(resumenes, filterDesde, filterHasta, expectedMinutesFor, workerResumenes, selectedEmpleadoNombre)}
+            onClick={() => exportIncidentPDF(resumenes, filterDesde, filterHasta, expectedMinutesFor, buildResumenes(fichajes), selectedEmpleadoNombre)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
             <FileText size={12} />

@@ -940,6 +940,8 @@ export default function FichajesModule() {
   const [filterHasta, setFilterHasta] = useState('');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('hoy');
   const [filterEmpleado, setFilterEmpleado] = useState('');
+  const [workerSearch, setWorkerSearch] = useState('');
+  const [workerDropdownOpen, setWorkerDropdownOpen] = useState(false);
   const [filterSociedad, setFilterSociedad] = useState('');
   const [filterCentro, setFilterCentro] = useState('');
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
@@ -1128,6 +1130,15 @@ export default function FichajesModule() {
     return true;
   });
 
+  const workerOptions = empleados.filter((empleado) => {
+    if (filterSociedad && empleado.id_sociedad !== filterSociedad) return false;
+    if (filterCentro) {
+      const centro = centros.find((candidate) => candidate.id === filterCentro);
+      if (centro && empleado.centro_trabajo !== centro.nombre) return false;
+    }
+    return empleado.nombre.toLowerCase().includes(workerSearch.trim().toLowerCase());
+  });
+
   const allResumenes = buildResumenes(fichajes);
 
   const deviceLabel = (key: string | null): string => {
@@ -1215,14 +1226,65 @@ export default function FichajesModule() {
           )}
 
           {/* Worker filter */}
-          <select value={filterEmpleado} onChange={(e) => setFilterEmpleado(e.target.value)}
-            className="px-3 py-1.5 rounded-lg text-sm outline-none cursor-pointer max-w-[180px]"
-            style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569' }}>
-            <option value="">Todos los trabajadores</option>
-            {empleados.map((e) => (
-              <option key={e.id} value={e.id}>{e.nombre}</option>
-            ))}
-          </select>
+          <div className="relative w-full sm:w-[240px]" onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setWorkerDropdownOpen(false);
+          }}>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+              <Search size={13} style={{ color: '#94A3B8' }} />
+              <input
+                type="text"
+                value={workerSearch}
+                onFocus={() => setWorkerDropdownOpen(true)}
+                onClick={(event) => event.currentTarget.select()}
+                onChange={(event) => {
+                  setWorkerSearch(event.target.value);
+                  if (filterEmpleado) setFilterEmpleado('');
+                  setWorkerDropdownOpen(true);
+                }}
+                placeholder="Buscar trabajador..."
+                className="min-w-0 flex-1 text-sm outline-none bg-transparent"
+                style={{ color: '#1E293B' }}
+                aria-label="Buscar trabajador para filtrar"
+              />
+              {workerSearch && (
+                <button
+                  type="button"
+                  onClick={() => { setWorkerSearch(''); setFilterEmpleado(''); setWorkerDropdownOpen(false); }}
+                  className="text-xs cursor-pointer"
+                  style={{ color: '#94A3B8' }}
+                  aria-label="Limpiar trabajador"
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
+            {workerDropdownOpen && (
+              <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-lg p-1 shadow-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                <button
+                  type="button"
+                  onClick={() => { setFilterEmpleado(''); setWorkerSearch(''); setWorkerDropdownOpen(false); }}
+                  className="w-full rounded-md px-3 py-2 text-left text-sm cursor-pointer hover:bg-slate-50"
+                  style={{ color: '#475569' }}
+                >
+                  Todos los trabajadores
+                </button>
+                {workerOptions.map((empleado) => (
+                  <button
+                    type="button"
+                    key={empleado.id}
+                    onClick={() => { setFilterEmpleado(empleado.id); setWorkerSearch(empleado.nombre); setWorkerDropdownOpen(false); }}
+                    className="w-full rounded-md px-3 py-2 text-left text-sm cursor-pointer hover:bg-slate-50"
+                    style={{ color: '#1E293B', backgroundColor: filterEmpleado === empleado.id ? '#EFF6FF' : undefined }}
+                  >
+                    {empleado.nombre}
+                  </button>
+                ))}
+                {workerOptions.length === 0 && (
+                  <p className="px-3 py-2 text-sm" style={{ color: '#94A3B8' }}>No se encontraron trabajadores</p>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Empresa filter */}
           <select value={filterSociedad} onChange={(e) => { setFilterSociedad(e.target.value); setFilterCentro(''); }}

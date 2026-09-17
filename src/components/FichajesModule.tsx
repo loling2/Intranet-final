@@ -246,9 +246,23 @@ function getMonthRange(date: string): { start: string; end: string } {
   };
 }
 
+function getYearRange(date: string): { start: string; end: string } {
+  const d = new Date(date);
+  return {
+    start: `${d.getFullYear()}-01-01`,
+    end: `${d.getFullYear()}-12-31`,
+  };
+}
+
+function sumMinutesInRange(resumenes: JornadaResumen[], start: string, end: string): number {
+  return resumenes
+    .filter((r) => r.fecha >= start && r.fecha <= end)
+    .reduce((acc, r) => acc + (r.duracion_neta ?? 0), 0);
+}
+
 // ── Export helpers ───────────────────────────────────────────────────────────
 
-function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | null) => number) {
+function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | null) => number, allResumenes?: JornadaResumen[]) {
   const headerStyle = {
     font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } },
     fill: { fgColor: { rgb: '0F172A' } },
@@ -334,10 +348,58 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | 
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Fichajes');
+
+  // ── Period totals sheet ──
+  const baseResumenes = allResumenes ?? resumenes;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const wRange = getWeekRange(todayStr);
+  const mRange = getMonthRange(todayStr);
+  const yRange = getYearRange(todayStr);
+  const wMin = sumMinutesInRange(baseResumenes, wRange.start, wRange.end);
+  const mMin = sumMinutesInRange(baseResumenes, mRange.start, mRange.end);
+  const yMin = sumMinutesInRange(baseResumenes, yRange.start, yRange.end);
+
+  const totalsAoa: (string | number)[][] = [
+    ['Resumen de Horas Acumuladas', '', ''],
+    ['', '', ''],
+    ['Periodo', 'Rango', 'Horas Totales'],
+    ['Semana actual (Lun–Dom)', `${wRange.start} → ${wRange.end}`, formatDuration(wMin)],
+    ['Mes actual', `${mRange.start} → ${mRange.end}`, formatDuration(mMin)],
+    ['Año actual', `${yRange.start} → ${yRange.end}`, formatDuration(yMin)],
+  ];
+  const totalsWs = XLSX.utils.aoa_to_sheet(totalsAoa);
+  totalsWs['!cols'] = [{ wch: 30 }, { wch: 28 }, { wch: 16 }];
+  totalsWs['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+  // Style title
+  const titleRef = XLSX.utils.encode_cell({ r: 0, c: 0 });
+  if (totalsWs[titleRef]) totalsWs[titleRef].s = { font: { bold: true, sz: 14, color: { rgb: '0F172A' } }, alignment: { horizontal: 'center' as const } };
+  // Style header row
+  for (let c = 0; c < 3; c++) {
+    const ref = XLSX.utils.encode_cell({ r: 2, c });
+    if (totalsWs[ref]) totalsWs[ref].s = headerStyle;
+  }
+  // Style data rows
+  const rowColors = ['0369A1', '16A34A', 'D97706'];
+  for (let r = 3; r < 6; r++) {
+    for (let c = 0; c < 3; c++) {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      if (totalsWs[ref]) totalsWs[ref].s = {
+        font: { sz: 10, bold: c === 2, color: { rgb: c === 0 ? rowColors[r - 3] : '1E293B' } },
+        border: {
+          top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+          right: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        },
+      };
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, totalsWs, 'Resumen Horas');
   XLSX.writeFile(wb, `fichajes_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
-function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (empId: string | null) => number) {
+function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (empId: string | null) => number, allResumenes?: JornadaResumen[]) {
   const incidents = resumenes.filter((r) => isIncident(r.duracion_neta, expectedFn ? expectedFn(r.empleado_id) : 8 * 60));
   const fechaGen = new Date().toLocaleString('es-ES');
 
@@ -360,6 +422,16 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
   doc.setLineWidth(0.6);
   doc.line(margin, 22, pageW - margin, 22);
 
+  // Period hour totals
+  const baseResumenes = allResumenes ?? resumenes;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const wRange = getWeekRange(todayStr);
+  const mRange = getMonthRange(todayStr);
+  const yRange = getYearRange(todayStr);
+  const wMin = sumMinutesInRange(baseResumenes, wRange.start, wRange.end);
+  const mMin = sumMinutesInRange(baseResumenes, mRange.start, mRange.end);
+  const yMin = sumMinutesInRange(baseResumenes, yRange.start, yRange.end);
+
   let y = 30;
   doc.setFontSize(11);
   doc.setTextColor(100, 116, 139);
@@ -368,6 +440,25 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
   doc.setTextColor(220, 38, 38);
   doc.text(`Total incidencias: ${incidents.length}`, pageW - margin, y, { align: 'right' });
   y += 8;
+
+  // Period totals box
+  doc.setFillColor(248, 250, 252);
+  doc.rect(margin, y, contentW, 12, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(3, 105, 161);
+  doc.text(`Horas semana (${wRange.start} → ${wRange.end}):`, margin + 3, y + 5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(formatDuration(wMin), margin + 3 + 65, y + 5);
+  doc.setTextColor(22, 163, 74);
+  doc.text(`Horas mes (${mRange.start} → ${mRange.end}):`, margin + 110, y + 5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(formatDuration(mMin), margin + 110 + 60, y + 5);
+  doc.setTextColor(217, 119, 6);
+  doc.text(`Horas año (${yRange.start} → ${yRange.end}):`, margin + 220, y + 5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(formatDuration(yMin), margin + 220 + 58, y + 5);
+  y += 16;
 
   if (incidents.length === 0) {
     doc.setFont('helvetica', 'italic');
@@ -911,6 +1002,14 @@ export default function FichajesModule() {
   const incidentCount = resumenes.filter((r) => isIncident(r.duracion_neta, expectedMinutesFor(r.empleado_id))).length;
   const today = new Date().toISOString().split('T')[0];
 
+  const allResumenes = buildResumenes(fichajes);
+  const weekRange = getWeekRange(today);
+  const monthRange = getMonthRange(today);
+  const yearRange = getYearRange(today);
+  const weekMinutes = sumMinutesInRange(allResumenes, weekRange.start, weekRange.end);
+  const monthMinutes = sumMinutesInRange(allResumenes, monthRange.start, monthRange.end);
+  const yearMinutes = sumMinutesInRange(allResumenes, yearRange.start, yearRange.end);
+
   const filteredCentros = filterSociedad
     ? centros.filter((c) => c.id_sociedad === filterSociedad)
     : centros;
@@ -938,6 +1037,21 @@ export default function FichajesModule() {
           <div key={i} className="rounded-xl p-4" style={{ backgroundColor: kpi.bg }}>
             <p className="text-2xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
             <p className="text-xs font-medium mt-0.5" style={{ color: kpi.color + 'AA' }}>{kpi.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Period hour totals */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {[
+          { label: 'Horas esta semana (Lun–Dom)', value: formatDuration(weekMinutes), color: '#0369A1', bg: '#EFF6FF', sub: `${weekRange.start} → ${weekRange.end}` },
+          { label: 'Horas este mes', value: formatDuration(monthMinutes), color: '#16A34A', bg: '#F0FDF4', sub: `${monthRange.start} → ${monthRange.end}` },
+          { label: 'Horas este año', value: formatDuration(yearMinutes), color: '#D97706', bg: '#FFFBEB', sub: `${yearRange.start} → ${yearRange.end}` },
+        ].map((kpi, i) => (
+          <div key={i} className="rounded-xl p-4" style={{ backgroundColor: kpi.bg }}>
+            <p className="text-2xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
+            <p className="text-xs font-medium mt-0.5" style={{ color: kpi.color + 'AA' }}>{kpi.label}</p>
+            <p className="text-[10px] mt-1" style={{ color: kpi.color + '88' }}>{kpi.sub}</p>
           </div>
         ))}
       </div>
@@ -1054,14 +1168,14 @@ export default function FichajesModule() {
 
           {/* Export buttons */}
           <button
-            onClick={() => viewMode === 'resumen' ? exportExcel(resumenes, expectedMinutesFor) : null}
+            onClick={() => viewMode === 'resumen' ? exportExcel(resumenes, expectedMinutesFor, allResumenes) : null}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
             <Download size={12} />
             Excel
           </button>
           <button
-            onClick={() => exportIncidentPDF(resumenes, filterDesde, filterHasta, expectedMinutesFor)}
+            onClick={() => exportIncidentPDF(resumenes, filterDesde, filterHasta, expectedMinutesFor, allResumenes)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
             <FileText size={12} />

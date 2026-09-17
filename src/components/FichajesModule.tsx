@@ -262,7 +262,7 @@ function sumMinutesInRange(resumenes: JornadaResumen[], start: string, end: stri
 
 // ── Export helpers ───────────────────────────────────────────────────────────
 
-function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | null) => number, allResumenes?: JornadaResumen[]) {
+function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | null) => number, workerResumenes?: JornadaResumen[], workerName?: string) {
   const headerStyle = {
     font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } },
     fill: { fgColor: { rgb: '0F172A' } },
@@ -350,7 +350,7 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | 
   XLSX.utils.book_append_sheet(wb, ws, 'Fichajes');
 
   // ── Period totals sheet ──
-  const baseResumenes = allResumenes ?? resumenes;
+  const baseResumenes = workerResumenes ?? [];
   const todayStr = new Date().toISOString().split('T')[0];
   const wRange = getWeekRange(todayStr);
   const mRange = getMonthRange(todayStr);
@@ -361,6 +361,7 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | 
 
   const totalsAoa: (string | number)[][] = [
     ['Resumen de Horas Acumuladas', '', ''],
+    [workerName ? `Trabajador: ${workerName}` : 'Selecciona un trabajador para ver sus horas', '', ''],
     ['', '', ''],
     ['Periodo', 'Rango', 'Horas Totales'],
     ['Semana actual (Lun–Dom)', `${wRange.start} → ${wRange.end}`, formatDuration(wMin)],
@@ -369,22 +370,25 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | 
   ];
   const totalsWs = XLSX.utils.aoa_to_sheet(totalsAoa);
   totalsWs['!cols'] = [{ wch: 30 }, { wch: 28 }, { wch: 16 }];
-  totalsWs['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+  totalsWs['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } }];
   // Style title
   const titleRef = XLSX.utils.encode_cell({ r: 0, c: 0 });
   if (totalsWs[titleRef]) totalsWs[titleRef].s = { font: { bold: true, sz: 14, color: { rgb: '0F172A' } }, alignment: { horizontal: 'center' as const } };
+  // Style worker name row
+  const workerRef = XLSX.utils.encode_cell({ r: 1, c: 0 });
+  if (totalsWs[workerRef]) totalsWs[workerRef].s = { font: { bold: true, sz: 11, color: { rgb: '0369A1' } }, alignment: { horizontal: 'center' as const } };
   // Style header row
   for (let c = 0; c < 3; c++) {
-    const ref = XLSX.utils.encode_cell({ r: 2, c });
+    const ref = XLSX.utils.encode_cell({ r: 3, c });
     if (totalsWs[ref]) totalsWs[ref].s = headerStyle;
   }
   // Style data rows
   const rowColors = ['0369A1', '16A34A', 'D97706'];
-  for (let r = 3; r < 6; r++) {
+  for (let r = 4; r < 7; r++) {
     for (let c = 0; c < 3; c++) {
       const ref = XLSX.utils.encode_cell({ r, c });
       if (totalsWs[ref]) totalsWs[ref].s = {
-        font: { sz: 10, bold: c === 2, color: { rgb: c === 0 ? rowColors[r - 3] : '1E293B' } },
+        font: { sz: 10, bold: c === 2, color: { rgb: c === 0 ? rowColors[r - 4] : '1E293B' } },
         border: {
           top: { style: 'thin', color: { rgb: 'E2E8F0' } },
           bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
@@ -399,7 +403,7 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | 
   XLSX.writeFile(wb, `fichajes_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
-function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (empId: string | null) => number, allResumenes?: JornadaResumen[]) {
+function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (empId: string | null) => number, workerResumenes?: JornadaResumen[], workerName?: string) {
   const incidents = resumenes.filter((r) => isIncident(r.duracion_neta, expectedFn ? expectedFn(r.empleado_id) : 8 * 60));
   const fechaGen = new Date().toLocaleString('es-ES');
 
@@ -423,7 +427,7 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
   doc.line(margin, 22, pageW - margin, 22);
 
   // Period hour totals
-  const baseResumenes = allResumenes ?? resumenes;
+  const baseResumenes = workerResumenes ?? [];
   const todayStr = new Date().toISOString().split('T')[0];
   const wRange = getWeekRange(todayStr);
   const mRange = getMonthRange(todayStr);
@@ -439,7 +443,14 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(220, 38, 38);
   doc.text(`Total incidencias: ${incidents.length}`, pageW - margin, y, { align: 'right' });
-  y += 8;
+  y += 6;
+  if (workerName) {
+    doc.setFontSize(10);
+    doc.setTextColor(3, 105, 161);
+    doc.text(`Trabajador: ${workerName}`, margin, y);
+    y += 6;
+  }
+  y += 2;
 
   // Period totals box
   doc.setFillColor(248, 250, 252);
@@ -1002,13 +1013,20 @@ export default function FichajesModule() {
   const incidentCount = resumenes.filter((r) => isIncident(r.duracion_neta, expectedMinutesFor(r.empleado_id))).length;
   const today = new Date().toISOString().split('T')[0];
 
-  const allResumenes = buildResumenes(fichajes);
   const weekRange = getWeekRange(today);
   const monthRange = getMonthRange(today);
   const yearRange = getYearRange(today);
-  const weekMinutes = sumMinutesInRange(allResumenes, weekRange.start, weekRange.end);
-  const monthMinutes = sumMinutesInRange(allResumenes, monthRange.start, monthRange.end);
-  const yearMinutes = sumMinutesInRange(allResumenes, yearRange.start, yearRange.end);
+
+  // Period totals: only when a specific worker is selected
+  const selectedEmpleadoNombre = filterEmpleado
+    ? empleados.find((e) => e.id === filterEmpleado)?.nombre ?? ''
+    : '';
+  const workerResumenes = filterEmpleado
+    ? buildResumenes(fichajes.filter((f) => f.empleado_id === filterEmpleado))
+    : [];
+  const weekMinutes = filterEmpleado ? sumMinutesInRange(workerResumenes, weekRange.start, weekRange.end) : 0;
+  const monthMinutes = filterEmpleado ? sumMinutesInRange(workerResumenes, monthRange.start, monthRange.end) : 0;
+  const yearMinutes = filterEmpleado ? sumMinutesInRange(workerResumenes, yearRange.start, yearRange.end) : 0;
 
   const filteredCentros = filterSociedad
     ? centros.filter((c) => c.id_sociedad === filterSociedad)
@@ -1041,7 +1059,7 @@ export default function FichajesModule() {
         ))}
       </div>
 
-      {/* Period hour totals */}
+      {/* Period hour totals — worker-specific */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
           { label: 'Horas esta semana (Lun–Dom)', value: formatDuration(weekMinutes), color: '#0369A1', bg: '#EFF6FF', sub: `${weekRange.start} → ${weekRange.end}` },
@@ -1051,7 +1069,9 @@ export default function FichajesModule() {
           <div key={i} className="rounded-xl p-4" style={{ backgroundColor: kpi.bg }}>
             <p className="text-2xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
             <p className="text-xs font-medium mt-0.5" style={{ color: kpi.color + 'AA' }}>{kpi.label}</p>
-            <p className="text-[10px] mt-1" style={{ color: kpi.color + '88' }}>{kpi.sub}</p>
+            <p className="text-[10px] mt-1" style={{ color: kpi.color + '88' }}>
+              {filterEmpleado ? `${selectedEmpleadoNombre} · ${kpi.sub}` : 'Selecciona un trabajador para ver sus horas'}
+            </p>
           </div>
         ))}
       </div>
@@ -1168,14 +1188,14 @@ export default function FichajesModule() {
 
           {/* Export buttons */}
           <button
-            onClick={() => viewMode === 'resumen' ? exportExcel(resumenes, expectedMinutesFor, allResumenes) : null}
+            onClick={() => viewMode === 'resumen' ? exportExcel(resumenes, expectedMinutesFor, workerResumenes, selectedEmpleadoNombre) : null}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
             <Download size={12} />
             Excel
           </button>
           <button
-            onClick={() => exportIncidentPDF(resumenes, filterDesde, filterHasta, expectedMinutesFor, allResumenes)}
+            onClick={() => exportIncidentPDF(resumenes, filterDesde, filterHasta, expectedMinutesFor, workerResumenes, selectedEmpleadoNombre)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
             <FileText size={12} />

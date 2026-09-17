@@ -539,6 +539,99 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
   doc.save(`informe_incidencias_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
+function exportHoursPDF(empleados: Empleado[], allResumenes: JornadaResumen[]) {
+  const today = new Date().toISOString().split('T')[0];
+  const weekRange = getWeekRange(today);
+  const monthRange = getMonthRange(today);
+  const yearRange = getYearRange(today);
+  const fechaGen = new Date().toLocaleString('es-ES');
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 15;
+  const contentW = pageW - margin * 2;
+  const colW = [contentW - 135, 45, 45, 45];
+  let y = 18;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(15, 23, 42);
+  doc.text('INFORME DE HORAS', margin, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Generado el ${fechaGen}`, pageW - margin, y, { align: 'right' });
+  y += 8;
+  doc.setFontSize(10);
+  doc.text(`Semana: ${weekRange.start} → ${weekRange.end} · Mes: ${monthRange.start} → ${monthRange.end} · Año: ${yearRange.start} → ${yearRange.end}`, margin, y);
+  y += 7;
+
+  const drawHeader = () => {
+    doc.setFillColor(15, 23, 42);
+    doc.rect(margin, y, contentW, 9, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    const headers = ['Trabajador', 'Horas semanales', 'Horas mensuales', 'Horas anuales'];
+    let x = margin + 3;
+    headers.forEach((header, index) => {
+      doc.text(header, x, y + 6);
+      x += colW[index];
+    });
+    y += 9;
+  };
+
+  drawHeader();
+  empleados.forEach((empleado, index) => {
+    if (y > pageH - 20) {
+      doc.addPage();
+      y = margin;
+      drawHeader();
+    }
+    const workerResumenes = allResumenes.filter((summary) => summary.empleado_id === empleado.id);
+    const weekMinutes = sumMinutesInRange(workerResumenes, weekRange.start, weekRange.end);
+    const monthMinutes = sumMinutesInRange(workerResumenes, monthRange.start, monthRange.end);
+    const yearMinutes = sumMinutesInRange(workerResumenes, yearRange.start, yearRange.end);
+
+    if (index % 2 === 1) {
+      doc.setFillColor(248, 250, 252);
+      doc.rect(margin, y, contentW, 8, 'F');
+    }
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(30, 41, 59);
+    const values = [empleado.nombre, formatDuration(weekMinutes), formatDuration(monthMinutes), formatDuration(yearMinutes)];
+    let x = margin + 3;
+    values.forEach((value, valueIndex) => {
+      doc.setFont('helvetica', valueIndex === 0 ? 'bold' : 'normal');
+      doc.text(value, x, y + 5);
+      x += colW[valueIndex];
+    });
+    y += 8;
+  });
+
+  if (empleados.length === 0) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(11);
+    doc.setTextColor(148, 163, 184);
+    doc.text('No hay trabajadores que coincidan con los filtros seleccionados.', margin, y + 7);
+  }
+
+  const pageCount = doc.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page++) {
+    doc.setPage(page);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.2);
+    doc.line(margin, pageH - 12, pageW - margin, pageH - 12);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Documento generado automáticamente · ${fechaGen}`, pageW / 2, pageH - 8, { align: 'center' });
+  }
+
+  doc.save(`informe_horas_${today}.pdf`);
+}
+
 // ── Clock In/Out Panel ───────────────────────────────────────────────────────
 
 interface ClockPanelProps {
@@ -1024,6 +1117,19 @@ export default function FichajesModule() {
     ? centros.filter((c) => c.id_sociedad === filterSociedad)
     : centros;
 
+  const reportEmpleados = empleados.filter((empleado) => {
+    if (filterEmpleado && empleado.id !== filterEmpleado) return false;
+    if (search && !empleado.nombre.toLowerCase().includes(search.toLowerCase())) return false;
+    if (filterSociedad && empleado.id_sociedad !== filterSociedad) return false;
+    if (filterCentro) {
+      const centro = centros.find((candidate) => candidate.id === filterCentro);
+      if (centro && empleado.centro_trabajo !== centro.nombre) return false;
+    }
+    return true;
+  });
+
+  const allResumenes = buildResumenes(fichajes);
+
   const deviceLabel = (key: string | null): string => {
     if (!key) return '—';
     return deviceNames.get(key) ?? key;
@@ -1078,7 +1184,7 @@ export default function FichajesModule() {
             <Search size={13} style={{ color: '#94A3B8' }} />
             <input
               type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar empleado..."
+              placeholder="Buscar trabajador por nombre..."
               className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1E293B' }}
             />
           </div>
@@ -1187,11 +1293,18 @@ export default function FichajesModule() {
             Excel
           </button>
           <button
-            onClick={() => exportIncidentPDF(resumenes, filterDesde, filterHasta, expectedMinutesFor, buildResumenes(fichajes), selectedEmpleadoNombre)}
+            onClick={() => exportIncidentPDF(resumenes, filterDesde, filterHasta, expectedMinutesFor, allResumenes, selectedEmpleadoNombre)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
             <FileText size={12} />
             Informe Incidencias PDF
+          </button>
+          <button
+            onClick={() => exportHoursPDF(reportEmpleados, allResumenes)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
+            style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
+            <FileText size={12} />
+            INFORME DE HORAS
           </button>
         </div>
 

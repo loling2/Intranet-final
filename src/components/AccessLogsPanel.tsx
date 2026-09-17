@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, RefreshCw, LogIn, Clock, Monitor, Smartphone, Tablet } from 'lucide-react';
+import { Search, RefreshCw, LogIn, Clock, Monitor, Smartphone, Tablet, Building2 } from 'lucide-react';
 import { Pagination, paginate, totalPages as calcTotalPages } from './Pagination';
 import { supabase } from '../supabaseClient';
+import { useSociety } from '../context/SocietyContext';
 
 interface AccessLog {
   id: string;
@@ -24,35 +25,47 @@ function getDeviceIcon(info: string | null) {
 }
 
 export default function AccessLogsPanel() {
+  const { societies } = useSociety();
   const [logs, setLogs] = useState<AccessLog[]>([]);
+  const [userSocietyMap, setUserSocietyMap] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterUser, setFilterUser] = useState('');
+  const [filterSociety, setFilterSociety] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
-    let q = supabase
-      .from('access_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(500);
+    const [logQ, profQ] = await Promise.all([
+      (() => {
+        let q = supabase
+          .from('access_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(500);
+        if (filterDate) {
+          const start = new Date(filterDate);
+          const end = new Date(filterDate);
+          end.setDate(end.getDate() + 1);
+          q = q.gte('created_at', start.toISOString()).lt('created_at', end.toISOString());
+        }
+        return q;
+      })(),
+      supabase.from('user_profiles').select('id, societies'),
+    ]);
 
-    if (filterDate) {
-      const start = new Date(filterDate);
-      const end = new Date(filterDate);
-      end.setDate(end.getDate() + 1);
-      q = q.gte('created_at', start.toISOString()).lt('created_at', end.toISOString());
+    setLogs((logQ.data ?? []) as AccessLog[]);
+    const map: Record<string, string[]> = {};
+    for (const p of (profQ.data ?? []) as { id: string; societies: string[] | null }[]) {
+      map[p.id] = p.societies ?? [];
     }
-
-    const { data } = await q;
-    setLogs((data ?? []) as AccessLog[]);
+    setUserSocietyMap(map);
     setLoading(false);
   }, [filterDate]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [search, filterUser, filterDate]);
+  useEffect(() => { setPage(1); }, [search, filterUser, filterSociety, filterDate]);
 
   const filtered = logs.filter((l) => {
     const matchSearch = !search
@@ -61,10 +74,13 @@ export default function AccessLogsPanel() {
     const matchUser = !filterUser
       || l.user_email === filterUser
       || (l.user_nombre ?? '') === filterUser;
-    return matchSearch && matchUser;
+    const matchSociety = !filterSociety
+      || (userSocietyMap[l.user_id] ?? []).includes(filterSociety);
+    return matchSearch && matchUser && matchSociety;
   });
 
   const uniqueUsers = [...new Set(logs.map((l) => l.user_nombre || l.user_email))].sort();
+  const societyName = (id: string) => societies.find((s) => s.id === id)?.name ?? id;
 
   const PAGE_SIZE = 25;
   const totalPages = calcTotalPages(filtered.length, PAGE_SIZE);
@@ -119,6 +135,17 @@ export default function AccessLogsPanel() {
             <option key={u} value={u}>{u}</option>
           ))}
         </select>
+        <select
+          value={filterSociety}
+          onChange={(e) => setFilterSociety(e.target.value)}
+          className="px-3 py-2.5 rounded-xl text-xs outline-none cursor-pointer"
+          style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}
+        >
+          <option value="">Todas las sociedades</option>
+          {societies.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
         <input
           type="date"
           value={filterDate}
@@ -126,9 +153,9 @@ export default function AccessLogsPanel() {
           className="px-3 py-2.5 rounded-xl text-xs outline-none cursor-pointer"
           style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}
         />
-        {(search || filterUser || filterDate) && (
+        {(search || filterUser || filterSociety || filterDate) && (
           <button
-            onClick={() => { setSearch(''); setFilterUser(''); setFilterDate(''); }}
+            onClick={() => { setSearch(''); setFilterUser(''); setFilterSociety(''); setFilterDate(''); }}
             className="px-3 py-2.5 rounded-xl text-xs font-medium cursor-pointer"
             style={{ backgroundColor: '#F8FAFC', color: '#64748B', border: '1px solid #E2E8F0' }}
           >
@@ -172,6 +199,12 @@ export default function AccessLogsPanel() {
                       {log.user_role && (
                         <span className="text-xs font-medium px-2 py-0.5 rounded" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
                           {log.user_role}
+                        </span>
+                      )}
+                      {(userSocietyMap[log.user_id] ?? []).length > 0 && (
+                        <span className="text-xs font-medium px-2 py-0.5 rounded inline-flex items-center gap-1" style={{ backgroundColor: '#F0F9FF', color: '#0369A1' }}>
+                          <Building2 size={10} />
+                          {(userSocietyMap[log.user_id] ?? []).map((sid) => societyName(sid)).join(', ')}
                         </span>
                       )}
                       {log.device_info && (

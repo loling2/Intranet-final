@@ -1517,8 +1517,15 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
         <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
           <input type="text" placeholder="Buscar por nombre o correo..." value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-2.5 rounded-xl text-xs outline-none"
+            className="w-full pl-8 pr-8 py-2.5 rounded-xl text-xs outline-none"
             style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }} />
+          {search && (
+            <button onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer"
+              style={{ backgroundColor: '#F1F5F9', color: '#94A3B8' }}>
+              <X size={11} />
+            </button>
+          )}
         </div>
         <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)}
           className="px-3 py-2.5 rounded-xl text-xs outline-none cursor-pointer" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}>

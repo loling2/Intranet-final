@@ -403,7 +403,7 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | 
   XLSX.writeFile(wb, `fichajes_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
-function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (empId: string | null) => number, allResumenes: JornadaResumen[] = [], workerName?: string) {
+function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: string, expectedFn?: (empId: string | null) => number, workerName?: string) {
   const incidents = resumenes.filter((r) => isIncident(r.duracion_neta, expectedFn ? expectedFn(r.empleado_id) : 8 * 60));
   const fechaGen = new Date().toLocaleString('es-ES');
 
@@ -425,18 +425,6 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
   doc.setDrawColor(15, 23, 42);
   doc.setLineWidth(0.6);
   doc.line(margin, 22, pageW - margin, 22);
-
-  const todayStr = new Date().toISOString().split('T')[0];
-  const wRange = getWeekRange(todayStr);
-  const mRange = getMonthRange(todayStr);
-  const yRange = getYearRange(todayStr);
-  const summariesByWorker = new Map<string, JornadaResumen[]>();
-  allResumenes.forEach((summary) => {
-    const key = summary.empleado_id ?? summary.nombre;
-    const workerSummaries = summariesByWorker.get(key) ?? [];
-    workerSummaries.push(summary);
-    summariesByWorker.set(key, workerSummaries);
-  });
 
   let y = 30;
   doc.setFontSize(11);
@@ -460,8 +448,8 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
     doc.setTextColor(148, 163, 184);
     doc.text('No hay incidencias en el periodo seleccionado.', margin, y + 6);
   } else {
-    const colW = [48, 22, 20, 20, 24, 24, 24, 24, 38];
-    const headers = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Horas Totales', 'Horas sem', 'Horas mes', 'Horas año', 'Tipo Incidencia'];
+    const colW = [78, 25, 22, 22, 30, 96];
+    const headers = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Horas Totales', 'Tipo Incidencia'];
 
     const drawHeader = () => {
       doc.setFillColor(15, 23, 42);
@@ -489,12 +477,6 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
       const incText = inc === 'excess' ? `Exceso (>${expH}h)` : `Déficit (<${expH}h)`;
       const incColor: [number, number, number] = inc === 'excess' ? [220, 38, 38] : [217, 119, 6];
 
-      const workerKey = r.empleado_id ?? r.nombre;
-      const workerSummaries = summariesByWorker.get(workerKey) ?? [];
-      const wMin = sumMinutesInRange(workerSummaries, wRange.start, wRange.end);
-      const mMin = sumMinutesInRange(workerSummaries, mRange.start, mRange.end);
-      const yMin = sumMinutesInRange(workerSummaries, yRange.start, yRange.end);
-
       if (idx % 2 === 1) {
         doc.setFillColor(248, 250, 252);
         doc.rect(margin, y, contentW, 7, 'F');
@@ -502,20 +484,17 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
       doc.setTextColor(30, 41, 59);
       let x = margin + 2;
       const vals = [
-        String(r.nombre).slice(0, 28),
+        String(r.nombre).slice(0, 42),
         r.fecha,
         formatTime(r.entrada),
         formatTime(r.salida),
         formatDuration(r.duracion_neta),
-        formatDuration(wMin),
-        formatDuration(mMin),
-        formatDuration(yMin),
         incText,
       ];
       vals.forEach((v, i) => {
-        if (i === 8) doc.setTextColor(...incColor);
+        if (i === 5) doc.setTextColor(...incColor);
         else doc.setTextColor(30, 41, 59);
-        doc.setFont(i >= 4 && i <= 7 ? 'helvetica' : 'helvetica', i >= 4 && i <= 8 ? 'bold' : 'normal');
+        doc.setFont('helvetica', i >= 4 ? 'bold' : 'normal');
         doc.text(String(v), x, y + 5);
         x += colW[i];
       });
@@ -1355,7 +1334,7 @@ export default function FichajesModule() {
             Excel
           </button>
           <button
-            onClick={() => exportIncidentPDF(resumenes, filterDesde, filterHasta, expectedMinutesFor, allResumenes, selectedEmpleadoNombre)}
+            onClick={() => exportIncidentPDF(resumenes, filterDesde, filterHasta, expectedMinutesFor, selectedEmpleadoNombre)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
             <FileText size={12} />

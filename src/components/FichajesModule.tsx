@@ -518,12 +518,17 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
   doc.save(`informe_incidencias_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-function exportHoursPDF(empleados: Empleado[], allResumenes: JornadaResumen[]) {
+async function exportHoursPDF(empleados: Empleado[], fetchFichajesForYear: (yearStart: string, yearEnd: string) => Promise<Fichaje[]>) {
   const today = new Date().toISOString().split('T')[0];
   const weekRange = getWeekRange(today);
   const monthRange = getMonthRange(today);
   const yearRange = getYearRange(today);
   const fechaGen = new Date().toLocaleString('es-ES');
+
+  // Fetch ALL fichajes for the current year directly from the DB
+  const yearFichajes = await fetchFichajesForYear(yearRange.start, yearRange.end);
+  const allResumenes = buildResumenes(yearFichajes);
+
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -930,6 +935,7 @@ export default function FichajesModule() {
   const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState<ViewMode>('resumen');
   const [showIncidentOnly, setShowIncidentOnly] = useState(false);
+  const [workerYearFichajes, setWorkerYearFichajes] = useState<Fichaje[]>([]);
 
   // Load reference data + supervisor's employee IDs if supervisor
   useEffect(() => {
@@ -1016,6 +1022,23 @@ export default function FichajesModule() {
 
   useEffect(() => { setPage(1); }, [search, filterTipo, filterDesde, filterHasta, viewMode, filterEmpleado, filterSociedad, filterCentro, showIncidentOnly]);
 
+  // When a worker is selected, fetch ALL their fichajes for the current year (not limited by the 5000 cap)
+  useEffect(() => {
+    if (!filterEmpleado) { setWorkerYearFichajes([]); return; }
+    const yearStart = `${new Date().getFullYear()}-01-01`;
+    const yearEnd = `${new Date().getFullYear()}-12-31`;
+    (async () => {
+      const { data } = await supabase
+        .from('fichajes')
+        .select('*')
+        .eq('empleado_id', filterEmpleado)
+        .gte('fecha', yearStart)
+        .lte('fecha', yearEnd)
+        .order('timestamp', { ascending: true });
+      setWorkerYearFichajes((data ?? []) as Fichaje[]);
+    })();
+  }, [filterEmpleado]);
+
   // Build lookup by empleado_id (robust against name variations like with/without comma)
   const empleadoById = new Map<string, Empleado>();
   for (const e of empleados) empleadoById.set(e.id, e);
@@ -1088,7 +1111,7 @@ export default function FichajesModule() {
     ? empleados.find((e) => e.id === filterEmpleado)?.nombre ?? ''
     : '';
   const workerResumenes = filterEmpleado
-    ? buildResumenes(fichajes.filter((f) => f.empleado_id === filterEmpleado))
+    ? buildResumenes(workerYearFichajes)
     : [];
   const weekMinutes = filterEmpleado ? sumMinutesInRange(workerResumenes, weekRange.start, weekRange.end) : 0;
   const monthMinutes = filterEmpleado ? sumMinutesInRange(workerResumenes, monthRange.start, monthRange.end) : 0;
@@ -1341,7 +1364,18 @@ export default function FichajesModule() {
             Informe Incidencias PDF
           </button>
           <button
-            onClick={() => exportHoursPDF(reportEmpleados, allResumenes)}
+            onClick={async () => {
+              const yearStart = `${new Date().getFullYear()}-01-01`;
+              const yearEnd = `${new Date().getFullYear()}-12-31`;
+              let yearQuery = supabase.from('fichajes').select('*').gte('fecha', yearStart).lte('fecha', yearEnd).order('timestamp', { ascending: true });
+              if (isSupervisor && supervisorEmpIds && supervisorEmpIds.size > 0) {
+                yearQuery = yearQuery.in('empleado_id', Array.from(supervisorEmpIds));
+              }
+              const { data: yearData } = await yearQuery;
+              const yearFichajes = (yearData ?? []) as Fichaje[];
+              const fetcher = async () => yearFichajes;
+              exportHoursPDF(reportEmpleados, fetcher);
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
             <FileText size={12} />

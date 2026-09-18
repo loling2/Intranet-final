@@ -518,16 +518,12 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
   doc.save(`informe_incidencias_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-async function exportHoursPDF(empleados: Empleado[], fetchFichajesForYear: (yearStart: string, yearEnd: string) => Promise<Fichaje[]>) {
+async function exportHoursPDF(empleados: Empleado[], fetchFichajesForEmployee: (employeeId: string, yearStart: string, yearEnd: string) => Promise<Fichaje[]>) {
   const today = new Date().toISOString().split('T')[0];
   const weekRange = getWeekRange(today);
   const monthRange = getMonthRange(today);
   const yearRange = getYearRange(today);
   const fechaGen = new Date().toLocaleString('es-ES');
-
-  // Fetch ALL fichajes for the current year directly from the DB
-  const yearFichajes = await fetchFichajesForYear(yearRange.start, yearRange.end);
-  const allResumenes = buildResumenes(yearFichajes);
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -566,13 +562,14 @@ async function exportHoursPDF(empleados: Empleado[], fetchFichajesForYear: (year
   };
 
   drawHeader();
-  empleados.forEach((empleado, index) => {
+  for (const [index, empleado] of empleados.entries()) {
     if (y > pageH - 20) {
       doc.addPage();
       y = margin;
       drawHeader();
     }
-    const workerResumenes = allResumenes.filter((summary) => summary.empleado_id === empleado.id);
+    const employeeFichajes = await fetchFichajesForEmployee(empleado.id, yearRange.start, yearRange.end);
+    const workerResumenes = buildResumenes(employeeFichajes);
     const weekMinutes = sumMinutesInRange(workerResumenes, weekRange.start, weekRange.end);
     const monthMinutes = sumMinutesInRange(workerResumenes, monthRange.start, monthRange.end);
     const yearMinutes = sumMinutesInRange(workerResumenes, yearRange.start, yearRange.end);
@@ -592,7 +589,7 @@ async function exportHoursPDF(empleados: Empleado[], fetchFichajesForYear: (year
       x += colW[valueIndex];
     });
     y += 8;
-  });
+  }
 
   if (empleados.length === 0) {
     doc.setFont('helvetica', 'italic');
@@ -1367,14 +1364,17 @@ export default function FichajesModule() {
             onClick={async () => {
               const yearStart = `${new Date().getFullYear()}-01-01`;
               const yearEnd = `${new Date().getFullYear()}-12-31`;
-              let yearQuery = supabase.from('fichajes').select('*').gte('fecha', yearStart).lte('fecha', yearEnd).order('timestamp', { ascending: true });
-              if (isSupervisor && supervisorEmpIds && supervisorEmpIds.size > 0) {
-                yearQuery = yearQuery.in('empleado_id', Array.from(supervisorEmpIds));
-              }
-              const { data: yearData } = await yearQuery;
-              const yearFichajes = (yearData ?? []) as Fichaje[];
-              const fetcher = async () => yearFichajes;
-              exportHoursPDF(reportEmpleados, fetcher);
+              const fetcher = async (employeeId: string, start: string, end: string): Promise<Fichaje[]> => {
+                const { data } = await supabase
+                  .from('fichajes')
+                  .select('*')
+                  .eq('empleado_id', employeeId)
+                  .gte('fecha', start)
+                  .lte('fecha', end)
+                  .order('timestamp', { ascending: true });
+                return (data ?? []) as Fichaje[];
+              };
+              await exportHoursPDF(reportEmpleados, fetcher);
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>

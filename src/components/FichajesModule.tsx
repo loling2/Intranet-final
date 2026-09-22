@@ -222,8 +222,16 @@ function buildResumenes(fichajes: Fichaje[]): JornadaResumen[] {
   });
 }
 
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function getWeekRange(date: string): { start: string; end: string } {
-  const d = new Date(date);
+  const [year, month, dayOfMonth] = date.split('-').map(Number);
+  const d = new Date(year, month - 1, dayOfMonth);
   const day = d.getDay();
   const diffToMonday = day === 0 ? -6 : 1 - day;
   const monday = new Date(d);
@@ -231,26 +239,27 @@ function getWeekRange(date: string): { start: string; end: string } {
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   return {
-    start: monday.toISOString().split('T')[0],
-    end: sunday.toISOString().split('T')[0],
+    start: localDateStr(monday),
+    end: localDateStr(sunday),
   };
 }
 
 function getMonthRange(date: string): { start: string; end: string } {
-  const d = new Date(date);
+  const [year, month] = date.split('-').map(Number);
+  const d = new Date(year, month - 1, 1);
   const first = new Date(d.getFullYear(), d.getMonth(), 1);
   const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
   return {
-    start: first.toISOString().split('T')[0],
-    end: last.toISOString().split('T')[0],
+    start: localDateStr(first),
+    end: localDateStr(last),
   };
 }
 
 function getYearRange(date: string): { start: string; end: string } {
-  const d = new Date(date);
+  const [year] = date.split('-').map(Number);
   return {
-    start: `${d.getFullYear()}-01-01`,
-    end: `${d.getFullYear()}-12-31`,
+    start: `${year}-01-01`,
+    end: `${year}-12-31`,
   };
 }
 
@@ -351,7 +360,7 @@ function exportExcel(resumenes: JornadaResumen[], expectedFn?: (empId: string | 
 
   // ── Period totals sheet ──
   const baseResumenes = workerResumenes ?? [];
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateStr(new Date());
   const wRange = getWeekRange(todayStr);
   const mRange = getMonthRange(todayStr);
   const yRange = getYearRange(todayStr);
@@ -528,15 +537,25 @@ interface CorreccionAprobada {
 }
 
 function mergeCorreccionesIntoFichajes(fichajes: Fichaje[], correcciones: CorreccionAprobada[]): Fichaje[] {
-  const result = [...fichajes];
+  const result = fichajes.map((f) => ({ ...f }));
+
   for (const c of correcciones) {
     if (!c.empleado_id) continue;
-    const dayFichajes = fichajes.filter(
-      (f) => f.empleado_id === c.empleado_id && f.fecha === c.fecha
-    );
-    const hasEntrada = dayFichajes.some((f) => f.tipo_evento === 'entrada');
-    const hasSalida = dayFichajes.some((f) => f.tipo_evento === 'salida');
-    if (c.entrada_propuesta && !hasEntrada) {
+
+    const dayIndexes = result
+      .map((f, index) => ({ f, index }))
+      .filter(({ f }) => f.empleado_id === c.empleado_id && f.fecha === c.fecha);
+    const entradaIndex = dayIndexes.find(({ f }) => f.tipo_evento === 'entrada')?.index;
+    const salidaIndexes = dayIndexes.filter(({ f }) => f.tipo_evento === 'salida').map(({ index }) => index);
+    const salidaIndex = salidaIndexes[salidaIndexes.length - 1];
+
+    if (c.entrada_propuesta && entradaIndex !== undefined) {
+      result[entradaIndex] = {
+        ...result[entradaIndex],
+        timestamp_corregido: c.entrada_propuesta,
+        nota_correccion: 'Entrada corregida aprobada',
+      };
+    } else if (c.entrada_propuesta) {
       result.push({
         id: `corr-ent-${c.empleado_id}-${c.fecha}`,
         empleado_id: c.empleado_id,
@@ -556,7 +575,14 @@ function mergeCorreccionesIntoFichajes(fichajes: Fichaje[], correcciones: Correc
         corregido_at: null,
       });
     }
-    if (c.salida_propuesta && !hasSalida) {
+
+    if (c.salida_propuesta && salidaIndex !== undefined) {
+      result[salidaIndex] = {
+        ...result[salidaIndex],
+        timestamp_corregido: c.salida_propuesta,
+        nota_correccion: 'Salida corregida aprobada',
+      };
+    } else if (c.salida_propuesta) {
       result.push({
         id: `corr-sal-${c.empleado_id}-${c.fecha}`,
         empleado_id: c.empleado_id,
@@ -577,6 +603,7 @@ function mergeCorreccionesIntoFichajes(fichajes: Fichaje[], correcciones: Correc
       });
     }
   }
+
   return result;
 }
 
@@ -585,7 +612,7 @@ async function exportHoursPDF(
   allFichajes: Fichaje[],
   correcciones: CorreccionAprobada[],
 ) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr(new Date());
   const weekRange = getWeekRange(today);
   const monthRange = getMonthRange(today);
   const yearRange = getYearRange(today);
@@ -612,7 +639,7 @@ async function exportHoursPDF(
   doc.text(`Generado el ${fechaGen}`, pageW - margin, y, { align: 'right' });
   y += 8;
   doc.setFontSize(10);
-  doc.text(`Semana: ${weekRange.start} → ${weekRange.end} · Mes: ${monthRange.start} → ${monthRange.end} · Año: ${yearRange.start} → ${yearRange.end}`, margin, y);
+  doc.text(`Semana actual: ${weekRange.start} → ${weekRange.end} · Mes: ${monthRange.start} → ${monthRange.end} · Año: ${yearRange.start} → ${yearRange.end}`, margin, y);
   y += 7;
 
   const drawHeader = () => {
@@ -1074,7 +1101,7 @@ export default function FichajesModule() {
 
   // Apply period filter to date range
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr(new Date());
     if (periodFilter === 'hoy') {
       setFilterDesde(today); setFilterHasta(today);
     } else if (periodFilter === 'semana') {
@@ -1176,22 +1203,23 @@ export default function FichajesModule() {
 
   const totalDuracion = resumenes.reduce((acc, r) => acc + (r.duracion_neta ?? 0), 0);
   const incidentCount = resumenes.filter((r) => isIncident(r.duracion_neta, expectedMinutesFor(r.empleado_id))).length;
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr(new Date());
 
   const weekRange = getWeekRange(today);
   const monthRange = getMonthRange(today);
   const yearRange = getYearRange(today);
 
-  // Period totals: only when a specific worker is selected
+  // Period totals: worker-specific when selected, all workers otherwise
   const selectedEmpleadoNombre = filterEmpleado
     ? empleados.find((e) => e.id === filterEmpleado)?.nombre ?? ''
     : '';
+  const allResumenesForTotals = buildResumenes(fichajes);
   const workerResumenes = filterEmpleado
     ? buildResumenes(mergeCorreccionesIntoFichajes(workerYearFichajes, workerCorrecciones))
-    : [];
-  const weekMinutes = filterEmpleado ? sumMinutesInRange(workerResumenes, weekRange.start, weekRange.end) : 0;
-  const monthMinutes = filterEmpleado ? sumMinutesInRange(workerResumenes, monthRange.start, monthRange.end) : 0;
-  const yearMinutes = filterEmpleado ? sumMinutesInRange(workerResumenes, yearRange.start, yearRange.end) : 0;
+    : allResumenesForTotals;
+  const weekMinutes = sumMinutesInRange(workerResumenes, weekRange.start, weekRange.end);
+  const monthMinutes = sumMinutesInRange(workerResumenes, monthRange.start, monthRange.end);
+  const yearMinutes = sumMinutesInRange(workerResumenes, yearRange.start, yearRange.end);
 
   const filteredCentros = filterSociedad
     ? centros.filter((c) => c.id_sociedad === filterSociedad)
@@ -1257,7 +1285,7 @@ export default function FichajesModule() {
             <p className="text-2xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
             <p className="text-xs font-medium mt-0.5" style={{ color: kpi.color + 'AA' }}>{kpi.label}</p>
             <p className="text-[10px] mt-1" style={{ color: kpi.color + '88' }}>
-              {filterEmpleado ? `${selectedEmpleadoNombre} · ${kpi.sub}` : 'Selecciona un trabajador para ver sus horas'}
+              {filterEmpleado ? `${selectedEmpleadoNombre} · ${kpi.sub}` : `Todos los trabajadores · ${kpi.sub}`}
             </p>
           </div>
         ))}

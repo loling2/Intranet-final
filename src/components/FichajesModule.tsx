@@ -518,12 +518,81 @@ function exportIncidentPDF(resumenes: JornadaResumen[], desde: string, hasta: st
   doc.save(`informe_incidencias_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-async function exportHoursPDF(empleados: Empleado[], fetchFichajesForEmployee: (employeeId: string, yearStart: string, yearEnd: string) => Promise<Fichaje[]>) {
+interface CorreccionAprobada {
+  empleado_id: string | null;
+  nombre_empleado: string;
+  fecha: string;
+  entrada_propuesta: string | null;
+  salida_propuesta: string | null;
+  clasificacion_ausencia: string | null;
+}
+
+function mergeCorreccionesIntoFichajes(fichajes: Fichaje[], correcciones: CorreccionAprobada[]): Fichaje[] {
+  const result = [...fichajes];
+  for (const c of correcciones) {
+    if (!c.empleado_id) continue;
+    const dayFichajes = fichajes.filter(
+      (f) => f.empleado_id === c.empleado_id && f.fecha === c.fecha
+    );
+    const hasEntrada = dayFichajes.some((f) => f.tipo_evento === 'entrada');
+    const hasSalida = dayFichajes.some((f) => f.tipo_evento === 'salida');
+    if (c.entrada_propuesta && !hasEntrada) {
+      result.push({
+        id: `corr-ent-${c.empleado_id}-${c.fecha}`,
+        empleado_id: c.empleado_id,
+        nombre_empleado: c.nombre_empleado,
+        fecha: c.fecha,
+        timestamp: c.entrada_propuesta,
+        tipo_evento: 'entrada',
+        metodo: 'correccion',
+        es_manual: true,
+        nota_correccion: 'Entrada añadida por corrección aprobada',
+        ubicacion: null,
+        dispositivo: null,
+        user_agent: null,
+        timestamp_corregido: null,
+        motivo_correccion: null,
+        corregido_por: null,
+        corregido_at: null,
+      });
+    }
+    if (c.salida_propuesta && !hasSalida) {
+      result.push({
+        id: `corr-sal-${c.empleado_id}-${c.fecha}`,
+        empleado_id: c.empleado_id,
+        nombre_empleado: c.nombre_empleado,
+        fecha: c.fecha,
+        timestamp: c.salida_propuesta,
+        tipo_evento: 'salida',
+        metodo: 'correccion',
+        es_manual: true,
+        nota_correccion: 'Salida añadida por corrección aprobada',
+        ubicacion: null,
+        dispositivo: null,
+        user_agent: null,
+        timestamp_corregido: null,
+        motivo_correccion: null,
+        corregido_por: null,
+        corregido_at: null,
+      });
+    }
+  }
+  return result;
+}
+
+async function exportHoursPDF(
+  empleados: Empleado[],
+  allFichajes: Fichaje[],
+  correcciones: CorreccionAprobada[],
+) {
   const today = new Date().toISOString().split('T')[0];
   const weekRange = getWeekRange(today);
   const monthRange = getMonthRange(today);
   const yearRange = getYearRange(today);
   const fechaGen = new Date().toLocaleString('es-ES');
+
+  const mergedFichajes = mergeCorreccionesIntoFichajes(allFichajes, correcciones);
+  const allResumenes = buildResumenes(mergedFichajes);
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -562,14 +631,13 @@ async function exportHoursPDF(empleados: Empleado[], fetchFichajesForEmployee: (
   };
 
   drawHeader();
-  for (const [index, empleado] of empleados.entries()) {
+  empleados.forEach((empleado, index) => {
     if (y > pageH - 20) {
       doc.addPage();
       y = margin;
       drawHeader();
     }
-    const employeeFichajes = await fetchFichajesForEmployee(empleado.id, yearRange.start, yearRange.end);
-    const workerResumenes = buildResumenes(employeeFichajes);
+    const workerResumenes = allResumenes.filter((r) => r.empleado_id === empleado.id);
     const weekMinutes = sumMinutesInRange(workerResumenes, weekRange.start, weekRange.end);
     const monthMinutes = sumMinutesInRange(workerResumenes, monthRange.start, monthRange.end);
     const yearMinutes = sumMinutesInRange(workerResumenes, yearRange.start, yearRange.end);
@@ -589,7 +657,7 @@ async function exportHoursPDF(empleados: Empleado[], fetchFichajesForEmployee: (
       x += colW[valueIndex];
     });
     y += 8;
-  }
+  });
 
   if (empleados.length === 0) {
     doc.setFont('helvetica', 'italic');
@@ -933,6 +1001,7 @@ export default function FichajesModule() {
   const [viewMode, setViewMode] = useState<ViewMode>('resumen');
   const [showIncidentOnly, setShowIncidentOnly] = useState(false);
   const [workerYearFichajes, setWorkerYearFichajes] = useState<Fichaje[]>([]);
+  const [workerCorrecciones, setWorkerCorrecciones] = useState<CorreccionAprobada[]>([]);
 
   // Load reference data + supervisor's employee IDs if supervisor
   useEffect(() => {
@@ -1019,20 +1088,30 @@ export default function FichajesModule() {
 
   useEffect(() => { setPage(1); }, [search, filterTipo, filterDesde, filterHasta, viewMode, filterEmpleado, filterSociedad, filterCentro, showIncidentOnly]);
 
-  // When a worker is selected, fetch ALL their fichajes for the current year (not limited by the 5000 cap)
+  // When a worker is selected, fetch ALL their fichajes + approved corrections for the current year
   useEffect(() => {
-    if (!filterEmpleado) { setWorkerYearFichajes([]); return; }
+    if (!filterEmpleado) { setWorkerYearFichajes([]); setWorkerCorrecciones([]); return; }
     const yearStart = `${new Date().getFullYear()}-01-01`;
     const yearEnd = `${new Date().getFullYear()}-12-31`;
     (async () => {
-      const { data } = await supabase
-        .from('fichajes')
-        .select('*')
-        .eq('empleado_id', filterEmpleado)
-        .gte('fecha', yearStart)
-        .lte('fecha', yearEnd)
-        .order('timestamp', { ascending: true });
-      setWorkerYearFichajes((data ?? []) as Fichaje[]);
+      const [fichRes, corrRes] = await Promise.all([
+        supabase
+          .from('fichajes')
+          .select('*')
+          .eq('empleado_id', filterEmpleado)
+          .gte('fecha', yearStart)
+          .lte('fecha', yearEnd)
+          .order('timestamp', { ascending: true }),
+        supabase
+          .from('fichajes_correcciones')
+          .select('empleado_id,nombre_empleado,fecha,entrada_propuesta,salida_propuesta,clasificacion_ausencia')
+          .eq('estado', 'aprobada')
+          .eq('empleado_id', filterEmpleado)
+          .gte('fecha', yearStart)
+          .lte('fecha', yearEnd),
+      ]);
+      setWorkerYearFichajes((fichRes.data ?? []) as Fichaje[]);
+      setWorkerCorrecciones((corrRes.data ?? []) as unknown as CorreccionAprobada[]);
     })();
   }, [filterEmpleado]);
 
@@ -1108,7 +1187,7 @@ export default function FichajesModule() {
     ? empleados.find((e) => e.id === filterEmpleado)?.nombre ?? ''
     : '';
   const workerResumenes = filterEmpleado
-    ? buildResumenes(workerYearFichajes)
+    ? buildResumenes(mergeCorreccionesIntoFichajes(workerYearFichajes, workerCorrecciones))
     : [];
   const weekMinutes = filterEmpleado ? sumMinutesInRange(workerResumenes, weekRange.start, weekRange.end) : 0;
   const monthMinutes = filterEmpleado ? sumMinutesInRange(workerResumenes, monthRange.start, monthRange.end) : 0;
@@ -1364,17 +1443,16 @@ export default function FichajesModule() {
             onClick={async () => {
               const yearStart = `${new Date().getFullYear()}-01-01`;
               const yearEnd = `${new Date().getFullYear()}-12-31`;
-              const fetcher = async (employeeId: string, start: string, end: string): Promise<Fichaje[]> => {
-                const { data } = await supabase
-                  .from('fichajes')
-                  .select('*')
-                  .eq('empleado_id', employeeId)
-                  .gte('fecha', start)
-                  .lte('fecha', end)
-                  .order('timestamp', { ascending: true });
-                return (data ?? []) as Fichaje[];
-              };
-              await exportHoursPDF(reportEmpleados, fetcher);
+              const empIds = reportEmpleados.map((e) => e.id);
+              const [fichRes, corrRes] = await Promise.all([
+                empIds.length > 0
+                  ? supabase.from('fichajes').select('*').in('empleado_id', empIds).gte('fecha', yearStart).lte('fecha', yearEnd).order('timestamp', { ascending: true })
+                  : Promise.resolve({ data: [], error: null }),
+                supabase.from('fichajes_correcciones').select('empleado_id,nombre_empleado,fecha,entrada_propuesta,salida_propuesta,clasificacion_ausencia').eq('estado', 'aprobada').gte('fecha', yearStart).lte('fecha', yearEnd),
+              ]);
+              const allFichajes = (fichRes.data ?? []) as Fichaje[];
+              const correcciones = (corrRes.data ?? []) as unknown as { empleado_id: string | null; nombre_empleado: string; fecha: string; entrada_propuesta: string | null; salida_propuesta: string | null; clasificacion_ausencia: string | null }[];
+              await exportHoursPDF(reportEmpleados, allFichajes, correcciones);
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>

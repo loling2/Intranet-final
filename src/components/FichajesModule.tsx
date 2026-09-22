@@ -724,8 +724,8 @@ function ClockPanel({ profile, onChanged }: ClockPanelProps) {
   const [deviceAuthorized, setDeviceAuthorized] = useState(true);
 
   const loadToday = useCallback(async (): Promise<Fichaje[]> => {
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const today = localDateStr(new Date());
+    const yesterday = localDateStr(new Date(Date.now() - 86400000));
     const [todayRes, yesterdayRes] = await Promise.all([
       supabase.from('fichajes').select('*').eq('empleado_id', profile.id).eq('fecha', today).order('timestamp', { ascending: true }),
       supabase.from('fichajes').select('*').eq('empleado_id', profile.id).eq('fecha', yesterday).order('timestamp', { ascending: true }),
@@ -1493,7 +1493,27 @@ export default function FichajesModule() {
               const empIds = reportEmpleados.map((e) => e.id);
               const [fichRes, corrRes] = await Promise.all([
                 empIds.length > 0
-                  ? supabase.from('fichajes').select('*').in('empleado_id', empIds).gte('fecha', yearStart).lte('fecha', yearEnd).order('timestamp', { ascending: true })
+                  ? (async () => {
+                      const pageSize = 1000;
+                      const allRows: Fichaje[] = [];
+                      let offset = 0;
+                      while (true) {
+                        const { data, error } = await supabase
+                          .from('fichajes')
+                          .select('*')
+                          .in('empleado_id', empIds)
+                          .gte('fecha', yearStart)
+                          .lte('fecha', yearEnd)
+                          .order('timestamp', { ascending: true })
+                          .range(offset, offset + pageSize - 1);
+                        if (error) throw error;
+                        const page = (data ?? []) as Fichaje[];
+                        allRows.push(...page);
+                        if (page.length < pageSize) break;
+                        offset += pageSize;
+                      }
+                      return { data: allRows, error: null };
+                    })()
                   : Promise.resolve({ data: [], error: null }),
                 supabase.from('fichajes_correcciones').select('empleado_id,nombre_empleado,fecha,entrada_propuesta,salida_propuesta,clasificacion_ausencia').eq('estado', 'aprobada').gte('fecha', yearStart).lte('fecha', yearEnd),
               ]);

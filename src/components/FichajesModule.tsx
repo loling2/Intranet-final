@@ -1072,26 +1072,45 @@ export default function FichajesModule() {
     })();
   }, []);
 
-  // Load fichajes (filtered by supervisor's employees if supervisor)
+  // Load all fichajes in pages because the Data API caps each response at 1,000 rows
   const loadFichajes = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase.from('fichajes').select('*').order('timestamp', { ascending: false }).limit(5000);
-      // If supervisor, filter by their employee IDs
+      let supervisorEmployeeIds: string[] | null = null;
       if (isSupervisor && profile) {
         const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: profile.id });
-        const ids = ((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id);
-        if (ids.length > 0) {
-          query = query.in('empleado_id', ids);
-        } else {
-          // No employees assigned → no fichajes
+        supervisorEmployeeIds = ((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id);
+        if (supervisorEmployeeIds.length === 0) {
           setFichajes([]);
-          setLoading(false);
           return;
         }
       }
-      const { data } = await query;
-      setFichajes((data ?? []) as Fichaje[]);
+
+      const pageSize = 1000;
+      const allFichajes: Fichaje[] = [];
+      let offset = 0;
+
+      while (true) {
+        let pageQuery = supabase
+          .from('fichajes')
+          .select('*')
+          .order('timestamp', { ascending: false })
+          .range(offset, offset + pageSize - 1);
+
+        if (supervisorEmployeeIds) {
+          pageQuery = pageQuery.in('empleado_id', supervisorEmployeeIds);
+        }
+
+        const { data, error } = await pageQuery;
+        if (error) throw error;
+
+        const page = (data ?? []) as Fichaje[];
+        allFichajes.push(...page);
+        if (page.length < pageSize) break;
+        offset += pageSize;
+      }
+
+      setFichajes(allFichajes);
     } finally {
       setLoading(false);
     }

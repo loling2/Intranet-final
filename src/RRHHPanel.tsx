@@ -23,6 +23,7 @@ import CentrosModule from './components/CentrosModule';
 import DevicesModule from './components/DevicesModule';
 import BajasModule from './components/BajasModule';
 import SupervisorEmpleados from './components/SupervisorEmpleados';
+import CrmPanel from './components/CrmPanel';
 import HelpPanel from './components/HelpPanel';
 
 import { supabase } from './supabaseClient';
@@ -41,7 +42,7 @@ interface Props {
   onNavigateProfile?: (view: string) => void;
 }
 
-type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'centros' | 'facturas' | 'incidencias' | 'fichajes' | 'kiosk-devices' | 'devices' | 'bajas' | 'supervisor-empleados' | 'ayuda';
+type RRHHTab = 'overview' | 'employees' | 'personal-docs' | 'vacations' | 'certificates' | 'exams' | 'users' | 'vehicles' | 'documents' | 'pdf-split' | 'audit' | 'contratos' | 'prevencion' | 'centros' | 'facturas' | 'incidencias' | 'fichajes' | 'kiosk-devices' | 'devices' | 'bajas' | 'supervisor-empleados' | 'crm' | 'ayuda';
 
 export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, isSupervisor, role, onNavigateEmployee, allowedSocietyId, availableProfiles, onNavigateProfile }: Props) {
   const [activeTab, setActiveTab] = useState<RRHHTab>('overview');
@@ -142,6 +143,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     { id: 'kiosk-devices', label: 'Tablets Kiosco', icon: Tablet },
     { id: 'bajas', label: 'Bajas/Ausencias', icon: BedSingle },
     { id: 'supervisor-empleados', label: 'Empleados Asignados', icon: UserCog },
+    { id: 'crm', label: 'CRM', icon: Users },
     { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
   ];
 
@@ -788,6 +790,17 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
               </div>
             </div>
           </div>
+        )}
+
+        {/* CRM Tab */}
+        {activeTab === 'crm' && (
+          <CrmPanel
+            email={email}
+            onLogout={onLogout}
+            onNavigateEmployee={onNavigateEmployee}
+            availableProfiles={availableProfiles}
+            onNavigateProfile={onNavigateProfile}
+          />
         )}
 
       </div>

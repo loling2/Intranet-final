@@ -37,6 +37,7 @@ const ALL_TABS: TabDef[] = [
   { id: 'bajas',           label: 'Bajas/Ausencias',       icon: BedSingle },
   { id: 'prl-docs',       label: 'Documentos PRL',        icon: ShieldCheck },
   { id: 'supervisor-empleados', label: 'Empleados Asignados', icon: UserCog },
+  { id: 'crm',           label: 'CRM',                    icon: Users },
 ];
 
 interface RoleDef {

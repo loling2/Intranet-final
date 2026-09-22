@@ -28,6 +28,7 @@ import CentrosModule from './components/CentrosModule';
 import RoleTabPermissionsManager from './components/RoleTabPermissionsManager';
 import HelpPanel from './components/HelpPanel';
 import SegurosModule from './components/SegurosModule';
+import CrmPanel from './components/CrmPanel';
 import { useSociety } from './context/SocietyContext';
 import { supabase } from './supabaseClient';
 import type { Centro } from './supabaseClient';
@@ -39,7 +40,7 @@ interface Props {
   onImpersonate?: (userId: string, societyId: string | null) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'centros' | 'documents' | 'devices' | 'kiosk-devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'seguros' | 'ayuda';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'centros' | 'documents' | 'devices' | 'kiosk-devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'seguros' | 'crm' | 'ayuda';
 
 export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -139,6 +140,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     { id: 'fichajes',     label: 'Fichajes',              icon: Clock },
     { id: 'permissions',  label: 'Permisos de Perfiles',  icon: Lock },
     { id: 'seguros',       label: 'Seguros',              icon: ShieldCheck },
+    { id: 'crm',           label: 'CRM',                  icon: Users },
     { id: 'ayuda',         label: 'Ayuda',                 icon: HelpCircle },
   ];
 
@@ -713,6 +715,14 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
 
         {activeTab === 'seguros' && (
           <SegurosModule />
+        )}
+
+        {activeTab === 'crm' && (
+          <CrmPanel
+            email={email}
+            onLogout={onLogout}
+            onNavigateEmployee={() => onNavigate('dashboard')}
+          />
         )}
       </div>
     </div>

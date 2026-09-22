@@ -18,6 +18,7 @@ import PrevencionPanel from './PrevencionPanel';
 import AdministracionPanel from './AdministracionPanel';
 import CalidadPanel from './CalidadPanel';
 import FormacionPanel from './FormacionPanel';
+import CrmPanel from './components/CrmPanel';
 import CalidadDocsCard from './components/CalidadDocsCard';
 import { supabase } from './supabaseClient';
 import { AuthProvider } from './context/AuthContext';
@@ -1242,7 +1243,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 }
 
 
-type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion' | 'calidad' | 'formacion' | 'rrhh_gerontalia' | 'supervisor_gerontalia';
+type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion' | 'calidad' | 'formacion' | 'rrhh_gerontalia' | 'supervisor_gerontalia' | 'crm';
 
 interface SessionState {
   email: string;
@@ -1591,6 +1592,7 @@ export default function LoginPage() {
     if (sessionRoles.includes('administracion')) profileOptions.push({ label: 'Administracion', view: 'administracion', icon: Building2, color: '#2563EB' });
     if (sessionRoles.includes('calidad')) profileOptions.push({ label: 'Calidad', view: 'calidad', icon: CheckCircle2, color: '#0369A1' });
     if (sessionRoles.includes('formacion')) profileOptions.push({ label: 'Formacion', view: 'formacion', icon: ClipboardCheck, color: '#0D9488' });
+    if (sessionRoles.includes('admin')) profileOptions.push({ label: 'CRM', view: 'crm', icon: Users, color: '#0369A1' });
     profileOptions.push({ label: 'Empleado', view: 'dashboard', icon: Users, color: '#16A34A' });
 
     if (session.view === 'prevencion') {
@@ -1688,6 +1690,22 @@ export default function LoginPage() {
         <AuthProvider>
           <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined} lockedSocietyId={lockedSocietyId}>
             <FormacionPanel
+              email={session.email}
+              onLogout={handleLogout}
+              onNavigateEmployee={() => handleNavigate('dashboard')}
+              availableProfiles={profileOptions}
+              onNavigateProfile={(v) => handleNavigate(v as AppView)}
+            />
+          </SocietyProvider>
+        </AuthProvider>
+      );
+    }
+
+    if (session.view === 'crm') {
+      return (
+        <AuthProvider>
+          <SocietyProvider defaultSocietyId={session.activeSocietyId ?? undefined} lockedSocietyId={lockedSocietyId}>
+            <CrmPanel
               email={session.email}
               onLogout={handleLogout}
               onNavigateEmployee={() => handleNavigate('dashboard')}

@@ -24,6 +24,7 @@ interface Correccion {
   validado_at: string | null;
   created_at: string;
   clasificacion_ausencia: 'no_fichado' | 'dia_libre' | 'asuntos_propios' | null;
+  sociedad_id: string | null;
 }
 
 function formatTime(iso: string | null) {

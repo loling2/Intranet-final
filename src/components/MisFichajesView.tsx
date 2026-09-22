@@ -60,6 +60,7 @@ interface Correccion {
   validado_at: string | null;
   created_at: string;
   clasificacion_ausencia: 'no_fichado' | 'dia_libre' | 'asuntos_propios' | null;
+  sociedad_id: string | null;
 }
 
 interface VehicleLogEntry {
@@ -446,6 +447,7 @@ function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: Correcti
         salida_propuesta: salidaNormalizada ? fromTimeInputValue(jornada.fecha, salidaNormalizada) : null,
         motivo: motivo.trim(),
         estado: 'pendiente',
+        sociedad_id: empleadoSociedadId,
       });
       if (insErr) throw insErr;
 

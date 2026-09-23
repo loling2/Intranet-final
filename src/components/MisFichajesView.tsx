@@ -398,11 +398,12 @@ function exportPDF(
 interface CorrectionModalProps {
   jornada: JornadaResumen;
   nombreEmpleado: string;
+  empleadoSociedadId: string | null;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function CorrectionModal({ jornada, nombreEmpleado, onClose, onSaved }: CorrectionModalProps) {
+function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose, onSaved }: CorrectionModalProps) {
   const initialEntrada = toLocalTimeInputValue(jornada.entrada);
   const initialSalida = toLocalTimeInputValue(jornada.salida);
   const [entradaHora, setEntradaHora] = useState(initialEntrada ? initialEntrada.split(':')[0] : '');
@@ -1175,6 +1176,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
         <CorrectionModal
           jornada={correctionTarget}
           nombreEmpleado={nombreEmpleado}
+          empleadoSociedadId={empleadoSociedadId}
           onClose={() => setCorrectionTarget(null)}
           onSaved={loadData}
         />

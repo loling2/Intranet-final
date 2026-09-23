@@ -185,8 +185,8 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
         className="sticky top-0 z-50"
         style={{ background: supervisorTheme.headerBg, borderBottom: '1px solid rgba(255,255,255,0.1)' }}
       >
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex flex-col 2xl:flex-row 2xl:items-center 2xl:justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 w-full 2xl:w-auto">
             {/* Profile switcher */}
             {availableProfiles && onNavigateProfile ? (
               <ProfileSwitcher
@@ -212,11 +212,11 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
               {isSupervisor ? <UserCog size={18} className="text-white" /> : <Users size={18} className="text-white" />}
             </div>
             <div className="min-w-0">
-              <h1 className="text-white font-bold text-sm sm:text-lg tracking-tight">{supervisorTheme.panelTitle}</h1>
+              <h1 className="text-white font-bold text-sm sm:text-lg tracking-tight whitespace-nowrap">{supervisorTheme.panelTitle}</h1>
               <p className="text-white/50 text-xs hidden sm:block">{supervisorTheme.panelSubtitle}</p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+          <div className="flex items-center justify-end gap-1.5 sm:gap-3 flex-wrap flex-shrink-0 w-full 2xl:w-auto">
             <SocietySwitcher textColor={supervisorTheme.headerText} bgColor="rgba(255,255,255,0.08)" borderColor="rgba(255,255,255,0.1)" allowedSocieties={allowedSocietyId ? [allowedSocietyId] : undefined} />
             {/* Kiosk mode button */}
             <button

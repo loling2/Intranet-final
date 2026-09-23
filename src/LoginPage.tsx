@@ -1622,7 +1622,7 @@ export default function LoginPage() {
               onNavigateAdmin={sessionRoles.includes('admin') ? () => handleNavigate('admin') : undefined}
               isAdmin={sessionRoles.includes('admin')}
               isSupervisor={false}
-              role={sessionRoles.includes('admin') ? 'admin' : (sessionRoles.includes('rrhh') ? 'rrhh' : session.role)}
+              role="rrhh"
               onNavigateEmployee={() => handleNavigate('dashboard')}
               allowedSocietyId={sessionRoles.includes('rrhh_gerontalia') ? GERONTALIA_ID : undefined}
               availableProfiles={profileOptions}

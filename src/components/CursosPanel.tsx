@@ -165,12 +165,21 @@ export default function CursosPanel() {
         examen_id: cursoForm.examen_id || null,
       };
       if (editingCurso) {
+        const prevExamenId = editingCurso.examen_id;
         const { error: err } = await supabase.from('moodle_cursos').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingCurso.id);
         if (err) throw err;
-        if (cursoForm.examen_id) {
+        if (cursoForm.examen_id !== prevExamenId) {
           const { data: existingAsig } = await supabase.from('moodle_asignaciones').select('empleado_id').eq('curso_id', editingCurso.id);
-          if (existingAsig && existingAsig.length > 0) {
-            const { data: emps } = await supabase.from('empleados').select('id, nombre, dni').in('id', existingAsig.map((a: any) => a.empleado_id));
+          const empleadoIds = (existingAsig ?? []).map((a: any) => a.empleado_id).filter(Boolean);
+          if (prevExamenId && empleadoIds.length > 0) {
+            await supabase.from('examen_asignaciones')
+              .delete()
+              .eq('examen_id', prevExamenId)
+              .in('empleado_id', empleadoIds)
+              .neq('estado', 'completado');
+          }
+          if (cursoForm.examen_id && empleadoIds.length > 0) {
+            const { data: emps } = await supabase.from('empleados').select('id, nombre, dni').in('id', empleadoIds);
             const examRows = (emps ?? []).map((emp: any) => ({
               examen_id: cursoForm.examen_id,
               empleado_id: emp.id,
@@ -178,7 +187,7 @@ export default function CursosPanel() {
               dni: emp.dni ?? null,
               estado: 'pendiente' as const,
             }));
-            await supabase.from('examen_asignaciones').upsert(examRows, { onConflict: 'examen_id,empleado_id', ignoreDuplicates: true });
+            await supabase.from('examen_asignaciones').upsert(examRows, { onConflict: 'examen_id,empleado_id' });
           }
         }
       } else {
@@ -351,7 +360,7 @@ export default function CursosPanel() {
           dni: emp.dni ?? null,
           estado: 'pendiente' as const,
         }));
-        await supabase.from('examen_asignaciones').upsert(examRows, { onConflict: 'examen_id,empleado_id', ignoreDuplicates: true });
+        await supabase.from('examen_asignaciones').upsert(examRows, { onConflict: 'examen_id,empleado_id' });
       }
 
       setShowAssignModal(false);

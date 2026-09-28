@@ -218,7 +218,8 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
           </div>
           <div className="flex items-center justify-end gap-1.5 sm:gap-3 flex-wrap flex-shrink-0 w-full 2xl:w-auto">
             <SocietySwitcher textColor={supervisorTheme.headerText} bgColor="rgba(255,255,255,0.08)" borderColor="rgba(255,255,255,0.1)" allowedSocieties={allowedSocietyId ? [allowedSocietyId] : undefined} />
-            {/* Kiosk mode button */}
+            {/* Kiosk mode button — hidden for supervisor */}
+            {!isSupervisor && (
             <button
               onClick={() => { window.location.hash = 'kiosco'; }}
               className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200"
@@ -228,6 +229,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
               <MonitorSmartphone size={12} />
               <span className="hidden lg:inline">Modo Kiosco</span>
             </button>
+            )}
             {isAdmin && onNavigateAdmin && (
               <button
                 onClick={onNavigateAdmin}

@@ -2994,13 +2994,12 @@ useEffect(() => {
     { id: 'calidad', label: 'Calidad', icon: ShieldCheck },
     { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
     { id: 'formacion', label: 'Formacion', icon: GraduationCap },
-    { id: 'moodle', label: 'Moodle', icon: BookOpen },
     { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },
     { id: 'fichajes', label: 'Fichajes', icon: Clock },
     { id: 'vacaciones', label: 'Vacaciones', icon: Plane },
   ];
 
-  const [formacionSubTab, setFormacionSubTab] = useState<'examenes' | 'certificados'>('examenes');
+  const [formacionSubTab, setFormacionSubTab] = useState<'moodle' | 'examenes' | 'certificados'>('moodle');
 
   return (
     <div className="min-h-screen transition-all duration-700" style={{ backgroundColor: theme.bg }}>
@@ -3311,6 +3310,18 @@ useEffect(() => {
               }}
             >
               <button
+                onClick={() => setFormacionSubTab('moodle')}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 cursor-pointer whitespace-nowrap"
+                style={{
+                  backgroundColor: formacionSubTab === 'moodle' ? theme.primary : 'transparent',
+                  color: formacionSubTab === 'moodle' ? '#FFFFFF' : theme.textSecondary,
+                  boxShadow: formacionSubTab === 'moodle' ? `0 2px 8px ${theme.primary}30` : 'none',
+                }}
+              >
+                <BookOpen size={15} />
+                <span>Moodle</span>
+              </button>
+              <button
                 onClick={() => setFormacionSubTab('examenes')}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 cursor-pointer whitespace-nowrap"
                 style={{
@@ -3337,6 +3348,9 @@ useEffect(() => {
             </div>
 
             {/* Sub-tab content */}
+            {formacionSubTab === 'moodle' && (
+              <MoodleCursosEmpleado theme={theme} />
+            )}
             {formacionSubTab === 'examenes' && (
               <ExamsCard exams={exams} theme={theme} />
             )}
@@ -3344,10 +3358,6 @@ useEffect(() => {
               <CertificatesCard certificates={certificates} theme={theme} />
             )}
           </div>
-        )}
-
-        {activeTab === 'moodle' && (
-          <MoodleCursosEmpleado theme={theme} />
         )}
 
         {activeTab === 'incidencias' && currentUserId && (

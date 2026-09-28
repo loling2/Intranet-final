@@ -33,6 +33,16 @@ interface Asignacion {
   fecha_asignacion: string;
 }
 
+function normalizeExternalUrl(value: string): string | null {
+  const candidate = /^https?:\/\//i.test(value.trim()) ? value.trim() : `https://${value.trim()}`;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 const tipoConfig: Record<string, { label: string; icon: typeof FileText; color: string; bg: string }> = {
   texto: { label: 'Texto', icon: Type, color: '#2563EB', bg: '#EFF6FF' },
   pdf: { label: 'PDF', icon: FileText, color: '#DC2626', bg: '#FEF2F2' },
@@ -195,7 +205,7 @@ export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme })
                           </div>
                         )}
                         {c.tipo === 'enlace' && c.url_externa && (
-                          <a href={c.url_externa} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}>
+                          <a href={normalizeExternalUrl(c.url_externa) ?? '#'} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}>
                             <LinkIcon size={12} /> Abrir enlace
                           </a>
                         )}
@@ -228,7 +238,21 @@ export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme })
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      <div className="rounded-2xl p-5 sm:p-6 overflow-hidden relative" style={{ background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`, boxShadow: `0 12px 30px ${theme.primary}20` }}>
+        <div className="absolute -right-8 -top-10 w-36 h-36 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }} />
+        <div className="relative flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>
+            <BookOpen size={28} style={{ color: '#FFFFFF' }} />
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.18em]" style={{ color: 'rgba(255,255,255,0.72)' }}>Formacion online</p>
+            <h3 className="text-xl font-bold mt-1" style={{ color: '#FFFFFF' }}>Moodle</h3>
+            <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.82)' }}>Accede a tus cursos y materiales de aprendizaje.</p>
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-center gap-3 mb-2">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${theme.primary}12` }}>
           <BookOpen size={20} style={{ color: theme.primary }} />

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BookOpen, Plus, X, Trash2, Search, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Upload, Loader2, CheckCircle2, AlertCircle, Users, ChevronLeft, Clock, Save } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { ensureMoodleCursoFolder, uploadMoodleFile, sanitizeSlug, getWasabiBlobUrl, downloadFromWasabi } from '../lib/wasabi';
+import { ensureMoodleCursoFolder, uploadMoodleFile, sanitizeSlug, downloadFromWasabi } from '../lib/wasabi';
 
 interface Curso {
   id: string;
@@ -32,6 +32,16 @@ interface Empleado {
   id: string;
   nombre: string;
   dni: string | null;
+}
+
+function normalizeExternalUrl(value: string): string | null {
+  const candidate = /^https?:\/\//i.test(value.trim()) ? value.trim() : `https://${value.trim()}`;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 interface AsignacionCurso {
@@ -193,7 +203,8 @@ export default function CursosPanel() {
   const handleSaveContenido = async () => {
     if (!selectedCurso) return;
     if (!contenidoForm.titulo.trim()) { setError('El titulo del contenido es obligatorio.'); return; }
-    if (contenidoForm.tipo === 'enlace' && !contenidoForm.url_externa.trim()) { setError('La URL es obligatoria para enlaces.'); return; }
+    const externalUrl = contenidoForm.tipo === 'enlace' ? normalizeExternalUrl(contenidoForm.url_externa) : null;
+    if (contenidoForm.tipo === 'enlace' && !externalUrl) { setError('Escribe una URL válida, por ejemplo https://www.youtube.com/...'); return; }
     if ((contenidoForm.tipo === 'pdf' || contenidoForm.tipo === 'powerpoint' || contenidoForm.tipo === 'video') && !uploadFile) { setError('Debes seleccionar un archivo.'); return; }
     setSavingContenido(true); setError('');
     try {
@@ -213,7 +224,7 @@ export default function CursosPanel() {
         tipo: contenidoForm.tipo,
         contenido_texto: contenidoForm.tipo === 'texto' ? contenidoForm.contenido_texto.trim() : null,
         wasabi_key: wasabiKey,
-        url_externa: contenidoForm.tipo === 'enlace' ? contenidoForm.url_externa.trim() : null,
+        url_externa: externalUrl,
         nombre_archivo: nombreArchivo,
         tamano_bytes: tamanoBytes,
         orden: contenidos.length,
@@ -303,27 +314,44 @@ export default function CursosPanel() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar curso..."
-            className="w-full pl-9 pr-4 py-2 rounded-lg text-xs outline-none"
-            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#0F172A' }}
-          />
+    <div className="space-y-5">
+      {/* Header banner */}
+      <div className="rounded-2xl p-5 sm:p-6 overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #0D9488, #0F766E)', boxShadow: '0 12px 30px rgba(13,148,136,0.2)' }}>
+        <div className="absolute -right-8 -top-10 w-36 h-36 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }} />
+        <div className="absolute -right-4 -bottom-12 w-24 h-24 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
+        <div className="relative flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}>
+              <BookOpen size={28} style={{ color: '#FFFFFF' }} />
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.18em]" style={{ color: 'rgba(255,255,255,0.72)' }}>Plataforma de cursos</p>
+              <h3 className="text-xl font-bold mt-1" style={{ color: '#FFFFFF' }}>Moodle</h3>
+              <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.82)' }}>Crea cursos y sube contenido formativo.</p>
+            </div>
+          </div>
+          <button
+            onClick={openNewCurso}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all duration-200"
+            style={{ backgroundColor: '#FFFFFF', color: '#0D9488', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+          >
+            <Plus size={14} />
+            Nuevo Curso
+          </button>
         </div>
-        <button
-          onClick={openNewCurso}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-200"
-          style={{ backgroundColor: '#0D9488', color: '#FFFFFF' }}
-        >
-          <Plus size={14} />
-          Nuevo Curso
-        </button>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar curso..."
+          className="w-full pl-9 pr-4 py-2 rounded-lg text-xs outline-none"
+          style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#0F172A' }}
+        />
       </div>
 
       {loadingCursos ? (
@@ -331,59 +359,59 @@ export default function CursosPanel() {
           <Loader2 size={24} className="animate-spin" style={{ color: '#0D9488' }} />
         </div>
       ) : filteredCursos.length === 0 ? (
-        <div className="rounded-xl p-8 text-center" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-          <BookOpen size={32} style={{ color: '#94A3B8' }} />
-          <p className="text-sm mt-3" style={{ color: '#64748B' }}>No hay cursos creados todavia.</p>
+        <div className="rounded-2xl p-10 text-center" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: '#F0FDFA' }}>
+            <BookOpen size={32} style={{ color: '#0D9488' }} />
+          </div>
+          <p className="text-sm font-medium" style={{ color: '#0F172A' }}>No hay cursos creados todavia</p>
+          <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Crea tu primer curso con el boton "Nuevo Curso".</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredCursos.map((curso) => (
-            <div key={curso.id} className="rounded-xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+            <div key={curso.id} className="rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
               <div
-                className="p-4 cursor-pointer transition-all duration-200"
+                className="p-5 cursor-pointer"
                 onClick={() => handleSelectCurso(curso)}
-                style={{ backgroundColor: selectedCurso?.id === curso.id ? '#F0FDFA' : '#FFFFFF' }}
+                style={{ background: selectedCurso?.id === curso.id ? 'linear-gradient(135deg, #F0FDFA, #ECFDF5)' : '#FFFFFF' }}
               >
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F0FDFA' }}>
-                    <BookOpen size={18} style={{ color: '#0D9488' }} />
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0D9488, #0F766E)' }}>
+                    <BookOpen size={20} style={{ color: '#FFFFFF' }} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-semibold" style={{ color: '#0F172A' }}>{curso.nombre}</h4>
-                    {curso.descripcion && <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{curso.descripcion}</p>}
-                    <div className="flex items-center gap-3 mt-2 flex-wrap">
-                      {curso.categoria && (
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded" style={{ color: '#0D9488', backgroundColor: '#F0FDFA', border: '1px solid #99F6E4' }}>{curso.categoria}</span>
-                      )}
-                      {curso.duracion_estimada && (
-                        <span className="flex items-center gap-1 text-[10px]" style={{ color: '#94A3B8' }}>
-                          <Clock size={9} /> {curso.duracion_estimada}
-                        </span>
-                      )}
-                      {!curso.activo && (
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded" style={{ color: '#DC2626', backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>Inactivo</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button onClick={(e) => { e.stopPropagation(); openEditCurso(curso); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
+                  <div className="flex items-center gap-1">
+                    <button onClick={(e) => { e.stopPropagation(); openEditCurso(curso); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
                       <Save size={12} />
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDeleteCurso(curso); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
+                    <button onClick={(e) => { e.stopPropagation(); handleDeleteCurso(curso); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
                       <Trash2 size={12} />
                     </button>
                   </div>
+                </div>
+                <h4 className="text-sm font-bold leading-tight" style={{ color: '#0F172A' }}>{curso.nombre}</h4>
+                {curso.descripcion && <p className="text-xs mt-1.5 line-clamp-2" style={{ color: '#94A3B8' }}>{curso.descripcion}</p>}
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  {curso.categoria && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md" style={{ color: '#0D9488', backgroundColor: '#F0FDFA', border: '1px solid #99F6E4' }}>{curso.categoria}</span>
+                  )}
+                  {curso.duracion_estimada && (
+                    <span className="flex items-center gap-1 text-[10px] font-medium" style={{ color: '#94A3B8' }}>
+                      <Clock size={9} /> {curso.duracion_estimada}
+                    </span>
+                  )}
+                  {!curso.activo && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md" style={{ color: '#DC2626', backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>Inactivo</span>
+                  )}
                 </div>
               </div>
 
               {selectedCurso?.id === curso.id && (
                 <div className="border-t" style={{ borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' }}>
-                  {/* Contenido */}
                   <div className="p-4">
                     <div className="flex items-center justify-between mb-3">
-                      <h5 className="text-xs font-semibold" style={{ color: '#0F172A' }}>Contenido del curso</h5>
+                      <h5 className="text-xs font-bold" style={{ color: '#0F172A' }}>Contenido del curso</h5>
                       <button onClick={openNewContenido} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-semibold cursor-pointer" style={{ backgroundColor: '#0D9488', color: '#FFFFFF' }}>
-                        <Plus size={10} /> Anadir contenido
+                        <Plus size={10} /> Anadir
                       </button>
                     </div>
 
@@ -397,7 +425,7 @@ export default function CursosPanel() {
                           const cfg = tipoConfig[c.tipo] ?? tipoConfig.texto;
                           const Icon = cfg.icon;
                           return (
-                            <div key={c.id} className="rounded-lg p-3 flex items-center gap-3" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                            <div key={c.id} className="rounded-lg p-3 flex items-center gap-3 transition-all hover:shadow-sm" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cfg.bg }}>
                                 <Icon size={14} style={{ color: cfg.color }} />
                               </div>
@@ -411,7 +439,7 @@ export default function CursosPanel() {
                                 <button onClick={() => handleDownloadContenido(c)} className="text-[10px] font-medium px-2 py-1 rounded cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>Descargar</button>
                               )}
                               {c.url_externa && (
-                                <a href={c.url_externa} target="_blank" rel="noopener noreferrer" className="text-[10px] font-medium px-2 py-1 rounded" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>Abrir</a>
+                                <a href={normalizeExternalUrl(c.url_externa) ?? '#'} target="_blank" rel="noopener noreferrer" className="text-[10px] font-medium px-2 py-1 rounded" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>Abrir</a>
                               )}
                               <button onClick={() => handleDeleteContenido(c)} className="w-6 h-6 rounded flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
                                 <Trash2 size={10} />
@@ -423,10 +451,9 @@ export default function CursosPanel() {
                     )}
                   </div>
 
-                  {/* Asignaciones */}
                   <div className="p-4 border-t" style={{ borderColor: '#E2E8F0' }}>
                     <div className="flex items-center justify-between mb-3">
-                      <h5 className="text-xs font-semibold" style={{ color: '#0F172A' }}>Empleados asignados ({asignacionesCurso.length})</h5>
+                      <h5 className="text-xs font-bold" style={{ color: '#0F172A' }}>Empleados asignados ({asignacionesCurso.length})</h5>
                       <button onClick={openAssignModal} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-semibold cursor-pointer" style={{ backgroundColor: '#0D9488', color: '#FFFFFF' }}>
                         <Users size={10} /> Asignar
                       </button>
@@ -444,7 +471,7 @@ export default function CursosPanel() {
                               <p className="text-xs font-medium truncate" style={{ color: '#0F172A' }}>{a.nombre_empleado}</p>
                               <p className="text-[10px]" style={{ color: '#94A3B8' }}>{a.dni ?? 'Sin DNI'}</p>
                             </div>
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded" style={{ color: a.estado === 'completado' ? '#16A34A' : a.estado === 'en_curso' ? '#0D9488' : '#64748B', backgroundColor: a.estado === 'completado' ? '#F0FDF4' : a.estado === 'en_curso' ? '#F0FDFA' : '#F8FAFC' }}>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded" style={{ color: a.estado === 'completado' ? '#16A34A' : a.estado === 'en_curso' ? '#0D9488' : '#64748B', backgroundColor: a.estado === 'completado' ? '#F0FDF4' : a.estado === 'en_curso' ? '#F0FDFA' : '#F8FAFC' }}>
                               {a.estado}
                             </span>
                             <button onClick={() => handleDeleteAsignacionCurso(a)} className="w-6 h-6 rounded flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
@@ -561,7 +588,7 @@ export default function CursosPanel() {
               {contenidoForm.tipo === 'enlace' && (
                 <div>
                   <label className="text-xs font-medium block mb-1" style={{ color: '#0F172A' }}>URL *</label>
-                  <input type="url" value={contenidoForm.url_externa} onChange={(e) => setContenidoForm({ ...contenidoForm, url_externa: e.target.value })} placeholder="https://..."
+                  <input type="text" value={contenidoForm.url_externa} onChange={(e) => setContenidoForm({ ...contenidoForm, url_externa: e.target.value })} placeholder="www.youtube.com o https://..."
                     className="w-full px-3 py-2 rounded-lg text-xs outline-none" style={{ border: '1px solid #E2E8F0', color: '#0F172A' }} />
                 </div>
               )}

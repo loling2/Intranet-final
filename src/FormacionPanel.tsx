@@ -72,7 +72,7 @@ const estadoConfig: Record<string, { label: string; color: string; bg: string; b
 };
 
 export default function FormacionPanel({ email, onLogout, onNavigateEmployee, availableProfiles, onNavigateProfile }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>('examenes');
+  const [activeTab, setActiveTab] = useState<Tab>('cursos');
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
 
@@ -363,8 +363,8 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
   );
 
   const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
-    { id: 'examenes', label: 'Examenes', icon: ClipboardCheck },
-    { id: 'cursos', label: 'Cursos', icon: BookOpen },
+    { id: 'cursos', label: 'Moodle', icon: BookOpen },
+    { id: 'examenes', label: 'Examenes', icon: ClipboardCheck },,
     { id: 'asignaciones', label: 'Asignaciones', icon: UserCheck },
     { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
   ];
@@ -702,7 +702,7 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
           </div>
         )}
 
-        {/* ── Tab: Cursos (Moodle) ── */}
+        {/* ── Tab: Moodle ── */}
         {activeTab === 'cursos' && (
           <CursosPanel />
         )}

@@ -672,6 +672,8 @@ export default function MisFichajesView({ theme, userId }: Props) {
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [correccionPage, setCorreccionPage] = useState(0);
   const CORRECCIONES_PER_PAGE = 5;
+  const [fichajePage, setFichajePage] = useState(0);
+  const FICHAJES_PER_PAGE = 10;
 
   // Default: last 30 days
   useEffect(() => {
@@ -971,6 +973,13 @@ export default function MisFichajesView({ theme, userId }: Props) {
             <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>Ajusta el rango de fechas para ver registros</p>
           </div>
         ) : (
+          (() => {
+            const totalPages = Math.ceil(gruposPorDia.length / FICHAJES_PER_PAGE);
+            const safePage = Math.min(fichajePage, totalPages - 1);
+            const startIdx = safePage * FICHAJES_PER_PAGE;
+            const pageGroups = gruposPorDia.slice(startIdx, startIdx + FICHAJES_PER_PAGE);
+            return (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full text-sm" style={{ minWidth: '760px' }}>
               <thead>
@@ -981,7 +990,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ borderColor: theme.border }}>
-                {gruposPorDia.map((grupo) => {
+                {pageGroups.map((grupo) => {
                   const isExpanded = expandedDates.has(grupo.fecha);
                   const hasMultiple = grupo.jornadas.length > 1;
                   const first = grupo.jornadas[0];
@@ -1058,6 +1067,43 @@ export default function MisFichajesView({ theme, userId }: Props) {
               </tbody>
             </table>
           </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-1.5 px-5 py-3" style={{ borderTop: `1px solid ${theme.border}`, backgroundColor: theme.bg }}>
+              <button
+                onClick={() => setFichajePage(Math.max(0, safePage - 1))}
+                disabled={safePage === 0}
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                style={{ backgroundColor: safePage === 0 ? 'transparent' : theme.bgCard, color: theme.primary, border: `1px solid ${theme.border}` }}
+              >
+                ‹
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setFichajePage(p)}
+                  className="w-7 h-7 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                  style={{
+                    backgroundColor: p === safePage ? theme.primary : theme.bgCard,
+                    color: p === safePage ? '#FFFFFF' : theme.textSecondary,
+                    border: `1px solid ${p === safePage ? theme.primary : theme.border}`,
+                  }}
+                >
+                  {p + 1}
+                </button>
+              ))}
+              <button
+                onClick={() => setFichajePage(Math.min(totalPages - 1, safePage + 1))}
+                disabled={safePage === totalPages - 1}
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                style={{ backgroundColor: safePage === totalPages - 1 ? 'transparent' : theme.bgCard, color: theme.primary, border: `1px solid ${theme.border}` }}
+              >
+                ›
+              </button>
+            </div>
+          )}
+          </>
+          );
+          })()
         )}
       </div>
       )}

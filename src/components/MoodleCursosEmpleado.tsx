@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { BookOpen, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Layers, Clock, CheckCircle2, Loader2, ChevronLeft, ChevronRight, Download, Lock, Play, Award, AlertCircle, FileQuestion, ChevronDown, ChevronRight as ChevronRightIcon } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { downloadFromWasabi } from '../lib/wasabi';
-import { generateCertificatePDF } from '../lib/certificate';
 import type { SocietyTheme } from '../themes';
 
 interface Curso {
@@ -85,17 +84,13 @@ export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme })
   const [canComplete, setCanComplete] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [expandedModulos, setExpandedModulos] = useState<Set<string>>(new Set());
-  const [empleadoNombre, setEmpleadoNombre] = useState('');
-  const [empleadoDni, setEmpleadoDni] = useState<string | null>(null);
 
   const loadCursos = useCallback(async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
-    const { data: emp } = await supabase.from('empleados').select('id, nombre, dni').eq('user_id', user.id).maybeSingle();
+    const { data: emp } = await supabase.from('empleados').select('id').eq('user_id', user.id).maybeSingle();
     if (!emp?.id) { setLoading(false); return; }
-    setEmpleadoNombre(emp.nombre);
-    setEmpleadoDni(emp.dni ?? null);
     const { data: asignaciones } = await supabase.from('moodle_asignaciones').select('id, curso_id, estado, progreso, examen_desbloqueado, fecha_asignacion, fecha_completado').eq('empleado_id', emp.id).order('fecha_asignacion', { ascending: false });
     if (!asignaciones || asignaciones.length === 0) { setLoading(false); return; }
     const cursoIds = asignaciones.map((a: any) => a.curso_id);
@@ -197,20 +192,6 @@ export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme })
   const handleDownload = async (c: Contenido) => {
     if (!c.wasabi_key || !c.descargable) return;
     try { await downloadFromWasabi(c.wasabi_key, c.nombre_archivo ?? 'archivo'); } catch { setError('No se pudo descargar.'); }
-  };
-
-  const handleGenerateCertificate = async () => {
-    if (!selectedCurso) return;
-    const { data: mods } = await supabase.from('moodle_modulos').select('titulo, descripcion').eq('curso_id', selectedCurso.id).order('orden', { ascending: true });
-    generateCertificatePDF({
-      nombreEmpleado: empleadoNombre,
-      dniEmpleado: empleadoDni,
-      nombreCurso: selectedCurso.nombre,
-      fechaAprobacion: selectedCurso.asignacion.fecha_completado ?? new Date().toISOString(),
-      puntuacion: selectedCurso.asignacion.progreso,
-      modulos: (mods ?? []).map((m: any) => ({ titulo: m.titulo, descripcion: m.descripcion })),
-      nombreEmpresa: 'Grupo Empresarial',
-    });
   };
 
   const toggleExpand = (id: string) => { setExpandedModulos((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; }); };
@@ -377,10 +358,9 @@ export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme })
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEF3C7' }}><Award size={24} style={{ color: '#D97706' }} /></div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-bold" style={{ color: theme.textPrimary }}>Certificado disponible</h4>
-                    <p className="text-xs" style={{ color: theme.textSecondary }}>Has completado el curso. Descarga tu diploma.</p>
+                    <h4 className="text-sm font-bold" style={{ color: theme.textPrimary }}>Curso completado</h4>
+                    <p className="text-xs" style={{ color: theme.textSecondary }}>Has completado el curso. Tu diploma estara disponible en la pestana "Mis Certificados" tras aprobar el examen.</p>
                   </div>
-                  <button onClick={handleGenerateCertificate} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer" style={{ backgroundColor: '#D97706', color: '#FFFFFF' }}><Download size={14} /> Descargar diploma</button>
                 </div>
               </div>
             )}

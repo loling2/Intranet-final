@@ -61,7 +61,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     try {
       const { error: rpcError } = await supabase.rpc('reset_prl_assignments');
       if (rpcError) throw rpcError;
-      setPrlResetSuccess('Asignaciones PRL reiniciadas. Los trabajadores ya no ven documentos PRL. Reasigna las carpetas por centro, tag o departamento.');
+      setPrlResetSuccess('Asignaciones PRL reiniciadas. Los trabajadores ya no tienen centro asignado. Al fichar en una tablet recibiran el centro y veran los documentos PRL correspondientes.');
       setTimeout(() => setPrlResetSuccess(''), 6000);
     } catch (e: unknown) {
       setPrlResetError(e instanceof Error ? e.message : 'Error al reiniciar');
@@ -657,7 +657,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
                 </div>
                 <div>
                   <h3 className="font-bold text-sm" style={{ color: '#0F172A' }}>Reiniciar asignaciones de documentos PRL</h3>
-                  <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Borra todas las asignaciones de tags, departamentos y puestos. Los trabajadores dejara de ver todos los documentos PRL.</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Borra los centros asignados a los trabajadores, el historico de centros, los tags de puesto asignados a documentos y los tags asignados a empleados. Las carpetas y documentos no se borran. Al fichar de nuevo en una tablet, cada trabajador recibira el centro y vera los documentos PRL correspondientes.</p>
                 </div>
               </div>
               <div className="px-6 py-5">
@@ -675,7 +675,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
                   <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                     <div className="flex items-center gap-2 flex-1">
                       <AlertTriangle size={16} style={{ color: '#DC2626' }} />
-                      <p className="text-sm" style={{ color: '#475569' }}>Esto eliminara todas las asignaciones actuales. Los documentos y carpetas no se borran. Seguro?</p>
+                      <p className="text-sm" style={{ color: '#475569' }}>Se borraran los centros de los trabajadores, el historico de centros, y las asignaciones de tags de puesto en documentos. Las carpetas y su configuracion por centro se mantienen. Al fichar de nuevo en una tablet, los trabajadores recibiran el centro y veran los documentos PRL. Seguro?</p>
                     </div>
                     <div className="flex gap-2">
                       <button

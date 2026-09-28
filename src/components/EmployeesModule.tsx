@@ -1415,6 +1415,9 @@ export default function EmployeesModule({ currentUserRole }: Props) {
   const [savingContrato, setSavingContrato] = useState(false);
   const [historialContrato, setHistorialContrato] = useState<HistorialContrato[]>([]);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
+  const [editingHistorialId, setEditingHistorialId] = useState<string | null>(null);
+  const [editingJustificacion, setEditingJustificacion] = useState('');
+  const [savingHistorial, setSavingHistorial] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -1844,6 +1847,30 @@ export default function EmployeesModule({ currentUserRole }: Props) {
   const openContratoModal = (empleadoId: string, estadoActual: EstadoContrato, estadoNuevo: EstadoContrato) => {
     setContratoModal({ empleadoId, estadoActual, estadoNuevo });
     setContratoJustificacion('');
+  };
+
+  const startEditHistorial = (h: HistorialContrato) => {
+    setEditingHistorialId(h.id);
+    setEditingJustificacion(h.justificacion ?? '');
+  };
+  const cancelEditHistorial = () => {
+    setEditingHistorialId(null);
+    setEditingJustificacion('');
+  };
+  const saveEditHistorial = async (h: HistorialContrato) => {
+    if (!editingJustificacion.trim()) return;
+    setSavingHistorial(true);
+    try {
+      const { error: err } = await supabase.from('historial_contrato').update({ justificacion: editingJustificacion.trim() }).eq('id', h.id);
+      if (err) throw err;
+      setHistorialContrato((prev) => prev.map((p) => p.id === h.id ? { ...p, justificacion: editingJustificacion.trim() } : p));
+      setEditingHistorialId(null);
+      setEditingJustificacion('');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al editar');
+    } finally {
+      setSavingHistorial(false);
+    }
   };
 
   const handleContratoChange = async () => {
@@ -2498,10 +2525,25 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                           {estadoNew && <estadoNew.Icon size={10} style={{ color: estadoNew.color }} />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium" style={{ color: '#1E293B' }}>
-                            {h.estado_anterior} → {h.estado_nuevo}
-                          </p>
-                          <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{h.justificacion}</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-medium" style={{ color: '#1E293B' }}>
+                              {h.estado_anterior} → {h.estado_nuevo}
+                            </p>
+                            {editingHistorialId !== h.id && (
+                              <button onClick={() => startEditHistorial(h)} title="Editar justificación" className="cursor-pointer flex-shrink-0" style={{ color: '#0369A1' }}><Pencil size={11} /></button>
+                            )}
+                          </div>
+                          {editingHistorialId === h.id ? (
+                            <div className="mt-1 space-y-1.5">
+                              <textarea value={editingJustificacion} onChange={(e) => setEditingJustificacion(e.target.value)} rows={2} className="w-full px-2 py-1.5 rounded-lg text-xs outline-none resize-none" style={{ border: '1px solid #BFDBFE', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
+                              <div className="flex gap-1.5">
+                                <button onClick={() => saveEditHistorial(h)} disabled={savingHistorial || !editingJustificacion.trim()} className="px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50" style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>{savingHistorial ? '...' : 'Guardar'}</button>
+                                <button onClick={cancelEditHistorial} className="px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{h.justificacion}</p>
+                          )}
                           <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>
                             {h.cambiado_por_nombre} · {new Date(h.created_at).toLocaleString('es-ES')}
                           </p>
@@ -2992,10 +3034,25 @@ export default function EmployeesModule({ currentUserRole }: Props) {
                                     {estadoNew && <estadoNew.Icon size={10} style={{ color: estadoNew.color }} />}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-medium" style={{ color: '#1E293B' }}>
-                                      {h.estado_anterior} → {h.estado_nuevo}
-                                    </p>
-                                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{h.justificacion}</p>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-xs font-medium" style={{ color: '#1E293B' }}>
+                                        {h.estado_anterior} → {h.estado_nuevo}
+                                      </p>
+                                      {editingHistorialId !== h.id && (
+                                        <button onClick={() => startEditHistorial(h)} title="Editar justificación" className="cursor-pointer flex-shrink-0" style={{ color: '#0369A1' }}><Pencil size={11} /></button>
+                                      )}
+                                    </div>
+                                    {editingHistorialId === h.id ? (
+                                      <div className="mt-1 space-y-1.5">
+                                        <textarea value={editingJustificacion} onChange={(e) => setEditingJustificacion(e.target.value)} rows={2} className="w-full px-2 py-1.5 rounded-lg text-xs outline-none resize-none" style={{ border: '1px solid #BFDBFE', backgroundColor: '#F8FAFC', color: '#1E293B' }} />
+                                        <div className="flex gap-1.5">
+                                          <button onClick={() => saveEditHistorial(h)} disabled={savingHistorial || !editingJustificacion.trim()} className="px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50" style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>{savingHistorial ? '...' : 'Guardar'}</button>
+                                          <button onClick={cancelEditHistorial} className="px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}>Cancelar</button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{h.justificacion}</p>
+                                    )}
                                     <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>
                                       {h.cambiado_por_nombre} · {new Date(h.created_at).toLocaleString('es-ES')}
                                     </p>

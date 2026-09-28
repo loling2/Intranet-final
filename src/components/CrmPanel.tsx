@@ -122,33 +122,30 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
 
   const loadUsuarios = useCallback(async () => {
     setUsuariosLoading(true);
-    const { data, error } = await supabase
-      .from('usuarios_servicios')
-      .select('id, nombre, apellidos, email, telefono, observaciones, activo')
-      .order('nombre');
-    if (error) { setUsuarios([]); setUsuariosLoading(false); return; }
+    // Non-admin users only see patients assigned to them
+    const { data: rpcData } = await supabase.rpc('get_my_crm_pacientes');
+    const usuariosData = (rpcData ?? []) as { id: string; nombre: string; apellidos: string | null; email: string | null; telefono: string | null; observaciones: string | null; activo: boolean }[];
 
-    const usuariosData = data ?? [];
-    const userIds = usuariosData.map((u: { id: string }) => u.id);
+    const userIds = usuariosData.map((u) => u.id);
     let centrosMap: Record<string, { id: string; nombre: string }[]> = {};
     if (userIds.length > 0) {
       const { data: asignaciones } = await supabase
         .from('usuarios_servicios_centros')
         .select('usuario_servicio_id, centro_id, centros(id, nombre)')
         .in('usuario_servicio_id', userIds);
-      for (const row of asignaciones ?? []) {
-        const uid = row.usuario_servicio_id as string;
-        const centro = row.centros as { id: string; nombre: string } | null;
+      for (const row of (asignaciones ?? []) as { usuario_servicio_id: string; centros: { id: string; nombre: string } | null }[]) {
+        const uid = row.usuario_servicio_id;
+        const centro = row.centros;
         if (!centro) continue;
         if (!centrosMap[uid]) centrosMap[uid] = [];
         centrosMap[uid].push({ id: centro.id, nombre: centro.nombre });
       }
     }
-    const usuariosWithCentros: UsuarioServicio[] = usuariosData.map((u: Record<string, unknown>) => ({
-      id: u.id as string, nombre: u.nombre as string,
-      apellidos: (u.apellidos as string) ?? null, email: (u.email as string) ?? null,
-      telefono: (u.telefono as string) ?? null, observaciones: (u.observaciones as string) ?? null,
-      activo: (u.activo as boolean) ?? true, centros: centrosMap[u.id as string] ?? [],
+    const usuariosWithCentros: UsuarioServicio[] = usuariosData.map((u) => ({
+      id: u.id, nombre: u.nombre,
+      apellidos: u.apellidos, email: u.email,
+      telefono: u.telefono, observaciones: u.observaciones,
+      activo: u.activo, centros: centrosMap[u.id] ?? [],
     }));
     setUsuarios(usuariosWithCentros);
     setUsuariosLoading(false);
@@ -431,11 +428,13 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                 <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Usuarios de Servicio</h2>
                 <p className="text-sm" style={{ color: '#64748B' }}>Gestiona los clientes/usuarios asignados a centros</p>
               </div>
-              <button onClick={openNewUsuario}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
-                style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
-                <Plus size={14} />Nuevo usuario
-              </button>
+              {isAdmin && (
+                <button onClick={openNewUsuario}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
+                  style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
+                  <Plus size={14} />Nuevo usuario
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
               <Search size={16} style={{ color: '#64748B' }} />
@@ -484,8 +483,8 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
                         <FolderOpen size={12} />Documentos
                       </button>
-                      <button onClick={() => openEditUsuario(u)} className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all" style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}>Editar</button>
-                      <button onClick={() => handleDeleteUsuario(u.id)} className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ml-auto" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}><Trash2 size={12} /></button>
+                      {isAdmin && <button onClick={() => openEditUsuario(u)} className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all" style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}>Editar</button>}
+                      {isAdmin && <button onClick={() => handleDeleteUsuario(u.id)} className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ml-auto" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}><Trash2 size={12} /></button>}
                     </div>
                   </div>
                 ))}

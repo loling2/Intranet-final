@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import {
   FolderOpen, Folder, FileText, Upload, Download, Trash2, Plus, X,
-  ChevronRight, Loader2, AlertCircle, Lock, Globe, Shield, Eye,
-  FolderPlus, Home, Users, Settings,
+  ChevronRight, Loader2, AlertCircle, Lock, Globe, Eye,
+  FolderPlus, Home, Users, UserPlus,
 } from 'lucide-react';
 import {
   ensureCrmFolder, listCrmFolderFiles, uploadCrmFile,
@@ -20,7 +20,7 @@ interface Props {
 interface Carpeta {
   id: string;
   usuario_servicio_id: string;
-  categoria_id: string;
+  categoria_id: string | null;
   nombre: string;
   wasabi_prefix: string;
   categoria_nombre: string;
@@ -28,20 +28,28 @@ interface Carpeta {
   created_at: string;
 }
 
-interface Categoria {
-  id: string;
+interface PuestoOption {
+  id: string | null;
   nombre: string;
   es_general: boolean;
 }
 
-interface AuthUser {
-  id: string;
+interface Profesional {
+  user_id: string;
   nombre: string;
   email: string;
-  role: string;
+  puesto: string;
+  puesto_tag_id: string | null;
 }
 
-type View = 'carpetas' | 'archivos' | 'gestion_categorias' | 'gestion_usuarios';
+interface Asignacion {
+  id: string;
+  user_id: string;
+  nombre: string;
+  puesto: string;
+}
+
+type View = 'carpetas' | 'archivos' | 'asignaciones';
 
 export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, isAdmin }: Props) {
   const [view, setView] = useState<View>('carpetas');
@@ -59,23 +67,20 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
   const [uploadError, setUploadError] = useState('');
   const [showCreateCarpeta, setShowCreateCarpeta] = useState(false);
   const [newCarpetaNombre, setNewCarpetaNombre] = useState('');
-  const [newCarpetaCategoria, setNewCarpetaCategoria] = useState<string>('');
+  const [newCarpetaPuesto, setNewCarpetaPuesto] = useState<string>('');
   const [creatingCarpeta, setCreatingCarpeta] = useState(false);
   const [carpetaError, setCarpetaError] = useState('');
   const [confirmDeleteFile, setConfirmDeleteFile] = useState<RrhhFile | null>(null);
   const [deletingFile, setDeletingFile] = useState(false);
 
-  // Gestión de categorías (admin)
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [showCategoriaForm, setShowCategoriaForm] = useState(false);
-  const [newCatNombre, setNewCatNombre] = useState('');
-  const [newCatDesc, setNewCatDesc] = useState('');
-  const [savingCat, setSavingCat] = useState(false);
+  // Puestos disponibles para el usuario actual (sus puestos + General)
+  const [puestos, setPuestos] = useState<PuestoOption[]>([]);
 
-  // Gestión de categorías de usuarios (admin)
-  const [authUsers, setAuthUsers] = useState<AuthUser[]>([]);
-  const [userCategorias, setUserCategorias] = useState<Record<string, string[]>>({});
-  const [editingUserCat, setEditingUserCat] = useState<string | null>(null);
+  // Asignaciones de profesionales a este paciente
+  const [asignaciones, setAsignaciones] = useState<Asignacion[]>([]);
+  const [profesionales, setProfesionales] = useState<Profesional[]>([]);
+  const [showAsignModal, setShowAsignModal] = useState(false);
+  const [asignSearch, setAsignSearch] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,41 +93,46 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
     setLoadingCarpetas(false);
   }, [usuarioServicioId]);
 
-  useEffect(() => { loadCarpetas(); }, [loadCarpetas]);
+  const loadPuestos = useCallback(async () => {
+    const { data } = await supabase.rpc('get_my_crm_categorias');
+    setPuestos((data ?? []) as PuestoOption[]);
+  }, []);
+
+  const loadAsignaciones = useCallback(async () => {
+    const { data } = await supabase
+      .from('crm_paciente_asignaciones')
+      .select('id, user_id')
+      .eq('usuario_servicio_id', usuarioServicioId);
+    const asignRows = (data ?? []) as { id: string; user_id: string }[];
+    if (asignRows.length === 0) { setAsignaciones([]); return; }
+    const { data: profs } = await supabase.rpc('get_crm_profesionales') as { data: Profesional[] | null };
+    const profList = profs ?? [];
+    const mapped: Asignacion[] = asignRows.map(a => {
+      const prof = profList.find(p => p.user_id === a.user_id);
+      return {
+        id: a.id,
+        user_id: a.user_id,
+        nombre: prof?.nombre ?? 'Usuario',
+        puesto: prof?.puesto ?? '',
+      };
+    });
+    setAsignaciones(mapped);
+  }, [usuarioServicioId]);
+
+  useEffect(() => { loadCarpetas(); loadPuestos(); }, [loadCarpetas, loadPuestos]);
+
+  useEffect(() => {
+    if (isAdmin && view === 'asignaciones') loadAsignaciones();
+  }, [isAdmin, view, loadAsignaciones]);
 
   useEffect(() => {
     if (!carpetaSeleccionada) { setFiles([]); return; }
     setLoadingFiles(true);
     listCrmFolderFiles(carpetaSeleccionada.wasabi_prefix)
-      .then((fls) => setFiles(fls))
+      .then(fls => setFiles(fls))
       .catch(() => setFiles([]))
       .finally(() => setLoadingFiles(false));
   }, [carpetaSeleccionada]);
-
-  const loadCategorias = useCallback(async () => {
-    const { data } = await supabase.from('crm_categorias').select('id, nombre, es_general').order('es_general', { ascending: false }).order('nombre');
-    setCategorias((data ?? []) as Categoria[]);
-  }, []);
-
-  const loadAuthUsers = useCallback(async () => {
-    const { data } = await supabase.rpc('get_crm_authorizable_users');
-    setAuthUsers((data ?? []) as AuthUser[]);
-    // Cargar categorías asignadas a cada usuario
-    const { data: ucData } = await supabase.from('crm_usuario_categorias').select('user_id, categoria_id');
-    const map: Record<string, string[]> = {};
-    for (const row of (ucData ?? []) as { user_id: string; categoria_id: string }[]) {
-      if (!map[row.user_id]) map[row.user_id] = [];
-      map[row.user_id].push(row.categoria_id);
-    }
-    setUserCategorias(map);
-  }, []);
-
-  useEffect(() => {
-    if (isAdmin && (view === 'gestion_categorias' || view === 'gestion_usuarios')) {
-      loadCategorias();
-      if (view === 'gestion_usuarios') loadAuthUsers();
-    }
-  }, [isAdmin, view, loadCategorias, loadAuthUsers]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -133,23 +143,24 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
 
   async function handleCreateCarpeta() {
     if (!newCarpetaNombre.trim()) { setCarpetaError('El nombre es obligatorio'); return; }
-    if (!newCarpetaCategoria) { setCarpetaError('Selecciona una categoría'); return; }
     setCreatingCarpeta(true); setCarpetaError('');
     try {
       const safeName = newCarpetaNombre.trim().replace(/[^a-zA-Z0-9ÁáÉéÍíÓóÚúÑñ._\- ]/g, '').trim();
       if (!safeName) { setCarpetaError('Nombre inválido'); return; }
       const prefix = `crm/documentacion/${usuarioServicioId}/${safeName}/`;
       await ensureCrmFolder(prefix);
+      // newCarpetaPuesto is a string: '' = General (null), or a puesto_tag_id
+      const puestoTagId = newCarpetaPuesto || null;
       const { error } = await supabase.from('crm_carpetas').insert({
         usuario_servicio_id: usuarioServicioId,
-        categoria_id: newCarpetaCategoria,
+        puesto_tag_id: puestoTagId,
         nombre: safeName,
         wasabi_prefix: prefix,
       });
       if (error) throw error;
       setShowCreateCarpeta(false);
       setNewCarpetaNombre('');
-      setNewCarpetaCategoria('');
+      setNewCarpetaPuesto('');
       await loadCarpetas();
     } catch (e) {
       setCarpetaError(e instanceof Error ? e.message : 'Error al crear la carpeta');
@@ -166,9 +177,7 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
       await deleteFromWasabi(`${c.wasabi_prefix}.keep`);
       await supabase.from('crm_carpetas').delete().eq('id', c.id);
       await loadCarpetas();
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error(e); }
   }
 
   function addFilesToQueue(incoming: FileList | File[]) {
@@ -189,19 +198,16 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
     setUploading(true); setUploadError('');
     const prefix = carpetaSeleccionada.wasabi_prefix;
     await ensureCrmFolder(prefix);
-    let anyError = false;
     const failed: File[] = [];
     for (const file of uploadQueue) {
       try {
         const key = `${prefix}${file.name}`;
         await uploadCrmFile(file, key);
-      } catch {
-        anyError = true; failed.push(file);
-      }
+      } catch { failed.push(file); }
     }
-    if (anyError) {
+    if (failed.length) {
       setUploadQueue(failed);
-      setUploadError(`${failed.length} archivo(s) no se pudoieron subir.`);
+      setUploadError(`${failed.length} archivo(s) no se pudieron subir.`);
     } else {
       setShowUpload(false);
       setUploadQueue([]);
@@ -235,41 +241,25 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
     finally { setDeletingFile(false); }
   }
 
-  async function handleSaveCategoria() {
-    if (!newCatNombre.trim()) return;
-    setSavingCat(true);
+  async function loadProfesionales() {
+    const { data } = await supabase.rpc('get_crm_profesionales');
+    setProfesionales((data ?? []) as Profesional[]);
+  }
+
+  async function handleAsignarProfesional(profUserId: string) {
     try {
-      const { error } = await supabase.from('crm_categorias').insert({
-        nombre: newCatNombre.trim(),
-        descripcion: newCatDesc.trim(),
+      const { error } = await supabase.from('crm_paciente_asignaciones').insert({
+        usuario_servicio_id: usuarioServicioId,
+        user_id: profUserId,
       });
-      if (error) throw error;
-      setShowCategoriaForm(false);
-      setNewCatNombre(''); setNewCatDesc('');
-      await loadCategorias();
-    } catch (e) {
-      console.error(e);
-    } finally { setSavingCat(false); }
+      if (error && error.code !== '23505') throw error;
+      await loadAsignaciones();
+    } catch (e) { console.error(e); }
   }
 
-  async function handleDeleteCategoria(catId: string) {
-    if (!confirm('¿Eliminar esta categoría? Las carpetas asociadas también se borrarán.')) return;
-    await supabase.from('crm_categorias').delete().eq('id', catId);
-    await loadCategorias();
-  }
-
-  async function toggleUserCategoria(userId: string, catId: string) {
-    const current = userCategorias[userId] ?? [];
-    if (current.includes(catId)) {
-      await supabase.from('crm_usuario_categorias').delete()
-        .eq('user_id', userId).eq('categoria_id', catId);
-      setUserCategorias(prev => ({ ...prev, [userId]: current.filter(c => c !== catId) }));
-    } else {
-      await supabase.from('crm_usuario_categorias').insert({
-        user_id: userId, categoria_id: catId,
-      });
-      setUserCategorias(prev => ({ ...prev, [userId]: [...current, catId] }));
-    }
+  async function handleRemoveAsignacion(asignId: string) {
+    await supabase.from('crm_paciente_asignaciones').delete().eq('id', asignId);
+    await loadAsignaciones();
   }
 
   // Agrupar carpetas por categoría
@@ -279,6 +269,11 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
     if (!carpetasByCategoria[key]) carpetasByCategoria[key] = [];
     carpetasByCategoria[key].push(c);
   }
+
+  const filteredProfesionales = profesionales.filter(p =>
+    !asignaciones.some(a => a.user_id === p.user_id) &&
+    (asignSearch === '' || p.nombre.toLowerCase().includes(asignSearch.toLowerCase()) || p.puesto.toLowerCase().includes(asignSearch.toLowerCase()))
+  );
 
   return (
     <div className="space-y-6">
@@ -297,32 +292,22 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
           <h3 className="text-lg font-bold" style={{ color: '#0F172A' }}>
             {view === 'carpetas' && `Documentos de ${usuarioNombre}`}
             {view === 'archivos' && carpetaSeleccionada?.nombre}
-            {view === 'gestion_categorias' && 'Gestión de Categorías'}
-            {view === 'gestion_usuarios' && 'Asignar Categorías a Usuarios'}
+            {view === 'asignaciones' && `Profesionales asignados a ${usuarioNombre}`}
           </h3>
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && view === 'carpetas' && (
-            <>
-              <button
-                onClick={() => setView('gestion_categorias')}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all"
-                style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}
-              >
-                <Settings size={14} /> Categorías
-              </button>
-              <button
-                onClick={() => setView('gestion_usuarios')}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all"
-                style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}
-              >
-                <Users size={14} /> Asignar usuarios
-              </button>
-            </>
-          )}
-          {(view === 'carpetas') && (
             <button
-              onClick={() => { setShowCreateCarpeta(true); setCarpetaError(''); setNewCarpetaNombre(''); setNewCarpetaCategoria(''); }}
+              onClick={() => { setView('asignaciones'); loadProfesionales(); }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all"
+              style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}
+            >
+              <Users size={14} /> Asignaciones
+            </button>
+          )}
+          {view === 'carpetas' && (
+            <button
+              onClick={() => { setShowCreateCarpeta(true); setCarpetaError(''); setNewCarpetaNombre(''); setNewCarpetaPuesto(''); }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
               style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
             >
@@ -341,7 +326,7 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
         </div>
       </div>
 
-      {/* Vista: carpetas agrupadas por categoría */}
+      {/* Vista: carpetas agrupadas por puesto */}
       {view === 'carpetas' && (
         <>
           {loadingCarpetas ? (
@@ -352,8 +337,8 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
           ) : Object.keys(carpetasByCategoria).length === 0 ? (
             <div className="text-center py-12 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
               <FolderOpen size={32} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
-              <p className="text-sm font-medium" style={{ color: '#475569' }}>No hay carpetas para este usuario</p>
-              <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Crea una carpeta con el botón "Nueva carpeta"</p>
+              <p className="text-sm font-medium" style={{ color: '#475569' }}>No hay carpetas para este paciente</p>
+              {isAdmin && <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Crea una carpeta con el botón "Nueva carpeta"</p>}
             </div>
           ) : (
             <div className="space-y-6">
@@ -367,7 +352,7 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
                     <span className="text-xs" style={{ color: '#94A3B8' }}>({carpetasList.length})</span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {carpetasList.map((c) => (
+                    {carpetasList.map(c => (
                       <div key={c.id} className="rounded-xl p-5 transition-all hover:shadow-md" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                         <button onClick={() => openCarpeta(c)} className="flex items-center gap-3 w-full text-left cursor-pointer">
                           <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -402,7 +387,6 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
       {/* Vista: archivos de una carpeta */}
       {view === 'archivos' && carpetaSeleccionada && (
         <div className="rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-          {/* Breadcrumb */}
           <div className="flex items-center gap-1 px-5 py-3 border-b" style={{ borderColor: '#F1F5F9' }}>
             <button onClick={() => { setView('carpetas'); setCarpetaSeleccionada(null); }}
               className="flex items-center gap-1 text-xs font-medium cursor-pointer hover:bg-slate-100 rounded px-1.5 py-0.5"
@@ -412,7 +396,6 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
             <ChevronRight size={12} style={{ color: '#CBD5E1' }} />
             <span className="text-xs font-semibold" style={{ color: '#0369A1' }}>{carpetaSeleccionada.nombre}</span>
           </div>
-
           {loadingFiles ? (
             <div className="text-center py-12">
               <Loader2 size={20} className="mx-auto mb-2 animate-spin" style={{ color: '#0369A1' }} />
@@ -422,11 +405,13 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
             <div className="flex flex-col items-center justify-center py-12 gap-3">
               <FolderOpen size={28} style={{ color: '#CBD5E1' }} />
               <p className="text-sm" style={{ color: '#94A3B8' }}>Esta carpeta está vacía</p>
-              <button onClick={() => { setShowUpload(true); setUploadError(''); setUploadQueue([]); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-                style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
-                <Upload size={12} /> Subir primer archivo
-              </button>
+              {isAdmin && (
+                <button onClick={() => { setShowUpload(true); setUploadError(''); setUploadQueue([]); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+                  style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
+                  <Upload size={12} /> Subir primer archivo
+                </button>
+              )}
             </div>
           ) : (
             <div className="p-4 space-y-1.5">
@@ -470,107 +455,47 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
         </div>
       )}
 
-      {/* Vista: gestión de categorías (admin) */}
-      {view === 'gestion_categorias' && isAdmin && (
+      {/* Vista: asignaciones de profesionales al paciente (admin) */}
+      {view === 'asignaciones' && isAdmin && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm" style={{ color: '#64748B' }}>Crea categorías profesionales (Psicólogo, Terapeuta, etc.). La categoría "General" es accesible para todos.</p>
-            <button onClick={() => setShowCategoriaForm(true)}
+            <p className="text-sm" style={{ color: '#64748B' }}>
+              Asigna profesionales a este paciente. Cada profesional solo verá las carpetas que coincidan con su puesto + la carpeta General.
+            </p>
+            <button onClick={() => { setShowAsignModal(true); setAsignSearch(''); loadProfesionales(); }}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
               style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
-              <Plus size={14} /> Nueva categoría
+              <UserPlus size={14} /> Asignar profesional
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {categorias.map(cat => (
-              <div key={cat.id} className="rounded-xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{ backgroundColor: cat.es_general ? '#F0FDF4' : '#FFFBEB' }}>
-                      {cat.es_general ? <Globe size={18} style={{ color: '#16A34A' }} /> : <Lock size={18} style={{ color: '#D97706' }} />}
+          {asignaciones.length === 0 ? (
+            <div className="text-center py-12 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+              <Users size={32} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
+              <p className="text-sm font-medium" style={{ color: '#475569' }}>Sin profesionales asignados</p>
+              <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Asigna profesionales para que puedan ver los documentos de este paciente</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {asignaciones.map(a => (
+                <div key={a.id} className="rounded-xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}>
+                      <Users size={18} style={{ color: '#0369A1' }} />
                     </div>
                     <div>
-                      <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{cat.nombre}</p>
-                      {cat.es_general && <span className="text-xs px-2 py-0.5 rounded-md" style={{ backgroundColor: '#F0FDF4', color: '#16A34A' }}>General</span>}
+                      <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{a.nombre}</p>
+                      {a.puesto && <p className="text-xs" style={{ color: '#94A3B8' }}>{a.puesto}</p>}
                     </div>
                   </div>
-                  {!cat.es_general && (
-                    <button onClick={() => handleDeleteCategoria(cat.id)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer transition-all"
-                      style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
-                      <Trash2 size={12} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Vista: asignar categorías a usuarios (admin) */}
-      {view === 'gestion_usuarios' && isAdmin && (
-        <div className="space-y-4">
-          <p className="text-sm" style={{ color: '#64748B' }}>Asigna categorías a cada usuario del CRM. Solo verán las carpetas de sus categorías asignadas + la carpeta General.</p>
-          <div className="space-y-3">
-            {authUsers.map(u => {
-              const userCats = userCategorias[u.id] ?? [];
-              const isExpanded = editingUserCat === u.id;
-              return (
-                <div key={u.id} className="rounded-xl p-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                  <button
-                    onClick={() => setEditingUserCat(isExpanded ? null : u.id)}
-                    className="w-full flex items-center justify-between cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}>
-                        <Users size={16} style={{ color: '#0369A1' }} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>{u.nombre}</p>
-                        <p className="text-xs" style={{ color: '#94A3B8' }}>{u.email} · {u.role}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {userCats.length > 0 ? (
-                        <span className="text-xs px-2 py-1 rounded-md font-medium" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
-                          {userCats.length} categoría{userCats.length !== 1 ? 's' : ''}
-                        </span>
-                      ) : (
-                        <span className="text-xs px-2 py-1 rounded-md font-medium" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
-                          Sin categorías
-                        </span>
-                      )}
-                      <ChevronRight size={14} className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`} style={{ color: '#94A3B8' }} />
-                    </div>
+                  <button onClick={() => handleRemoveAsignacion(a.id)}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all"
+                    style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
+                    <Trash2 size={12} /> Qitar asignación
                   </button>
-                  {isExpanded && (
-                    <div className="mt-4 pt-4 border-t flex flex-wrap gap-2" style={{ borderColor: '#F1F5F9' }}>
-                      {categorias.filter(c => !c.es_general).map(cat => {
-                        const sel = userCats.includes(cat.id);
-                        return (
-                          <button key={cat.id}
-                            onClick={() => toggleUserCategoria(u.id, cat.id)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all"
-                            style={{
-                              backgroundColor: sel ? '#0369A1' : '#F1F5F9',
-                              color: sel ? '#FFFFFF' : '#475569',
-                              border: `1px solid ${sel ? '#0369A1' : '#E2E8F0'}`,
-                            }}>
-                            {cat.nombre}
-                          </button>
-                        );
-                      })}
-                      {categorias.filter(c => !c.es_general).length === 0 && (
-                        <p className="text-xs" style={{ color: '#94A3B8' }}>No hay categorías disponibles. Crea categorías primero.</p>
-                      )}
-                    </div>
-                  )}
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -585,29 +510,26 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Nombre de la carpeta *</label>
-                <input type="text" value={newCarpetaNombre} onChange={(e) => setNewCarpetaNombre(e.target.value)}
+                <input type="text" value={newCarpetaNombre} onChange={e => setNewCarpetaNombre(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }}
                   placeholder="Ej: Sesiones, Informes, Evaluación..." autoFocus />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Categoría *</label>
-                <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>La carpeta hereda los permisos de la categoría seleccionada. "General" es accesible para todos.</p>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Puesto / Categoría</label>
+                <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>Solo los profesionales con este puesto asignado verán esta carpeta. "General" es accesible para todos los profesionales asignados al paciente.</p>
                 <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-                  {categorias.length === 0 ? (
-                    <p className="text-xs" style={{ color: '#94A3B8' }}>No hay categorías. Crea una desde "Categorías".</p>
-                  ) : categorias.map(cat => {
-                    const sel = newCarpetaCategoria === cat.id;
+                  {puestos.map(pt => {
+                    const sel = newCarpetaPuesto === (pt.id ?? '');
                     return (
-                      <button key={cat.id}
-                        onClick={() => setNewCarpetaCategoria(cat.id)}
+                      <button key={pt.id ?? 'general'} onClick={() => setNewCarpetaPuesto(pt.id ?? '')}
                         className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all"
                         style={{
                           backgroundColor: sel ? '#0369A1' : '#F1F5F9',
                           color: sel ? '#FFFFFF' : '#475569',
                           border: `1px solid ${sel ? '#0369A1' : '#E2E8F0'}`,
                         }}>
-                        {cat.es_general ? <Globe size={12} /> : <Lock size={12} />}
-                        {cat.nombre}
+                        {pt.es_general ? <Globe size={12} /> : <Lock size={12} />}
+                        {pt.nombre}
                       </button>
                     );
                   })}
@@ -642,8 +564,7 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
               <button onClick={() => { setShowUpload(false); setUploadQueue([]); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#94A3B8' }}><X size={14} /></button>
             </div>
             <div className="space-y-4">
-              <div
-                onClick={() => !uploading && fileInputRef.current?.click()}
+              <div onClick={() => !uploading && fileInputRef.current?.click()}
                 className="flex flex-col items-center justify-center gap-3 rounded-xl cursor-pointer transition-all select-none"
                 style={{ border: '2px dashed #CBD5E1', backgroundColor: '#F8FAFC', padding: '28px 16px', minHeight: 130 }}>
                 <Upload size={28} style={{ color: '#94A3B8' }} />
@@ -661,7 +582,7 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
                       <span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{f.name}</span>
                       <span className="text-xs flex-shrink-0" style={{ color: '#94A3B8' }}>{(f.size / 1024).toFixed(0)} KB</span>
                       {!uploading && (
-                        <button onClick={(e) => { e.stopPropagation(); setUploadQueue(prev => prev.filter(x => x.name !== f.name)); }}
+                        <button onClick={e => { e.stopPropagation(); setUploadQueue(prev => prev.filter(x => x.name !== f.name)); }}
                           className="w-5 h-5 rounded flex items-center justify-center cursor-pointer hover:bg-slate-200">
                           <X size={11} style={{ color: '#94A3B8' }} />
                         </button>
@@ -729,38 +650,37 @@ export default function CrmDocumentosModule({ usuarioServicioId, usuarioNombre, 
         </div>
       )}
 
-      {/* Modal: Crear categoría */}
-      {showCategoriaForm && (
+      {/* Modal: Asignar profesional */}
+      {showAsignModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="w-full max-w-md rounded-2xl p-6" style={{ backgroundColor: '#FFFFFF' }}>
+          <div className="w-full max-w-md rounded-2xl p-6 max-h-[80vh] overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
             <div className="flex items-center justify-between mb-5">
-              <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>Nueva categoría</h3>
-              <button onClick={() => setShowCategoriaForm(false)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#94A3B8' }}><X size={14} /></button>
+              <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>Asignar profesional a {usuarioNombre}</h3>
+              <button onClick={() => setShowAsignModal(false)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#94A3B8' }}><X size={14} /></button>
             </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Nombre *</label>
-                <input type="text" value={newCatNombre} onChange={(e) => setNewCatNombre(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }}
-                  placeholder="Ej: Psicólogo, Terapeuta, Trabajador Social..." autoFocus />
+            <input type="text" value={asignSearch} onChange={e => setAsignSearch(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none mb-4" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }}
+              placeholder="Buscar por nombre o puesto..." autoFocus />
+            {filteredProfesionales.length === 0 ? (
+              <p className="text-sm text-center py-4" style={{ color: '#94A3B8' }}>No hay profesionales disponibles</p>
+            ) : (
+              <div className="space-y-2">
+                {filteredProfesionales.map(p => (
+                  <button key={p.user_id} onClick={() => handleAsignarProfesional(p.user_id)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-slate-50"
+                    style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}>
+                      <Users size={16} style={{ color: '#0369A1' }} />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-medium" style={{ color: '#0F172A' }}>{p.nombre}</p>
+                      <p className="text-xs" style={{ color: '#94A3B8' }}>{p.puesto || 'Sin puesto'}</p>
+                    </div>
+                    <UserPlus size={16} className="ml-auto" style={{ color: '#0369A1' }} />
+                  </button>
+                ))}
               </div>
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Descripción</label>
-                <input type="text" value={newCatDesc} onChange={(e) => setNewCatDesc(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }}
-                  placeholder="Descripción opcional" />
-              </div>
-              <div className="flex gap-2">
-                <button onClick={handleSaveCategoria} disabled={savingCat}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-60" style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
-                  {savingCat ? 'Guardando...' : 'Guardar'}
-                </button>
-                <button onClick={() => setShowCategoriaForm(false)}
-                  className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer hover:bg-slate-100" style={{ color: '#64748B' }}>
-                  Cancelar
-                </button>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}

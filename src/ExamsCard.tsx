@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ClipboardCheck, Clock, CheckCircle2, XCircle, Play, AlertCircle, Timer, RotateCcw, Loader2, ExternalLink, X, ChevronRight, ChevronLeft } from 'lucide-react';
+import { ClipboardCheck, Clock, CheckCircle2, XCircle, Play, AlertCircle, Timer, RotateCcw, Loader2, ExternalLink, X, ChevronRight, ChevronLeft, Award, Download } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { SocietyTheme } from './themes';
 import { Exam } from './mockData';
 import { supabase } from './supabaseClient';
+import { generateCertificatePDF } from './lib/certificate';
 
 interface Props {
   exams: Exam[];
@@ -38,6 +39,7 @@ export default function ExamsCard({ exams, theme }: Props) {
   const [questions, setQuestions] = useState<RealQuestion[]>([]);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [examError, setExamError] = useState('');
+  const [certificadoGenerado, setCertificadoGenerado] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -120,6 +122,23 @@ export default function ExamsCard({ exams, theme }: Props) {
             puntuacion: score,
             fecha_aprobacion: passed ? new Date().toISOString() : null,
           }).eq('examen_id', activeExam.examenId).eq('empleado_id', emp.id);
+
+          if (passed) {
+            const { data: curso } = await supabase.from('moodle_cursos').select('id, nombre').eq('examen_id', activeExam.examenId).maybeSingle();
+            if (curso) {
+              const { data: mods } = await supabase.from('moodle_modulos').select('titulo, descripcion').eq('curso_id', curso.id).order('orden', { ascending: true });
+              generateCertificatePDF({
+                nombreEmpleado: emp.nombre ?? 'Empleado',
+                dniEmpleado: emp.dni ?? null,
+                nombreCurso: curso.nombre,
+                fechaAprobacion: new Date().toISOString(),
+                puntuacion: score,
+                modulos: (mods ?? []).map((m: any) => ({ titulo: m.titulo, descripcion: m.descripcion })),
+                nombreEmpresa: 'Grupo Empresarial',
+              });
+              setCertificadoGenerado(true);
+            }
+          }
         }
       }
     }
@@ -129,6 +148,7 @@ export default function ExamsCard({ exams, theme }: Props) {
     setShowModal(false);
     setActiveExam(null);
     setExamStarted(false);
+    setCertificadoGenerado(false);
   };
 
   const pending = displayedExams.filter((e) => e.status === 'pendiente').length;
@@ -551,6 +571,16 @@ export default function ExamsCard({ exams, theme }: Props) {
                       );
                     })}
                   </div>
+
+                  {examScore >= 60 && certificadoGenerado && (
+                    <div className="w-full max-w-xs rounded-xl p-4 mb-4 flex items-center gap-3" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                      <Award size={24} style={{ color: '#D97706' }} />
+                      <div className="flex-1 text-left">
+                        <p className="text-xs font-bold" style={{ color: '#92400E' }}>Certificado generado</p>
+                        <p className="text-[10px]" style={{ color: '#B45309' }}>Se ha descargado tu diploma en PDF.</p>
+                      </div>
+                    </div>
+                  )}
 
                   <button
                     onClick={handleCloseModal}

@@ -2970,17 +2970,32 @@ useEffect(() => {
         .eq('empleado_id', emp.id)
         .order('created_at', { ascending: false });
       if (!asignaciones) { setRealExams([]); return; }
-      const mapped: Exam[] = asignaciones.map((a: any) => ({
-        id: a.id,
-        examenId: a.examen_id,
-        title: a.examenes?.nombre ?? 'Examen',
-        course: a.examenes?.descripcion ?? '',
-        date: a.fecha_asignacion ? new Date(a.fecha_asignacion).toLocaleDateString('es-ES') : '-',
-        duration: a.examenes?.duracion_minutos ? `${a.examenes.duracion_minutos} min` : '-',
-        status: (a.estado as Exam['status']) ?? 'pendiente',
-        score: a.puntuacion ?? null,
-        attempts: a.estado === 'pendiente' ? 0 : 1,
-      }));
+
+      const { data: moodleCursos } = await supabase.from('moodle_cursos').select('examen_id').not('examen_id', 'is', null);
+      const examenIdsConCurso: Set<string> = new Set((moodleCursos ?? []).map((c: any) => c.examen_id));
+      const { data: moodleAsignaciones } = await supabase.from('moodle_asignaciones').select('curso_id, examen_desbloqueado').eq('empleado_id', emp.id);
+      const examenDesbloqueadoMap = new Map<string, boolean>();
+      for (const ma of (moodleAsignaciones ?? [])) {
+        const { data: curso } = await supabase.from('moodle_cursos').select('examen_id').eq('id', ma.curso_id).maybeSingle();
+        if (curso?.examen_id) examenDesbloqueadoMap.set(curso.examen_id, ma.examen_desbloqueado);
+      }
+
+      const mapped: Exam[] = asignaciones
+        .filter((a: any) => {
+          if (!examenIdsConCurso.has(a.examen_id)) return true;
+          return examenDesbloqueadoMap.get(a.examen_id) === true;
+        })
+        .map((a: any) => ({
+          id: a.id,
+          examenId: a.examen_id,
+          title: a.examenes?.nombre ?? 'Examen',
+          course: a.examenes?.descripcion ?? '',
+          date: a.fecha_asignacion ? new Date(a.fecha_asignacion).toLocaleDateString('es-ES') : '-',
+          duration: a.examenes?.duracion_minutos ? `${a.examenes.duracion_minutos} min` : '-',
+          status: (a.estado as Exam['status']) ?? 'pendiente',
+          score: a.puntuacion ?? null,
+          attempts: a.estado === 'pendiente' ? 0 : 1,
+        }));
       setRealExams(mapped);
     })();
   }, [impersonatingUserId]);

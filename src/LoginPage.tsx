@@ -4,6 +4,7 @@ import { APP_VERSION } from './version';
 import type { LucideIcon } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
+import type { Exam } from './mockData';
 import type { AppRole } from './supabaseClient';
 type UserRole = AppRole;
 import DocumentsCard from './DocumentsCard';
@@ -2954,7 +2955,35 @@ useEffect(() => {
   };
 
   const certificates = mockCertificates[theme.id] ?? [];
-  const exams = mockExams[theme.id] ?? [];
+  const [realExams, setRealExams] = useState<Exam[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const resolvedUserId = impersonatingUserId ?? (await supabase.auth.getUser()).data.user?.id ?? null;
+      if (!resolvedUserId) { setRealExams([]); return; }
+      const { data: emp } = await supabase.from('empleados').select('id').eq('user_id', resolvedUserId).maybeSingle();
+      if (!emp?.id) { setRealExams([]); return; }
+      const { data: asignaciones } = await supabase
+        .from('examen_asignaciones')
+        .select('id, examen_id, estado, puntuacion, fecha_asignacion, fecha_aprobacion, fecha_realizacion, tiempo_empleado_segundos, examenes ( nombre, descripcion, duracion_minutos )')
+        .eq('empleado_id', emp.id)
+        .order('created_at', { ascending: false });
+      if (!asignaciones) { setRealExams([]); return; }
+      const mapped: Exam[] = asignaciones.map((a: any) => ({
+        id: a.id,
+        title: a.examenes?.nombre ?? 'Examen',
+        course: a.examenes?.descripcion ?? '',
+        date: a.fecha_asignacion ? new Date(a.fecha_asignacion).toLocaleDateString('es-ES') : '-',
+        duration: a.examenes?.duracion_minutos ? `${a.examenes.duracion_minutos} min` : '-',
+        status: (a.estado as Exam['status']) ?? 'pendiente',
+        score: a.puntuacion ?? null,
+        attempts: a.estado === 'pendiente' ? 0 : 1,
+      }));
+      setRealExams(mapped);
+    })();
+  }, [impersonatingUserId]);
+
+  const exams = realExams;
 
   const tabs = [
     { id: 'resumen', label: 'Resumen', icon: FileText },

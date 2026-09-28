@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 import {
   Users, Calendar, Plus, X, Search, Building2, ChevronLeft, ChevronRight,
   LogOut, KeyRound, Clock, AlertCircle, User, Phone, Mail, FileText,
-  FolderOpen, AlertTriangle,
+  FolderOpen, AlertTriangle, BarChart3, ClipboardList,
 } from 'lucide-react';
 import ChangePasswordModal from './ChangePasswordModal';
 import SocietySwitcher from '../SocietySwitcher';
@@ -12,6 +12,9 @@ import HelpPanel from './HelpPanel';
 import CrmDocumentosModule from './CrmDocumentosModule';
 import CrmIncidenciasModule from './CrmIncidenciasModule';
 import CrmResidenteFicha from './CrmResidenteFicha';
+import CrmActividadesModule from './CrmActividadesModule';
+import CrmActasModule from './CrmActasModule';
+import CrmEstadisticasModule from './CrmEstadisticasModule';
 
 interface Props {
   email: string;
@@ -43,7 +46,7 @@ interface CrmNota {
 
 interface CentroOption { id: string; nombre: string; }
 
-type CrmTab = 'residentes' | 'incidencias' | 'ayuda';
+type CrmTab = 'residentes' | 'incidencias' | 'actividades' | 'actas' | 'estadisticas' | 'ayuda';
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -316,6 +319,9 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
               className="flex-1 bg-transparent text-sm font-medium outline-none cursor-pointer" style={{ color: '#0F172A' }}>
               <option value="residentes">Residentes</option>
               <option value="incidencias">Incidencias</option>
+              <option value="actividades">Actividades</option>
+              <option value="actas">Actas</option>
+              <option value="estadisticas">Estadísticas</option>
               <option value="ayuda">Ayuda</option>
             </select>
           </div>
@@ -324,6 +330,9 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
           {([
             { id: 'residentes', label: 'Residentes', icon: Users },
             { id: 'incidencias', label: 'Incidencias', icon: AlertTriangle },
+            { id: 'actividades', label: 'Actividades', icon: Calendar },
+            { id: 'actas', label: 'Actas', icon: ClipboardList },
+            { id: 'estadisticas', label: 'Estadísticas', icon: BarChart3 },
             { id: 'ayuda', label: 'Ayuda', icon: AlertCircle },
           ] as const).map((tab) => {
             const TabIcon = tab.icon;
@@ -439,6 +448,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                 DAY_NAMES={DAY_NAMES}
                 formatDateDisplay={formatDateDisplay}
                 onEdit={() => openEditUsuario(selectedUsuario)}
+                autorNombre={currentUserNombre}
               />
               </div>
             )}
@@ -505,6 +515,21 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
         {/* === Tab: Incidencias === */}
         {activeTab === 'incidencias' && (
           <CrmIncidenciasModule isAdmin={isAdmin} centros={centros} />
+        )}
+
+        {/* === Tab: Actividades === */}
+        {activeTab === 'actividades' && (
+          <CrmActividadesModule isAdmin={isAdmin} centros={centros} />
+        )}
+
+        {/* === Tab: Actas === */}
+        {activeTab === 'actas' && (
+          <CrmActasModule isAdmin={isAdmin} centros={centros} />
+        )}
+
+        {/* === Tab: Estadísticas === */}
+        {activeTab === 'estadisticas' && (
+          <CrmEstadisticasModule centros={centros} />
         )}
 
         {/* === Tab: Ayuda === */}

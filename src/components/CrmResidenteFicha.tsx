@@ -3,9 +3,17 @@ import { supabase } from '../supabaseClient';
 import {
   User, Mail, Phone, Building2, Calendar, FolderOpen, FileText,
   Heart, Pill, Users, CreditCard, Plus, X, Trash2, Save, MapPin,
-  Contact, Stethoscope, Activity,
+  Contact, Stethoscope, Activity, ClipboardList, Phone as PhoneIcon, Ambulance, FileSignature,
 } from 'lucide-react';
 import CrmDocumentosModule from './CrmDocumentosModule';
+import CrmSeguimientoModule from './CrmSeguimientoModule';
+import CrmLlamadasModule from './CrmLlamadasModule';
+import CrmMedicacionModule from './CrmMedicacionModule';
+import CrmAbvdModule from './CrmAbvdModule';
+import CrmIncidenciasSanitariasModule from './CrmIncidenciasSanitariasModule';
+import CrmPautasModule from './CrmPautasModule';
+import CrmPaiModule from './CrmPaiModule';
+import CrmSesionesModule from './CrmSesionesModule';
 
 interface Props {
   usuario: {
@@ -37,9 +45,10 @@ interface Props {
   DAY_NAMES: string[];
   formatDateDisplay: (iso: string) => string;
   onEdit: () => void;
+  autorNombre?: string;
 }
 
-type DetailTab = 'info' | 'contactos' | 'cuentas' | 'medico' | 'tratamiento' | 'calendario' | 'documentos';
+type DetailTab = 'info' | 'contactos' | 'cuentas' | 'medico' | 'tratamiento' | 'calendario' | 'documentos' | 'seguimiento' | 'llamadas' | 'medicacion' | 'abvd' | 'inc_sanitarias' | 'pautas' | 'pai' | 'sesiones';
 
 interface Contacto {
   id: string;
@@ -225,6 +234,14 @@ export default function CrmResidenteFicha(props: Props) {
     { id: 'cuentas', label: 'Cuentas', icon: CreditCard },
     { id: 'medico', label: 'Información médica', icon: Stethoscope },
     { id: 'tratamiento', label: 'Tratamiento', icon: Pill },
+    { id: 'seguimiento', label: 'Seguimiento diario', icon: Activity },
+    { id: 'llamadas', label: 'Llamadas y visitas', icon: PhoneIcon },
+    { id: 'medicacion', label: 'Medicación', icon: Pill },
+    { id: 'abvd', label: 'ABVD', icon: Heart },
+    { id: 'inc_sanitarias', label: 'Inc. sanitarias', icon: Ambulance },
+    { id: 'pautas', label: 'Pautas', icon: ClipboardList },
+    { id: 'pai', label: 'PAI / PIE', icon: FileSignature },
+    { id: 'sesiones', label: 'Sesiones', icon: FileText },
     { id: 'calendario', label: 'Calendario y Notas', icon: Calendar },
     { id: 'documentos', label: 'Documentos', icon: FolderOpen },
   ];
@@ -622,6 +639,46 @@ export default function CrmResidenteFicha(props: Props) {
       {/* === Tab: Documentos === */}
       {detailTab === 'documentos' && (
         <CrmDocumentosModule usuarioServicioId={usuario.id} usuarioNombre={selectedUserLabel} isAdmin={isAdmin} />
+      )}
+
+      {/* === Tab: Seguimiento diario === */}
+      {detailTab === 'seguimiento' && (
+        <CrmSeguimientoModule usuarioId={usuario.id} usuarioNombre={selectedUserLabel} autorNombre={props.autorNombre ?? ''} isAdmin={isAdmin} />
+      )}
+
+      {/* === Tab: Llamadas y visitas === */}
+      {detailTab === 'llamadas' && (
+        <CrmLlamadasModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={isAdmin} />
+      )}
+
+      {/* === Tab: Medicación === */}
+      {detailTab === 'medicacion' && (
+        <CrmMedicacionModule usuarioId={usuario.id} isAdmin={isAdmin} />
+      )}
+
+      {/* === Tab: ABVD === */}
+      {detailTab === 'abvd' && (
+        <CrmAbvdModule usuarioId={usuario.id} isAdmin={isAdmin} />
+      )}
+
+      {/* === Tab: Incidencias sanitarias === */}
+      {detailTab === 'inc_sanitarias' && (
+        <CrmIncidenciasSanitariasModule usuarioId={usuario.id} isAdmin={isAdmin} />
+      )}
+
+      {/* === Tab: Pautas profesionales === */}
+      {detailTab === 'pautas' && (
+        <CrmPautasModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={isAdmin} />
+      )}
+
+      {/* === Tab: PAI / PIE === */}
+      {detailTab === 'pai' && (
+        <CrmPaiModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={isAdmin} />
+      )}
+
+      {/* === Tab: Sesiones === */}
+      {detailTab === 'sesiones' && (
+        <CrmSesionesModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={isAdmin} />
       )}
     </div>
   );

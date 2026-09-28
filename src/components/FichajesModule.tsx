@@ -1281,10 +1281,10 @@ export default function FichajesModule() {
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Total eventos', value: fichajes.length, color: '#0369A1', bg: '#EFF6FF' },
-          { label: 'Hoy', value: fichajes.filter((f) => f.fecha === today).length, color: '#16A34A', bg: '#F0FDF4' },
-          { label: 'Jornadas completas', value: buildResumenes(fichajes).filter((r) => r.entrada && r.salida).length, color: '#7C3AED', bg: '#F5F3FF' },
-          { label: 'Incidencias', value: incidentCount, color: '#DC2626', bg: '#FEF2F2' },
+          { label: 'Total eventos', value: filterEmpleado ? filteredFichajes.length : '—', color: '#0369A1', bg: '#EFF6FF' },
+          { label: 'Hoy', value: filterEmpleado ? filteredFichajes.filter((f) => f.fecha === today).length : '—', color: '#16A34A', bg: '#F0FDF4' },
+          { label: 'Jornadas completas', value: filterEmpleado ? resumenes.filter((r) => r.entrada && r.salida).length : '—', color: '#7C3AED', bg: '#F5F3FF' },
+          { label: 'Incidencias', value: filterEmpleado ? incidentCount : '—', color: '#DC2626', bg: '#FEF2F2' },
         ].map((kpi, i) => (
           <div key={i} className="rounded-xl p-4" style={{ backgroundColor: kpi.bg }}>
             <p className="text-2xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
@@ -1296,15 +1296,15 @@ export default function FichajesModule() {
       {/* Period hour totals — worker-specific */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
-          { label: 'Horas esta semana (Lun–Dom)', value: formatDuration(weekMinutes), color: '#0369A1', bg: '#EFF6FF', sub: `${weekRange.start} → ${weekRange.end}` },
-          { label: 'Horas este mes', value: formatDuration(monthMinutes), color: '#16A34A', bg: '#F0FDF4', sub: `${monthRange.start} → ${monthRange.end}` },
-          { label: 'Horas este año', value: formatDuration(yearMinutes), color: '#D97706', bg: '#FFFBEB', sub: `${yearRange.start} → ${yearRange.end}` },
+          { label: 'Horas esta semana (Lun–Dom)', value: filterEmpleado ? formatDuration(weekMinutes) : '—', color: '#0369A1', bg: '#EFF6FF', sub: `${weekRange.start} → ${weekRange.end}` },
+          { label: 'Horas este mes', value: filterEmpleado ? formatDuration(monthMinutes) : '—', color: '#16A34A', bg: '#F0FDF4', sub: `${monthRange.start} → ${monthRange.end}` },
+          { label: 'Horas este año', value: filterEmpleado ? formatDuration(yearMinutes) : '—', color: '#D97706', bg: '#FFFBEB', sub: `${yearRange.start} → ${yearRange.end}` },
         ].map((kpi, i) => (
           <div key={i} className="rounded-xl p-4" style={{ backgroundColor: kpi.bg }}>
             <p className="text-2xl font-bold" style={{ color: kpi.color }}>{kpi.value}</p>
             <p className="text-xs font-medium mt-0.5" style={{ color: kpi.color + 'AA' }}>{kpi.label}</p>
             <p className="text-[10px] mt-1" style={{ color: kpi.color + '88' }}>
-              {filterEmpleado ? `${selectedEmpleadoNombre} · ${kpi.sub}` : `Todos los trabajadores · ${kpi.sub}`}
+              {filterEmpleado ? `${selectedEmpleadoNombre} · ${kpi.sub}` : `Selecciona un trabajador · ${kpi.sub}`}
             </p>
           </div>
         ))}

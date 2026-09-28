@@ -2967,7 +2967,7 @@ useEffect(() => {
       if (!emp?.id) { setRealExams([]); return; }
       const { data: asignaciones } = await supabase
         .from('examen_asignaciones')
-        .select('id, examen_id, estado, puntuacion, fecha_asignacion, fecha_aprobacion, fecha_realizacion, tiempo_empleado_segundos, examenes ( nombre, descripcion, duracion_minutos )')
+        .select('id, examen_id, estado, puntuacion, intentos, fecha_asignacion, fecha_aprobacion, fecha_realizacion, tiempo_empleado_segundos, examenes ( nombre, descripcion, duracion_minutos )')
         .eq('empleado_id', emp.id)
         .order('created_at', { ascending: false });
       if (!asignaciones) { setRealExams([]); return; }
@@ -2995,7 +2995,7 @@ useEffect(() => {
           duration: a.examenes?.duracion_minutos ? `${a.examenes.duracion_minutos} min` : '-',
           status: (a.estado as Exam['status']) ?? 'pendiente',
           score: a.puntuacion ?? null,
-          attempts: a.estado === 'pendiente' ? 0 : 1,
+          attempts: a.intentos ?? 0,
         }));
       setRealExams(mapped);
 

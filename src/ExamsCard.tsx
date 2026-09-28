@@ -25,6 +25,19 @@ interface RealQuestion {
   correctIndex: number;
 }
 
+interface ExamenConfig {
+  ratioPenalizacion: number;
+}
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export default function ExamsCard({ exams, theme }: Props) {
   const [loading, setLoading] = useState(true);
   const [displayedExams, setDisplayedExams] = useState<Exam[]>([]);
@@ -40,6 +53,7 @@ export default function ExamsCard({ exams, theme }: Props) {
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [examError, setExamError] = useState('');
   const [certificadoGenerado, setCertificadoGenerado] = useState(false);
+  const [examenConfig, setExamenConfig] = useState<ExamenConfig>({ ratioPenalizacion: 3 });
 
   useEffect(() => {
     setLoading(true);
@@ -53,6 +67,12 @@ export default function ExamsCard({ exams, theme }: Props) {
   const loadQuestions = useCallback(async (examenId: string) => {
     setLoadingQuestions(true);
     setExamError('');
+    const { data: exData } = await supabase
+      .from('examenes')
+      .select('ratio_penalizacion')
+      .eq('id', examenId)
+      .maybeSingle();
+    setExamenConfig({ ratioPenalizacion: exData?.ratio_penalizacion ?? 3 });
     const { data, error } = await supabase
       .from('preguntas')
       .select('id, texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, orden')
@@ -64,12 +84,14 @@ export default function ExamsCard({ exams, theme }: Props) {
       return [];
     }
     const letterToIndex: Record<string, number> = { 'A': 0, 'B': 1, 'C': 2, 'D': 3 };
-    const mapped: RealQuestion[] = (data ?? []).map((p: any) => ({
-      id: p.id,
-      text: p.texto,
-      options: [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d],
-      correctIndex: letterToIndex[p.respuesta_correcta] ?? 0,
-    }));
+    const mapped: RealQuestion[] = (data ?? []).map((p: any) => {
+      const correctIdx = letterToIndex[p.respuesta_correcta] ?? 0;
+      const rawOptions = [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d];
+      const indices = shuffleArray([0, 1, 2, 3]);
+      const shuffledOptions = indices.map((i) => rawOptions[i]);
+      const newCorrectIdx = indices.indexOf(correctIdx);
+      return { id: p.id, text: p.texto, options: shuffledOptions, correctIndex: newCorrectIdx };
+    });
     return mapped;
   }, []);
 
@@ -104,10 +126,15 @@ export default function ExamsCard({ exams, theme }: Props) {
 
   const handleSubmitExam = async () => {
     let correct = 0;
+    let incorrect = 0;
     questions.forEach((q) => {
       if (selectedAnswers[q.id] === q.correctIndex) correct++;
+      else incorrect++;
     });
-    const score = questions.length > 0 ? Math.round((correct / questions.length) * 100) : 0;
+    const ratio = examenConfig.ratioPenalizacion;
+    const penalized = ratio > 0 ? Math.floor(incorrect / ratio) : 0;
+    const netCorrect = Math.max(0, correct - penalized);
+    const score = questions.length > 0 ? Math.round((netCorrect / questions.length) * 100) : 0;
     setExamScore(score);
     setExamSubmitted(true);
 
@@ -117,9 +144,13 @@ export default function ExamsCard({ exams, theme }: Props) {
         const { data: emp } = await supabase.from('empleados').select('id').eq('user_id', user.id).maybeSingle();
         if (emp?.id) {
           const passed = score >= 60;
+          const { data: current } = await supabase.from('examen_asignaciones')
+            .select('intentos').eq('examen_id', activeExam.examenId).eq('empleado_id', emp.id).maybeSingle();
+          const nuevosIntentos = (current?.intentos ?? 0) + 1;
           await supabase.from('examen_asignaciones').update({
             estado: passed ? 'completado' : 'suspendido',
             puntuacion: score,
+            intentos: nuevosIntentos,
             fecha_aprobacion: passed ? new Date().toISOString() : null,
           }).eq('examen_id', activeExam.examenId).eq('empleado_id', emp.id);
 
@@ -420,6 +451,10 @@ export default function ExamsCard({ exams, theme }: Props) {
                     <div className="flex justify-between">
                       <span className="text-xs" style={{ color: theme.textSecondary }}>Nota minima</span>
                       <span className="text-xs font-medium" style={{ color: theme.textPrimary }}>60%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-xs" style={{ color: theme.textSecondary }}>Penalizacion</span>
+                      <span className="text-xs font-medium" style={{ color: theme.textPrimary }}>{examenConfig.ratioPenalizacion > 0 ? `Cada ${examenConfig.ratioPenalizacion} fallos restan 1 acierto` : 'Sin penalizacion'}</span>
                     </div>
                   </div>
 

@@ -56,12 +56,16 @@ interface Asignacion {
   estado: string;
   puntuacion: number | null;
   fecha_realizacion: string | null;
+  fecha_asignacion: string | null;
+  fecha_aprobacion: string | null;
+  tiempo_empleado_segundos: number | null;
 }
 
 type Tab = 'examenes' | 'asignaciones' | 'ayuda';
 
 const estadoConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
   pendiente: { label: 'Pendiente', color: '#64748B', bg: '#F8FAFC', border: '#E2E8F0' },
+  en_curso: { label: 'En curso', color: '#0D9488', bg: '#F0FDFA', border: '#99F6E4' },
   completado: { label: 'Completado', color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' },
   suspendido: { label: 'Suspendido', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
 };
@@ -141,6 +145,22 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
     else { setAsignaciones(data ?? []); }
     setLoadingAsignaciones(false);
   }, []);
+
+  const formatFechaCorta = (fecha: string | null): string => {
+    if (!fecha) return '-';
+    try {
+      const d = new Date(fecha);
+      return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    } catch { return '-'; }
+  };
+
+  const formatTiempo = (segundos: number | null): string => {
+    if (segundos === null || segundos < 0) return '-';
+    const m = Math.floor(segundos / 60);
+    const s = segundos % 60;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  };
 
   const loadEmpleados = useCallback(async () => {
     const { data, error } = await supabase.from('empleados').select('id, nombre, dni, email, id_sociedad, activo').eq('activo', true).order('nombre', { ascending: true });
@@ -307,7 +327,13 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
         };
       });
       const { error: err } = await supabase.from('examen_asignaciones').insert(rows);
-      if (err) throw err;
+      if (err) {
+        if (err.code === '23505') {
+          setError('Uno o mas empleados ya tienen este examen asignado. Se han omitido los duplicados.');
+        } else {
+          throw err;
+        }
+      }
       setShowAssignModal(false);
       await loadAsignaciones(assignExamen.id);
       setSuccessMsg(`Examen asignado a ${rows.length} empleado(s).`);
@@ -628,20 +654,37 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
                             {asignaciones.map((a) => {
                               const cfg = estadoConfig[a.estado] ?? estadoConfig.pendiente;
                               return (
-                                <div key={a.id} className="rounded-lg p-3 flex items-center gap-3" style={{ backgroundColor: cfg.bg, border: `1px solid ${cfg.border}` }}>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-medium" style={{ color: '#0F172A' }}>{a.nombre_empleado}</p>
-                                    <p className="text-xs" style={{ color: '#94A3B8' }}>{a.dni ?? 'Sin DNI'}</p>
+                                <div key={a.id} className="rounded-lg p-3" style={{ backgroundColor: cfg.bg, border: `1px solid ${cfg.border}` }}>
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-medium" style={{ color: '#0F172A' }}>{a.nombre_empleado}</p>
+                                      <p className="text-xs" style={{ color: '#94A3B8' }}>{a.dni ?? 'Sin DNI'}</p>
+                                    </div>
+                                    <span className="text-xs font-medium px-2 py-0.5 rounded" style={{ color: cfg.color, backgroundColor: `${cfg.color}15`, border: `1px solid ${cfg.border}` }}>
+                                      {cfg.label}
+                                    </span>
+                                    {a.puntuacion !== null && (
+                                      <span className="text-xs font-bold" style={{ color: a.puntuacion >= 60 ? '#16A34A' : '#DC2626' }}>{a.puntuacion}%</span>
+                                    )}
+                                    <button onClick={() => handleDeleteAsignacion(a)} className="w-6 h-6 rounded flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
+                                      <Trash2 size={11} />
+                                    </button>
                                   </div>
-                                  <span className="text-xs font-medium px-2 py-0.5 rounded" style={{ color: cfg.color, backgroundColor: `${cfg.color}15`, border: `1px solid ${cfg.border}` }}>
-                                    {cfg.label}
-                                  </span>
-                                  {a.puntuacion !== null && (
-                                    <span className="text-xs font-bold" style={{ color: a.puntuacion >= 60 ? '#16A34A' : '#DC2626' }}>{a.puntuacion}%</span>
-                                  )}
-                                  <button onClick={() => handleDeleteAsignacion(a)} className="w-6 h-6 rounded flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
-                                    <Trash2 size={11} />
-                                  </button>
+                                  <div className="flex items-center gap-3 mt-2 flex-wrap">
+                                    <span className="flex items-center gap-1 text-[10px]" style={{ color: '#94A3B8' }}>
+                                      <Clock size={9} /> Asignado: {formatFechaCorta(a.fecha_asignacion ?? a.created_at)}
+                                    </span>
+                                    {a.estado === 'completado' && a.fecha_aprobacion && (
+                                      <span className="flex items-center gap-1 text-[10px]" style={{ color: '#16A34A' }}>
+                                        <CheckCircle2 size={9} /> Aprobado: {formatFechaCorta(a.fecha_aprobacion)}
+                                      </span>
+                                    )}
+                                    {a.tiempo_empleado_segundos !== null && (
+                                      <span className="flex items-center gap-1 text-[10px]" style={{ color: '#64748B' }}>
+                                        <Clock size={9} /> Tiempo: {formatTiempo(a.tiempo_empleado_segundos)}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               );
                             })}
@@ -834,14 +877,18 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
                   <p className="text-xs text-center py-4" style={{ color: '#94A3B8' }}>No se encontraron empleados</p>
                 ) : filteredEmpleados.map((emp) => {
                   const sel = selectedEmpleados.has(emp.id);
+                  const yaAsignado = asignaciones.some((a) => a.empleado_id === emp.id);
                   return (
                     <button
                       key={emp.id}
-                      onClick={() => toggleEmpleado(emp.id)}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all duration-150 cursor-pointer"
+                      onClick={() => !yaAsignado && toggleEmpleado(emp.id)}
+                      disabled={yaAsignado}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all duration-150"
                       style={{
-                        backgroundColor: sel ? '#F0FDFA' : '#F8FAFC',
-                        border: `1px solid ${sel ? '#99F6E4' : '#E2E8F0'}`,
+                        backgroundColor: yaAsignado ? '#F1F5F9' : sel ? '#F0FDFA' : '#F8FAFC',
+                        border: `1px solid ${yaAsignado ? '#E2E8F0' : sel ? '#99F6E4' : '#E2E8F0'}`,
+                        cursor: yaAsignado ? 'not-allowed' : 'pointer',
+                        opacity: yaAsignado ? 0.6 : 1,
                       }}
                     >
                       <div
@@ -857,6 +904,11 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
                         <p className="text-xs font-medium truncate" style={{ color: '#0F172A' }}>{emp.nombre}</p>
                         <p className="text-xs" style={{ color: '#94A3B8' }}>{emp.dni ?? 'Sin DNI'}</p>
                       </div>
+                      {yaAsignado && (
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded flex-shrink-0" style={{ color: '#64748B', backgroundColor: '#F1F5F9', border: '1px solid #E2E8F0' }}>
+                          Ya asignado
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -955,22 +1007,39 @@ function AsignacionesGlobales({ examenes }: { examenes: Examen[] }) {
           {filtered.map((a) => {
             const cfg = estadoConfig[a.estado] ?? estadoConfig.pendiente;
             return (
-              <div key={a.id} className="rounded-xl p-3 flex items-center gap-3" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cfg.bg }}>
-                  {a.estado === 'completado' ? <CheckCircle2 size={14} style={{ color: cfg.color }} /> :
-                   a.estado === 'suspendido' ? <XCircle size={14} style={{ color: cfg.color }} /> :
-                   <Clock size={14} style={{ color: cfg.color }} />}
+              <div key={a.id} className="rounded-xl p-3" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cfg.bg }}>
+                    {a.estado === 'completado' ? <CheckCircle2 size={14} style={{ color: cfg.color }} /> :
+                     a.estado === 'suspendido' ? <XCircle size={14} style={{ color: cfg.color }} /> :
+                     <Clock size={14} style={{ color: cfg.color }} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate" style={{ color: '#0F172A' }}>{a.nombre_empleado}</p>
+                    <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{a.examen_nombre}{a.dni ? ` - ${a.dni}` : ''}</p>
+                  </div>
+                  {a.puntuacion !== null && (
+                    <span className="text-sm font-bold" style={{ color: a.puntuacion >= 60 ? '#16A34A' : '#DC2626' }}>{a.puntuacion}%</span>
+                  )}
+                  <span className="text-xs font-medium px-2 py-0.5 rounded flex-shrink-0" style={{ color: cfg.color, backgroundColor: `${cfg.color}15`, border: `1px solid ${cfg.border}` }}>
+                    {cfg.label}
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate" style={{ color: '#0F172A' }}>{a.nombre_empleado}</p>
-                  <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{a.examen_nombre}{a.dni ? ` - ${a.dni}` : ''}</p>
+                <div className="flex items-center gap-3 mt-2 flex-wrap pl-11">
+                  <span className="flex items-center gap-1 text-[10px]" style={{ color: '#94A3B8' }}>
+                    <Clock size={9} /> Asignado: {a.fecha_asignacion ? new Date(a.fecha_asignacion).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'}
+                  </span>
+                  {a.estado === 'completado' && a.fecha_aprobacion && (
+                    <span className="flex items-center gap-1 text-[10px]" style={{ color: '#16A34A' }}>
+                      <CheckCircle2 size={9} /> Aprobado: {new Date(a.fecha_aprobacion).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                    </span>
+                  )}
+                  {a.tiempo_empleado_segundos !== null && (
+                    <span className="flex items-center gap-1 text-[10px]" style={{ color: '#64748B' }}>
+                      <Clock size={9} /> Tiempo: {a.tiempo_empleado_segundos >= 60 ? `${Math.floor(a.tiempo_empleado_segundos / 60)}m ${a.tiempo_empleado_segundos % 60}s` : `${a.tiempo_empleado_segundos}s`}
+                    </span>
+                  )}
                 </div>
-                {a.puntuacion !== null && (
-                  <span className="text-sm font-bold" style={{ color: a.puntuacion >= 60 ? '#16A34A' : '#DC2626' }}>{a.puntuacion}%</span>
-                )}
-                <span className="text-xs font-medium px-2 py-0.5 rounded flex-shrink-0" style={{ color: cfg.color, backgroundColor: `${cfg.color}15`, border: `1px solid ${cfg.border}` }}>
-                  {cfg.label}
-                </span>
               </div>
             );
           })}

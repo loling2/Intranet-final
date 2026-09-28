@@ -2955,9 +2955,9 @@ useEffect(() => {
     })();
   };
 
-  const certificates = realCertificates.length > 0 ? realCertificates : (mockCertificates[theme.id] ?? []);
   const [realCertificates, setRealCertificates] = useState<Certificate[]>([]);
   const [realExams, setRealExams] = useState<Exam[]>([]);
+  const certificates = realCertificates.length > 0 ? realCertificates : (mockCertificates[theme.id] ?? []);
 
   useEffect(() => {
     (async () => {

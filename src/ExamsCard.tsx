@@ -138,6 +138,20 @@ export default function ExamsCard({ exams, theme }: Props) {
               });
               setCertificadoGenerado(true);
             }
+
+            const { data: existingCert } = await supabase
+              .from('certificados_examenes')
+              .select('id')
+              .eq('usuario_id', user.id)
+              .eq('examen_id', activeExam.examenId)
+              .maybeSingle();
+            if (!existingCert) {
+              await supabase.from('certificados_examenes').insert({
+                usuario_id: user.id,
+                examen_id: activeExam.examenId,
+                fecha_emision: new Date().toISOString(),
+              });
+            }
           }
         }
       }

@@ -1,6 +1,8 @@
 import { Award, Download, AlertTriangle } from 'lucide-react';
 import { SocietyTheme } from './themes';
 import { Certificate } from './mockData';
+import { supabase } from './supabaseClient';
+import { generateCertificatePDF } from './lib/certificate';
 
 interface Props {
   certificates: Certificate[];
@@ -16,6 +18,30 @@ const categoryColors: Record<string, { bg: string; text: string; border: string 
 };
 
 export default function CertificatesCard({ certificates, theme }: Props) {
+  const handleDownload = async (cert: Certificate) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: emp } = await supabase.from('empleados').select('nombre, dni').eq('user_id', user.id).maybeSingle();
+    const { data: certRow } = await supabase
+      .from('certificados_examenes')
+      .select('examen_id, examenes ( nombre )')
+      .eq('usuario_id', user.id)
+      .eq('id', cert.id)
+      .maybeSingle();
+    if (!certRow?.examen_id) return;
+    const { data: curso } = await supabase.from('moodle_cursos').select('id, nombre').eq('examen_id', certRow.examen_id).maybeSingle();
+    if (!curso) return;
+    const { data: mods } = await supabase.from('moodle_modulos').select('titulo, descripcion').eq('curso_id', curso.id).order('orden', { ascending: true });
+    generateCertificatePDF({
+      nombreEmpleado: emp?.nombre ?? 'Empleado',
+      dniEmpleado: emp?.dni ?? null,
+      nombreCurso: curso.nombre,
+      fechaAprobacion: cert.date,
+      puntuacion: 100,
+      modulos: (mods ?? []).map((m: any) => ({ titulo: m.titulo, descripcion: m.descripcion })),
+      nombreEmpresa: 'Grupo Empresarial',
+    });
+  };
   const isExpiringSoon = (expiryDate: string) => {
     const expiry = new Date(expiryDate);
     const now = new Date();
@@ -173,6 +199,7 @@ export default function CertificatesCard({ certificates, theme }: Props) {
 
                 {/* Download */}
                 <button
+                  onClick={() => handleDownload(cert)}
                   className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium transition-all duration-200 cursor-pointer"
                   style={{
                     backgroundColor: expired ? '#FEF2F2' : theme.primaryLight,

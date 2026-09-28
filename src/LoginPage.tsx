@@ -2955,7 +2955,8 @@ useEffect(() => {
     })();
   };
 
-  const certificates = mockCertificates[theme.id] ?? [];
+  const certificates = realCertificates.length > 0 ? realCertificates : (mockCertificates[theme.id] ?? []);
+  const [realCertificates, setRealCertificates] = useState<Certificate[]>([]);
   const [realExams, setRealExams] = useState<Exam[]>([]);
 
   useEffect(() => {
@@ -2997,6 +2998,22 @@ useEffect(() => {
           attempts: a.estado === 'pendiente' ? 0 : 1,
         }));
       setRealExams(mapped);
+
+      const { data: certs } = await supabase
+        .from('certificados_examenes')
+        .select('id, examen_id, fecha_emision, examenes ( nombre, descripcion )')
+        .eq('usuario_id', resolvedUserId)
+        .order('fecha_emision', { ascending: false });
+      const mappedCerts: Certificate[] = (certs ?? []).map((c: any) => ({
+        id: c.id,
+        title: c.examenes?.nombre ?? 'Certificado',
+        issuer: 'Grupo Empresarial',
+        category: 'Formacion',
+        date: c.fecha_emision ? new Date(c.fecha_emision).toLocaleDateString('es-ES') : '-',
+        expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('es-ES'),
+        code: c.id.slice(0, 8).toUpperCase(),
+      }));
+      setRealCertificates(mappedCerts);
     })();
   }, [impersonatingUserId]);
 

@@ -75,6 +75,8 @@ export default function CursosPanel() {
   const [cursoForm, setCursoForm] = useState({ nombre: '', descripcion: '', categoria: '', duracion_estimada: '', examen_id: '' });
   const [savingCurso, setSavingCurso] = useState(false);
   const [examenes, setExamenes] = useState<ExamenOption[]>([]);
+  const [searchExamen, setSearchExamen] = useState('');
+  const [showExamenDropdown, setShowExamenDropdown] = useState(false);
 
   const [selectedCurso, setSelectedCurso] = useState<Curso | null>(null);
   const [modulos, setModulos] = useState<Modulo[]>([]);
@@ -325,6 +327,16 @@ export default function CursosPanel() {
       const rows = Array.from(selectedEmpleados).map((empId) => ({ curso_id: selectedCurso.id, empleado_id: empId }));
       const { error: err } = await supabase.from('moodle_asignaciones').insert(rows);
       if (err) { if (err.code === '23505') setError('Uno o mas empleados ya tienen este curso.'); else throw err; }
+
+      if (selectedCurso.examen_id) {
+        const examRows = Array.from(selectedEmpleados).map((empId) => ({
+          examen_id: selectedCurso.examen_id,
+          empleado_id: empId,
+          estado: 'pendiente',
+        }));
+        await supabase.from('examen_asignaciones').upsert(examRows, { onConflict: 'examen_id,empleado_id', ignoreDuplicates: true });
+      }
+
       setShowAssignModal(false);
       openAssignModal();
       setSuccessMsg('Curso asignado.'); setTimeout(() => setSuccessMsg(''), 2500);
@@ -513,11 +525,37 @@ export default function CursosPanel() {
               </div>
               <div>
                 <label className="text-xs font-medium block mb-1" style={{ color: '#0F172A' }}>Examen asociado (opcional)</label>
-                <select value={cursoForm.examen_id} onChange={(e) => setCursoForm({ ...cursoForm, examen_id: e.target.value })} className="w-full px-3 py-2 rounded-lg text-xs outline-none" style={{ border: '1px solid #E2E8F0', color: '#0F172A', backgroundColor: '#FFFFFF' }}>
-                  <option value="">Sin examen</option>
-                  {examenes.map((ex) => <option key={ex.id} value={ex.id}>{ex.nombre}</option>)}
-                </select>
-                <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>El examen se desbloqueara cuando el empleado complete el 100% del curso.</p>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 z-10" style={{ color: '#94A3B8' }} />
+                  <input
+                    type="text"
+                    value={cursoForm.examen_id ? (examenes.find((e) => e.id === cursoForm.examen_id)?.nombre ?? '') : ''}
+                    onFocus={() => setShowExamenDropdown(true)}
+                    onChange={(e) => { setSearchExamen(e.target.value); setShowExamenDropdown(true); if (!e.target.value) setCursoForm({ ...cursoForm, examen_id: '' }); }}
+                    onBlur={() => setTimeout(() => setShowExamenDropdown(false), 200)}
+                    placeholder="Buscar examen para vincular..."
+                    className="w-full pl-9 pr-9 py-2 rounded-lg text-xs outline-none"
+                    style={{ border: '1px solid #E2E8F0', color: '#0F172A', backgroundColor: '#FFFFFF' }}
+                  />
+                  {cursoForm.examen_id && (
+                    <button type="button" onClick={() => { setCursoForm({ ...cursoForm, examen_id: '' }); setSearchExamen(''); }} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9' }}><X size={12} style={{ color: '#64748B' }} /></button>
+                  )}
+                  {showExamenDropdown && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg max-h-48 overflow-y-auto" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                      <button type="button" onClick={() => { setCursoForm({ ...cursoForm, examen_id: '' }); setSearchExamen(''); setShowExamenDropdown(false); }} className="w-full text-left px-3 py-2 text-xs cursor-pointer hover:bg-slate-50" style={{ color: '#94A3B8' }}>Sin examen</button>
+                      {examenes
+                        .filter((ex) => ex.nombre.toLowerCase().includes(searchExamen.toLowerCase()))
+                        .slice(0, 20)
+                        .map((ex) => (
+                          <button key={ex.id} type="button" onClick={() => { setCursoForm({ ...cursoForm, examen_id: ex.id }); setSearchExamen(''); setShowExamenDropdown(false); }} className="w-full text-left px-3 py-2 text-xs cursor-pointer transition-all" style={{ backgroundColor: cursoForm.examen_id === ex.id ? '#F0FDFA' : '#FFFFFF', color: '#0F172A', border: cursoForm.examen_id === ex.id ? '1px solid #99F6E4' : 'none' }}>{ex.nombre}</button>
+                        ))}
+                      {examenes.filter((ex) => ex.nombre.toLowerCase().includes(searchExamen.toLowerCase())).length === 0 && (
+                        <p className="px-3 py-2 text-xs" style={{ color: '#94A3B8' }}>No se encontraron examenes.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>El examen se desbloqueara cuando el empleado complete el 100% del curso. Al asignar el curso, el examen se asignara automaticamente a los empleados seleccionados.</p>
               </div>
             </div>
             <div className="px-6 py-4 flex items-center justify-end gap-2 sticky bottom-0" style={{ borderTop: '1px solid #E2E8F0', backgroundColor: '#FFFFFF' }}>

@@ -190,7 +190,7 @@ function FolderModal({ onClose, onSaved, societyId, existing }: {
         supabase.from('departamentos_prl').select('id, nombre').order('nombre'),
         supabase.from('centros').select('id, nombre').order('nombre'),
       ]);
-      setTags(tagsRes.data ?? []);
+      setTags((tagsRes.data ?? []).filter((t: TagRow) => t.nombre !== '__reset_hidden__'));
       setDepts(deptsRes.data ?? []);
       setCentros(centrosRes.data ?? []);
       setTagsLoading(false);

@@ -22,7 +22,7 @@ export default function TagsManager() {
   const load = useCallback(async () => {
     setLoading(true);
     const { data, error: err } = await supabase.from('tags').select('*').order('nombre');
-    if (!err) setTags(data ?? []);
+    if (!err) setTags((data ?? []).filter((t: TagRow) => t.nombre !== '__reset_hidden__'));
     setLoading(false);
   }, []);
 

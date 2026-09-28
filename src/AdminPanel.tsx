@@ -4,6 +4,7 @@ import {
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
   Eye, Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette,
   MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock, Mail, Menu, HelpCircle, MonitorSmartphone,
+  RotateCcw, AlertTriangle, CheckCircle2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { validUsers } from './mockData';
@@ -48,6 +49,27 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
   const { activeSocietyId, societies } = useSociety();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
+  const [showPrlReset, setShowPrlReset] = useState(false);
+  const [prlResetting, setPrlResetting] = useState(false);
+  const [prlResetError, setPrlResetError] = useState('');
+  const [prlResetSuccess, setPrlResetSuccess] = useState('');
+
+  const handlePrlReset = async () => {
+    setPrlResetting(true);
+    setPrlResetError('');
+    setPrlResetSuccess('');
+    try {
+      const { error: rpcError } = await supabase.rpc('reset_prl_assignments');
+      if (rpcError) throw rpcError;
+      setPrlResetSuccess('Asignaciones PRL reiniciadas. Los trabajadores ya no ven documentos PRL. Reasigna las carpetas por centro, tag o departamento.');
+      setTimeout(() => setPrlResetSuccess(''), 6000);
+    } catch (e: unknown) {
+      setPrlResetError(e instanceof Error ? e.message : 'Error al reiniciar');
+    } finally {
+      setPrlResetting(false);
+      setShowPrlReset(false);
+    }
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -627,6 +649,63 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
         {/* Prevencion/Calidad Tab */}
         {activeTab === 'prevencion' && (
           <div className="space-y-6">
+            {/* Reset PRL Assignments card */}
+            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #FECACA' }}>
+              <div className="px-6 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid #F1F5F9', backgroundColor: '#FEF2F2' }}>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#FEE2E2', border: '1px solid #FECACA' }}>
+                  <RotateCcw size={16} style={{ color: '#DC2626' }} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm" style={{ color: '#0F172A' }}>Reiniciar asignaciones de documentos PRL</h3>
+                  <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Borra todas las asignaciones de tags, departamentos y puestos. Los trabajadores dejara de ver todos los documentos PRL.</p>
+                </div>
+              </div>
+              <div className="px-6 py-5">
+                {prlResetSuccess && (
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl mb-4 text-sm" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', color: '#16A34A' }}>
+                    <CheckCircle2 size={15} /> {prlResetSuccess}
+                  </div>
+                )}
+                {prlResetError && (
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl mb-4 text-sm" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
+                    <AlertCircle size={15} /> {prlResetError}
+                  </div>
+                )}
+                {showPrlReset ? (
+                  <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                    <div className="flex items-center gap-2 flex-1">
+                      <AlertTriangle size={16} style={{ color: '#DC2626' }} />
+                      <p className="text-sm" style={{ color: '#475569' }}>Esto eliminara todas las asignaciones actuales. Los documentos y carpetas no se borran. Seguro?</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowPrlReset(false)}
+                        disabled={prlResetting}
+                        className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                        style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handlePrlReset}
+                        disabled={prlResetting}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white cursor-pointer disabled:opacity-50"
+                        style={{ backgroundColor: '#DC2626' }}>
+                        {prlResetting ? <RefreshCw size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                        {prlResetting ? 'Reiniciando...' : 'Si, reiniciar'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowPrlReset(true)}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer transition-all duration-150 hover:opacity-90"
+                    style={{ backgroundColor: '#DC2626' }}>
+                    <RotateCcw size={14} /> Reiniciar asignaciones PRL
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* KPIs */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[

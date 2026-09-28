@@ -297,6 +297,24 @@ export async function downloadFromWasabi(key: string, filename: string): Promise
   setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
 }
 
+// ─── CRM helpers ─────────────────────────────────────────────────────────────
+
+export async function ensureCrmFolder(prefix: string): Promise<void> {
+  await uploadViaEdgeFunction(new Uint8Array(0), `${prefix}.keep`, 'application/octet-stream');
+}
+
+export async function listCrmFolderFiles(prefix: string): Promise<RrhhFile[]> {
+  const { objects } = await listViaEdgeFunction(prefix);
+  return objects
+    .filter(obj => obj.key && obj.key !== prefix && !obj.key.endsWith('.keep'))
+    .map(obj => ({ key: obj.key, name: obj.key.replace(prefix, ''), size: obj.size, lastModified: obj.lastModified }));
+}
+
+export async function uploadCrmFile(file: File, key: string): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  return uploadViaEdgeFunction(new Uint8Array(buffer), key, file.type || 'application/octet-stream');
+}
+
 // List one level deep: immediate subfolders and files under a prefix
 export async function listPrefixOneLevelDeep(prefix: string): Promise<{ folders: { name: string; prefix: string }[]; files: RrhhFile[] }> {
   const { objects, prefixes } = await listViaEdgeFunction(prefix, '/');

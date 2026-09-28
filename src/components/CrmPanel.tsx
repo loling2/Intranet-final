@@ -3,12 +3,13 @@ import { supabase } from '../supabaseClient';
 import {
   Users, Calendar, Plus, X, Search, Building2, ChevronLeft, ChevronRight,
   LogOut, KeyRound, Clock, AlertCircle, User, Phone, Mail, FileText, Trash2,
-  FolderOpen, Lock, Unlock, Eye, Shield, Download, Upload,
+  FolderOpen,
 } from 'lucide-react';
 import ChangePasswordModal from './ChangePasswordModal';
 import SocietySwitcher from '../SocietySwitcher';
 import ProfileSwitcher, { type ProfileOption } from './ProfileSwitcher';
 import HelpPanel from './HelpPanel';
+import CrmDocumentosModule from './CrmDocumentosModule';
 
 interface Props {
   email: string;
@@ -38,29 +39,9 @@ interface CrmNota {
   created_at: string;
 }
 
-interface CrmDocumento {
-  id: string;
-  usuario_servicio_id: string;
-  titulo: string;
-  descripcion: string;
-  tipo: string;
-  archivo_url: string;
-  archivo_nombre: string;
-  subido_por: string;
-  created_at: string;
-}
-
-interface AutorizableUser {
-  id: string;
-  nombre: string;
-  email: string;
-  role: string;
-}
-
 interface CentroOption { id: string; nombre: string; }
 
 type CrmTab = 'usuarios' | 'calendario' | 'documentos' | 'ayuda';
-type DocSubTab = 'publicos' | 'privados';
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -80,6 +61,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const [activeTab, setActiveTab] = useState<CrmTab>('usuarios');
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Usuarios
   const [usuarios, setUsuarios] = useState<UsuarioServicio[]>([]);
@@ -118,34 +100,16 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const [formError, setFormError] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Documentos
-  const [docSubTab, setDocSubTab] = useState<DocSubTab>('publicos');
-  const [documentos, setDocumentos] = useState<CrmDocumento[]>([]);
-  const [docsLoading, setDocsLoading] = useState(false);
-  const [showDocForm, setShowDocForm] = useState(false);
-  const [docTitulo, setDocTitulo] = useState('');
-  const [docDescripcion, setDocDescripcion] = useState('');
-  const [docTipo, setDocTipo] = useState<'publico' | 'privado'>('publico');
-  const [docArchivo, setDocArchivo] = useState<File | null>(null);
-  const [docSaving, setDocSaving] = useState(false);
-  const [docError, setDocError] = useState('');
-  const [editingDocId, setEditingDocId] = useState<string | null>(null);
-
-  // Autorizaciones
-  const [autorizables, setAutorizables] = useState<AutorizableUser[]>([]);
-  const [docAutorizaciones, setDocAutorizaciones] = useState<Record<string, string[]>>({});
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authDocId, setAuthDocId] = useState<string | null>(null);
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const uid = session?.user?.id ?? null;
       if (uid) {
-        supabase.from('user_profiles').select('nombre').eq('id', uid).maybeSingle()
+        supabase.from('user_profiles').select('nombre, role').eq('id', uid).maybeSingle()
           .then(({ data }) => {
             const nombre = data?.nombre ?? email;
             setCurrentUserNombre(nombre);
             setNotaAutor(nombre);
+            setIsAdmin((data as { role: string } | null)?.role === 'admin');
           });
       }
     });
@@ -206,45 +170,6 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
         setNotasLoading(false);
       });
   }, [selectedUsuario]);
-
-  // Cargar documentos del usuario seleccionado
-  useEffect(() => {
-    if (!selectedUsuario) { setDocumentos([]); return; }
-    setDocsLoading(true);
-    supabase.from('crm_documentos')
-      .select('id, usuario_servicio_id, titulo, descripcion, tipo, archivo_url, archivo_nombre, subido_por, created_at')
-      .eq('usuario_servicio_id', selectedUsuario.id)
-      .order('created_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (error) { setDocumentos([]); } else { setDocumentos((data ?? []) as CrmDocumento[]); }
-        setDocsLoading(false);
-      });
-  }, [selectedUsuario]);
-
-  // Cargar autorizaciones de documentos privados
-  useEffect(() => {
-    if (!selectedUsuario || documentos.length === 0) { setDocAutorizaciones({}); return; }
-    const privDocIds = documentos.filter((d) => d.tipo === 'privado').map((d) => d.id);
-    if (privDocIds.length === 0) { setDocAutorizaciones({}); return; }
-    supabase.from('crm_documentos_autorizaciones')
-      .select('documento_id, user_id')
-      .in('documento_id', privDocIds)
-      .then(({ data }) => {
-        const map: Record<string, string[]> = {};
-        for (const row of (data ?? []) as { documento_id: string; user_id: string }[]) {
-          if (!map[row.documento_id]) map[row.documento_id] = [];
-          map[row.documento_id].push(row.user_id);
-        }
-        setDocAutorizaciones(map);
-      });
-  }, [selectedUsuario, documentos]);
-
-  // Cargar usuarios autorizables
-  useEffect(() => {
-    supabase.rpc('get_crm_authorizable_users').then(({ data }) => {
-      setAutorizables((data ?? []) as AutorizableUser[]);
-    });
-  }, []);
 
   // Buscador en tiempo real
   useEffect(() => {
@@ -359,83 +284,6 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
     const q = searchQuery.toLowerCase();
     return u.nombre.toLowerCase().includes(q) || (u.apellidos ?? '').toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q);
   });
-
-  // === Documentos ===
-  const openNewDoc = () => {
-    setEditingDocId(null); setDocTitulo(''); setDocDescripcion('');
-    setDocTipo(docSubTab === 'privados' ? 'privado' : 'publico');
-    setDocArchivo(null); setDocError(''); setShowDocForm(true);
-  };
-  const handleSaveDoc = async () => {
-    if (!selectedUsuario) return;
-    if (!docTitulo.trim()) { setDocError('El título es obligatorio'); return; }
-    setDocSaving(true); setDocError('');
-    try {
-      let archivoUrl = '';
-      let archivoNombre = '';
-      if (docArchivo) {
-        const ext = docArchivo.name.split('.').pop() ?? '';
-        const path = `crm/${selectedUsuario.id}/${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from('documents').upload(path, docArchivo);
-        if (upErr) throw upErr;
-        const { data: pub } = supabase.storage.from('documents').getPublicUrl(path);
-        archivoUrl = pub.publicUrl;
-        archivoNombre = docArchivo.name;
-      }
-      if (editingDocId) {
-        const { error } = await supabase.from('crm_documentos').update({
-          titulo: docTitulo.trim(), descripcion: docDescripcion.trim(), tipo: docTipo,
-          archivo_url: archivoUrl || undefined, archivo_nombre: archivoNombre || undefined,
-        }).eq('id', editingDocId);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('crm_documentos').insert({
-          usuario_servicio_id: selectedUsuario.id, titulo: docTitulo.trim(),
-          descripcion: docDescripcion.trim(), tipo: docTipo,
-          archivo_url: archivoUrl, archivo_nombre: archivoNombre, subido_por: currentUserNombre,
-        });
-        if (error) throw error;
-      }
-      setShowDocForm(false);
-      // Recargar documentos
-      const { data } = await supabase.from('crm_documentos')
-        .select('id, usuario_servicio_id, titulo, descripcion, tipo, archivo_url, archivo_nombre, subido_por, created_at')
-        .eq('usuario_servicio_id', selectedUsuario.id)
-        .order('created_at', { ascending: false });
-      setDocumentos((data ?? []) as CrmDocumento[]);
-    } catch { setDocError('No se pudo guardar el documento.'); }
-    finally { setDocSaving(false); }
-  };
-  const handleDeleteDoc = async (id: string) => {
-    if (!confirm('¿Eliminar este documento?')) return;
-    await supabase.from('crm_documentos').delete().eq('id', id);
-    if (selectedUsuario) {
-      const { data } = await supabase.from('crm_documentos')
-        .select('id, usuario_servicio_id, titulo, descripcion, tipo, archivo_url, archivo_nombre, subido_por, created_at')
-        .eq('usuario_servicio_id', selectedUsuario.id).order('created_at', { ascending: false });
-      setDocumentos((data ?? []) as CrmDocumento[]);
-    }
-  };
-
-  // === Autorizaciones ===
-  const openAuthModal = (docId: string) => {
-    setAuthDocId(docId); setShowAuthModal(true);
-  };
-  const toggleAuth = async (userId: string) => {
-    if (!authDocId) return;
-    const current = docAutorizaciones[authDocId] ?? [];
-    if (current.includes(userId)) {
-      await supabase.from('crm_documentos_autorizaciones').delete()
-        .eq('documento_id', authDocId).eq('user_id', userId);
-      setDocAutorizaciones((prev) => ({ ...prev, [authDocId]: current.filter((u) => u !== userId) }));
-    } else {
-      await supabase.from('crm_documentos_autorizaciones').insert({ documento_id: authDocId, user_id: userId });
-      setDocAutorizaciones((prev) => ({ ...prev, [authDocId]: [...current, userId] }));
-    }
-  };
-
-  // Documentos filtrados por subtab
-  const docsFiltered = documentos.filter((d) => docSubTab === 'publicos' ? d.tipo === 'publico' : d.tipo === 'privado');
 
   // Usuario seleccionado display
   const selectedUserLabel = selectedUsuario ? `${selectedUsuario.nombre} ${selectedUsuario.apellidos ?? ''}` : '';
@@ -778,166 +626,11 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
         {activeTab === 'documentos' && (
           <div className="space-y-6">
             {selectedUsuario ? (
-              <>
-                {/* Subtabs Publico/Privado */}
-                <div className="flex flex-wrap gap-1 p-1 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                  {([
-                    { id: 'publicos', label: 'Públicos', icon: Unlock },
-                    { id: 'privados', label: 'Privados', icon: Lock },
-                  ] as const).map((sub) => {
-                    const SubIcon = sub.icon;
-                    const isActive = docSubTab === sub.id;
-                    return (
-                      <button key={sub.id} onClick={() => setDocSubTab(sub.id)}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer"
-                        style={{ backgroundColor: isActive ? (sub.id === 'publicos' ? '#16A34A' : '#D97706') : 'transparent', color: isActive ? '#FFFFFF' : '#64748B' }}>
-                        <SubIcon size={14} />{sub.label}
-                      </button>
-                    );
-                  })}
-                  <button onClick={openNewDoc}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all ml-auto"
-                    style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
-                    <Plus size={14} />Nuevo documento
-                  </button>
-                </div>
-
-                {/* Info banner */}
-                {docSubTab === 'publicos' ? (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                    <Unlock size={16} style={{ color: '#16A34A' }} />
-                    <p className="text-sm" style={{ color: '#15803D' }}>Los documentos públicos son visibles para cualquier usuario con acceso al CRM.</p>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-                    <Lock size={16} style={{ color: '#D97706' }} />
-                    <p className="text-sm" style={{ color: '#92400E' }}>Los documentos privados solo son visibles para supervisores y usuarios expresamente autorizados.</p>
-                  </div>
-                )}
-
-                {/* Lista de documentos */}
-                {docsLoading ? (
-                  <div className="text-center py-12"><Clock size={24} className="mx-auto mb-2 animate-spin" style={{ color: '#0369A1' }} /><p className="text-sm" style={{ color: '#64748B' }}>Cargando documentos...</p></div>
-                ) : docsFiltered.length === 0 ? (
-                  <div className="text-center py-12 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                    <FolderOpen size={32} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
-                    <p className="text-sm font-medium" style={{ color: '#475569' }}>No hay documentos {docSubTab === 'publicos' ? 'públicos' : 'privados'}</p>
-                    <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Crea uno con el botón "Nuevo documento"</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {docsFiltered.map((d) => (
-                      <div key={d.id} className="rounded-xl p-5 transition-all hover:shadow-md" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: d.tipo === 'publico' ? '#F0FDF4' : '#FFFBEB' }}>
-                              {d.tipo === 'publico' ? <Unlock size={18} style={{ color: '#16A34A' }} /> : <Lock size={18} style={{ color: '#D97706' }} />}
-                            </div>
-                            <div>
-                              <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{d.titulo}</p>
-                              <p className="text-xs" style={{ color: '#94A3B8' }}>Subido por {d.subido_por}</p>
-                            </div>
-                          </div>
-                        </div>
-                        {d.descripcion && <p className="text-xs mb-3 line-clamp-2" style={{ color: '#64748B' }}>{d.descripcion}</p>}
-                        {d.archivo_url && (
-                          <a href={d.archivo_url} target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium mb-3 inline-flex cursor-pointer transition-all"
-                            style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
-                            <Download size={12} />{d.archivo_nombre || 'Descargar'}
-                          </a>
-                        )}
-                        {d.tipo === 'privado' && (
-                          <div className="mb-3">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Shield size={12} style={{ color: '#D97706' }} />
-                              <span className="text-xs font-medium" style={{ color: '#92400E' }}>Autorizados: {(docAutorizaciones[d.id] ?? []).length}</span>
-                            </div>
-                            <button onClick={() => openAuthModal(d.id)}
-                              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer transition-all"
-                              style={{ backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' }}>
-                              <Eye size={10} />Gestionar autorizaciones
-                            </button>
-                          </div>
-                        )}
-                        <div className="flex gap-2 pt-2" style={{ borderTop: '1px solid #F1F5F9' }}>
-                          <button onClick={() => { setEditingDocId(d.id); setDocTitulo(d.titulo); setDocDescripcion(d.descripcion); setDocTipo(d.tipo as 'publico' | 'privado'); setDocArchivo(null); setDocError(''); setShowDocForm(true); }}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all" style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}>Editar</button>
-                          <button onClick={() => handleDeleteDoc(d.id)} className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ml-auto" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}><Trash2 size={12} /></button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Doc Form Modal */}
-                {showDocForm && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-                    <div className="w-full max-w-md rounded-2xl p-6 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
-                      <div className="flex items-center justify-between mb-5">
-                        <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>{editingDocId ? 'Editar documento' : 'Nuevo documento'}</h3>
-                        <button onClick={() => setShowDocForm(false)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#94A3B8' }}><X size={14} /></button>
-                      </div>
-                      <div className="space-y-4">
-                        <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Título *</label><input type="text" value={docTitulo} onChange={(e) => setDocTitulo(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }} /></div>
-                        <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Descripción</label><textarea value={docDescripcion} onChange={(e) => setDocDescripcion(e.target.value)} rows={2} className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }} /></div>
-                        <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Visibilidad</label>
-                          <div className="flex gap-2">
-                            <button onClick={() => setDocTipo('publico')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all" style={{ backgroundColor: docTipo === 'publico' ? '#16A34A' : '#F1F5F9', color: docTipo === 'publico' ? '#FFFFFF' : '#475569', border: `1px solid ${docTipo === 'publico' ? '#16A34A' : '#E2E8F0'}` }}><Unlock size={12} />Público</button>
-                            <button onClick={() => setDocTipo('privado')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all" style={{ backgroundColor: docTipo === 'privado' ? '#D97706' : '#F1F5F9', color: docTipo === 'privado' ? '#FFFFFF' : '#475569', border: `1px solid ${docTipo === 'privado' ? '#D97706' : '#E2E8F0'}` }}><Lock size={12} />Privado</button>
-                          </div>
-                        </div>
-                        <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Archivo</label>
-                          <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ border: '1px dashed #CBD5E1', backgroundColor: '#F8FAFC' }}>
-                            <Upload size={14} style={{ color: '#94A3B8' }} />
-                            <input type="file" onChange={(e) => setDocArchivo(e.target.files?.[0] ?? null)} className="text-xs" style={{ color: '#475569' }} />
-                          </div>
-                        </div>
-                        {docError && <p className="text-xs" style={{ color: '#DC2626' }}>{docError}</p>}
-                        <div className="flex gap-2">
-                          <button onClick={handleSaveDoc} disabled={docSaving} className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-60" style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>{docSaving ? 'Guardando...' : 'Guardar'}</button>
-                          <button onClick={() => setShowDocForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer hover:bg-slate-100" style={{ color: '#64748B' }}>Cancelar</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Auth Modal */}
-                {showAuthModal && authDocId && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-                    <div className="w-full max-w-md rounded-2xl p-6 max-h-[80vh] overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
-                      <div className="flex items-center justify-between mb-5">
-                        <div className="flex items-center gap-2"><Shield size={16} style={{ color: '#D97706' }} /><h3 className="font-bold text-base" style={{ color: '#0F172A' }}>Gestionar autorizaciones</h3></div>
-                        <button onClick={() => setShowAuthModal(false)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#94A3B8' }}><X size={14} /></button>
-                      </div>
-                      <p className="text-xs mb-4" style={{ color: '#64748B' }}>Selecciona qué usuarios pueden ver este documento privado. Los supervisores tienen acceso automático.</p>
-                      {autorizables.length === 0 ? (
-                        <p className="text-sm text-center py-4" style={{ color: '#94A3B8' }}>No hay usuarios autorizables</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {autorizables.map((u) => {
-                            const isAuth = (docAutorizaciones[authDocId] ?? []).includes(u.id);
-                            return (
-                              <button key={u.id} onClick={() => toggleAuth(u.id)}
-                                className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all"
-                                style={{ backgroundColor: isAuth ? '#FFFBEB' : '#F8FAFC', border: `1px solid ${isAuth ? '#FDE68A' : '#E2E8F0'}` }}>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: isAuth ? '#FEF3C7' : '#F1F5F9' }}><User size={14} style={{ color: isAuth ? '#D97706' : '#64748B' }} /></div>
-                                  <div><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{u.nombre}</p><p className="text-xs" style={{ color: '#94A3B8' }}>{u.email} · {u.role}</p></div>
-                                </div>
-                                <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ backgroundColor: isAuth ? '#D97706' : 'transparent', border: `1.5px solid ${isAuth ? '#D97706' : '#CBD5E1'}` }}>
-                                  {isAuth && <span style={{ color: '#FFFFFF', fontSize: '10px', fontWeight: 'bold' }}>✓</span>}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </>
+              <CrmDocumentosModule
+                usuarioServicioId={selectedUsuario.id}
+                usuarioNombre={selectedUserLabel}
+                isAdmin={isAdmin}
+              />
             ) : (
               <div className="text-center py-16 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                 <FolderOpen size={40} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />

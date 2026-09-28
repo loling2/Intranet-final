@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import {
   Users, Calendar, Plus, X, Search, Building2, ChevronLeft, ChevronRight,
-  LogOut, KeyRound, Clock, AlertCircle, User, Phone, Mail, FileText, Trash2,
+  LogOut, KeyRound, Clock, AlertCircle, User, Phone, Mail, FileText,
   FolderOpen,
 } from 'lucide-react';
 import ChangePasswordModal from './ChangePasswordModal';
@@ -41,7 +41,8 @@ interface CrmNota {
 
 interface CentroOption { id: string; nombre: string; }
 
-type CrmTab = 'usuarios' | 'calendario' | 'documentos' | 'ayuda';
+type CrmTab = 'residentes' | 'ayuda';
+type ResidentDetailTab = 'info' | 'calendario' | 'documentos';
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -58,10 +59,11 @@ function formatDateDisplay(iso: string): string {
 }
 
 export default function CrmPanel({ email, onLogout, onNavigateEmployee, availableProfiles, onNavigateProfile }: Props) {
-  const [activeTab, setActiveTab] = useState<CrmTab>('usuarios');
+  const [activeTab, setActiveTab] = useState<CrmTab>('residentes');
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [detailTab, setDetailTab] = useState<ResidentDetailTab>('info');
 
   // Usuarios
   const [usuarios, setUsuarios] = useState<UsuarioServicio[]>([]);
@@ -83,11 +85,6 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const [notaError, setNotaError] = useState('');
   const [filterFecha, setFilterFecha] = useState('');
 
-  // Buscador de usuarios (calendario y documentos)
-  const [userSearchQuery, setUserSearchQuery] = useState('');
-  const [userSearchResults, setUserSearchResults] = useState<UsuarioServicio[]>([]);
-  const [userSearchFocused, setUserSearchFocused] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
 
   // Usuario form
   const [formNombre, setFormNombre] = useState('');
@@ -168,28 +165,6 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
       });
   }, [selectedUsuario]);
 
-  // Buscador en tiempo real
-  useEffect(() => {
-    if (!userSearchQuery.trim()) { setUserSearchResults([]); return; }
-    const q = userSearchQuery.toLowerCase();
-    setUserSearchResults(usuarios.filter((u) =>
-      u.nombre.toLowerCase().includes(q) ||
-      (u.apellidos ?? '').toLowerCase().includes(q) ||
-      (u.email ?? '').toLowerCase().includes(q)
-    ));
-  }, [userSearchQuery, usuarios]);
-
-  // Click fuera del buscador
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setUserSearchFocused(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
   // === Usuario form ===
   const openNewUsuario = () => {
     setEditingId(null); setFormNombre(''); setFormApellidos(''); setFormEmail('');
@@ -231,13 +206,6 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
     } catch { setFormError('No se pudo guardar. Inténtalo de nuevo.'); }
     finally { setFormSaving(false); }
   };
-  const handleDeleteUsuario = async (id: string) => {
-    if (!confirm('¿Eliminar este usuario? Se borrarán sus notas y documentos.')) return;
-    await supabase.from('usuarios_servicios').delete().eq('id', id);
-    if (selectedUsuario?.id === id) setSelectedUsuario(null);
-    await loadUsuarios();
-  };
-
   // === Calendario ===
   const year = calendarDate.getFullYear();
   const month = calendarDate.getMonth();
@@ -344,24 +312,20 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
             <select value={activeTab} onChange={(e) => setActiveTab(e.target.value as CrmTab)}
               className="flex-1 bg-transparent text-sm font-medium outline-none cursor-pointer" style={{ color: '#0F172A' }}>
-              <option value="usuarios">Usuarios de Servicio</option>
-              <option value="calendario">Calendario y Notas</option>
-              <option value="documentos">Documentos</option>
+              <option value="residentes">Residentes</option>
               <option value="ayuda">Ayuda</option>
             </select>
           </div>
         </div>
         <div className="hidden md:flex flex-wrap gap-1 p-1 rounded-xl mb-6 sm:mb-8" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
           {([
-            { id: 'usuarios', label: 'Usuarios de Servicio', icon: Users },
-            { id: 'calendario', label: 'Calendario y Notas', icon: Calendar },
-            { id: 'documentos', label: 'Documentos', icon: FolderOpen },
+            { id: 'residentes', label: 'Residentes', icon: Users },
             { id: 'ayuda', label: 'Ayuda', icon: AlertCircle },
           ] as const).map((tab) => {
             const TabIcon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              <button key={tab.id} onClick={() => { setActiveTab(tab.id); setSelectedUsuario(null); }}
                 className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all cursor-pointer whitespace-nowrap flex-shrink-0"
                 style={{ backgroundColor: isActive ? '#0369A1' : 'transparent', color: isActive ? '#FFFFFF' : '#64748B' }}>
                 <TabIcon size={13} />{tab.label}
@@ -370,131 +334,240 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
           })}
         </div>
 
-        {/* === Buscador de usuario (compartido calendario + documentos) === */}
-        {(activeTab === 'calendario' || activeTab === 'documentos') && (
-          <div className="mb-6">
-            <label className="block text-xs font-medium mb-2" style={{ color: '#475569' }}>Buscar usuario de servicio</label>
-            <div ref={searchRef} className="relative max-w-xl">
-              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                <Search size={16} style={{ color: '#64748B' }} />
-                <input type="text" value={userSearchQuery}
-                  onChange={(e) => { setUserSearchQuery(e.target.value); setUserSearchFocused(true); }}
-                  onFocus={() => setUserSearchFocused(true)}
-                  placeholder="Escribe nombre, apellidos o email..."
-                  className="flex-1 bg-transparent text-sm outline-none" style={{ color: '#0F172A' }} />
-                {selectedUsuario && (
-                  <button onClick={() => { setSelectedUsuario(null); setUserSearchQuery(''); }}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>
-                    <X size={10} /> Limpiar
-                  </button>
-                )}
-              </div>
-              {userSearchFocused && userSearchQuery.trim() && (
-                <div className="absolute top-full left-0 right-0 mt-1 rounded-xl overflow-hidden z-50 max-h-64 overflow-y-auto"
-                  style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                  {userSearchResults.length === 0 ? (
-                    <div className="px-4 py-3 text-sm" style={{ color: '#94A3B8' }}>Sin resultados</div>
-                  ) : userSearchResults.map((u) => (
-                    <button key={u.id}
-                      onClick={() => { setSelectedUsuario(u); setUserSearchQuery(`${u.nombre} ${u.apellidos ?? ''}`); setUserSearchFocused(false); }}
-                      className="w-full text-left px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-all flex items-center gap-3"
-                      style={{ borderBottom: '1px solid #F1F5F9' }}>
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#EFF6FF' }}>
-                        <User size={14} style={{ color: '#0369A1' }} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate" style={{ color: '#0F172A' }}>{u.nombre} {u.apellidos}</p>
-                        {u.email && <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{u.email}</p>}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {selectedUsuario && (
-              <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-                <User size={14} style={{ color: '#0369A1' }} />
-                <span className="text-sm font-medium" style={{ color: '#0369A1' }}>Seleccionado: {selectedUserLabel}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* === Tab: Usuarios === */}
-        {activeTab === 'usuarios' && (
+        {/* === Tab: Residentes (listado + ficha) === */}
+        {activeTab === 'residentes' && (
           <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Usuarios de Servicio</h2>
-                <p className="text-sm" style={{ color: '#64748B' }}>Gestiona los clientes/usuarios asignados a centros</p>
-              </div>
-              {isAdmin && (
-                <button onClick={openNewUsuario}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
-                  style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
-                  <Plus size={14} />Nuevo usuario
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-              <Search size={16} style={{ color: '#64748B' }} />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar por nombre, apellidos o email..."
-                className="flex-1 bg-transparent text-sm outline-none" style={{ color: '#0F172A' }} />
-            </div>
-            {usuariosLoading ? (
-              <div className="text-center py-12"><Clock size={24} className="mx-auto mb-2 animate-spin" style={{ color: '#0369A1' }} /><p className="text-sm" style={{ color: '#64748B' }}>Cargando usuarios...</p></div>
-            ) : filteredUsuarios.length === 0 ? (
-              <div className="text-center py-12 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                <Users size={32} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
-                <p className="text-sm font-medium" style={{ color: '#475569' }}>No hay usuarios de servicio</p>
-              </div>
+            {!selectedUsuario ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Residentes</h2>
+                    <p className="text-sm" style={{ color: '#64748B' }}>Pacientes asignados a centros</p>
+                  </div>
+                  {isAdmin && (
+                    <button onClick={openNewUsuario}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
+                      style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
+                      <Plus size={14} />Nuevo residente
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                  <Search size={16} style={{ color: '#64748B' }} />
+                  <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Buscar por nombre, apellidos o email..."
+                    className="flex-1 bg-transparent text-sm outline-none" style={{ color: '#0F172A' }} />
+                </div>
+                {usuariosLoading ? (
+                  <div className="text-center py-12"><Clock size={24} className="mx-auto mb-2 animate-spin" style={{ color: '#0369A1' }} /><p className="text-sm" style={{ color: '#64748B' }}>Cargando residentes...</p></div>
+                ) : filteredUsuarios.length === 0 ? (
+                  <div className="text-center py-12 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                    <Users size={32} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
+                    <p className="text-sm font-medium" style={{ color: '#475569' }}>No hay residentes</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredUsuarios.map((u) => (
+                      <div key={u.id} className="rounded-xl p-5 transition-all hover:shadow-md cursor-pointer" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
+                        onClick={() => { setSelectedUsuario(u); setDetailTab('info'); }}>
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#EFF6FF' }}>
+                              <User size={22} style={{ color: '#0369A1' }} />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{u.nombre} {u.apellidos}</p>
+                              <span className="text-xs px-2 py-0.5 rounded-md font-medium" style={{ backgroundColor: u.activo ? '#F0FDF4' : '#FEF2F2', color: u.activo ? '#16A34A' : '#DC2626' }}>{u.activo ? 'Activo' : 'Inactivo'}</span>
+                            </div>
+                          </div>
+                          <ChevronRight size={16} style={{ color: '#CBD5E1' }} />
+                        </div>
+                        <div className="space-y-1.5 mb-3">
+                          {u.email && <div className="flex items-center gap-2 text-xs" style={{ color: '#64748B' }}><Mail size={12} /><span className="truncate">{u.email}</span></div>}
+                          {u.telefono && <div className="flex items-center gap-2 text-xs" style={{ color: '#64748B' }}><Phone size={12} /><span>{u.telefono}</span></div>}
+                        </div>
+                        {u.centros && u.centros.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {u.centros.map((c) => <span key={c.id} className="text-xs px-2 py-1 rounded-md" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}><Building2 size={10} className="inline mr-1" />{c.nombre}</span>)}
+                          </div>
+                        )}
+                        {u.observaciones && <p className="text-xs mb-3 line-clamp-2" style={{ color: '#94A3B8' }}>{u.observaciones}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredUsuarios.map((u) => (
-                  <div key={u.id} className="rounded-xl p-5 transition-all hover:shadow-md" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#EFF6FF' }}>
-                          <User size={18} style={{ color: '#0369A1' }} />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{u.nombre} {u.apellidos}</p>
-                          <span className="text-xs px-2 py-0.5 rounded-md font-medium" style={{ backgroundColor: u.activo ? '#F0FDF4' : '#FEF2F2', color: u.activo ? '#16A34A' : '#DC2626' }}>{u.activo ? 'Activo' : 'Inactivo'}</span>
-                        </div>
-                      </div>
+              <>
+                {/* Ficha del residente */}
+                <div className="flex items-center gap-3 mb-2">
+                  <button onClick={() => setSelectedUsuario(null)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all"
+                    style={{ backgroundColor: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0' }}>
+                    <ChevronLeft size={14} /> Volver
+                  </button>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#EFF6FF' }}>
+                      <User size={20} style={{ color: '#0369A1' }} />
                     </div>
-                    <div className="space-y-1.5 mb-3">
-                      {u.email && <div className="flex items-center gap-2 text-xs" style={{ color: '#64748B' }}><Mail size={12} /><span className="truncate">{u.email}</span></div>}
-                      {u.telefono && <div className="flex items-center gap-2 text-xs" style={{ color: '#64748B' }}><Phone size={12} /><span>{u.telefono}</span></div>}
-                    </div>
-                    {u.centros && u.centros.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-3">
-                        {u.centros.map((c) => <span key={c.id} className="text-xs px-2 py-1 rounded-md" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}><Building2 size={10} className="inline mr-1" />{c.nombre}</span>)}
+                    <div>
+                      <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>{selectedUserLabel}</h2>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs px-2 py-0.5 rounded-md font-medium" style={{ backgroundColor: selectedUsuario.activo ? '#F0FDF4' : '#FEF2F2', color: selectedUsuario.activo ? '#16A34A' : '#DC2626' }}>{selectedUsuario.activo ? 'Activo' : 'Inactivo'}</span>
+                        {selectedUsuario.centros && selectedUsuario.centros.map((c) => <span key={c.id} className="text-xs px-2 py-0.5 rounded-md" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>{c.nombre}</span>)}
                       </div>
-                    )}
-                    {u.observaciones && <p className="text-xs mb-3 line-clamp-2" style={{ color: '#94A3B8' }}>{u.observaciones}</p>}
-                    <div className="flex gap-2 pt-2" style={{ borderTop: '1px solid #F1F5F9' }}>
-                      <button onClick={() => { setSelectedUsuario(u); setUserSearchQuery(`${u.nombre} ${u.apellidos ?? ''}`); setActiveTab('calendario'); }}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all" style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
-                        <Calendar size={12} />Ver calendario
-                      </button>
-                      <button onClick={() => { setSelectedUsuario(u); setUserSearchQuery(`${u.nombre} ${u.apellidos ?? ''}`); setActiveTab('documentos'); }}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
-                        <FolderOpen size={12} />Documentos
-                      </button>
-                      {isAdmin && <button onClick={() => openEditUsuario(u)} className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all" style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}>Editar</button>}
-                      {isAdmin && <button onClick={() => handleDeleteUsuario(u.id)} className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ml-auto" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}><Trash2 size={12} /></button>}
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+
+                {/* Sub-pestañas de la ficha */}
+                <div className="flex flex-wrap gap-1 p-1 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                  {([
+                    { id: 'info', label: 'Información', icon: User },
+                    { id: 'calendario', label: 'Calendario y Notas', icon: Calendar },
+                    { id: 'documentos', label: 'Documentos', icon: FolderOpen },
+                  ] as const).map((tab) => {
+                    const TabIcon = tab.icon;
+                    const isActive = detailTab === tab.id;
+                    return (
+                      <button key={tab.id} onClick={() => setDetailTab(tab.id)}
+                        className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all cursor-pointer whitespace-nowrap flex-shrink-0"
+                        style={{ backgroundColor: isActive ? '#0369A1' : 'transparent', color: isActive ? '#FFFFFF' : '#64748B' }}>
+                        <TabIcon size={13} />{tab.label}
+                      </button>
+                    );
+                  })}
+                  {isAdmin && (
+                    <button onClick={() => openEditUsuario(selectedUsuario)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all ml-auto"
+                      style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}>
+                      Editar
+                    </button>
+                  )}
+                </div>
+
+                {/* Sub-pestaña: Información */}
+                {detailTab === 'info' && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="rounded-2xl p-6" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                      <h3 className="font-semibold text-sm mb-4" style={{ color: '#0F172A' }}>Datos de contacto</h3>
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><Mail size={16} style={{ color: '#0369A1' }} /></div>
+                          <div><p className="text-xs" style={{ color: '#94A3B8' }}>Email</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{selectedUsuario.email || 'Sin email'}</p></div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><Phone size={16} style={{ color: '#0369A1' }} /></div>
+                          <div><p className="text-xs" style={{ color: '#94A3B8' }}>Teléfono</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{selectedUsuario.telefono || 'Sin teléfono'}</p></div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><Building2 size={16} style={{ color: '#0369A1' }} /></div>
+                          <div><p className="text-xs" style={{ color: '#94A3B8' }}>Centros</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{selectedUsuario.centros && selectedUsuario.centros.length > 0 ? selectedUsuario.centros.map(c => c.nombre).join(', ') : 'Sin centros'}</p></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl p-6" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                      <h3 className="font-semibold text-sm mb-4" style={{ color: '#0F172A' }}>Observaciones</h3>
+                      {selectedUsuario.observaciones ? (
+                        <p className="text-sm" style={{ color: '#475569', lineHeight: 1.6 }}>{selectedUsuario.observaciones}</p>
+                      ) : (
+                        <p className="text-sm" style={{ color: '#94A3B8' }}>Sin observaciones</p>
+                      )}
+                      <div className="mt-4 pt-4" style={{ borderTop: '1px solid #F1F5F9' }}>
+                        <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>Resumen de actividad</p>
+                        <div className="flex gap-4">
+                          <div className="flex items-center gap-2"><Calendar size={14} style={{ color: '#0369A1' }} /><span className="text-sm font-medium" style={{ color: '#0F172A' }}>{notas.length} notas</span></div>
+                          <button onClick={() => setDetailTab('calendario')} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Ver calendario</button>
+                          <button onClick={() => setDetailTab('documentos')} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Ver documentos</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-pestaña: Calendario */}
+                {detailTab === 'calendario' && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>{MONTH_NAMES[month]} {year}</h3>
+                        <div className="flex items-center gap-1">
+                          <button onClick={prevMonth} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#64748B' }}><ChevronLeft size={16} /></button>
+                          <button onClick={goToday} className="px-2 py-1 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>Hoy</button>
+                          <button onClick={nextMonth} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#64748B' }}><ChevronRight size={16} /></button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1 mb-2">
+                        {DAY_NAMES.map((d) => <div key={d} className="text-center text-xs font-semibold py-1" style={{ color: '#94A3B8' }}>{d}</div>)}
+                      </div>
+                      <div className="grid grid-cols-7 gap-1">
+                        {calendarCells.map((cell, i) => {
+                          if (!cell.date || !cell.iso) return <div key={i} className="aspect-square" />;
+                          const isToday = cell.iso === todayISO;
+                          const notaCount = notasByDate[cell.iso] ?? 0;
+                          const isFiltered = filterFecha === cell.iso;
+                          return (
+                            <button key={i} onClick={() => openNotaModal(cell.iso!)}
+                              onContextMenu={(e) => { e.preventDefault(); setFilterFecha(isFiltered ? '' : cell.iso!); }}
+                              className="aspect-square rounded-lg flex flex-col items-center justify-center text-xs cursor-pointer transition-all relative"
+                              style={{ backgroundColor: isFiltered ? '#0369A1' : isToday ? '#EFF6FF' : '#F8FAFC', color: isFiltered ? '#FFFFFF' : isToday ? '#0369A1' : '#475569', border: isToday ? '1px solid #BFDBFE' : '1px solid transparent' }}
+                              title={`${formatDateDisplay(cell.iso)} — Click para añadir nota. Clic derecho para filtrar.`}>
+                              <span className="font-medium">{cell.date!.getDate()}</span>
+                              {notaCount > 0 && <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isFiltered ? '#FFFFFF' : '#0369A1' }} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs mt-3" style={{ color: '#94A3B8' }}>Click para añadir nota · Clic derecho para filtrar por fecha</p>
+                    </div>
+                    <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2"><FileText size={16} style={{ color: '#0369A1' }} /><h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Historial de Notas</h3></div>
+                        {filterFecha && <button onClick={() => setFilterFecha('')} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}><X size={10} />Quitar filtro</button>}
+                      </div>
+                      <div className="flex items-center gap-2 mb-4 px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#FEF3C7', border: '1px solid #FDE68A' }}>
+                        <AlertCircle size={14} style={{ color: '#D97706' }} />
+                        <p className="text-xs" style={{ color: '#92400E' }}>Las notas son registros históricos de solo lectura. No se pueden editar ni borrar.</p>
+                      </div>
+                      {notasLoading ? (
+                        <div className="text-center py-8"><Clock size={20} className="mx-auto mb-2 animate-spin" style={{ color: '#0369A1' }} /><p className="text-xs" style={{ color: '#64748B' }}>Cargando notas...</p></div>
+                      ) : notasDisplay.length === 0 ? (
+                        <div className="text-center py-8"><FileText size={28} className="mx-auto mb-2" style={{ color: '#CBD5E1' }} /><p className="text-xs font-medium" style={{ color: '#475569' }}>{filterFecha ? `Sin notas para ${formatDateDisplay(filterFecha)}` : 'Sin notas registradas'}</p><p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Click en un día del calendario para añadir</p></div>
+                      ) : (
+                        <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                          {notasDisplay.map((n) => (
+                            <div key={n.id} className="rounded-xl p-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-bold px-2 py-1 rounded-md" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>{formatDateDisplay(n.fecha)}</span>
+                                <span className="text-xs" style={{ color: '#94A3B8' }}>{new Date(n.created_at).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                              <p className="text-xs font-semibold mb-1" style={{ color: '#0369A1' }}>Autor: {n.autor_nombre}</p>
+                              <p className="text-sm" style={{ color: '#1E293B' }}>{n.contenido}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-pestaña: Documentos */}
+                {detailTab === 'documentos' && (
+                  <CrmDocumentosModule
+                    usuarioServicioId={selectedUsuario.id}
+                    usuarioNombre={selectedUserLabel}
+                    isAdmin={isAdmin}
+                  />
+                )}
+              </>
             )}
+
+            {/* Modal formulario de residente */}
             {showUsuarioForm && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
                 <div className="w-full max-w-lg rounded-2xl p-6 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
                   <div className="flex items-center justify-between mb-5">
-                    <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>{editingId ? 'Editar usuario' : 'Nuevo usuario de servicio'}</h3>
+                    <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>{editingId ? 'Editar residente' : 'Nuevo residente'}</h3>
                     <button onClick={() => setShowUsuarioForm(false)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#94A3B8' }}><X size={14} /></button>
                   </div>
                   <div className="space-y-4">
@@ -523,81 +596,8 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* === Tab: Calendario === */}
-        {activeTab === 'calendario' && (
-          <div className="space-y-6">
-            {selectedUsuario ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>{MONTH_NAMES[month]} {year}</h3>
-                    <div className="flex items-center gap-1">
-                      <button onClick={prevMonth} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#64748B' }}><ChevronLeft size={16} /></button>
-                      <button onClick={goToday} className="px-2 py-1 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>Hoy</button>
-                      <button onClick={nextMonth} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#64748B' }}><ChevronRight size={16} /></button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-7 gap-1 mb-2">
-                    {DAY_NAMES.map((d) => <div key={d} className="text-center text-xs font-semibold py-1" style={{ color: '#94A3B8' }}>{d}</div>)}
-                  </div>
-                  <div className="grid grid-cols-7 gap-1">
-                    {calendarCells.map((cell, i) => {
-                      if (!cell.date || !cell.iso) return <div key={i} className="aspect-square" />;
-                      const isToday = cell.iso === todayISO;
-                      const notaCount = notasByDate[cell.iso] ?? 0;
-                      const isFiltered = filterFecha === cell.iso;
-                      return (
-                        <button key={i} onClick={() => openNotaModal(cell.iso!)}
-                          onContextMenu={(e) => { e.preventDefault(); setFilterFecha(isFiltered ? '' : cell.iso!); }}
-                          className="aspect-square rounded-lg flex flex-col items-center justify-center text-xs cursor-pointer transition-all relative"
-                          style={{ backgroundColor: isFiltered ? '#0369A1' : isToday ? '#EFF6FF' : '#F8FAFC', color: isFiltered ? '#FFFFFF' : isToday ? '#0369A1' : '#475569', border: isToday ? '1px solid #BFDBFE' : '1px solid transparent' }}
-                          title={`${formatDateDisplay(cell.iso)} — Click para añadir nota. Clic derecho para filtrar.`}>
-                          <span className="font-medium">{cell.date!.getDate()}</span>
-                          {notaCount > 0 && <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isFiltered ? '#FFFFFF' : '#0369A1' }} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-xs mt-3" style={{ color: '#94A3B8' }}>Click para añadir nota · Clic derecho para filtrar por fecha</p>
-                </div>
-                <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2"><FileText size={16} style={{ color: '#0369A1' }} /><h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Historial de Notas</h3></div>
-                    {filterFecha && <button onClick={() => setFilterFecha('')} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}><X size={10} />Quitar filtro</button>}
-                  </div>
-                  <div className="flex items-center gap-2 mb-4 px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#FEF3C7', border: '1px solid #FDE68A' }}>
-                    <AlertCircle size={14} style={{ color: '#D97706' }} />
-                    <p className="text-xs" style={{ color: '#92400E' }}>Las notas son registros históricos de solo lectura. No se pueden editar ni borrar.</p>
-                  </div>
-                  {notasLoading ? (
-                    <div className="text-center py-8"><Clock size={20} className="mx-auto mb-2 animate-spin" style={{ color: '#0369A1' }} /><p className="text-xs" style={{ color: '#64748B' }}>Cargando notas...</p></div>
-                  ) : notasDisplay.length === 0 ? (
-                    <div className="text-center py-8"><FileText size={28} className="mx-auto mb-2" style={{ color: '#CBD5E1' }} /><p className="text-xs font-medium" style={{ color: '#475569' }}>{filterFecha ? `Sin notas para ${formatDateDisplay(filterFecha)}` : 'Sin notas registradas'}</p><p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Click en un día del calendario para añadir</p></div>
-                  ) : (
-                    <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                      {notasDisplay.map((n) => (
-                        <div key={n.id} className="rounded-xl p-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-bold px-2 py-1 rounded-md" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>{formatDateDisplay(n.fecha)}</span>
-                            <span className="text-xs" style={{ color: '#94A3B8' }}>{new Date(n.created_at).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                          </div>
-                          <p className="text-xs font-semibold mb-1" style={{ color: '#0369A1' }}>Autor: {n.autor_nombre}</p>
-                          <p className="text-sm" style={{ color: '#1E293B' }}>{n.contenido}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-16 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                <Calendar size={40} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
-                <p className="text-sm font-medium" style={{ color: '#475569' }}>Usa el buscador de arriba para seleccionar un usuario</p>
-              </div>
-            )}
+            {/* Modal de nota */}
             {showNotaModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
                 <div className="w-full max-w-md rounded-2xl p-6" style={{ backgroundColor: '#FFFFFF' }}>
@@ -616,24 +616,6 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* === Tab: Documentos === */}
-        {activeTab === 'documentos' && (
-          <div className="space-y-6">
-            {selectedUsuario ? (
-              <CrmDocumentosModule
-                usuarioServicioId={selectedUsuario.id}
-                usuarioNombre={selectedUserLabel}
-                isAdmin={isAdmin}
-              />
-            ) : (
-              <div className="text-center py-16 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                <FolderOpen size={40} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
-                <p className="text-sm font-medium" style={{ color: '#475569' }}>Usa el buscador de arriba para seleccionar un usuario</p>
               </div>
             )}
           </div>

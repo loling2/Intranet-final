@@ -303,6 +303,32 @@ export async function ensureCrmFolder(prefix: string): Promise<void> {
   await uploadViaEdgeFunction(new Uint8Array(0), `${prefix}.keep`, 'application/octet-stream');
 }
 
+// ─── Moodle helpers ───────────────────────────────────────────────────────────
+
+export function sanitizeSlug(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+}
+
+export async function ensureMoodleCursoFolder(cursoNombre: string): Promise<string> {
+  const slug = sanitizeSlug(cursoNombre);
+  const prefix = `moodle/${slug}/`;
+  await uploadViaEdgeFunction(new Uint8Array(0), `${prefix}.keep`, 'application/octet-stream');
+  return prefix;
+}
+
+export async function uploadMoodleFile(file: File, cursoPrefix: string): Promise<string> {
+  const key = `${cursoPrefix}${Date.now()}-${file.name}`;
+  const buffer = await file.arrayBuffer();
+  return uploadViaEdgeFunction(new Uint8Array(buffer), key, file.type || 'application/octet-stream');
+}
+
+export async function listMoodleCursoFiles(cursoPrefix: string): Promise<RrhhFile[]> {
+  const { objects } = await listViaEdgeFunction(cursoPrefix);
+  return objects
+    .filter(obj => obj.key && obj.key !== cursoPrefix && !obj.key.endsWith('.keep'))
+    .map(obj => ({ key: obj.key, name: obj.key.replace(cursoPrefix, ''), size: obj.size, lastModified: obj.lastModified }));
+}
+
 export async function listCrmFolderFiles(prefix: string): Promise<RrhhFile[]> {
   const { objects } = await listViaEdgeFunction(prefix);
   return objects

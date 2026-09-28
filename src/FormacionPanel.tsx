@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck, HelpCircle } from 'lucide-react';
+import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck, HelpCircle, BookOpen } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import HelpPanel from './components/HelpPanel';
 import ProfileSwitcher, { type ProfileOption } from './components/ProfileSwitcher';
+import CursosPanel from './components/CursosPanel';
 
 interface Props {
   email: string;
@@ -61,7 +62,7 @@ interface Asignacion {
   tiempo_empleado_segundos: number | null;
 }
 
-type Tab = 'examenes' | 'asignaciones' | 'ayuda';
+type Tab = 'examenes' | 'cursos' | 'asignaciones' | 'ayuda';
 
 const estadoConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
   pendiente: { label: 'Pendiente', color: '#64748B', bg: '#F8FAFC', border: '#E2E8F0' },
@@ -363,6 +364,7 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
 
   const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
     { id: 'examenes', label: 'Examenes', icon: ClipboardCheck },
+    { id: 'cursos', label: 'Cursos', icon: BookOpen },
     { id: 'asignaciones', label: 'Asignaciones', icon: UserCheck },
     { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
   ];
@@ -698,6 +700,11 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
             </div>
           )}
           </div>
+        )}
+
+        {/* ── Tab: Cursos (Moodle) ── */}
+        {activeTab === 'cursos' && (
+          <CursosPanel />
         )}
 
         {/* ── Tab: Asignaciones (global) ── */}

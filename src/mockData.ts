@@ -135,6 +135,7 @@ export interface Certificate {
 
 export interface Exam {
   id: string;
+  examenId?: string;
   title: string;
   course: string;
   date: string;

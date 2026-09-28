@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ChevronLeft, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle, Tablet, Timer, Send, Calendar, ToggleLeft, ToggleRight, UserCog } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ChevronLeft, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle, Tablet, Timer, Send, Calendar, ToggleLeft, ToggleRight, UserCog, BookOpen } from 'lucide-react';
 import { APP_VERSION } from './version';
 import type { LucideIcon } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
 import { mockDocuments, mockCertificates, mockExams } from './mockData';
 import type { Exam } from './mockData';
+import MoodleCursosEmpleado from './components/MoodleCursosEmpleado';
 import type { AppRole } from './supabaseClient';
 type UserRole = AppRole;
 import DocumentsCard from './DocumentsCard';
@@ -2971,6 +2972,7 @@ useEffect(() => {
       if (!asignaciones) { setRealExams([]); return; }
       const mapped: Exam[] = asignaciones.map((a: any) => ({
         id: a.id,
+        examenId: a.examen_id,
         title: a.examenes?.nombre ?? 'Examen',
         course: a.examenes?.descripcion ?? '',
         date: a.fecha_asignacion ? new Date(a.fecha_asignacion).toLocaleDateString('es-ES') : '-',
@@ -2992,6 +2994,7 @@ useEffect(() => {
     { id: 'calidad', label: 'Calidad', icon: ShieldCheck },
     { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
     { id: 'formacion', label: 'Formacion', icon: GraduationCap },
+    { id: 'moodle', label: 'Moodle', icon: BookOpen },
     { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },
     { id: 'fichajes', label: 'Fichajes', icon: Clock },
     { id: 'vacaciones', label: 'Vacaciones', icon: Plane },
@@ -3341,6 +3344,10 @@ useEffect(() => {
               <CertificatesCard certificates={certificates} theme={theme} />
             )}
           </div>
+        )}
+
+        {activeTab === 'moodle' && (
+          <MoodleCursosEmpleado theme={theme} />
         )}
 
         {activeTab === 'incidencias' && currentUserId && (

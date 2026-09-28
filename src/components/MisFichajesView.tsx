@@ -670,6 +670,8 @@ export default function MisFichajesView({ theme, userId }: Props) {
   const [viewMode, setViewMode] = useState<'asistencia' | 'vehiculos'>('asistencia');
   const [empleadoSociedadId, setEmpleadoSociedadId] = useState<string | null>(null);
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const [correccionPage, setCorreccionPage] = useState(0);
+  const CORRECCIONES_PER_PAGE = 5;
 
   // Default: last 30 days
   useEffect(() => {
@@ -1118,7 +1120,12 @@ export default function MisFichajesView({ theme, userId }: Props) {
       )}
 
       {/* Correcciones list */}
-      {viewMode === 'asistencia' && correcciones.length > 0 && (
+      {viewMode === 'asistencia' && correcciones.length > 0 && (() => {
+        const totalPages = Math.ceil(correcciones.length / CORRECCIONES_PER_PAGE);
+        const safePage = Math.min(correccionPage, totalPages - 1);
+        const startIdx = safePage * CORRECCIONES_PER_PAGE;
+        const pageItems = correcciones.slice(startIdx, startIdx + CORRECCIONES_PER_PAGE);
+        return (
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
           <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: `1px solid ${theme.border}`, backgroundColor: theme.bg }}>
             <FileText size={14} style={{ color: theme.primary }} />
@@ -1128,7 +1135,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
             </span>
           </div>
           <div className="divide-y" style={{ borderColor: theme.border }}>
-            {correcciones.map((c) => {
+            {pageItems.map((c) => {
               const estadoColor = c.estado === 'aprobada' ? '#16A34A' : c.estado === 'rechazada' ? '#DC2626' : '#D97706';
               const estadoBg = c.estado === 'aprobada' ? '#F0FDF4' : c.estado === 'rechazada' ? '#FEF2F2' : '#FFFBEB';
               const estadoBorder = c.estado === 'aprobada' ? '#BBF7D0' : c.estado === 'rechazada' ? '#FECACA' : '#FDE68A';
@@ -1170,8 +1177,43 @@ export default function MisFichajesView({ theme, userId }: Props) {
               );
             })}
           </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-1.5 px-5 py-3" style={{ borderTop: `1px solid ${theme.border}`, backgroundColor: theme.bg }}>
+              <button
+                onClick={() => setCorreccionPage(Math.max(0, safePage - 1))}
+                disabled={safePage === 0}
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                style={{ backgroundColor: safePage === 0 ? 'transparent' : theme.bgCard, color: theme.primary, border: `1px solid ${theme.border}` }}
+              >
+                ‹
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setCorreccionPage(p)}
+                  className="w-7 h-7 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                  style={{
+                    backgroundColor: p === safePage ? theme.primary : theme.bgCard,
+                    color: p === safePage ? '#FFFFFF' : theme.textSecondary,
+                    border: `1px solid ${p === safePage ? theme.primary : theme.border}`,
+                  }}
+                >
+                  {p + 1}
+                </button>
+              ))}
+              <button
+                onClick={() => setCorreccionPage(Math.min(totalPages - 1, safePage + 1))}
+                disabled={safePage === totalPages - 1}
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                style={{ backgroundColor: safePage === totalPages - 1 ? 'transparent' : theme.bgCard, color: theme.primary, border: `1px solid ${theme.border}` }}
+              >
+                ›
+              </button>
+            </div>
+          )}
         </div>
-      )}
+        );
+      })()}
 
       {correctionTarget && (
         <CorrectionModal

@@ -69,6 +69,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const [usuarios, setUsuarios] = useState<UsuarioServicio[]>([]);
   const [usuariosLoading, setUsuariosLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterCentro, setFilterCentro] = useState<string>('');
   const [selectedUsuario, setSelectedUsuario] = useState<UsuarioServicio | null>(null);
   const [showUsuarioForm, setShowUsuarioForm] = useState(false);
   const [centros, setCentros] = useState<CentroOption[]>([]);
@@ -245,6 +246,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const notasDisplay = filterFecha ? notas.filter((n) => n.fecha === filterFecha) : notas;
 
   const filteredUsuarios = usuarios.filter((u) => {
+    if (filterCentro && !(u.centros ?? []).some((c) => c.id === filterCentro)) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return u.nombre.toLowerCase().includes(q) || (u.apellidos ?? '').toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q);
@@ -352,11 +354,21 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                     </button>
                   )}
                 </div>
-                <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                  <Search size={16} style={{ color: '#64748B' }} />
-                  <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Buscar por nombre, apellidos o email..."
-                    className="flex-1 bg-transparent text-sm outline-none" style={{ color: '#0F172A' }} />
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl flex-1" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                    <Search size={16} style={{ color: '#64748B' }} />
+                    <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Buscar por nombre, apellidos o email..."
+                      className="flex-1 bg-transparent text-sm outline-none" style={{ color: '#0F172A' }} />
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                    <Building2 size={16} style={{ color: '#64748B' }} />
+                    <select value={filterCentro} onChange={(e) => setFilterCentro(e.target.value)}
+                      className="bg-transparent text-sm outline-none cursor-pointer min-w-[140px]" style={{ color: '#0F172A' }}>
+                      <option value="">Todos los centros</option>
+                      {centros.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </div>
                 </div>
                 {usuariosLoading ? (
                   <div className="text-center py-12"><Clock size={24} className="mx-auto mb-2 animate-spin" style={{ color: '#0369A1' }} /><p className="text-sm" style={{ color: '#64748B' }}>Cargando residentes...</p></div>

@@ -39,6 +39,11 @@ function dayName(d: string): string {
   const days = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
   return days[new Date(d + "T12:00:00Z").getUTCDay()];
 }
+function nextDate(d: string): string {
+  const date = new Date(`${d}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
 
 const typeConfig: Record<string, { label: string; bg: string; text: string; border: string; dot: string }> = {
   sin_salida: { label: "Sin salida", bg: "#F5F3FF", text: "#7C3AED", border: "#DDD6FE", dot: "#7C3AED" },
@@ -335,11 +340,12 @@ Deno.serve(async (req: Request) => {
     }
     if (!cuenta) return json({ error: "No active SMTP account" }, 400);
 
-    // ── 3. Fetch fichajes for target date ─────────────────────────────────────
+    // ── 3. Fetch target-day entries and the following day's exits ─────────────
+    const followingDate = nextDate(targetDate);
     const { data: fichajes, error: fichErr } = await supabase
       .from("fichajes")
       .select("empleado_id, nombre_empleado, fecha, timestamp, timestamp_corregido, tipo_evento, nota_correccion")
-      .eq("fecha", targetDate)
+      .in("fecha", [targetDate, followingDate])
       .in("tipo_evento", ["entrada", "salida"])
       .order("timestamp", { ascending: true });
 
@@ -381,20 +387,22 @@ Deno.serve(async (req: Request) => {
     for (const f of fichajes ?? []) {
       const eff = f.timestamp_corregido ?? f.timestamp;
       const key = f.empleado_id ?? f.nombre_empleado.trim().toLocaleUpperCase("es-ES");
-      if (!summaries.has(key)) {
-        summaries.set(key, { nombre: f.nombre_empleado, entrada: null, salida: null, salidaAuto: false, salidaReal: null });
-      }
-      const s = summaries.get(key)!;
       if (f.tipo_evento === "entrada") {
-        if (!s.entrada || eff < s.entrada) s.entrada = eff;
-      } else if (f.tipo_evento === "salida") {
-        const isAuto = (f.nota_correccion ?? "").includes("Cierre automático");
-        if (!isAuto && (!s.salidaReal || eff > s.salidaReal)) s.salidaReal = eff;
-        if (!s.salida || eff > s.salida) {
-          s.salida = eff;
-          s.salidaAuto = isAuto;
+        if (f.fecha !== targetDate) continue;
+        if (!summaries.has(key)) {
+          summaries.set(key, { nombre: f.nombre_empleado, entrada: eff, salida: null, salidaAuto: false, salidaReal: null });
+        } else {
+          const s = summaries.get(key)!;
+          if (!s.entrada || eff < s.entrada) s.entrada = eff;
         }
+        continue;
       }
+      const s = summaries.get(key);
+      if (!s || !s.entrada || eff <= s.entrada || s.salida) continue;
+      const isAuto = (f.nota_correccion ?? "").includes("Cierre automático");
+      s.salida = eff;
+      s.salidaAuto = isAuto;
+      if (!isAuto) s.salidaReal = eff;
     }
 
     const incidencias: Incidencia[] = [];
@@ -530,7 +538,7 @@ Deno.serve(async (req: Request) => {
         const { data: supFichajes, error: supFichErr } = await supabase
           .from("fichajes")
           .select("empleado_id, nombre_empleado, fecha, timestamp, timestamp_corregido, tipo_evento, nota_correccion")
-          .eq("fecha", targetDate)
+          .in("fecha", [targetDate, followingDate])
           .in("tipo_evento", ["entrada", "salida"])
           .in("empleado_id", supEmpIds)
           .order("timestamp", { ascending: true });
@@ -546,17 +554,22 @@ Deno.serve(async (req: Request) => {
         for (const f of supFichajes ?? []) {
           const eff = f.timestamp_corregido ?? f.timestamp;
           const key = f.empleado_id ?? f.nombre_empleado.trim().toLocaleUpperCase("es-ES");
-          if (!supSummaries.has(key)) {
-            supSummaries.set(key, { nombre: f.nombre_empleado, entrada: null, salida: null, salidaAuto: false, salidaReal: null });
-          }
-          const s = supSummaries.get(key)!;
           if (f.tipo_evento === "entrada") {
-            if (!s.entrada || eff < s.entrada) s.entrada = eff;
-          } else if (f.tipo_evento === "salida") {
-            const isAuto = (f.nota_correccion ?? "").includes("Cierre automático");
-            if (!isAuto && (!s.salidaReal || eff > s.salidaReal)) s.salidaReal = eff;
-            if (!s.salida || eff > s.salida) { s.salida = eff; s.salidaAuto = isAuto; }
+            if (f.fecha !== targetDate) continue;
+            if (!supSummaries.has(key)) {
+              supSummaries.set(key, { nombre: f.nombre_empleado, entrada: eff, salida: null, salidaAuto: false, salidaReal: null });
+            } else {
+              const s = supSummaries.get(key)!;
+              if (!s.entrada || eff < s.entrada) s.entrada = eff;
+            }
+            continue;
           }
+          const s = supSummaries.get(key);
+          if (!s || !s.entrada || eff <= s.entrada || s.salida) continue;
+          const isAuto = (f.nota_correccion ?? "").includes("Cierre automático");
+          s.salida = eff;
+          s.salidaAuto = isAuto;
+          if (!isAuto) s.salidaReal = eff;
         }
 
         const supIncidencias: Incidencia[] = [];

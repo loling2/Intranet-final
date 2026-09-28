@@ -348,6 +348,11 @@ export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme })
                     <h4 className="text-sm font-bold" style={{ color: theme.textPrimary }}>Examen del curso</h4>
                     <p className="text-xs" style={{ color: theme.textSecondary }}>{examenDesbloqueado ? 'El examen esta disponible. Ve a la pestana "Mis Examenes" para realizarlo.' : `Completa el 100% del curso para desbloquear el examen. (${progresoPct}%)`}</p>
                   </div>
+                  {examenDesbloqueado && (
+                    <div className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-lg" style={{ color: '#16A34A', backgroundColor: '#DCFCE7', border: '1px solid #BBF7D0' }}>
+                      <CheckCircle2 size={10} /> Listo
+                    </div>
+                  )}
                 </div>
               </div>
             )}

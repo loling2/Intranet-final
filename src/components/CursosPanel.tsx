@@ -167,6 +167,20 @@ export default function CursosPanel() {
       if (editingCurso) {
         const { error: err } = await supabase.from('moodle_cursos').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingCurso.id);
         if (err) throw err;
+        if (cursoForm.examen_id) {
+          const { data: existingAsig } = await supabase.from('moodle_asignaciones').select('empleado_id').eq('curso_id', editingCurso.id);
+          if (existingAsig && existingAsig.length > 0) {
+            const { data: emps } = await supabase.from('empleados').select('id, nombre, dni').in('id', existingAsig.map((a: any) => a.empleado_id));
+            const examRows = (emps ?? []).map((emp: any) => ({
+              examen_id: cursoForm.examen_id,
+              empleado_id: emp.id,
+              nombre_empleado: emp.nombre ?? 'Empleado',
+              dni: emp.dni ?? null,
+              estado: 'pendiente' as const,
+            }));
+            await supabase.from('examen_asignaciones').upsert(examRows, { onConflict: 'examen_id,empleado_id', ignoreDuplicates: true });
+          }
+        }
       } else {
         const { error: err } = await supabase.from('moodle_cursos').insert(payload);
         if (err) throw err;
@@ -329,10 +343,13 @@ export default function CursosPanel() {
       if (err) { if (err.code === '23505') setError('Uno o mas empleados ya tienen este curso.'); else throw err; }
 
       if (selectedCurso.examen_id) {
-        const examRows = Array.from(selectedEmpleados).map((empId) => ({
-          examen_id: selectedCurso.examen_id,
-          empleado_id: empId,
-          estado: 'pendiente',
+        const { data: emps } = await supabase.from('empleados').select('id, nombre, dni').in('id', Array.from(selectedEmpleados));
+        const examRows = (emps ?? []).map((emp: any) => ({
+          examen_id: selectedCurso.examen_id!,
+          empleado_id: emp.id,
+          nombre_empleado: emp.nombre ?? 'Empleado',
+          dni: emp.dni ?? null,
+          estado: 'pendiente' as const,
         }));
         await supabase.from('examen_asignaciones').upsert(examRows, { onConflict: 'examen_id,empleado_id', ignoreDuplicates: true });
       }
@@ -406,7 +423,11 @@ export default function CursosPanel() {
                 <div className="flex items-center gap-2 mt-3 flex-wrap">
                   {curso.categoria && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md" style={{ color: '#0D9488', backgroundColor: '#F0FDFA', border: '1px solid #99F6E4' }}>{curso.categoria}</span>}
                   {curso.duracion_estimada && <span className="flex items-center gap-1 text-[10px] font-medium" style={{ color: '#94A3B8' }}><Clock size={9} /> {curso.duracion_estimada}</span>}
-                  {curso.examen_id && <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md" style={{ color: '#7C3AED', backgroundColor: '#F5F3FF', border: '1px solid #DDD6FE' }}><FileQuestion size={9} /> Examen</span>}
+                  {curso.examen_id && (
+                    <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md" style={{ color: '#0D9488', backgroundColor: '#F0FDFA', border: '1px solid #99F6E4' }}>
+                      <FileQuestion size={9} /> {examenes.find((e) => e.id === curso.examen_id)?.nombre ?? 'Examen'}
+                    </span>
+                  )}
                   {!curso.activo && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md" style={{ color: '#DC2626', backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>Inactivo</span>}
                 </div>
               </div>
@@ -473,6 +494,26 @@ export default function CursosPanel() {
                         })
                       )}
 
+                      {/* Sección Examen */}
+                      <div className="rounded-xl p-3" style={{ backgroundColor: selectedCurso?.examen_id ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${selectedCurso?.examen_id ? '#99F6E4' : '#E2E8F0'}` }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <FileQuestion size={14} style={{ color: selectedCurso?.examen_id ? '#0D9488' : '#94A3B8' }} />
+                          <h5 className="text-xs font-bold" style={{ color: '#0F172A' }}>Examen del curso</h5>
+                        </div>
+                        {selectedCurso?.examen_id ? (
+                          <div>
+                            <p className="text-[11px] font-medium" style={{ color: '#0D9488' }}>{examenes.find((e) => e.id === selectedCurso.examen_id)?.nombre ?? 'Examen vinculado'}</p>
+                            <p className="text-[10px] mt-0.5" style={{ color: '#94A3B8' }}>Al completar el 100% de la teoria, el examen se desbloquea automaticamente para los empleados asignados.</p>
+                            <button onClick={() => openEditCurso(selectedCurso)} className="mt-2 flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold cursor-pointer" style={{ backgroundColor: '#0D9488', color: '#FFFFFF' }}><Save size={10} /> Cambiar examen</button>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-[10px]" style={{ color: '#94A3B8' }}>Este curso no tiene examen vinculado. Edita el curso para seleccionar uno.</p>
+                            <button onClick={() => openEditCurso(selectedCurso)} className="mt-2 flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold cursor-pointer" style={{ backgroundColor: '#0D9488', color: '#FFFFFF' }}><FileQuestion size={10} /> Vincular examen</button>
+                          </div>
+                        )}
+                      </div>
+
                       <div className="pt-3 border-t" style={{ borderColor: '#E2E8F0' }}>
                         <div className="flex items-center justify-between mb-2">
                           <h5 className="text-xs font-bold" style={{ color: '#0F172A' }}>Empleados asignados ({asignacionesCurso.length})</h5>
@@ -535,7 +576,7 @@ export default function CursosPanel() {
                     onBlur={() => setTimeout(() => setShowExamenDropdown(false), 200)}
                     placeholder="Buscar examen para vincular..."
                     className="w-full pl-9 pr-9 py-2 rounded-lg text-xs outline-none"
-                    style={{ border: '1px solid #E2E8F0', color: '#0F172A', backgroundColor: '#FFFFFF' }}
+                    style={{ border: `1px solid ${cursoForm.examen_id ? '#0D9488' : '#E2E8F0'}`, color: '#0F172A', backgroundColor: cursoForm.examen_id ? '#F0FDFA' : '#FFFFFF' }}
                   />
                   {cursoForm.examen_id && (
                     <button type="button" onClick={() => { setCursoForm({ ...cursoForm, examen_id: '' }); setSearchExamen(''); }} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9' }}><X size={12} style={{ color: '#64748B' }} /></button>
@@ -555,7 +596,13 @@ export default function CursosPanel() {
                     </div>
                   )}
                 </div>
-                <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>El examen se desbloqueara cuando el empleado complete el 100% del curso. Al asignar el curso, el examen se asignara automaticamente a los empleados seleccionados.</p>
+                {cursoForm.examen_id && (
+                  <div className="mt-2 rounded-lg p-3 flex items-center gap-2" style={{ backgroundColor: '#F0FDFA', border: '1px solid #99F6E4' }}>
+                    <FileQuestion size={14} style={{ color: '#0D9488' }} />
+                    <p className="text-[11px] font-medium" style={{ color: '#0D9488' }}>Examen vinculado: {examenes.find((e) => e.id === cursoForm.examen_id)?.nombre ?? 'Seleccionado'}</p>
+                  </div>
+                )}
+                <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>Al vincular un examen, se asignara automaticamente a los empleados que tengan este curso. Cuando completen el 100% de la teoria, el examen se desbloqueara.</p>
               </div>
             </div>
             <div className="px-6 py-4 flex items-center justify-end gap-2 sticky bottom-0" style={{ borderTop: '1px solid #E2E8F0', backgroundColor: '#FFFFFF' }}>

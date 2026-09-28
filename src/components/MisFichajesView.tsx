@@ -1013,13 +1013,28 @@ export default function MisFichajesView({ theme, userId }: Props) {
                   return (
                     <Fragment key={grupo.fecha}>
                       <tr className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 text-xs font-medium" style={{ color: theme.textPrimary }}>{grupo.fecha}</td>
+                        <td className="px-4 py-3 text-xs font-medium" style={{ color: theme.textPrimary }}>
+                          <div className="flex items-center gap-2">
+                            {hasMultiple && (
+                              <button
+                                onClick={toggleDate}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold cursor-pointer"
+                                style={{ backgroundColor: theme.primaryLight, color: theme.primary }}
+                                title={isExpanded ? 'Ocultar tramos del día' : 'Mostrar tramos del día'}
+                              >
+                                {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                                {isExpanded ? `−${grupo.jornadas.length}` : `+${grupo.jornadas.length}`}
+                              </button>
+                            )}
+                            <span>{grupo.fecha}</span>
+                          </div>
+                        </td>
                         <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: first.entrada ? '#16A34A' : '#CBD5E1' }}>{formatTime(first.entrada)}{hasMultiple && <span className="block text-[10px] font-normal" style={{ color: theme.textSecondary }}>Primer tramo</span>}</td>
                         <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: last.salida ? '#DC2626' : '#CBD5E1' }}>{formatTime(last.salida)}{hasMultiple && <span className="block text-[10px] font-normal" style={{ color: theme.textSecondary }}>Último tramo</span>}</td>
                         <td className="px-4 py-3 text-xs" style={{ color: '#7C3AED' }}>{grupo.jornadas.filter((jornada) => jornada.permiso).length > 1 ? 'Varios' : first.permiso ? formatTime(first.permiso) : <span style={{ color: '#CBD5E1' }}>—</span>}</td>
-                        <td className="px-4 py-3 text-sm font-bold" style={{ color: grupo.totalMinutos !== null ? (groupInc ? '#DC2626' : theme.primary) : '#CBD5E1' }}><div className="flex items-center gap-2">{formatDuration(grupo.totalMinutos)}{hasMultiple && <button onClick={toggleDate} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold cursor-pointer" style={{ backgroundColor: theme.primaryLight, color: theme.primary }} title={isExpanded ? 'Ocultar tramos' : 'Mostrar tramos'}>{isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />} {isExpanded ? 'Ocultar' : `+${grupo.jornadas.length}`}</button>}</div></td>
+                        <td className="px-4 py-3 text-sm font-bold" style={{ color: grupo.totalMinutos !== null ? (groupInc ? '#DC2626' : theme.primary) : '#CBD5E1' }}>{formatDuration(grupo.totalMinutos)}</td>
                         <td className="px-4 py-3">{ausenciaLabel ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE' }}>{ausenciaLabel}</span> : groupInc ? renderIncident(groupInc, first) : groupIncidences.length > 1 ? <span className="text-xs font-semibold" style={{ color: '#D97706' }}>Varias incidencias</span> : renderIncident(null, first)}</td>
-                        <td className="px-4 py-3">{hasMultiple && !isExpanded ? <button onClick={toggleDate} className="text-xs font-semibold cursor-pointer" style={{ color: theme.primary }}>Ver tramos</button> : renderAction(first)}</td>
+                        <td className="px-4 py-3">{renderAction(first)}</td>
                       </tr>
                       {isExpanded && grupo.jornadas.map((jornada, index) => {
                         const inc = incidentType(jornada.duracion_neta);

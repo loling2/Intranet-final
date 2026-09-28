@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import {
   Clock, RefreshCw, Download, Calendar, AlertTriangle, X,
   ChevronUp, ChevronDown, CheckCircle2, FileText, Send, Car,
@@ -625,6 +625,31 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
   );
 }
 
+interface JornadaGroup {
+  fecha: string;
+  jornadas: JornadaResumen[];
+  totalMinutos: number | null;
+}
+
+function groupResumenesByDate(resumenes: JornadaResumen[]): JornadaGroup[] {
+  const groups = new Map<string, JornadaResumen[]>();
+  for (const resumen of resumenes) {
+    const current = groups.get(resumen.fecha) ?? [];
+    current.push(resumen);
+    groups.set(resumen.fecha, current);
+  }
+
+  return [...groups.entries()]
+    .map(([fecha, jornadas]) => ({
+      fecha,
+      jornadas,
+      totalMinutos: jornadas.some((jornada) => jornada.duracion_neta !== null)
+        ? jornadas.reduce((total, jornada) => total + (jornada.duracion_neta ?? 0), 0)
+        : null,
+    }))
+    .sort((a, b) => b.fecha.localeCompare(a.fecha));
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 interface Props {
@@ -644,6 +669,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
   const [vehicleLogs, setVehicleLogs] = useState<VehicleLogEntry[]>([]);
   const [viewMode, setViewMode] = useState<'asistencia' | 'vehiculos'>('asistencia');
   const [empleadoSociedadId, setEmpleadoSociedadId] = useState<string | null>(null);
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
 
   // Default: last 30 days
   useEffect(() => {
@@ -791,6 +817,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
   })();
 
   const resumenes = [...resumenesBase, ...missingDays].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const gruposPorDia = groupResumenesByDate(resumenes);
   const totalHoras = resumenesBase.reduce((acc, r) => acc + (r.duracion_neta ?? 0), 0);
   const incidentCount = resumenesBase.filter((r) => isIncident(r.duracion_neta)).length;
   const pendientesCount = correcciones.filter((c) => c.estado === 'pendiente').length;
@@ -952,104 +979,63 @@ export default function MisFichajesView({ theme, userId }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ borderColor: theme.border }}>
-                {resumenes.map((r, i) => {
-                  const inc = incidentType(r.duracion_neta);
-                  const corrForDate = correcciones.filter((c) => c.fecha === r.fecha);
+                {gruposPorDia.map((grupo) => {
+                  const isExpanded = expandedDates.has(grupo.fecha);
+                  const hasMultiple = grupo.jornadas.length > 1;
+                  const first = grupo.jornadas[0];
+                  const last = grupo.jornadas[grupo.jornadas.length - 1];
+                  const groupIncidences = grupo.jornadas.map((jornada) => incidentType(jornada.duracion_neta)).filter(Boolean);
+                  const groupInc = groupIncidences.includes('excess') ? 'excess' : groupIncidences.includes('deficit') ? 'deficit' : null;
+                  const corrForDate = correcciones.filter((c) => c.fecha === grupo.fecha);
                   const hasPendiente = corrForDate.some((c) => c.estado === 'pendiente');
                   const hasAprobada = corrForDate.some((c) => c.estado === 'aprobada');
                   const ausenciaAprobada = corrForDate.find((c) => c.estado === 'aprobada' && (c.clasificacion_ausencia === 'dia_libre' || c.clasificacion_ausencia === 'asuntos_propios'));
                   const ausenciaLabel = ausenciaAprobada?.clasificacion_ausencia === 'dia_libre' ? 'Día libre' : ausenciaAprobada?.clasificacion_ausencia === 'asuntos_propios' ? 'Asuntos propios' : null;
+                  const toggleDate = () => setExpandedDates((current) => {
+                    const next = new Set(current);
+                    if (next.has(grupo.fecha)) next.delete(grupo.fecha); else next.add(grupo.fecha);
+                    return next;
+                  });
+                  const renderIncident = (inc: 'excess' | 'deficit' | null, jornada: JornadaResumen) => (
+                    <>
+                      {inc === 'excess' && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}><ChevronUp size={10} /> Exceso</span>}
+                      {inc === 'deficit' && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' }}><ChevronDown size={10} /> Déficit</span>}
+                      {!inc && jornada.duracion_neta !== null && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}><CheckCircle2 size={11} /> Normal</span>}
+                      {!inc && jornada.duracion_neta === null && jornada.entrada === null && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}><AlertTriangle size={10} /> No fichado</span>}
+                    </>
+                  );
+                  const renderAction = (jornada: JornadaResumen) => {
+                    const jornadaCorrecciones = correcciones.filter((c) => c.fecha === jornada.fecha);
+                    if (jornadaCorrecciones.some((c) => c.estado === 'aprobada')) return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}><CheckCircle2 size={11} /> Resuelta</span>;
+                    if (jornadaCorrecciones.some((c) => c.estado === 'pendiente')) return <span className="text-xs font-medium" style={{ color: '#D97706' }}>Petición enviada</span>;
+                    return <button onClick={() => setCorrectionTarget(jornada)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 hover:opacity-80" style={{ backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' }}><AlertTriangle size={11} /> Corregir</button>;
+                  };
                   return (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 text-xs font-medium" style={{ color: theme.textPrimary }}>{r.fecha}</td>
-                      <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.entrada ? '#16A34A' : '#CBD5E1' }}>
-                        <div className="flex flex-col gap-0.5">
-                          <span>{formatTime(r.entrada)}</span>
-                          {r.entrada_corregida && (
-                            <span className="text-[10px] font-normal" style={{ color: '#94A3B8' }}>
-                              <s>{formatTime(r.entrada_original)}</s>
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: r.salida ? '#DC2626' : '#CBD5E1' }}>
-                        <div className="flex flex-col gap-0.5">
-                          <span>{formatTime(r.salida)}</span>
-                          {r.salida_corregida && (
-                            <span className="text-[10px] font-normal" style={{ color: '#94A3B8' }}>
-                              <s>{formatTime(r.salida_original)}</s>
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-xs" style={{ color: '#7C3AED' }}>
-                        {r.permiso ? (
-                          <div className="flex flex-col gap-0.5">
-                            <span>{formatTime(r.permiso)}</span>
-                            {r.permiso_fin && <span style={{ color: '#6D28D9' }}>→ {formatTime(r.permiso_fin)}</span>}
-                            {r.duracion_permiso != null && <span className="text-[10px]">{formatDuration(r.duracion_permiso)}</span>}
-                          </div>
-                        ) : <span style={{ color: '#CBD5E1' }}>—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-sm font-bold" style={{ color: r.duracion_neta !== null ? (inc ? '#DC2626' : theme.primary) : '#CBD5E1' }}>
-                        <div className="flex items-center gap-1.5">
-                          {formatDuration(r.duracion_neta)}
-                          {r.es_nocturno && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: '#1E1B4B', color: '#A5B4FC', border: '1px solid #312E81' }} title="Turno nocturno: la salida se registró al día siguiente">
-                              Nocturno
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {inc === 'excess' && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
-                            <ChevronUp size={10} /> Exceso
-                          </span>
-                        )}
-                        {inc === 'deficit' && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' }}>
-                            <ChevronDown size={10} /> Déficit
-                          </span>
-                        )}
-                        {!inc && r.duracion_neta !== null && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
-                            <CheckCircle2 size={11} /> Normal
-                          </span>
-                        )}
-                        {ausenciaLabel && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE' }}>
-                            {ausenciaLabel}
-                          </span>
-                        )}
-                        {!ausenciaLabel && r.duracion_neta === null && r.entrada === null && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
-                            <AlertTriangle size={10} /> No fichado
-                          </span>
-                        )}
-                        {!ausenciaLabel && r.duracion_neta === null && r.entrada !== null && <span style={{ color: '#CBD5E1' }}>—</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        {hasAprobada ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
-                            <CheckCircle2 size={11} /> Resuelta
-                          </span>
-                        ) : hasPendiente ? (
-                          <span className="text-xs font-medium" style={{ color: '#D97706' }}>
-                            Petición enviada
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => setCorrectionTarget(r)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 hover:opacity-80"
-                            style={{ backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' }}
-                          >
-                            <AlertTriangle size={11} />
-                            Corregir
-                          </button>
-                        )}
-                      </td>
-                    </tr>
+                    <Fragment key={grupo.fecha}>
+                      <tr className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 text-xs font-medium" style={{ color: theme.textPrimary }}>{grupo.fecha}</td>
+                        <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: first.entrada ? '#16A34A' : '#CBD5E1' }}>{formatTime(first.entrada)}{hasMultiple && <span className="block text-[10px] font-normal" style={{ color: theme.textSecondary }}>Primer tramo</span>}</td>
+                        <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: last.salida ? '#DC2626' : '#CBD5E1' }}>{formatTime(last.salida)}{hasMultiple && <span className="block text-[10px] font-normal" style={{ color: theme.textSecondary }}>Último tramo</span>}</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: '#7C3AED' }}>{grupo.jornadas.filter((jornada) => jornada.permiso).length > 1 ? 'Varios' : first.permiso ? formatTime(first.permiso) : <span style={{ color: '#CBD5E1' }}>—</span>}</td>
+                        <td className="px-4 py-3 text-sm font-bold" style={{ color: grupo.totalMinutos !== null ? (groupInc ? '#DC2626' : theme.primary) : '#CBD5E1' }}><div className="flex items-center gap-2">{formatDuration(grupo.totalMinutos)}{hasMultiple && <button onClick={toggleDate} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold cursor-pointer" style={{ backgroundColor: theme.primaryLight, color: theme.primary }} title={isExpanded ? 'Ocultar tramos' : 'Mostrar tramos'}>{isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />} {isExpanded ? 'Ocultar' : `+${grupo.jornadas.length}`}</button>}</div></td>
+                        <td className="px-4 py-3">{ausenciaLabel ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE' }}>{ausenciaLabel}</span> : groupInc ? renderIncident(groupInc, first) : groupIncidences.length > 1 ? <span className="text-xs font-semibold" style={{ color: '#D97706' }}>Varias incidencias</span> : renderIncident(null, first)}</td>
+                        <td className="px-4 py-3">{hasMultiple && !isExpanded ? <button onClick={toggleDate} className="text-xs font-semibold cursor-pointer" style={{ color: theme.primary }}>Ver tramos</button> : renderAction(first)}</td>
+                      </tr>
+                      {isExpanded && grupo.jornadas.map((jornada, index) => {
+                        const inc = incidentType(jornada.duracion_neta);
+                        return (
+                          <tr key={`${grupo.fecha}-${jornada.fichaje_entrada_id ?? index}`} style={{ backgroundColor: theme.bg }}>
+                            <td className="px-4 py-2.5 pl-8 text-xs" style={{ color: theme.textSecondary }}>Tramo {index + 1}</td>
+                            <td className="px-4 py-2.5 text-xs font-mono font-bold" style={{ color: jornada.entrada ? '#16A34A' : '#CBD5E1' }}>{formatTime(jornada.entrada)}</td>
+                            <td className="px-4 py-2.5 text-xs font-mono font-bold" style={{ color: jornada.salida ? '#DC2626' : '#CBD5E1' }}>{formatTime(jornada.salida)}</td>
+                            <td className="px-4 py-2.5 text-xs" style={{ color: '#7C3AED' }}>{jornada.permiso ? formatDuration(jornada.duracion_permiso) : '—'}</td>
+                            <td className="px-4 py-2.5 text-xs font-bold" style={{ color: jornada.duracion_neta !== null ? (inc ? '#DC2626' : theme.primary) : '#CBD5E1' }}>{formatDuration(jornada.duracion_neta)}</td>
+                            <td className="px-4 py-2.5">{renderIncident(inc, jornada)}</td>
+                            <td className="px-4 py-2.5">{renderAction(jornada)}</td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
                   );
                 })}
               </tbody>

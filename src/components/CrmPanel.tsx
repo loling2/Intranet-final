@@ -11,6 +11,7 @@ import ProfileSwitcher, { type ProfileOption } from './ProfileSwitcher';
 import HelpPanel from './HelpPanel';
 import CrmDocumentosModule from './CrmDocumentosModule';
 import CrmIncidenciasModule from './CrmIncidenciasModule';
+import CrmResidenteFicha from './CrmResidenteFicha';
 
 interface Props {
   email: string;
@@ -43,7 +44,6 @@ interface CrmNota {
 interface CentroOption { id: string; nombre: string; }
 
 type CrmTab = 'residentes' | 'incidencias' | 'ayuda';
-type ResidentDetailTab = 'info' | 'calendario' | 'documentos';
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -64,7 +64,6 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
-  const [detailTab, setDetailTab] = useState<ResidentDetailTab>('info');
 
   // Usuarios
   const [usuarios, setUsuarios] = useState<UsuarioServicio[]>([]);
@@ -413,168 +412,35 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                 )}
               </>
             ) : (
-              <>
-                {/* Ficha del residente */}
-                <div className="flex items-center gap-3 mb-2">
-                  <button onClick={() => setSelectedUsuario(null)}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all"
-                    style={{ backgroundColor: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0' }}>
-                    <ChevronLeft size={14} /> Volver
-                  </button>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#EFF6FF' }}>
-                      <User size={20} style={{ color: '#0369A1' }} />
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>{selectedUserLabel}</h2>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs px-2 py-0.5 rounded-md font-medium" style={{ backgroundColor: selectedUsuario.activo ? '#F0FDF4' : '#FEF2F2', color: selectedUsuario.activo ? '#16A34A' : '#DC2626' }}>{selectedUsuario.activo ? 'Activo' : 'Inactivo'}</span>
-                        {selectedUsuario.centros && selectedUsuario.centros.map((c) => <span key={c.id} className="text-xs px-2 py-0.5 rounded-md" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>{c.nombre}</span>)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Sub-pestañas de la ficha */}
-                <div className="flex flex-wrap gap-1 p-1 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                  {([
-                    { id: 'info', label: 'Información', icon: User },
-                    { id: 'calendario', label: 'Calendario y Notas', icon: Calendar },
-                    { id: 'documentos', label: 'Documentos', icon: FolderOpen },
-                  ] as const).map((tab) => {
-                    const TabIcon = tab.icon;
-                    const isActive = detailTab === tab.id;
-                    return (
-                      <button key={tab.id} onClick={() => setDetailTab(tab.id)}
-                        className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all cursor-pointer whitespace-nowrap flex-shrink-0"
-                        style={{ backgroundColor: isActive ? '#0369A1' : 'transparent', color: isActive ? '#FFFFFF' : '#64748B' }}>
-                        <TabIcon size={13} />{tab.label}
-                      </button>
-                    );
-                  })}
-                  {isAdmin && (
-                    <button onClick={() => openEditUsuario(selectedUsuario)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all ml-auto"
-                      style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}>
-                      Editar
-                    </button>
-                  )}
-                </div>
-
-                {/* Sub-pestaña: Información */}
-                {detailTab === 'info' && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="rounded-2xl p-6" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                      <h3 className="font-semibold text-sm mb-4" style={{ color: '#0F172A' }}>Datos de contacto</h3>
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><Mail size={16} style={{ color: '#0369A1' }} /></div>
-                          <div><p className="text-xs" style={{ color: '#94A3B8' }}>Email</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{selectedUsuario.email || 'Sin email'}</p></div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><Phone size={16} style={{ color: '#0369A1' }} /></div>
-                          <div><p className="text-xs" style={{ color: '#94A3B8' }}>Teléfono</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{selectedUsuario.telefono || 'Sin teléfono'}</p></div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><Building2 size={16} style={{ color: '#0369A1' }} /></div>
-                          <div><p className="text-xs" style={{ color: '#94A3B8' }}>Centros</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{selectedUsuario.centros && selectedUsuario.centros.length > 0 ? selectedUsuario.centros.map(c => c.nombre).join(', ') : 'Sin centros'}</p></div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="rounded-2xl p-6" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                      <h3 className="font-semibold text-sm mb-4" style={{ color: '#0F172A' }}>Observaciones</h3>
-                      {selectedUsuario.observaciones ? (
-                        <p className="text-sm" style={{ color: '#475569', lineHeight: 1.6 }}>{selectedUsuario.observaciones}</p>
-                      ) : (
-                        <p className="text-sm" style={{ color: '#94A3B8' }}>Sin observaciones</p>
-                      )}
-                      <div className="mt-4 pt-4" style={{ borderTop: '1px solid #F1F5F9' }}>
-                        <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>Resumen de actividad</p>
-                        <div className="flex gap-4">
-                          <div className="flex items-center gap-2"><Calendar size={14} style={{ color: '#0369A1' }} /><span className="text-sm font-medium" style={{ color: '#0F172A' }}>{notas.length} notas</span></div>
-                          <button onClick={() => setDetailTab('calendario')} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Ver calendario</button>
-                          <button onClick={() => setDetailTab('documentos')} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Ver documentos</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Sub-pestaña: Calendario */}
-                {detailTab === 'calendario' && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>{MONTH_NAMES[month]} {year}</h3>
-                        <div className="flex items-center gap-1">
-                          <button onClick={prevMonth} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#64748B' }}><ChevronLeft size={16} /></button>
-                          <button onClick={goToday} className="px-2 py-1 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>Hoy</button>
-                          <button onClick={nextMonth} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#64748B' }}><ChevronRight size={16} /></button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-7 gap-1 mb-2">
-                        {DAY_NAMES.map((d) => <div key={d} className="text-center text-xs font-semibold py-1" style={{ color: '#94A3B8' }}>{d}</div>)}
-                      </div>
-                      <div className="grid grid-cols-7 gap-1">
-                        {calendarCells.map((cell, i) => {
-                          if (!cell.date || !cell.iso) return <div key={i} className="aspect-square" />;
-                          const isToday = cell.iso === todayISO;
-                          const notaCount = notasByDate[cell.iso] ?? 0;
-                          const isFiltered = filterFecha === cell.iso;
-                          return (
-                            <button key={i} onClick={() => openNotaModal(cell.iso!)}
-                              onContextMenu={(e) => { e.preventDefault(); setFilterFecha(isFiltered ? '' : cell.iso!); }}
-                              className="aspect-square rounded-lg flex flex-col items-center justify-center text-xs cursor-pointer transition-all relative"
-                              style={{ backgroundColor: isFiltered ? '#0369A1' : isToday ? '#EFF6FF' : '#F8FAFC', color: isFiltered ? '#FFFFFF' : isToday ? '#0369A1' : '#475569', border: isToday ? '1px solid #BFDBFE' : '1px solid transparent' }}
-                              title={`${formatDateDisplay(cell.iso)} — Click para añadir nota. Clic derecho para filtrar.`}>
-                              <span className="font-medium">{cell.date!.getDate()}</span>
-                              {notaCount > 0 && <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isFiltered ? '#FFFFFF' : '#0369A1' }} />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <p className="text-xs mt-3" style={{ color: '#94A3B8' }}>Click para añadir nota · Clic derecho para filtrar por fecha</p>
-                    </div>
-                    <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2"><FileText size={16} style={{ color: '#0369A1' }} /><h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Historial de Notas</h3></div>
-                        {filterFecha && <button onClick={() => setFilterFecha('')} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}><X size={10} />Quitar filtro</button>}
-                      </div>
-                      <div className="flex items-center gap-2 mb-4 px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#FEF3C7', border: '1px solid #FDE68A' }}>
-                        <AlertCircle size={14} style={{ color: '#D97706' }} />
-                        <p className="text-xs" style={{ color: '#92400E' }}>Las notas son registros históricos de solo lectura. No se pueden editar ni borrar.</p>
-                      </div>
-                      {notasLoading ? (
-                        <div className="text-center py-8"><Clock size={20} className="mx-auto mb-2 animate-spin" style={{ color: '#0369A1' }} /><p className="text-xs" style={{ color: '#64748B' }}>Cargando notas...</p></div>
-                      ) : notasDisplay.length === 0 ? (
-                        <div className="text-center py-8"><FileText size={28} className="mx-auto mb-2" style={{ color: '#CBD5E1' }} /><p className="text-xs font-medium" style={{ color: '#475569' }}>{filterFecha ? `Sin notas para ${formatDateDisplay(filterFecha)}` : 'Sin notas registradas'}</p><p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Click en un día del calendario para añadir</p></div>
-                      ) : (
-                        <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                          {notasDisplay.map((n) => (
-                            <div key={n.id} className="rounded-xl p-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-bold px-2 py-1 rounded-md" style={{ backgroundColor: '#DBEAFE', color: '#1D4ED8' }}>{formatDateDisplay(n.fecha)}</span>
-                                <span className="text-xs" style={{ color: '#94A3B8' }}>{new Date(n.created_at).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                              </div>
-                              <p className="text-xs font-semibold mb-1" style={{ color: '#0369A1' }}>Autor: {n.autor_nombre}</p>
-                              <p className="text-sm" style={{ color: '#1E293B' }}>{n.contenido}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Sub-pestaña: Documentos */}
-                {detailTab === 'documentos' && (
-                  <CrmDocumentosModule
-                    usuarioServicioId={selectedUsuario.id}
-                    usuarioNombre={selectedUserLabel}
-                    isAdmin={isAdmin}
-                  />
-                )}
-              </>
+              <div className="space-y-6">
+                <button onClick={() => setSelectedUsuario(null)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all"
+                  style={{ backgroundColor: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0' }}>
+                  <ChevronLeft size={14} /> Volver
+                </button>
+              <CrmResidenteFicha
+                usuario={selectedUsuario}
+                isAdmin={isAdmin}
+                notas={notas}
+                notasLoading={notasLoading}
+                calendarCells={calendarCells}
+                notasByDate={notasByDate}
+                todayISO={todayISO}
+                month={month}
+                year={year}
+                filterFecha={filterFecha}
+                setFilterFecha={setFilterFecha}
+                prevMonth={prevMonth}
+                nextMonth={nextMonth}
+                goToday={goToday}
+                openNotaModal={openNotaModal}
+                notasDisplay={notasDisplay}
+                MONTH_NAMES={MONTH_NAMES}
+                DAY_NAMES={DAY_NAMES}
+                formatDateDisplay={formatDateDisplay}
+                onEdit={() => openEditUsuario(selectedUsuario)}
+              />
+              </div>
             )}
 
             {/* Modal formulario de residente */}

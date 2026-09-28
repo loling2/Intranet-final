@@ -3,13 +3,14 @@ import { supabase } from '../supabaseClient';
 import {
   Users, Calendar, Plus, X, Search, Building2, ChevronLeft, ChevronRight,
   LogOut, KeyRound, Clock, AlertCircle, User, Phone, Mail, FileText,
-  FolderOpen,
+  FolderOpen, AlertTriangle,
 } from 'lucide-react';
 import ChangePasswordModal from './ChangePasswordModal';
 import SocietySwitcher from '../SocietySwitcher';
 import ProfileSwitcher, { type ProfileOption } from './ProfileSwitcher';
 import HelpPanel from './HelpPanel';
 import CrmDocumentosModule from './CrmDocumentosModule';
+import CrmIncidenciasModule from './CrmIncidenciasModule';
 
 interface Props {
   email: string;
@@ -41,7 +42,7 @@ interface CrmNota {
 
 interface CentroOption { id: string; nombre: string; }
 
-type CrmTab = 'residentes' | 'ayuda';
+type CrmTab = 'residentes' | 'incidencias' | 'ayuda';
 type ResidentDetailTab = 'info' | 'calendario' | 'documentos';
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -315,6 +316,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
             <select value={activeTab} onChange={(e) => setActiveTab(e.target.value as CrmTab)}
               className="flex-1 bg-transparent text-sm font-medium outline-none cursor-pointer" style={{ color: '#0F172A' }}>
               <option value="residentes">Residentes</option>
+              <option value="incidencias">Incidencias</option>
               <option value="ayuda">Ayuda</option>
             </select>
           </div>
@@ -322,6 +324,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
         <div className="hidden md:flex flex-wrap gap-1 p-1 rounded-xl mb-6 sm:mb-8" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
           {([
             { id: 'residentes', label: 'Residentes', icon: Users },
+            { id: 'incidencias', label: 'Incidencias', icon: AlertTriangle },
             { id: 'ayuda', label: 'Ayuda', icon: AlertCircle },
           ] as const).map((tab) => {
             const TabIcon = tab.icon;
@@ -631,6 +634,11 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
               </div>
             )}
           </div>
+        )}
+
+        {/* === Tab: Incidencias === */}
+        {activeTab === 'incidencias' && (
+          <CrmIncidenciasModule isAdmin={isAdmin} centros={centros} />
         )}
 
         {/* === Tab: Ayuda === */}

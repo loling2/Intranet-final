@@ -38,7 +38,7 @@ interface UsuarioServicio {
 interface CrmNota {
   id: string;
   usuario_servicio_id: string;
-  fecha: string;
+  fecha: string | null;
   autor_nombre: string;
   contenido: string;
   created_at: string;
@@ -87,6 +87,8 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const [notaContenido, setNotaContenido] = useState('');
   const [notaSaving, setNotaSaving] = useState(false);
   const [notaError, setNotaError] = useState('');
+  const [editingNotaId, setEditingNotaId] = useState<string | null>(null);
+  const [onDeleteNota, setOnDeleteNota] = useState<((id: string) => void) | null>(null);
   const [filterFecha, setFilterFecha] = useState('');
 
 
@@ -225,24 +227,40 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
     calendarCells.push({ date, iso: formatDateISO(date) });
   }
   const notasByDate: Record<string, number> = {};
-  for (const n of notas) notasByDate[n.fecha] = (notasByDate[n.fecha] ?? 0) + 1;
+  for (const n of notas) { if (n.fecha) notasByDate[n.fecha] = (notasByDate[n.fecha] ?? 0) + 1; }
   const prevMonth = () => setCalendarDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCalendarDate(new Date(year, month + 1, 1));
   const goToday = () => setCalendarDate(new Date());
-  const openNotaModal = (fechaISO: string) => { setNotaFecha(fechaISO); setNotaContenido(''); setNotaError(''); setShowNotaModal(true); };
+  const openNotaModal = (fechaISO: string) => { setNotaFecha(fechaISO); setNotaContenido(''); setNotaError(''); setEditingNotaId(null); setShowNotaModal(true); };
+  const openEditNotaModal = (nota: { id: string; fecha: string | null; autor_nombre: string; contenido: string }) => {
+    setEditingNotaId(nota.id); setNotaFecha(nota.fecha); setNotaAutor(nota.autor_nombre); setNotaContenido(nota.contenido); setNotaError(''); setShowNotaModal(true);
+  };
+  const handleDeleteNota = async (notaId: string) => {
+    if (!selectedUsuario) return;
+    try { await supabase.from('crm_notas').delete().eq('id', notaId); setNotas((prev) => prev.filter((n) => n.id !== notaId)); }
+    catch { /* non-fatal */ }
+  };
   const handleSaveNota = async () => {
     if (!selectedUsuario) return;
     if (!notaAutor.trim()) { setNotaError('El nombre del autor es obligatorio'); return; }
     if (!notaContenido.trim()) { setNotaError('El contenido de la nota es obligatorio'); return; }
     setNotaSaving(true); setNotaError('');
     try {
-      const { data, error } = await supabase.from('crm_notas').insert({
-        usuario_servicio_id: selectedUsuario.id, fecha: notaFecha,
-        autor_nombre: notaAutor.trim(), contenido: notaContenido.trim(),
-      }).select('id, usuario_servicio_id, fecha, autor_nombre, contenido, created_at').single();
-      if (error) throw error;
-      setNotas((prev) => [data as CrmNota, ...prev]);
-      setShowNotaModal(false); setNotaContenido('');
+      if (editingNotaId) {
+        const { data, error } = await supabase.from('crm_notas').update({
+          fecha: notaFecha || null, autor_nombre: notaAutor.trim(), contenido: notaContenido.trim(),
+        }).eq('id', editingNotaId).select('id, usuario_servicio_id, fecha, autor_nombre, contenido, created_at').single();
+        if (error) throw error;
+        setNotas((prev) => prev.map((n) => n.id === editingNotaId ? data as CrmNota : n));
+      } else {
+        const { data, error } = await supabase.from('crm_notas').insert({
+          usuario_servicio_id: selectedUsuario.id, fecha: notaFecha || null,
+          autor_nombre: notaAutor.trim(), contenido: notaContenido.trim(),
+        }).select('id, usuario_servicio_id, fecha, autor_nombre, contenido, created_at').single();
+        if (error) throw error;
+        setNotas((prev) => [data as CrmNota, ...prev]);
+      }
+      setShowNotaModal(false); setNotaContenido(''); setEditingNotaId(null);
     } catch { setNotaError('No se pudo guardar la nota.'); }
     finally { setNotaSaving(false); }
   };
@@ -443,6 +461,8 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                 nextMonth={nextMonth}
                 goToday={goToday}
                 openNotaModal={openNotaModal}
+                openEditNotaModal={openEditNotaModal}
+                onDeleteNota={handleDeleteNota}
                 notasDisplay={notasDisplay}
                 MONTH_NAMES={MONTH_NAMES}
                 DAY_NAMES={DAY_NAMES}
@@ -493,16 +513,16 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
                 <div className="w-full max-w-md rounded-2xl p-6" style={{ backgroundColor: '#FFFFFF' }}>
                   <div className="flex items-center justify-between mb-5">
-                    <div><h3 className="font-bold text-base" style={{ color: '#0F172A' }}>Nueva nota diaria</h3><p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{selectedUserLabel} — {formatDateDisplay(notaFecha)}</p></div>
+                    <div><h3 className="font-bold text-base" style={{ color: '#0F172A' }}>{editingNotaId ? 'Editar nota' : 'Nueva nota diaria'}</h3><p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{selectedUserLabel}{notaFecha ? ` — ${formatDateDisplay(notaFecha)}` : ' — Sin fecha'}</p></div>
                     <button onClick={() => setShowNotaModal(false)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#94A3B8' }}><X size={14} /></button>
                   </div>
                   <div className="space-y-4">
+                    <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Fecha (opcional)</label><input type="date" value={notaFecha} onChange={(e) => setNotaFecha(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }} /></div>
                     <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Nombre de usuario (autor) *</label><input type="text" value={notaAutor} onChange={(e) => setNotaAutor(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }} /></div>
                     <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Nota *</label><textarea value={notaContenido} onChange={(e) => setNotaContenido(e.target.value)} rows={4} className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }} placeholder="Escribe el contenido de la nota..." /></div>
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF3C7', border: '1px solid #FDE68A' }}><AlertCircle size={12} style={{ color: '#D97706' }} /><p className="text-xs" style={{ color: '#92400E' }}>Una vez guardada, la nota no podrá ser editada ni eliminada.</p></div>
                     {notaError && <p className="text-xs" style={{ color: '#DC2626' }}>{notaError}</p>}
                     <div className="flex gap-2">
-                      <button onClick={handleSaveNota} disabled={notaSaving} className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-60" style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>{notaSaving ? 'Guardando...' : 'Guardar nota'}</button>
+                      <button onClick={handleSaveNota} disabled={notaSaving} className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-60" style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>{notaSaving ? 'Guardando...' : editingNotaId ? 'Guardar cambios' : 'Guardar nota'}</button>
                       <button onClick={() => setShowNotaModal(false)} className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer hover:bg-slate-100" style={{ color: '#64748B' }}>Cancelar</button>
                     </div>
                   </div>

@@ -492,15 +492,21 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
           if (!payload.nombre?.trim()) { res.push({ label: payload.email || payload.nombre || '?', ok: false, error: 'Nombre vacío' }); continue; }
           const label = payload.nombre || payload.email || '?';
           try {
+            let existingId: string | null = null;
             if (payload.dni) {
               const { data: existing } = await supabase.from('empleados').select('id').eq('dni', payload.dni).maybeSingle();
-              if (existing?.id) {
-                if (!updateExisting) { res.push({ label, ok: true, updated: false }); continue; }
-                const { error: err } = await supabase.from('empleados').update(payload).eq('id', existing.id);
-                if (err) throw err;
-                res.push({ label, ok: true, updated: true });
-                continue;
-              }
+              if (existing?.id) existingId = existing.id;
+            }
+            if (!existingId && payload.email) {
+              const { data: existing } = await supabase.from('empleados').select('id').eq('email', payload.email.toLowerCase()).maybeSingle();
+              if (existing?.id) existingId = existing.id;
+            }
+            if (existingId) {
+              if (!updateExisting) { res.push({ label, ok: true, updated: false }); continue; }
+              const { error: err } = await supabase.from('empleados').update(payload).eq('id', existingId);
+              if (err) throw err;
+              res.push({ label, ok: true, updated: true });
+              continue;
             }
             const { error: err } = await supabase.from('empleados').insert(payload);
             if (err) throw err;

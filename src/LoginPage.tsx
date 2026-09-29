@@ -2322,7 +2322,7 @@ interface PrevDoc {
   puesto_tags?: string[] | null;
 }
 
-function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
+function PrevencionDocsFullView({ theme, userId }: { theme: SocietyTheme; userId?: string | null }) {
   const [allDocs, setAllDocs] = useState<PrevDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -2336,7 +2336,7 @@ function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
       setLoading(true);
       try {
         const [{ data: docs }, { data: logs }] = await Promise.all([
-          supabase.rpc('get_my_prl_documents'),
+          supabase.rpc('get_my_prl_documents', userId ? { p_user_id: userId } : {}),
           supabase.from('prl_download_logs').select('document_id'),
         ]);
         const d = (docs ?? []) as PrevDoc[];
@@ -2349,7 +2349,7 @@ function PrevencionDocsFullView({ theme }: { theme: SocietyTheme }) {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [userId]);
 
   const filtered = search.trim()
     ? allDocs.filter((d) =>
@@ -2914,7 +2914,7 @@ useEffect(() => {
       if (calCount && calCount > 0) badges['calidad'] = calCount;
 
       try {
-        const { data: prlDocs } = await supabase.rpc('get_my_prl_documents');
+        const { data: prlDocs } = await supabase.rpc('get_my_prl_documents', resolvedUserId !== (await supabase.auth.getUser()).data.user?.id ? { p_user_id: resolvedUserId } : {});
         const prlList = (prlDocs ?? []) as { created_at: string }[];
         const prlSeen = seenMap['prevencion'];
         const prlNew = prlSeen ? prlList.filter((d) => new Date(d.created_at) > new Date(prlSeen)) : prlList;
@@ -3300,7 +3300,7 @@ useEffect(() => {
 
             {/* Fila 2: Documentos PRL (ancho completo, cards por sociedad dentro) */}
             <div>
-              <PrevencionDocsCard theme={theme} userEmail={email} fullWidth onSeeAll={() => setActiveTab('prevencion')} />
+              <PrevencionDocsCard theme={theme} userEmail={email} fullWidth onSeeAll={() => setActiveTab('prevencion')} userId={currentUserId} />
             </div>
 
             {/* Fila 3: Modales / documentos adicionales */}
@@ -3316,7 +3316,7 @@ useEffect(() => {
         )}
 
         {activeTab === 'prevencion' && (
-          <PrevencionDocsFullView theme={theme} />
+          <PrevencionDocsFullView theme={theme} userId={currentUserId} />
         )}
 
         {activeTab === 'misdocumentos' && (

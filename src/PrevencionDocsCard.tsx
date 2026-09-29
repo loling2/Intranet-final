@@ -32,6 +32,7 @@ interface Props {
   userEmail?: string;
   fullWidth?: boolean;
   onSeeAll?: () => void;
+  userId?: string | null;
 }
 
 // ── Preview Modal ─────────────────────────────────────────────────────────────
@@ -134,7 +135,7 @@ function PreviewModal({ doc, onClose, getUrl }: {
 
 // ── Main Card ─────────────────────────────────────────────────────────────────
 
-export default function PrevencionDocsCard({ theme, fullWidth, onSeeAll }: Props) {
+export default function PrevencionDocsCard({ theme, fullWidth, onSeeAll, userId }: Props) {
   const [groups, setGroups] = useState<GroupedDocs[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewDoc, setPreviewDoc] = useState<PrevDoc | null>(null);
@@ -148,7 +149,7 @@ export default function PrevencionDocsCard({ theme, fullWidth, onSeeAll }: Props
     async function load() {
       setLoading(true);
       try {
-        const { data, error } = await supabase.rpc('get_my_prl_documents');
+        const { data, error } = await supabase.rpc('get_my_prl_documents', userId ? { p_user_id: userId } : {});
         if (error) throw error;
 
         const docs = (data ?? []) as PrevDoc[];
@@ -185,7 +186,7 @@ export default function PrevencionDocsCard({ theme, fullWidth, onSeeAll }: Props
       }
     }
     load();
-  }, []);
+  }, [userId]);
 
   const getPreviewUrl = (wasabiKey: string): Promise<string> => getWasabiBlobUrl(wasabiKey);
 

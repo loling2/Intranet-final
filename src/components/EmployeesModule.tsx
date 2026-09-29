@@ -508,15 +508,16 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
               res.push({ label, ok: true, updated: true });
               continue;
             }
-            // When inserting a new employee, auto-link to existing user_profiles by email
+            // If no existing employee found, check if email is already a user account
             if (payload.email) {
               const { data: existingProfile } = await supabase
                 .from('user_profiles')
-                .select('id')
+                .select('id, nombre')
                 .eq('email', payload.email.toLowerCase())
                 .maybeSingle();
               if (existingProfile?.id) {
-                payload.user_id = existingProfile.id;
+                res.push({ label, ok: false, error: `El correo ${payload.email} ya tiene cuenta de acceso (${existingProfile.nombre}). No se ha cargado para evitar duplicados.` });
+                continue;
               }
             }
             const { error: err } = await supabase.from('empleados').insert(payload);

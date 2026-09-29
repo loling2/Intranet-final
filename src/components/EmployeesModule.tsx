@@ -508,6 +508,17 @@ function ImportUsersModal({ sociedades, onClose, onImported }: {
               res.push({ label, ok: true, updated: true });
               continue;
             }
+            // When inserting a new employee, auto-link to existing user_profiles by email
+            if (payload.email) {
+              const { data: existingProfile } = await supabase
+                .from('user_profiles')
+                .select('id')
+                .eq('email', payload.email.toLowerCase())
+                .maybeSingle();
+              if (existingProfile?.id) {
+                payload.user_id = existingProfile.id;
+              }
+            }
             const { error: err } = await supabase.from('empleados').insert(payload);
             if (err) throw err;
             res.push({ label, ok: true, updated: false });

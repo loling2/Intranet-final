@@ -1438,8 +1438,13 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   useEffect(() => { setPage(1); }, [search, filterRole, filterSociety, statusTab]);
 
   const userIds = new Set(users.map((u) => u.id));
-  // Empleados that don't have a linked user_profiles entry
-  const empleadosSinCuenta = empleados.filter((e) => !e.user_id || !userIds.has(e.user_id));
+  const profileEmails = new Set(users.map((u) => u.email?.toLowerCase().trim()).filter(Boolean));
+  // Empleados that don't have a linked user_profiles entry (by user_id OR matching email)
+  const empleadosSinCuenta = empleados.filter((e) => {
+    if (e.user_id && userIds.has(e.user_id)) return false;
+    if (e.email && profileEmails.has(e.email.toLowerCase().trim())) return false;
+    return true;
+  });
 
   const filtered = users.filter((u) => {
     const matchSearch = !search || u.nombre.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());

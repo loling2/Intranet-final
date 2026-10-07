@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, type DragEvent } from 'react';
 import {
   LogOut, ShieldCheck, Upload, UploadCloud, FileText, Download, Trash2, RefreshCw,
   File, Image as ImageIcon, FileSpreadsheet, X, ZoomIn, Globe, Building2,
-  CheckCircle2, AlertCircle, Calendar, User as UserIcon, HelpCircle,
+  CheckCircle2, AlertCircle, Calendar, User as UserIcon, HelpCircle, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { uploadToWasabiKey, deleteFromWasabi, getWasabiBlobUrl, downloadFromWasabi } from './lib/wasabi';
@@ -135,6 +135,7 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
 
   // Filter
   const [filterType, setFilterType] = useState<'all' | 'general' | 'sociedad'>('all');
+  const [expandedSocieties, setExpandedSocieties] = useState<Record<string, boolean>>({});
 
   const loadDocs = useCallback(async () => {
     setLoading(true);
@@ -176,6 +177,10 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
     setSelectedSocieties(prev =>
       prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
     );
+  }
+
+  function toggleExpandedSociety(id: string) {
+    setExpandedSocieties(prev => ({ ...prev, [id]: prev[id] === false }));
   }
 
   async function handleUpload() {
@@ -409,18 +414,26 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                     <div className="space-y-5">
                       {societyGroups.map(({ society, docs: societyDocs }) => (
                         <section key={society.id}>
-                          <div className="flex items-center gap-2 mb-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandedSociety(society.id)}
+                            aria-expanded={expandedSocieties[society.id] !== false}
+                            className="w-full flex items-center gap-2 mb-2 text-left cursor-pointer group"
+                          >
                             <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: society.primaryLight }}>
                               <Building2 size={14} style={{ color: society.primary }} />
                             </div>
                             <h2 className="text-sm font-semibold" style={{ color: '#1E293B' }}>{society.name}</h2>
                             <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E0F2FE', color: '#0369A1' }}>{societyDocs.length}</span>
-                          </div>
-                          {societyDocs.length === 0 ? (
+                            <span className="ml-auto p-1 rounded-md transition-colors group-hover:bg-white" style={{ color: '#64748B' }}>
+                              {expandedSocieties[society.id] !== false ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            </span>
+                          </button>
+                          {expandedSocieties[society.id] !== false && societyDocs.length === 0 ? (
                             <div className="rounded-xl px-4 py-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                               <p className="text-xs" style={{ color: '#94A3B8' }}>No hay documentos subidos para esta sociedad.</p>
                             </div>
-                          ) : (
+                          ) : expandedSocieties[society.id] !== false ? (
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {societyDocs.map(doc => {
                               const { Icon, color } = getFileIcon(doc.tipo ?? '');
@@ -446,7 +459,7 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                               );
                             })}
                           </div>
-                          )}
+                          ) : null}
                         </section>
                       ))}
                     </div>

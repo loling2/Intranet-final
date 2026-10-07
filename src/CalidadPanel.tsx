@@ -225,7 +225,8 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
     if (!confirm(`¿Eliminar "${doc.nombre_archivo}"?`)) return;
     try {
       await deleteFromWasabi(doc.wasabi_key);
-      await supabase.from('calidad_documentos').delete().eq('id', doc.id);
+      const { error } = await supabase.from('calidad_documentos').delete().eq('id', doc.id);
+      if (error) throw error;
       await loadDocs();
     } catch (e) {
       console.error('Delete error:', e);
@@ -259,6 +260,13 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
     if (filterType === 'sociedad') return !d.es_general;
     return true;
   });
+
+  const societyGroups = societies
+    .map(society => ({
+      society,
+      docs: filteredDocs.filter(doc => !doc.es_general && (doc.sociedad_ids?.includes(society.id) ?? false)),
+    }))
+    .filter(group => group.docs.length > 0);
 
   return (
     <AuthProvider>
@@ -399,83 +407,66 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                     <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Sube el primer documento desde la pestana "Subir Documentos"</p>
                   </div>
                 ) : (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {filteredDocs.map(doc => {
-                      const { Icon, color } = getFileIcon(doc.tipo ?? '');
-                      const isImage = doc.tipo?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(doc.nombre_archivo);
-                      const isPdf = doc.tipo === 'application/pdf' || /\.pdf$/i.test(doc.nombre_archivo);
-                      const canPreview = isImage || isPdf;
-                      const monthLabel = months.find(m => m.value === doc.mes)?.label ?? doc.mes;
-                      return (
-                        <div
-                          key={doc.id}
-                          className="rounded-2xl p-4 transition-all duration-200 hover:shadow-md"
-                          style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${color}0A` }}>
-                              <Icon size={18} style={{ color }} />
+                  filterType === 'sociedad' ? (
+                    <div className="space-y-5">
+                      {societyGroups.map(({ society, docs: societyDocs }) => (
+                        <section key={society.id}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: society.primaryLight }}>
+                              <Building2 size={14} style={{ color: society.primary }} />
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{doc.nombre_archivo}</p>
-                              <div className="flex items-center gap-1.5 mt-1">
-                                {doc.es_general ? (
-                                  <Globe size={10} style={{ color: '#0369A1' }} />
-                                ) : (
-                                  <Building2 size={10} style={{ color: '#16A34A' }} />
-                                )}
-                                <span className="text-xs" style={{ color: '#64748B' }}>
-                                  {doc.es_general ? 'General' : `${doc.sociedad_ids?.length ?? 0} sociedad(es)`}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: '#94A3B8' }}>
-                                <Calendar size={10} /> {monthLabel} {doc.anio}
-                                {doc.tamano_bytes ? ` · ${formatSize(doc.tamano_bytes)}` : ''}
-                              </div>
-                              {doc.subido_por_nombre && (
-                                <div className="flex items-center gap-1 mt-1 text-xs" style={{ color: '#94A3B8' }}>
-                                  <UserIcon size={10} /> {doc.subido_por_nombre}
+                            <h2 className="text-sm font-semibold" style={{ color: '#1E293B' }}>{society.name}</h2>
+                            <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E0F2FE', color: '#0369A1' }}>{societyDocs.length}</span>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {societyDocs.map(doc => {
+                              const { Icon, color } = getFileIcon(doc.tipo ?? '');
+                              const isImage = doc.tipo?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(doc.nombre_archivo);
+                              const isPdf = doc.tipo === 'application/pdf' || /\.pdf$/i.test(doc.nombre_archivo);
+                              const monthLabel = months.find(m => m.value === doc.mes)?.label ?? doc.mes;
+                              return (
+                                <div key={`${society.id}-${doc.id}`} className="rounded-2xl p-4 transition-all duration-200 hover:shadow-md" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${color}0A` }}><Icon size={18} style={{ color }} /></div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{doc.nombre_archivo}</p>
+                                      <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: '#94A3B8' }}><Calendar size={10} /> {monthLabel} {doc.anio}{doc.tamano_bytes ? ` · ${formatSize(doc.tamano_bytes)}` : ''}</div>
+                                      {doc.subido_por_nombre && <div className="flex items-center gap-1 mt-1 text-xs" style={{ color: '#94A3B8' }}><UserIcon size={10} /> {doc.subido_por_nombre}</div>}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid #F1F5F9' }}>
+                                    {isImage || isPdf ? <button onClick={() => handlePreview(doc)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}><ZoomIn size={12} /> Ver</button> : null}
+                                    <button onClick={() => handleDownload(doc)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}><Download size={12} /> Descargar</button>
+                                    <button onClick={() => handleDelete(doc)} title="Eliminar" className="ml-auto flex items-center px-3 py-1.5 rounded-lg cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}><Trash2 size={12} /></button>
+                                  </div>
                                 </div>
-                              )}
+                              );
+                            })}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {filteredDocs.map(doc => {
+                        const { Icon, color } = getFileIcon(doc.tipo ?? '');
+                        const isImage = doc.tipo?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(doc.nombre_archivo);
+                        const isPdf = doc.tipo === 'application/pdf' || /\.pdf$/i.test(doc.nombre_archivo);
+                        const monthLabel = months.find(m => m.value === doc.mes)?.label ?? doc.mes;
+                        return (
+                          <div key={doc.id} className="rounded-2xl p-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                            <p className="text-sm font-medium truncate" style={{ color: '#1E293B' }}>{doc.nombre_archivo}</p>
+                            <div className="flex items-center gap-2 mt-2 text-xs" style={{ color: '#94A3B8' }}><Calendar size={10} /> {monthLabel} {doc.anio}</div>
+                            <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid #F1F5F9' }}>
+                              {(isImage || isPdf) && <button onClick={() => handlePreview(doc)} className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}><ZoomIn size={12} className="inline mr-1" />Ver</button>}
+                              <button onClick={() => handleDownload(doc)} className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}><Download size={12} className="inline mr-1" />Descargar</button>
+                              <button onClick={() => handleDelete(doc)} title="Eliminar" className="ml-auto px-3 py-1.5 rounded-lg cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}><Trash2 size={12} /></button>
                             </div>
                           </div>
-                          {/* Society badges */}
-                          {!doc.es_general && doc.sociedad_ids && doc.sociedad_ids.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-3">
-                              {doc.sociedad_ids.map(sid => {
-                                const soc = societies.find(s => s.id === sid);
-                                return (
-                                  <span key={sid} className="text-xs px-2 py-0.5 rounded-md" style={{ backgroundColor: '#F0F9FF', color: '#0369A1', border: '1px solid #BAE6FD' }}>
-                                    {soc?.name ?? sid.slice(0, 8)}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          )}
-                          {/* Actions */}
-                          <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid #F1F5F9' }}>
-                            {canPreview && (
-                              <button onClick={() => handlePreview(doc)} title="Ver"
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:opacity-70"
-                                style={{ backgroundColor: '#EFF6FF', color: '#0369A1' }}>
-                                <ZoomIn size={12} /> Ver
-                              </button>
-                            )}
-                            <button onClick={() => handleDownload(doc)} title="Descargar"
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:opacity-70"
-                              style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>
-                              <Download size={12} /> Descargar
-                            </button>
-                            <button onClick={() => handleDelete(doc)} title="Eliminar"
-                              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors hover:opacity-70"
-                              style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )
                 )}
               </div>
             )}

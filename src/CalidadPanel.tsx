@@ -261,12 +261,10 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
     return true;
   });
 
-  const societyGroups = societies
-    .map(society => ({
-      society,
-      docs: filteredDocs.filter(doc => !doc.es_general && (doc.sociedad_ids?.includes(society.id) ?? false)),
-    }))
-    .filter(group => group.docs.length > 0);
+  const societyGroups = societies.map(society => ({
+    society,
+    docs: filteredDocs.filter(doc => !doc.es_general && (doc.sociedad_ids?.includes(society.id) ?? false)),
+  }));
 
   return (
     <AuthProvider>
@@ -398,7 +396,7 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                   <div className="flex items-center justify-center py-16">
                     <RefreshCw size={20} className="animate-spin" style={{ color: '#94A3B8' }} />
                   </div>
-                ) : filteredDocs.length === 0 ? (
+                ) : filterType !== 'sociedad' && filteredDocs.length === 0 ? (
                   <div className="flex flex-col items-center py-16 text-center">
                     <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: '#E0F2FE' }}>
                       <ShieldCheck size={26} style={{ color: '#7DD3FC' }} />
@@ -418,6 +416,11 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                             <h2 className="text-sm font-semibold" style={{ color: '#1E293B' }}>{society.name}</h2>
                             <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E0F2FE', color: '#0369A1' }}>{societyDocs.length}</span>
                           </div>
+                          {societyDocs.length === 0 ? (
+                            <div className="rounded-xl px-4 py-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                              <p className="text-xs" style={{ color: '#94A3B8' }}>No hay documentos subidos para esta sociedad.</p>
+                            </div>
+                          ) : (
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {societyDocs.map(doc => {
                               const { Icon, color } = getFileIcon(doc.tipo ?? '');
@@ -443,6 +446,7 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                               );
                             })}
                           </div>
+                          )}
                         </section>
                       ))}
                     </div>

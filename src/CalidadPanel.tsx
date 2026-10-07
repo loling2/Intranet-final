@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type DragEvent } from 'react';
 import {
-  LogOut, ShieldCheck, Upload, FileText, Download, Trash2, RefreshCw,
+  LogOut, ShieldCheck, Upload, UploadCloud, FileText, Download, Trash2, RefreshCw,
   File, Image as ImageIcon, FileSpreadsheet, X, ZoomIn, Globe, Building2,
   CheckCircle2, AlertCircle, Calendar, User as UserIcon, HelpCircle,
 } from 'lucide-react';
@@ -61,6 +61,57 @@ function formatSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+type FileSystemEntryLike = FileSystemFileEntryLike | FileSystemDirectoryEntryLike;
+
+type FileSystemFileEntryLike = {
+  isFile: true;
+  isDirectory: false;
+  file: (callback: (file: File) => void) => void;
+};
+
+type FileSystemDirectoryEntryLike = {
+  isFile: false;
+  isDirectory: true;
+  createReader: () => {
+    readEntries: (callback: (entries: FileSystemEntryLike[]) => void) => void;
+  };
+};
+
+async function readEntryFiles(entry: FileSystemEntryLike): Promise<File[]> {
+  if (entry.isFile) {
+    return new Promise((resolve) => entry.file((file) => resolve([file])));
+  }
+
+  const reader = entry.createReader();
+  const entries: FileSystemEntryLike[] = [];
+  let batch: FileSystemEntryLike[];
+  do {
+    batch = await new Promise((resolve) => reader.readEntries(resolve));
+    entries.push(...batch);
+  } while (batch.length > 0);
+
+  const nestedFiles = await Promise.all(entries.map(readEntryFiles));
+  return nestedFiles.flat();
+}
+
+async function getDroppedFiles(dataTransfer: DataTransfer): Promise<File[]> {
+  const entries: FileSystemEntryLike[] = [];
+  for (const item of Array.from(dataTransfer.items)) {
+    const getEntry = (item as unknown as { webkitGetAsEntry?: () => unknown }).webkitGetAsEntry;
+    const entry = getEntry?.call(item);
+    if (entry && typeof entry === 'object' && 'isFile' in entry && 'isDirectory' in entry) {
+      entries.push(entry as FileSystemEntryLike);
+    }
+  }
+
+  if (entries.length > 0) {
+    const nestedFiles = await Promise.all(entries.map(readEntryFiles));
+    return nestedFiles.flat();
+  }
+
+  return Array.from(dataTransfer.files);
+}
+
 export default function CalidadPanel({ email, onLogout, onNavigateEmployee, availableProfiles, onNavigateProfile }: Props) {
   const [activeTab, setActiveTab] = useState<'documentos' | 'subir' | 'ayuda'>('documentos');
   const [docs, setDocs] = useState<CalidadDoc[]>([]);
@@ -75,6 +126,7 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Preview modal
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -103,7 +155,21 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
   useEffect(() => { loadDocs(); }, [loadDocs]);
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    if (e.target.files) setSelectedFiles(Array.from(e.target.files));
+    if (e.target.files) {
+      setSelectedFiles(Array.from(e.target.files));
+      setUploadStatus(null);
+    }
+  }
+
+  async function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setIsDragging(false);
+    if (uploading) return;
+    const files = await getDroppedFiles(e.dataTransfer);
+    if (files.length > 0) {
+      setSelectedFiles(files);
+      setUploadStatus(null);
+    }
   }
 
   function toggleSociety(id: string) {
@@ -504,14 +570,33 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                     <label className="text-xs font-medium mb-2 block" style={{ color: '#475569' }}>Archivos</label>
                     <div
                       onClick={() => document.getElementById('calidad-file-input')?.click()}
-                      className="rounded-xl p-8 text-center cursor-pointer transition-colors hover:opacity-80"
-                      style={{ backgroundColor: '#F8FAFC', border: '2px dashed #CBD5E1' }}
+                      onDragEnter={(e) => { e.preventDefault(); if (!uploading) setIsDragging(true); }}
+                      onDragOver={(e) => { e.preventDefault(); if (!uploading) setIsDragging(true); }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        if (e.currentTarget === e.target) setIsDragging(false);
+                      }}
+                      onDrop={handleDrop}
+                      className="rounded-xl p-8 text-center cursor-pointer transition-all duration-200"
+                      style={{
+                        backgroundColor: isDragging ? '#EFF6FF' : '#F8FAFC',
+                        border: `2px dashed ${isDragging ? '#0369A1' : '#CBD5E1'}`,
+                      }}
                     >
-                      <Upload size={24} style={{ color: '#94A3B8', margin: '0 auto' }} />
-                      <p className="text-sm mt-2" style={{ color: '#475569' }}>
-                        {selectedFiles.length > 0
-                          ? `${selectedFiles.length} archivo(s) seleccionado(s)`
-                          : 'Click para seleccionar archivos'}
+                      {isDragging ? (
+                        <UploadCloud size={24} style={{ color: '#0369A1', margin: '0 auto' }} />
+                      ) : (
+                        <Upload size={24} style={{ color: '#94A3B8', margin: '0 auto' }} />
+                      )}
+                      <p className="text-sm mt-2 font-medium" style={{ color: isDragging ? '#0369A1' : '#475569' }}>
+                        {isDragging
+                          ? 'Suelta los archivos o la carpeta aquí'
+                          : selectedFiles.length > 0
+                            ? `${selectedFiles.length} archivo(s) seleccionado(s)`
+                            : 'Arrastra archivos o una carpeta, o haz clic para seleccionar'}
+                      </p>
+                      <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
+                        También puedes seleccionar varios archivos desde el botón
                       </p>
                     </div>
                     <input

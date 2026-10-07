@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { FolderOpen, FolderLock, Upload, Trash2, FileText, Image, FileSpreadsheet, File, RefreshCw, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useRef, type DragEvent } from 'react';
+import { FolderOpen, FolderLock, Upload, Trash2, FileText, Image, FileSpreadsheet, File, RefreshCw, AlertCircle, UploadCloud } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { uploadToWasabi } from '../lib/wasabi';
@@ -40,6 +40,57 @@ function formatBytes(b: number) {
 
 type ActiveFolder = 'publica' | 'privada';
 
+type FileSystemEntryLike = FileSystemFileEntryLike | FileSystemDirectoryEntryLike;
+
+type FileSystemFileEntryLike = {
+  isFile: true;
+  isDirectory: false;
+  file: (callback: (file: File) => void) => void;
+};
+
+type FileSystemDirectoryEntryLike = {
+  isFile: false;
+  isDirectory: true;
+  createReader: () => {
+    readEntries: (callback: (entries: FileSystemEntryLike[]) => void) => void;
+  };
+};
+
+async function readEntryFiles(entry: FileSystemEntryLike): Promise<File[]> {
+  if (entry.isFile) {
+    return new Promise((resolve) => entry.file((file) => resolve([file])));
+  }
+
+  const reader = entry.createReader();
+  const entries: FileSystemEntryLike[] = [];
+  let batch: FileSystemEntryLike[];
+  do {
+    batch = await new Promise((resolve) => reader.readEntries(resolve));
+    entries.push(...batch);
+  } while (batch.length > 0);
+
+  const nestedFiles = await Promise.all(entries.map(readEntryFiles));
+  return nestedFiles.flat();
+}
+
+async function getDroppedFiles(dataTransfer: DataTransfer): Promise<File[]> {
+  const entries: FileSystemEntryLike[] = [];
+  for (const item of Array.from(dataTransfer.items)) {
+    const getEntry = (item as unknown as { webkitGetAsEntry?: () => unknown }).webkitGetAsEntry;
+    const entry = getEntry?.call(item);
+    if (entry && typeof entry === 'object' && 'isFile' in entry && 'isDirectory' in entry) {
+      entries.push(entry as FileSystemEntryLike);
+    }
+  }
+
+  if (entries.length > 0) {
+    const nestedFiles = await Promise.all(entries.map(readEntryFiles));
+    return nestedFiles.flat();
+  }
+
+  return Array.from(dataTransfer.files);
+}
+
 export default function EmployeeDocumentsSection({ employeeId, employeeNombre, societyId, viewerRole }: Props) {
   const { profile } = useAuth();
   const [docs, setDocs] = useState<EmployeeDoc[]>([]);
@@ -47,6 +98,7 @@ export default function EmployeeDocumentsSection({ employeeId, employeeNombre, s
   const [activeFolder, setActiveFolder] = useState<ActiveFolder>('publica');
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canManage = viewerRole === 'admin' || viewerRole === 'rrhh';
 
@@ -67,42 +119,56 @@ export default function EmployeeDocumentsSection({ employeeId, employeeNombre, s
 
   useEffect(() => { loadDocs(); }, [employeeId]);
 
-  const handleUpload = async (file: File) => {
-    if (!profile) return;
+  const handleUpload = async (files: File[]) => {
+    if (!profile || files.length === 0) return;
     setUploading(true);
     setUploadError('');
-    try {
-      const path = `empleados/${employeeId}/${activeFolder}/${Date.now()}-${file.name}`;
-      await uploadToWasabi(file, path);
+    const failedFiles: string[] = [];
 
-      const { error } = await supabase.from('employee_documents').insert({
-        employee_id: employeeId,
-        society_id: societyId,
-        folder: activeFolder,
-        nombre: file.name,
-        storage_path: path,
-        mime_type: file.type || 'application/octet-stream',
-        size_bytes: file.size,
-        subido_por: profile.id,
-        subido_por_nombre: profile.nombre,
-      });
-      if (error) throw error;
+    for (const file of files) {
+      try {
+        const path = `empleados/${employeeId}/${activeFolder}/${Date.now()}-${file.name}`;
+        await uploadToWasabi(file, path);
 
-      await writeAuditLog({
-        evento: 'employee_doc_upload',
-        descripcion: `Documento "${file.name}" subido a carpeta ${activeFolder} de ${employeeNombre}`,
-        autor: profile,
-        entidad: 'employee_document',
-        metadata: { empleado_id: employeeId, empleado: employeeNombre, folder: activeFolder, nombre: file.name },
-        society_id: societyId,
-      });
+        const { error } = await supabase.from('employee_documents').insert({
+          employee_id: employeeId,
+          society_id: societyId,
+          folder: activeFolder,
+          nombre: file.name,
+          storage_path: path,
+          mime_type: file.type || 'application/octet-stream',
+          size_bytes: file.size,
+          subido_por: profile.id,
+          subido_por_nombre: profile.nombre,
+        });
+        if (error) throw error;
 
-      await loadDocs();
-    } catch (err: unknown) {
-      setUploadError(err instanceof Error ? err.message : 'Error al subir');
-    } finally {
-      setUploading(false);
+        await writeAuditLog({
+          evento: 'employee_doc_upload',
+          descripcion: `Documento "${file.name}" subido a carpeta ${activeFolder} de ${employeeNombre}`,
+          autor: profile,
+          entidad: 'employee_document',
+          metadata: { empleado_id: employeeId, empleado: employeeNombre, folder: activeFolder, nombre: file.name },
+          society_id: societyId,
+        });
+      } catch {
+        failedFiles.push(file.name);
+      }
     }
+
+    if (failedFiles.length > 0) {
+      setUploadError(`No se pudieron subir: ${failedFiles.join(', ')}`);
+    }
+    await loadDocs();
+    setUploading(false);
+  };
+
+  const handleDrop = async (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    if (uploading) return;
+    const files = await getDroppedFiles(event.dataTransfer);
+    await handleUpload(files);
   };
 
   const handleDelete = async (doc: EmployeeDoc) => {
@@ -137,9 +203,14 @@ export default function EmployeeDocumentsSection({ employeeId, employeeNombre, s
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               className="hidden"
               disabled={uploading}
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }}
+              onChange={(e) => {
+                const files = e.target.files ? Array.from(e.target.files) : [];
+                if (files.length > 0) handleUpload(files);
+                e.target.value = '';
+              }}
             />
           </label>
         )}
@@ -178,6 +249,31 @@ export default function EmployeeDocumentsSection({ employeeId, employeeNombre, s
           );
         })}
       </div>
+
+      {canManage && (
+        <div
+          onDragEnter={(event) => { event.preventDefault(); if (!uploading) setIsDragging(true); }}
+          onDragOver={(event) => { event.preventDefault(); if (!uploading) setIsDragging(true); }}
+          onDragLeave={(event) => {
+            event.preventDefault();
+            if (event.currentTarget === event.target) setIsDragging(false);
+          }}
+          onDrop={handleDrop}
+          className="mx-4 mt-3 rounded-xl px-4 py-4 text-center transition-all duration-200"
+          style={{
+            backgroundColor: isDragging ? '#EFF6FF' : '#F8FAFC',
+            border: `1px dashed ${isDragging ? '#2563EB' : '#CBD5E1'}`,
+          }}
+        >
+          <UploadCloud size={20} className="mx-auto mb-1.5" style={{ color: isDragging ? '#2563EB' : '#64748B' }} />
+          <p className="text-xs font-semibold" style={{ color: isDragging ? '#1D4ED8' : '#475569' }}>
+            {isDragging ? 'Suelta los archivos aquí' : 'Arrastra archivos o una carpeta aquí'}
+          </p>
+          <p className="text-[11px] mt-1" style={{ color: '#94A3B8' }}>
+            Se guardarán en la carpeta {activeFolder === 'publica' ? 'Pública' : 'Privada'}
+          </p>
+        </div>
+      )}
 
       {uploadError && (
         <div className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>

@@ -26,7 +26,7 @@ interface Contenido {
   curso_id: string;
   modulo_id: string | null;
   titulo: string;
-  tipo: 'texto' | 'pdf' | 'powerpoint' | 'video' | 'diapositivas' | 'enlace';
+  tipo: 'texto' | 'pdf' | 'word' | 'powerpoint' | 'video' | 'diapositivas' | 'enlace';
   contenido_texto: string | null;
   wasabi_key: string | null;
   url_externa: string | null;
@@ -58,6 +58,7 @@ interface ProgresoItem {
 const tipoConfig: Record<string, { label: string; icon: typeof FileText; color: string; bg: string }> = {
   texto: { label: 'Texto', icon: Type, color: '#2563EB', bg: '#EFF6FF' },
   pdf: { label: 'PDF', icon: FileText, color: '#DC2626', bg: '#FEF2F2' },
+  word: { label: 'Word', icon: FileText, color: '#2563EB', bg: '#EFF6FF' },
   powerpoint: { label: 'PowerPoint', icon: Presentation, color: '#EA580C', bg: '#FFF7ED' },
   video: { label: 'Video', icon: FileVideo, color: '#7C3AED', bg: '#F5F3FF' },
   diapositivas: { label: 'Diapositivas', icon: Layers, color: '#0D9488', bg: '#F0FDFA' },
@@ -275,7 +276,7 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
             {activeContenido.tipo === 'enlace' && activeContenido.url_externa && (
               <a href={normalizeExternalUrl(activeContenido.url_externa) ?? '#'} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}><LinkIcon size={16} /> Abrir enlace externo</a>
             )}
-            {(activeContenido.tipo === 'pdf' || activeContenido.tipo === 'powerpoint' || activeContenido.tipo === 'video') && activeContenido.wasabi_key && (
+            {(activeContenido.tipo === 'pdf' || activeContenido.tipo === 'word' || activeContenido.tipo === 'powerpoint' || activeContenido.tipo === 'video') && activeContenido.wasabi_key && (
               <div className="flex flex-col items-center gap-3 py-4">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: cfg.bg }}><Icon size={32} style={{ color: cfg.color }} /></div>
                 <p className="text-sm font-medium" style={{ color: theme.textPrimary }}>{activeContenido.nombre_archivo ?? activeContenido.titulo}</p>

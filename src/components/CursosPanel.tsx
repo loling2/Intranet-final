@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { BookOpen, Plus, X, Trash2, Search, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Upload, Loader2, CheckCircle2, AlertCircle, Users, Clock, Save, Layers, Lock, Eye, EyeOff, ChevronDown, ChevronRight, GripVertical, FileQuestion } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { ensureMoodleCursoFolder, uploadMoodleFile, sanitizeSlug, downloadFromWasabi } from '../lib/wasabi';
@@ -28,7 +28,7 @@ interface Contenido {
   curso_id: string;
   modulo_id: string | null;
   titulo: string;
-  tipo: 'texto' | 'pdf' | 'powerpoint' | 'video' | 'diapositivas' | 'enlace';
+  tipo: 'texto' | 'pdf' | 'word' | 'powerpoint' | 'video' | 'diapositivas' | 'enlace';
   contenido_texto: string | null;
   wasabi_key: string | null;
   url_externa: string | null;
@@ -49,6 +49,7 @@ interface ExamenOption {
 const tipoConfig: Record<string, { label: string; icon: typeof FileText; color: string; bg: string }> = {
   texto: { label: 'Texto', icon: Type, color: '#2563EB', bg: '#EFF6FF' },
   pdf: { label: 'PDF', icon: FileText, color: '#DC2626', bg: '#FEF2F2' },
+  word: { label: 'Word', icon: FileText, color: '#2563EB', bg: '#EFF6FF' },
   powerpoint: { label: 'PowerPoint', icon: Presentation, color: '#EA580C', bg: '#FFF7ED' },
   video: { label: 'Video', icon: FileVideo, color: '#7C3AED', bg: '#F5F3FF' },
   diapositivas: { label: 'Diapositivas', icon: Layers, color: '#0D9488', bg: '#F0FDFA' },
@@ -93,6 +94,8 @@ export default function CursosPanel() {
   const [contenidoModuloId, setContenidoModuloId] = useState<string | null>(null);
   const [contenidoForm, setContenidoForm] = useState<{ titulo: string; tipo: Contenido['tipo']; contenido_texto: string; url_externa: string; duracion_minutos: string; es_obligatorio: boolean; visible_empleado: boolean; descargable: boolean }>({ titulo: '', tipo: 'texto', contenido_texto: '', url_externa: '', duracion_minutos: '0', es_obligatorio: true, visible_empleado: true, descargable: true });
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [savingContenido, setSavingContenido] = useState(false);
 
@@ -256,18 +259,28 @@ export default function CursosPanel() {
     setShowContenidoModal(true); setError('');
   };
 
+  const handleSelectUploadFile = (file: File | null) => {
+    if (!file) return;
+    const allowed = contenidoForm.tipo === 'pdf' ? file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+      : contenidoForm.tipo === 'word' ? /\.docx?$/i.test(file.name)
+      : contenidoForm.tipo === 'powerpoint' ? /\.pptx?$/i.test(file.name)
+      : file.type.startsWith('video/');
+    if (!allowed) { setError('El archivo no coincide con el tipo de contenido seleccionado.'); return; }
+    setUploadFile(file); setError('');
+  };
+
   const handleSaveContenido = async () => {
     if (!selectedCurso || !contenidoModuloId) return;
     if (!contenidoForm.titulo.trim()) { setError('El titulo es obligatorio.'); return; }
     const externalUrl = contenidoForm.tipo === 'enlace' ? normalizeExternalUrl(contenidoForm.url_externa) : null;
     if (contenidoForm.tipo === 'enlace' && !externalUrl) { setError('Escribe una URL valida.'); return; }
-    if ((contenidoForm.tipo === 'pdf' || contenidoForm.tipo === 'powerpoint' || contenidoForm.tipo === 'video') && !uploadFile) { setError('Debes seleccionar un archivo.'); return; }
+    if ((contenidoForm.tipo === 'pdf' || contenidoForm.tipo === 'word' || contenidoForm.tipo === 'powerpoint' || contenidoForm.tipo === 'video') && !uploadFile) { setError('Debes seleccionar un archivo.'); return; }
     setSavingContenido(true); setError('');
     try {
       let wasabiKey: string | null = null;
       let nombreArchivo: string | null = null;
       let tamanoBytes: number | null = null;
-      if ((contenidoForm.tipo === 'pdf' || contenidoForm.tipo === 'powerpoint' || contenidoForm.tipo === 'video') && uploadFile) {
+      if ((contenidoForm.tipo === 'pdf' || contenidoForm.tipo === 'word' || contenidoForm.tipo === 'powerpoint' || contenidoForm.tipo === 'video') && uploadFile) {
         setUploading(true);
         wasabiKey = await uploadMoodleFile(uploadFile, selectedCurso.wasabi_prefix);
         setUploading(false);
@@ -677,7 +690,7 @@ export default function CursosPanel() {
               </div>
               <div>
                 <label className="text-xs font-medium block mb-1" style={{ color: '#0F172A' }}>Tipo *</label>
-                <div className="grid grid-cols-6 gap-2">
+                <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
                   {Object.entries(tipoConfig).map(([tipo, cfg]) => {
                     const Icon = cfg.icon;
                     return (
@@ -694,11 +707,30 @@ export default function CursosPanel() {
                   <textarea value={contenidoForm.contenido_texto} onChange={(e) => setContenidoForm({ ...contenidoForm, contenido_texto: e.target.value })} rows={6} className="w-full px-3 py-2 rounded-lg text-xs outline-none resize-none" style={{ border: '1px solid #E2E8F0', color: '#0F172A' }} />
                 </div>
               )}
-              {(contenidoForm.tipo === 'pdf' || contenidoForm.tipo === 'powerpoint' || contenidoForm.tipo === 'video') && (
+              {(contenidoForm.tipo === 'pdf' || contenidoForm.tipo === 'word' || contenidoForm.tipo === 'powerpoint' || contenidoForm.tipo === 'video') && (
                 <div>
                   <label className="text-xs font-medium block mb-1" style={{ color: '#0F172A' }}>Archivo *</label>
-                  <input type="file" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} accept={contenidoForm.tipo === 'pdf' ? '.pdf' : contenidoForm.tipo === 'powerpoint' ? '.ppt,.pptx' : 'video/*'} className="w-full text-xs" style={{ color: '#0F172A' }} />
-                  {uploadFile && <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>{uploadFile.name} ({formatSize(uploadFile.size)})</p>}
+                  <div
+                    onDragOver={(event) => { event.preventDefault(); setDragActive(true); }}
+                    onDragLeave={() => setDragActive(false)}
+                    onDrop={(event) => { event.preventDefault(); setDragActive(false); handleSelectUploadFile(event.dataTransfer.files?.[0] ?? null); }}
+                    onClick={() => uploadInputRef.current?.click()}
+                    className="rounded-xl border-2 border-dashed p-5 text-center cursor-pointer transition-colors"
+                    style={{ borderColor: dragActive ? '#0D9488' : '#CBD5E1', backgroundColor: dragActive ? '#F0FDFA' : '#F8FAFC' }}
+                  >
+                    <Upload size={20} className="mx-auto mb-2" style={{ color: '#0D9488' }} />
+                    <p className="text-xs font-semibold" style={{ color: '#0F172A' }}>Arrastra el archivo aquí</p>
+                    <p className="text-[10px] mt-1" style={{ color: '#64748B' }}>o pulsa para seleccionarlo</p>
+                    <input
+                      ref={uploadInputRef}
+                      type="file"
+                      onChange={(event) => handleSelectUploadFile(event.target.files?.[0] ?? null)}
+                      accept={contenidoForm.tipo === 'pdf' ? '.pdf,application/pdf' : contenidoForm.tipo === 'word' ? '.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document' : contenidoForm.tipo === 'powerpoint' ? '.ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation' : 'video/*'}
+                      className="hidden"
+                    />
+                  </div>
+                  <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>{contenidoForm.tipo === 'pdf' ? 'PDF' : contenidoForm.tipo === 'word' ? 'Word (.doc o .docx)' : contenidoForm.tipo === 'powerpoint' ? 'PowerPoint (.ppt o .pptx)' : 'Vídeo'} </p>
+                  {uploadFile && <p className="text-[10px] mt-1 font-medium" style={{ color: '#0D9488' }}>{uploadFile.name} ({formatSize(uploadFile.size)})</p>}
                 </div>
               )}
               {contenidoForm.tipo === 'enlace' && (

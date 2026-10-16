@@ -87,6 +87,7 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
   const [slideIndex, setSlideIndex] = useState(0);
   const [slides, setSlides] = useState<string[]>([]);
   const [canComplete, setCanComplete] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [completing, setCompleting] = useState(false);
   const [activeModuloId, setActiveModuloId] = useState<string | null>(null);
 
@@ -151,9 +152,31 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
     return modContenidos.slice(0, idx).every((c) => progreso.get(c.id)?.completado_at);
   };
 
+  useEffect(() => {
+    if (!activeContenido) return;
+    const startedAt = progreso.get(activeContenido.id)?.iniciado_at;
+    if (!startedAt || activeContenido.duracion_minutos <= 0) {
+      setRemainingSeconds(0);
+      setCanComplete(true);
+      return;
+    }
+
+    const updateRemaining = () => {
+      const elapsedSeconds = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+      const remaining = Math.max(0, activeContenido.duracion_minutos * 60 - elapsedSeconds);
+      setRemainingSeconds(remaining);
+      setCanComplete(remaining === 0);
+    };
+
+    updateRemaining();
+    const interval = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(interval);
+  }, [activeContenido, progreso]);
+
   const handleOpenContenido = async (contenido: Contenido) => {
     setActiveContenido(contenido);
     setCanComplete(false);
+    setError('');
     if (contenido.tipo === 'diapositivas' && contenido.contenido_texto) {
       const parts = contenido.contenido_texto.split('---').map((s) => s.trim()).filter(Boolean);
       setSlides(parts.length > 0 ? parts : [contenido.contenido_texto]);
@@ -161,24 +184,23 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
     } else {
       setSlides([]);
     }
-    if (!progreso.get(contenido.id)?.iniciado_at) {
-      await supabase.rpc('moodle_marcar_inicio', { p_contenido_id: contenido.id });
+
+    if (progreso.get(contenido.id)?.iniciado_at) return;
+    const { data: startedProgress, error: startError } = await supabase.rpc('moodle_marcar_inicio', { p_contenido_id: contenido.id });
+    if (startError || !startedProgress) {
+      setError('No se pudo iniciar este recurso.');
+      setActiveContenido(null);
+      return;
     }
-    if (contenido.duracion_minutos > 0) {
-      const started = progreso.get(contenido.id)?.iniciado_at;
-      if (started) {
-        const elapsed = (Date.now() - new Date(started).getTime()) / 1000 / 60;
-        setCanComplete(elapsed >= contenido.duracion_minutos);
-      }
-      const interval = setInterval(() => {
-        const start = progreso.get(contenido.id)?.iniciado_at ?? new Date().toISOString();
-        const elapsed = (Date.now() - new Date(start).getTime()) / 1000 / 60;
-        setCanComplete(elapsed >= contenido.duracion_minutos);
-      }, 5000);
-      return () => clearInterval(interval);
-    } else {
-      setCanComplete(true);
-    }
+    setProgreso((prev) => {
+      const next = new Map(prev);
+      next.set(contenido.id, {
+        contenido_id: contenido.id,
+        iniciado_at: startedProgress.iniciado_at,
+        completado_at: startedProgress.completado_at,
+      });
+      return next;
+    });
   };
 
   const handleComplete = async () => {
@@ -205,6 +227,7 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
   };
 
   const formatSize = (bytes: number | null): string => { if (!bytes) return '-'; if (bytes < 1024) return `${bytes} B`; if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1048576).toFixed(1)} MB`; };
+  const formatRemaining = (seconds: number): string => `${Math.floor(seconds / 60)} min ${seconds % 60}s`;
 
   if (loading) return <div className="flex flex-col items-center justify-center py-12"><Loader2 size={28} className="animate-spin" style={{ color: theme.primary }} /><p className="text-sm mt-3" style={{ color: theme.textSecondary }}>Cargando cursos...</p></div>;
 
@@ -224,6 +247,12 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
             {isDone && <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}><CheckCircle2 size={14} style={{ color: '#FFFFFF' }} /><span className="text-xs font-medium" style={{ color: '#FFFFFF' }}>Completado</span></div>}
           </div>
           <div className="p-6">
+            {activeContenido.duracion_minutos > 0 && !isDone && (
+              <div className="mb-5 rounded-xl p-3 flex items-center gap-3" style={{ backgroundColor: canComplete ? '#F0FDF4' : '#FFFBEB', border: `1px solid ${canComplete ? '#BBF7D0' : '#FDE68A'}` }}>
+                <Clock size={17} style={{ color: canComplete ? '#16A34A' : '#D97706' }} />
+                <div><p className="text-xs font-semibold" style={{ color: canComplete ? '#15803D' : '#92400E' }}>{canComplete ? 'Tiempo mínimo completado' : 'Tiempo mínimo de visualización'}</p><p className="text-[11px] mt-0.5" style={{ color: canComplete ? '#16A34A' : '#A16207' }}>{canComplete ? 'Ya puedes marcar este recurso como completado.' : `Debes permanecer ${formatRemaining(remainingSeconds)} antes de continuar.`}</p></div>
+              </div>
+            )}
             {activeContenido.tipo === 'texto' && activeContenido.contenido_texto && (
               <div className="rounded-xl p-5 text-sm whitespace-pre-wrap leading-relaxed" style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.textPrimary }}>{activeContenido.contenido_texto}</div>
             )}

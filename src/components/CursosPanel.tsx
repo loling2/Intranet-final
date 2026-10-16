@@ -371,10 +371,23 @@ export default function CursosPanel() {
 
   const handleDeleteAsignacion = async (a: { id: string }) => {
     try {
+      const { data: courseAssignment, error: lookupError } = await supabase
+        .from('moodle_asignaciones')
+        .select('empleado_id, curso_id')
+        .eq('id', a.id)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
       const { error: err } = await supabase.from('moodle_asignaciones').delete().eq('id', a.id);
       if (err) throw err;
+      if (courseAssignment?.empleado_id && selectedCurso?.examen_id) {
+        await supabase.from('examen_asignaciones')
+          .delete()
+          .eq('examen_id', selectedCurso.examen_id)
+          .eq('empleado_id', courseAssignment.empleado_id)
+          .neq('estado', 'completado');
+      }
       if (selectedCurso) openAssignModal();
-    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Error'); }
+    } catch (err: unknown) { setError('No se pudo desasignar el curso.'); }
   };
 
   const filteredCursos = cursos.filter((c) => c.nombre.toLowerCase().includes(search.toLowerCase()) || (c.categoria ?? '').toLowerCase().includes(search.toLowerCase()));
@@ -740,10 +753,10 @@ export default function CursosPanel() {
                 const sel = selectedEmpleados.has(emp.id);
                 const yaAsignado = asignacionesCurso.some((a) => a.empleado_id === emp.id);
                 return (
-                  <button key={emp.id} onClick={() => !yaAsignado && toggleEmpleado(emp.id)} disabled={yaAsignado} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all" style={{ backgroundColor: yaAsignado ? '#F1F5F9' : sel ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${yaAsignado ? '#E2E8F0' : sel ? '#99F6E4' : '#E2E8F0'}`, cursor: yaAsignado ? 'not-allowed' : 'pointer', opacity: yaAsignado ? 0.6 : 1 }}>
+                  <button key={emp.id} onClick={() => yaAsignado ? handleDeleteAsignacion({ id: asignacionesCurso.find((a) => a.empleado_id === emp.id)?.id ?? '' }) : toggleEmpleado(emp.id)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all" style={{ backgroundColor: yaAsignado ? '#FEF2F2' : sel ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${yaAsignado ? '#FECACA' : sel ? '#99F6E4' : '#E2E8F0'}`, cursor: 'pointer', opacity: yaAsignado ? 0.85 : 1 }}>
                     <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: sel ? '#0D9488' : '#FFFFFF', border: `1.5px solid ${sel ? '#0D9488' : '#CBD5E1'}` }}>{sel && <CheckCircle2 size={12} className="text-white" />}</div>
                     <div className="flex-1 min-w-0"><p className="text-xs font-medium truncate" style={{ color: '#0F172A' }}>{emp.nombre}</p><p className="text-[10px]" style={{ color: '#94A3B8' }}>{emp.dni ?? 'Sin DNI'}</p></div>
-                    {yaAsignado && <span className="text-[9px] font-medium px-1.5 py-0.5 rounded" style={{ color: '#64748B', backgroundColor: '#F1F5F9' }}>Ya asignado</span>}
+                    {yaAsignado && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded" style={{ color: '#DC2626', backgroundColor: '#FEF2F2' }}>Desasignar</span>}
                   </button>
                 );
               })}

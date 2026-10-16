@@ -2972,15 +2972,6 @@ useEffect(() => {
         .order('created_at', { ascending: false });
       if (!asignaciones) { setRealExams([]); return; }
 
-      const { data: moodleCursos } = await supabase.from('moodle_cursos').select('examen_id').not('examen_id', 'is', null);
-      const examenIdsConCurso: Set<string> = new Set((moodleCursos ?? []).map((c: any) => c.examen_id));
-      const { data: moodleAsignaciones } = await supabase.from('moodle_asignaciones').select('curso_id, examen_desbloqueado').eq('empleado_id', emp.id);
-      const examenDesbloqueadoMap = new Map<string, boolean>();
-      for (const ma of (moodleAsignaciones ?? [])) {
-        const { data: curso } = await supabase.from('moodle_cursos').select('examen_id').eq('id', ma.curso_id).maybeSingle();
-        if (curso?.examen_id) examenDesbloqueadoMap.set(curso.examen_id, ma.examen_desbloqueado);
-      }
-
       const mapped: Exam[] = asignaciones.map((a: any) => ({
           id: a.id,
           examenId: a.examen_id,
@@ -2992,7 +2983,6 @@ useEffect(() => {
           score: a.puntuacion ?? null,
           attempts: a.intentos ?? 0,
           maxAttempts: a.examenes?.max_intentos ?? 1,
-          locked: examenIdsConCurso.has(a.examen_id) && examenDesbloqueadoMap.get(a.examen_id) !== true,
         }));
       setRealExams(mapped);
 

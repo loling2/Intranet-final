@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BookOpen, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Layers, Clock, CheckCircle2, Loader2, ChevronLeft, ChevronRight, Download, Lock, Play, AlertCircle, LayoutDashboard, ListChecks, ArrowUpRight } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { downloadFromWasabi } from '../lib/wasabi';
+import { downloadFromWasabi, getWasabiBlobUrl } from '../lib/wasabi';
 import type { SocietyTheme } from '../themes';
 
 interface Curso {
@@ -91,6 +91,8 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [completing, setCompleting] = useState(false);
   const [activeModuloId, setActiveModuloId] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const loadCursos = useCallback(async () => {
     setLoading(true);
@@ -152,6 +154,30 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
     if (idx <= 0) return true;
     return modContenidos.slice(0, idx).every((c) => progreso.get(c.id)?.completado_at);
   };
+
+  useEffect(() => {
+    if (!activeContenido || activeContenido.tipo !== 'pdf' || !activeContenido.wasabi_key) {
+      setPdfUrl(null);
+      setPdfLoading(false);
+      return;
+    }
+    let cancelled = false;
+    let loadedUrl: string | null = null;
+    setPdfLoading(true);
+    getWasabiBlobUrl(activeContenido.wasabi_key)
+      .then((url) => {
+        loadedUrl = url;
+        if (cancelled) URL.revokeObjectURL(url);
+        else setPdfUrl(url);
+      })
+      .catch(() => { if (!cancelled) setError('No se pudo cargar la vista previa del PDF.'); })
+      .finally(() => { if (!cancelled) setPdfLoading(false); });
+    return () => {
+      cancelled = true;
+      if (loadedUrl) URL.revokeObjectURL(loadedUrl);
+      setPdfUrl(null);
+    };
+  }, [activeContenido]);
 
   useEffect(() => {
     if (!activeContenido) return;
@@ -276,16 +302,22 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
             {activeContenido.tipo === 'enlace' && activeContenido.url_externa && (
               <a href={normalizeExternalUrl(activeContenido.url_externa) ?? '#'} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}><LinkIcon size={16} /> Abrir enlace externo</a>
             )}
-            {(activeContenido.tipo === 'pdf' || activeContenido.tipo === 'word' || activeContenido.tipo === 'powerpoint' || activeContenido.tipo === 'video') && activeContenido.wasabi_key && (
+            {activeContenido.tipo === 'pdf' && activeContenido.wasabi_key && (
+              <div className="space-y-3">
+                {pdfLoading && <div className="flex justify-center py-10"><Loader2 size={24} className="animate-spin" style={{ color: theme.primary }} /></div>}
+                {pdfUrl && <iframe title={activeContenido.nombre_archivo ?? activeContenido.titulo} src={pdfUrl} className="w-full h-[min(72vh,720px)] rounded-xl" style={{ border: `1px solid ${theme.border}` }} />}
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="text-xs" style={{ color: theme.textSecondary }}>{activeContenido.nombre_archivo ?? activeContenido.titulo} · {formatSize(activeContenido.tamano_bytes)}</p>
+                  {activeContenido.descargable && <button onClick={() => handleDownload(activeContenido)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}><Download size={16} /> Descargar</button>}
+                </div>
+              </div>
+            )}
+            {(activeContenido.tipo === 'word' || activeContenido.tipo === 'powerpoint' || activeContenido.tipo === 'video') && activeContenido.wasabi_key && (
               <div className="flex flex-col items-center gap-3 py-4">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: cfg.bg }}><Icon size={32} style={{ color: cfg.color }} /></div>
                 <p className="text-sm font-medium" style={{ color: theme.textPrimary }}>{activeContenido.nombre_archivo ?? activeContenido.titulo}</p>
                 <p className="text-xs" style={{ color: theme.textSecondary }}>{formatSize(activeContenido.tamano_bytes)}</p>
-                {activeContenido.descargable ? (
-                  <button onClick={() => handleDownload(activeContenido)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}><Download size={16} /> Descargar</button>
-                ) : (
-                  <p className="text-xs" style={{ color: theme.textSecondary }}>Este recurso no es descargable. Consulta con tu responsable.</p>
-                )}
+                {activeContenido.descargable ? <button onClick={() => handleDownload(activeContenido)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}><Download size={16} /> Descargar</button> : <p className="text-xs" style={{ color: theme.textSecondary }}>Este recurso no es descargable. Consulta con tu responsable.</p>}
               </div>
             )}
             {activeContenido.tipo !== 'diapositivas' && (
@@ -312,7 +344,7 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
 
         <div className="rounded-2xl p-5 overflow-hidden relative" style={{ background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`, boxShadow: `0 12px 30px ${theme.primary}20` }}>
           <div className="absolute -right-8 -top-10 w-36 h-36 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }} />
-          <div className="relative flex items-start gap-4">
+          <div className="relative flex flex-col sm:flex-row items-start gap-4">
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.25)' }}><BookOpen size={28} style={{ color: '#FFFFFF' }} /></div>
             <div className="flex-1 min-w-0">
               <h3 className="text-lg font-bold" style={{ color: '#FFFFFF' }}>{selectedCurso.nombre}</h3>
@@ -331,6 +363,7 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
                 </div>
               </div>
             </div>
+            {selectedCurso.examen_id && examenDesbloqueado && onOpenExams && <button onClick={onOpenExams} className="relative flex items-center gap-2 mt-4 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer" style={{ backgroundColor: '#16A34A', color: '#FFFFFF' }}><ListChecks size={16} /> Realizar examen <ArrowUpRight size={14} /></button>}
           </div>
         </div>
 

@@ -3330,7 +3330,7 @@ useEffect(() => {
             >
               <button
                 onClick={() => setFormacionSubTab('moodle')}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 cursor-pointer whitespace-nowrap"
+                className="flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-2.5 rounded-lg text-[11px] sm:text-sm font-medium text-center transition-all duration-300 cursor-pointer"
                 style={{
                   backgroundColor: formacionSubTab === 'moodle' ? theme.primary : 'transparent',
                   color: formacionSubTab === 'moodle' ? '#FFFFFF' : theme.textSecondary,
@@ -3342,7 +3342,7 @@ useEffect(() => {
               </button>
               <button
                 onClick={() => setFormacionSubTab('examenes')}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 cursor-pointer whitespace-nowrap"
+                className="flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-2.5 rounded-lg text-[11px] sm:text-sm font-medium text-center transition-all duration-300 cursor-pointer"
                 style={{
                   backgroundColor: formacionSubTab === 'examenes' ? theme.primary : 'transparent',
                   color: formacionSubTab === 'examenes' ? '#FFFFFF' : theme.textSecondary,
@@ -3354,7 +3354,7 @@ useEffect(() => {
               </button>
               <button
                 onClick={() => setFormacionSubTab('certificados')}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 cursor-pointer whitespace-nowrap"
+                className="flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-2.5 rounded-lg text-[11px] sm:text-sm font-medium text-center transition-all duration-300 cursor-pointer"
                 style={{
                   backgroundColor: formacionSubTab === 'certificados' ? theme.primary : 'transparent',
                   color: formacionSubTab === 'certificados' ? '#FFFFFF' : theme.textSecondary,
@@ -3368,7 +3368,7 @@ useEffect(() => {
 
             {/* Sub-tab content */}
             {formacionSubTab === 'moodle' && (
-              <MoodleCursosEmpleado theme={theme} onOpenExams={() => setFormacionSubTab('examenes')} />
+              <MoodleCursosEmpleado theme={theme} onOpenExams={() => { setFormacionSubTab('examenes'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
             )}
             {formacionSubTab === 'examenes' && (
               <ExamsCard exams={exams} theme={theme} />

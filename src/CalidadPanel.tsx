@@ -125,8 +125,10 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const [uploading, setUploading] = useState(false);
+  const [societyUploading, setSocietyUploading] = useState<Record<string, boolean>>({});
   const [uploadStatus, setUploadStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [societyDragging, setSocietyDragging] = useState<Record<string, boolean>>({});
 
   // Preview modal
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -181,6 +183,54 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
 
   function toggleExpandedSociety(id: string) {
     setExpandedSocieties(prev => ({ ...prev, [id]: prev[id] === false }));
+  }
+
+  async function uploadFilesForSociety(societyId: string, files: File[]) {
+    if (files.length === 0 || societyUploading[societyId]) return;
+    setSocietyUploading(prev => ({ ...prev, [societyId]: true }));
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const uploaderName = user?.email ?? email;
+      const year = new Date().getFullYear().toString();
+      const month = String(new Date().getMonth() + 1).padStart(2, '0');
+
+      for (const file of files) {
+        const key = `calidad/${year}/${month}/${societyId}/${file.name}`;
+        await uploadToWasabiKey(file, key);
+        const { error } = await supabase.from('calidad_documentos').insert({
+          nombre_archivo: file.name,
+          wasabi_key: key,
+          tipo: file.type || null,
+          tamano_bytes: file.size,
+          es_general: false,
+          sociedad_ids: [societyId],
+          anio: year,
+          mes: month,
+          subido_por: user?.id ?? null,
+          subido_por_nombre: uploaderName,
+        });
+        if (error) throw error;
+      }
+      await loadDocs();
+    } catch (e) {
+      console.error('Society upload error:', e);
+      alert('No se pudieron subir los documentos a esta sociedad');
+    } finally {
+      setSocietyUploading(prev => ({ ...prev, [societyId]: false }));
+    }
+  }
+
+  async function handleSocietyDrop(societyId: string, e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setSocietyDragging(prev => ({ ...prev, [societyId]: false }));
+    if (societyUploading[societyId]) return;
+    const files = await getDroppedFiles(e.dataTransfer);
+    await uploadFilesForSociety(societyId, files);
+  }
+
+  function handleSocietyFileSelect(societyId: string, e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) void uploadFilesForSociety(societyId, Array.from(e.target.files));
+    e.target.value = '';
   }
 
   async function handleUpload() {
@@ -429,6 +479,37 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                               {expandedSocieties[society.id] !== false ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                             </span>
                           </button>
+                          {expandedSocieties[society.id] !== false && (
+                            <div
+                              onClick={() => document.getElementById(`calidad-society-file-${society.id}`)?.click()}
+                              onDragEnter={(e) => { e.preventDefault(); if (!societyUploading[society.id]) setSocietyDragging(prev => ({ ...prev, [society.id]: true })); }}
+                              onDragOver={(e) => { e.preventDefault(); if (!societyUploading[society.id]) setSocietyDragging(prev => ({ ...prev, [society.id]: true })); }}
+                              onDragLeave={(e) => { e.preventDefault(); if (e.currentTarget === e.target) setSocietyDragging(prev => ({ ...prev, [society.id]: false })); }}
+                              onDrop={(e) => void handleSocietyDrop(society.id, e)}
+                              className="mb-3 rounded-xl px-4 py-4 text-center cursor-pointer transition-colors"
+                              style={{
+                                backgroundColor: societyDragging[society.id] ? society.primaryLight : '#F8FAFC',
+                                border: `1px dashed ${societyDragging[society.id] ? society.primary : '#CBD5E1'}`,
+                              }}
+                            >
+                              {societyUploading[society.id] ? (
+                                <div className="flex items-center justify-center gap-2 text-xs" style={{ color: society.primary }}><RefreshCw size={14} className="animate-spin" /> Subiendo documentos...</div>
+                              ) : (
+                                <>
+                                  <UploadCloud size={20} style={{ color: society.primary, margin: '0 auto' }} />
+                                  <p className="text-xs font-medium mt-1" style={{ color: '#475569' }}>Arrastra documentos aquí para {society.name}</p>
+                                  <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>o haz clic para seleccionarlos</p>
+                                </>
+                              )}
+                              <input
+                                id={`calidad-society-file-${society.id}`}
+                                type="file"
+                                multiple
+                                onChange={(e) => handleSocietyFileSelect(society.id, e)}
+                                className="hidden"
+                              />
+                            </div>
+                          )}
                           {expandedSocieties[society.id] !== false && societyDocs.length === 0 ? (
                             <div className="rounded-xl px-4 py-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                               <p className="text-xs" style={{ color: '#94A3B8' }}>No hay documentos subidos para esta sociedad.</p>

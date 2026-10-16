@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { BookOpen, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Layers, Clock, CheckCircle2, Loader2, ChevronLeft, ChevronRight, Download, Lock, Play, Award, AlertCircle, FileQuestion, ChevronDown, ChevronRight as ChevronRightIcon } from 'lucide-react';
+import { BookOpen, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Layers, Clock, CheckCircle2, Loader2, ChevronLeft, ChevronRight, Download, Lock, Play, AlertCircle, LayoutDashboard, ListChecks, ArrowUpRight } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { downloadFromWasabi } from '../lib/wasabi';
 import type { SocietyTheme } from '../themes';
@@ -69,7 +69,12 @@ function normalizeExternalUrl(value: string): string | null {
   try { const url = new URL(candidate); return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null; } catch { return null; }
 }
 
-export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme }) {
+interface MoodleCursosEmpleadoProps {
+  theme: SocietyTheme;
+  onOpenExams?: () => void;
+}
+
+export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCursosEmpleadoProps) {
   const [cursos, setCursos] = useState<(Curso & { asignacion: Asignacion })[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCurso, setSelectedCurso] = useState<(Curso & { asignacion: Asignacion }) | null>(null);
@@ -83,7 +88,7 @@ export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme })
   const [slides, setSlides] = useState<string[]>([]);
   const [canComplete, setCanComplete] = useState(false);
   const [completing, setCompleting] = useState(false);
-  const [expandedModulos, setExpandedModulos] = useState<Set<string>>(new Set());
+  const [activeModuloId, setActiveModuloId] = useState<string | null>(null);
 
   const loadCursos = useCallback(async () => {
     setLoading(true);
@@ -113,7 +118,7 @@ export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme })
     const progMap = new Map<string, ProgresoItem>();
     (prog ?? []).forEach((p: any) => progMap.set(p.contenido_id, { contenido_id: p.contenido_id, iniciado_at: p.iniciado_at, completado_at: p.completado_at }));
     setProgreso(progMap);
-    if (modList.length > 0) setExpandedModulos(new Set([modList[0].id]));
+    if (modList.length > 0) setActiveModuloId(modList[0].id);
     setLoadingDetail(false);
   }, []);
 
@@ -123,9 +128,14 @@ export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme })
     loadDetail(curso);
   };
 
-  const handleBack = () => { setSelectedCurso(null); setActiveContenido(null); setModulos([]); setContenidos([]); setProgreso(new Map()); };
+  const handleBack = () => { setSelectedCurso(null); setActiveContenido(null); setModulos([]); setContenidos([]); setProgreso(new Map()); setActiveModuloId(null); };
 
-  const isModuloUnlocked = (modulo: Modulo, idx: number): boolean => {
+  const handleSelectModulo = (modulo: Modulo, index: number) => {
+    if (!isModuloUnlocked(index)) return;
+    setActiveModuloId(modulo.id);
+  };
+
+  const isModuloUnlocked = (idx: number): boolean => {
     if (idx === 0) return true;
     const prevMod = modulos[idx - 1];
     const prevObligatorios = contenidos.filter((c) => c.modulo_id === prevMod.id && c.es_obligatorio);
@@ -134,7 +144,7 @@ export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme })
   };
 
   const isContenidoUnlocked = (contenido: Contenido, modulo: Modulo): boolean => {
-    if (!isModuloUnlocked(modulo, modulos.findIndex((m) => m.id === modulo.id))) return false;
+    if (!isModuloUnlocked(modulos.findIndex((m) => m.id === modulo.id))) return false;
     const modContenidos = contenidos.filter((c) => c.modulo_id === modulo.id && c.es_obligatorio).sort((a, b) => a.orden - b.orden);
     const idx = modContenidos.findIndex((c) => c.id === contenido.id);
     if (idx <= 0) return true;
@@ -193,8 +203,6 @@ export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme })
     if (!c.wasabi_key || !c.descargable) return;
     try { await downloadFromWasabi(c.wasabi_key, c.nombre_archivo ?? 'archivo'); } catch { setError('No se pudo descargar.'); }
   };
-
-  const toggleExpand = (id: string) => { setExpandedModulos((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; }); };
 
   const formatSize = (bytes: number | null): string => { if (!bytes) return '-'; if (bytes < 1024) return `${bytes} B`; if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1048576).toFixed(1)} MB`; };
 
@@ -297,78 +305,20 @@ export default function MoodleCursosEmpleado({ theme }: { theme: SocietyTheme })
         </div>
 
         {loadingDetail ? <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin" style={{ color: theme.primary }} /></div> : (
-          <div className="space-y-3">
-            {modulos.map((m, mi) => {
-              const unlocked = isModuloUnlocked(m, mi);
-              const expanded = expandedModulos.has(m.id);
-              const modContenidos = contenidos.filter((c) => c.modulo_id === m.id);
-              const modDone = modContenidos.filter((c) => c.es_obligatorio && progreso.get(c.id)?.completado_at).length;
-              const modTotal = modContenidos.filter((c) => c.es_obligatorio).length;
-              return (
-                <div key={m.id} className="rounded-2xl overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, opacity: unlocked ? 1 : 0.6 }}>
-                  <div className="p-4 flex items-center gap-3 cursor-pointer" onClick={() => unlocked && toggleExpand(m.id)}>
-                    {unlocked ? (expanded ? <ChevronDown size={16} style={{ color: theme.textSecondary }} /> : <ChevronRightIcon size={16} style={{ color: theme.textSecondary }} />) : <Lock size={16} style={{ color: '#94A3B8' }} />}
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: unlocked ? `${theme.primary}12` : '#F1F5F9' }}><Layers size={18} style={{ color: unlocked ? theme.primary : '#94A3B8' }} /></div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-semibold" style={{ color: theme.textPrimary }}>Modulo {mi + 1}: {m.titulo}</h4>
-                      <p className="text-xs" style={{ color: theme.textSecondary }}>{unlocked ? `${modDone}/${modTotal} completados` : 'Bloqueado - completa el modulo anterior'}</p>
-                    </div>
-                    {modTotal > 0 && modDone === modTotal && <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ backgroundColor: '#F0FDF4' }}><CheckCircle2 size={12} style={{ color: '#16A34A' }} /><span className="text-[10px] font-semibold" style={{ color: '#16A34A' }}>Completo</span></div>}
-                  </div>
-                  {expanded && unlocked && (
-                    <div className="px-4 pb-4 space-y-2">
-                      {modContenidos.length === 0 ? <p className="text-xs text-center py-3" style={{ color: theme.textSecondary }}>Sin contenido en este modulo.</p> : modContenidos.map((c) => {
-                        const cfg = tipoConfig[c.tipo] ?? tipoConfig.texto;
-                        const Icon = cfg.icon;
-                        const cUnlocked = isContenidoUnlocked(c, m);
-                        const cDone = !!progreso.get(c.id)?.completado_at;
-                        return (
-                          <div key={c.id} onClick={() => cUnlocked && handleOpenContenido(c)} className="rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all" style={{ backgroundColor: cDone ? '#F0FDF4' : cUnlocked ? theme.bg : '#F8FAFC', border: `1px solid ${cDone ? '#BBF7D0' : cUnlocked ? theme.border : '#E2E8F0'}`, opacity: cUnlocked ? 1 : 0.5 }}>
-                            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cfg.bg }}>{cDone ? <CheckCircle2 size={16} style={{ color: '#16A34A' }} /> : cUnlocked ? <Icon size={16} style={{ color: cfg.color }} /> : <Lock size={16} style={{ color: '#94A3B8' }} />}</div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium truncate" style={{ color: theme.textPrimary }}>{c.titulo}</p>
-                              <p className="text-[10px]" style={{ color: theme.textSecondary }}>{cfg.label}{c.duracion_minutos > 0 ? ` - ${c.duracion_minutos}min` : ''}{!c.descargable && c.wasabi_key ? ' - No descargable' : ''}</p>
-                            </div>
-                            {cUnlocked && !cDone && <Play size={14} style={{ color: theme.primary }} />}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <div className="grid gap-5 lg:grid-cols-[250px_minmax(0,1fr)] items-start">
+            <aside className="rounded-2xl p-3 lg:sticky lg:top-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+              <div className="px-2 pb-3 border-b" style={{ borderColor: theme.border }}><p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: theme.textSecondary }}>Contenido del curso</p><p className="text-xs mt-1" style={{ color: theme.textPrimary }}>{modulos.length} módulos · {contenidos.length} recursos</p></div>
+              <button onClick={() => setActiveModuloId(null)} className="w-full flex items-center gap-2 px-3 py-2.5 mt-2 rounded-xl text-left cursor-pointer" style={{ backgroundColor: activeModuloId === null ? `${theme.primary}12` : 'transparent', color: activeModuloId === null ? theme.primary : theme.textSecondary }}><LayoutDashboard size={14} /><span className="text-xs font-semibold">Inicio del curso</span></button>
+              <nav className="mt-1 space-y-1">
+                {modulos.map((m, mi) => { const unlocked = isModuloUnlocked(mi); const required = contenidos.filter((c) => c.modulo_id === m.id && c.es_obligatorio); const done = required.filter((c) => progreso.get(c.id)?.completado_at).length; return <button key={m.id} onClick={() => handleSelectModulo(m, mi)} disabled={!unlocked} className="w-full flex items-start gap-2 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer disabled:cursor-not-allowed" style={{ backgroundColor: activeModuloId === m.id ? `${theme.primary}12` : 'transparent', color: unlocked ? (activeModuloId === m.id ? theme.primary : theme.textPrimary) : '#94A3B8', opacity: unlocked ? 1 : 0.6 }}>{unlocked ? <Layers size={14} className="mt-0.5 flex-shrink-0" /> : <Lock size={14} className="mt-0.5 flex-shrink-0" />}<span className="min-w-0"><span className="block text-xs font-semibold truncate">{mi + 1}. {m.titulo}</span><span className="block text-[10px] mt-0.5" style={{ color: theme.textSecondary }}>{done}/{required.length} completados</span></span></button>; })}
+              </nav>
+              {selectedCurso.examen_id && <button onClick={onOpenExams} disabled={!onOpenExams} className="w-full flex items-center gap-2 px-3 py-2.5 mt-2 rounded-xl text-left cursor-pointer disabled:cursor-default" style={{ backgroundColor: examenDesbloqueado ? '#F0FDF4' : '#F8FAFC', color: examenDesbloqueado ? '#15803D' : theme.textSecondary, border: `1px solid ${examenDesbloqueado ? '#BBF7D0' : theme.border}` }}><ListChecks size={14} /><span className="flex-1 text-xs font-semibold">Mini-test</span>{examenDesbloqueado && <ArrowUpRight size={13} />}</button>}
+            </aside>
 
-            {/* Examen */}
-            {selectedCurso.examen_id && (
-              <div className="rounded-2xl p-5" style={{ backgroundColor: examenDesbloqueado ? '#F0FDF4' : '#F8FAFC', border: `1px solid ${examenDesbloqueado ? '#BBF7D0' : '#E2E8F0'}` }}>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: examenDesbloqueado ? '#DCFCE7' : '#F1F5F9' }}>{examenDesbloqueado ? <FileQuestion size={24} style={{ color: '#16A34A' }} /> : <Lock size={24} style={{ color: '#94A3B8' }} />}</div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-bold" style={{ color: theme.textPrimary }}>Examen del curso</h4>
-                    <p className="text-xs" style={{ color: theme.textSecondary }}>{examenDesbloqueado ? 'El examen esta disponible. Ve a la pestana "Mis Examenes" para realizarlo.' : `Completa el 100% del curso para desbloquear el examen. (${progresoPct}%)`}</p>
-                  </div>
-                  {examenDesbloqueado && (
-                    <div className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-lg" style={{ color: '#16A34A', backgroundColor: '#DCFCE7', border: '1px solid #BBF7D0' }}>
-                      <CheckCircle2 size={10} /> Listo
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Certificate */}
-            {selectedCurso.asignacion.estado === 'completado' && progresoPct >= 100 && (
-              <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEF3C7' }}><Award size={24} style={{ color: '#D97706' }} /></div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-bold" style={{ color: theme.textPrimary }}>Curso completado</h4>
-                    <p className="text-xs" style={{ color: theme.textSecondary }}>Has completado el curso. Tu diploma estara disponible en la pestana "Mis Certificados" tras aprobar el examen.</p>
-                  </div>
-                </div>
-              </div>
-            )}
+            <section className="min-w-0">
+              {activeModuloId === null ? <div className="rounded-2xl p-6" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}><div className="flex items-start gap-3"><div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${theme.primary}12` }}><BookOpen size={22} style={{ color: theme.primary }} /></div><div><p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: theme.primary }}>Bienvenido al curso</p><h3 className="text-xl font-bold mt-1" style={{ color: theme.textPrimary }}>{selectedCurso.nombre}</h3><p className="text-sm mt-2 leading-relaxed" style={{ color: theme.textSecondary }}>{selectedCurso.descripcion ?? 'Explora los módulos del curso desde el menú lateral.'}</p></div></div><div className="grid gap-3 sm:grid-cols-3 mt-6"><div className="rounded-xl p-3" style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}` }}><p className="text-lg font-bold" style={{ color: theme.primary }}>{progresoPct}%</p><p className="text-xs" style={{ color: theme.textSecondary }}>Progreso</p></div><div className="rounded-xl p-3" style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}` }}><p className="text-lg font-bold" style={{ color: theme.textPrimary }}>{modulos.length}</p><p className="text-xs" style={{ color: theme.textSecondary }}>Módulos</p></div><div className="rounded-xl p-3" style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}` }}><p className="text-lg font-bold" style={{ color: theme.textPrimary }}>{contenidos.length}</p><p className="text-xs" style={{ color: theme.textSecondary }}>Recursos</p></div></div><p className="text-xs mt-6" style={{ color: theme.textSecondary }}>Selecciona un módulo para comenzar.</p></div> : (() => { const activeModulo = modulos.find((m) => m.id === activeModuloId); const activeIndex = modulos.findIndex((m) => m.id === activeModuloId); if (!activeModulo) return null; const moduleContents = contenidos.filter((c) => c.modulo_id === activeModulo.id); return <div className="space-y-4"><div className="rounded-2xl p-5" style={{ background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`, boxShadow: `0 10px 25px ${theme.primary}18` }}><p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: 'rgba(255,255,255,0.72)' }}>Módulo {activeIndex + 1}</p><h3 className="text-xl font-bold mt-1" style={{ color: '#FFFFFF' }}>{activeModulo.titulo}</h3>{activeModulo.descripcion && <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.82)' }}>{activeModulo.descripcion}</p>}</div><div className="rounded-2xl p-4 sm:p-5" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}><div className="flex items-center justify-between mb-4"><div><h4 className="text-sm font-bold" style={{ color: theme.textPrimary }}>Recursos del módulo</h4><p className="text-xs mt-1" style={{ color: theme.textSecondary }}>Abre cada recurso para avanzar en tu formación.</p></div><span className="text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: theme.primary, backgroundColor: `${theme.primary}12` }}>{moduleContents.length} recursos</span></div>{moduleContents.length === 0 ? <p className="text-sm text-center py-8" style={{ color: theme.textSecondary }}>Este módulo todavía no tiene contenido.</p> : <div className="space-y-2">{moduleContents.map((c) => { const cfg = tipoConfig[c.tipo] ?? tipoConfig.texto; const Icon = cfg.icon; const cUnlocked = isContenidoUnlocked(c, activeModulo); const cDone = !!progreso.get(c.id)?.completado_at; return <button key={c.id} onClick={() => cUnlocked && handleOpenContenido(c)} disabled={!cUnlocked} className="w-full rounded-xl p-3 flex items-center gap-3 text-left transition-all cursor-pointer disabled:cursor-not-allowed" style={{ backgroundColor: cDone ? '#F0FDF4' : theme.bg, border: `1px solid ${cDone ? '#BBF7D0' : theme.border}`, opacity: cUnlocked ? 1 : 0.5 }}><div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cDone ? '#DCFCE7' : cfg.bg }}>{cDone ? <CheckCircle2 size={17} style={{ color: '#16A34A' }} /> : cUnlocked ? <Icon size={17} style={{ color: cfg.color }} /> : <Lock size={17} style={{ color: '#94A3B8' }} />}</div><span className="flex-1 min-w-0"><span className="block text-sm font-semibold truncate" style={{ color: theme.textPrimary }}>{c.titulo}</span><span className="block text-xs mt-0.5" style={{ color: theme.textSecondary }}>{cfg.label}{c.duracion_minutos > 0 ? ` · ${c.duracion_minutos} min` : ''}{c.es_obligatorio ? ' · Obligatorio' : ''}</span></span>{cUnlocked && <ChevronRight size={16} style={{ color: theme.primary }} />}</button>; })}</div>}</div><div className="flex items-center justify-between gap-3"><button onClick={() => { const prev = modulos[activeIndex - 1]; if (prev) handleSelectModulo(prev, activeIndex - 1); }} disabled={activeIndex <= 0} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-40" style={{ color: theme.textSecondary, border: `1px solid ${theme.border}`, backgroundColor: theme.bgCard }}><ChevronLeft size={14} /> Anterior</button><button onClick={() => { const next = modulos[activeIndex + 1]; if (next) handleSelectModulo(next, activeIndex + 1); }} disabled={activeIndex >= modulos.length - 1 || !isModuloUnlocked(activeIndex + 1)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-40" style={{ backgroundColor: theme.primary }}>Siguiente <ChevronRight size={14} /></button></div></div>; })()}
+              {selectedCurso.examen_id && <div className="rounded-2xl p-4 sm:p-5 mt-4" style={{ backgroundColor: examenDesbloqueado ? '#F0FDF4' : theme.bgCard, border: `1px solid ${examenDesbloqueado ? '#BBF7D0' : theme.border}` }}><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: examenDesbloqueado ? '#DCFCE7' : '#F1F5F9' }}>{examenDesbloqueado ? <ListChecks size={20} style={{ color: '#16A34A' }} /> : <Lock size={20} style={{ color: '#94A3B8' }} />}</div><div className="flex-1"><h4 className="text-sm font-bold" style={{ color: theme.textPrimary }}>Mini-test del curso</h4><p className="text-xs mt-1" style={{ color: theme.textSecondary }}>{examenDesbloqueado ? 'Ya puedes comprobar lo aprendido con el examen asociado.' : `Completa el 100% del contenido para desbloquearlo. (${progresoPct}%)`}</p></div>{examenDesbloqueado && onOpenExams && <button onClick={onOpenExams} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer" style={{ backgroundColor: '#16A34A' }}>Realizar <ArrowUpRight size={13} /></button>}</div></div>}
+            </section>
           </div>
         )}
       </div>

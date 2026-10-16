@@ -3381,7 +3381,7 @@ useEffect(() => {
 
             {/* Sub-tab content */}
             {formacionSubTab === 'moodle' && (
-              <MoodleCursosEmpleado theme={theme} />
+              <MoodleCursosEmpleado theme={theme} onOpenExams={() => setFormacionSubTab('examenes')} />
             )}
             {formacionSubTab === 'examenes' && (
               <ExamsCard exams={exams} theme={theme} />

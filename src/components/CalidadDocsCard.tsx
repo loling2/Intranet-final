@@ -117,10 +117,11 @@ export default function CalidadDocsCard({ theme, societyId, mini }: Props) {
     return true;
   });
 
-  const generalDocs = filtered.filter(d => d.es_general);
-  const sociedadDocs = filtered.filter(d => !d.es_general && (
-    societyId ? (d.sociedad_ids?.includes(societyId) ?? false) : true
-  ));
+  const visibleDocs = filtered.filter(d =>
+    d.es_general || !societyId || (d.sociedad_ids?.includes(societyId) ?? false)
+  );
+  const generalDocs = visibleDocs.filter(d => d.es_general);
+  const sociedadDocs = visibleDocs.filter(d => !d.es_general);
 
   const availableYears = [...new Set(docs.map(d => d.anio))].sort().reverse();
 
@@ -229,7 +230,7 @@ export default function CalidadDocsCard({ theme, societyId, mini }: Props) {
   }
 
   if (mini) {
-    const recentDocs = [...docs].sort((a, b) =>
+    const recentDocs = [...visibleDocs].sort((a, b) =>
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     ).slice(0, 3);
     return (
@@ -242,7 +243,7 @@ export default function CalidadDocsCard({ theme, societyId, mini }: Props) {
           <div>
             <h3 className="text-sm font-semibold" style={{ color: theme.textPrimary }}>Calidad</h3>
             <p className="text-xs" style={{ color: theme.textSecondary }}>
-              {docs.length} documento{docs.length !== 1 ? 's' : ''} disponible{docs.length !== 1 ? 's' : ''}
+              {visibleDocs.length} documento{visibleDocs.length !== 1 ? 's' : ''} disponible{visibleDocs.length !== 1 ? 's' : ''}
             </p>
           </div>
         </div>
@@ -312,7 +313,7 @@ export default function CalidadDocsCard({ theme, societyId, mini }: Props) {
             {monthList.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
           <span className="text-xs ml-auto" style={{ color: theme.textSecondary }}>
-            {filtered.length} documento{filtered.length !== 1 ? 's' : ''}
+            {visibleDocs.length} documento{visibleDocs.length !== 1 ? 's' : ''}
           </span>
           <button onClick={loadDocs}
             className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:opacity-70"

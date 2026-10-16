@@ -24,6 +24,7 @@ interface Examen {
   fecha_inicio: string | null;
   fecha_fin: string | null;
   ratio_penalizacion: number;
+  max_intentos: number;
   created_at: string;
 }
 
@@ -46,6 +47,7 @@ interface Empleado {
   email: string | null;
   id_sociedad: string | null;
   activo: boolean;
+  puesto: string | null;
 }
 
 interface Asignacion {
@@ -88,7 +90,7 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
   // Exam editor modal
   const [showExamModal, setShowExamModal] = useState(false);
   const [editingExamen, setEditingExamen] = useState<Examen | null>(null);
-  const [examForm, setExamForm] = useState({ nombre: '', descripcion: '', duracion_minutos: 30, validez_meses: 12, ratio_penalizacion: 3 });
+  const [examForm, setExamForm] = useState({ nombre: '', descripcion: '', duracion_minutos: 30, validez_meses: 12, ratio_penalizacion: 3, max_intentos: 1 });
   const [savingExam, setSavingExam] = useState(false);
 
   // Question editor modal
@@ -102,6 +104,8 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
   const [loadingAsignaciones, setLoadingAsignaciones] = useState(false);
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [searchEmpleado, setSearchEmpleado] = useState('');
+  const [assignEmpresaFilter, setAssignEmpresaFilter] = useState('');
+  const [assignPuestoFilter, setAssignPuestoFilter] = useState('');
   const [selectedEmpleados, setSelectedEmpleados] = useState<Set<string>>(new Set());
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignExamen, setAssignExamen] = useState<Examen | null>(null);
@@ -164,7 +168,7 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
   };
 
   const loadEmpleados = useCallback(async () => {
-    const { data, error } = await supabase.from('empleados').select('id, nombre, dni, email, id_sociedad, activo').eq('activo', true).order('nombre', { ascending: true });
+    const { data, error } = await supabase.from('empleados').select('id, nombre, dni, email, id_sociedad, puesto, activo').eq('activo', true).order('nombre', { ascending: true });
     if (error) { setError(error.message); }
     else { setEmpleados(data ?? []); }
   }, []);
@@ -183,7 +187,7 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
 
   const openNewExam = () => {
     setEditingExamen(null);
-    setExamForm({ nombre: '', descripcion: '', duracion_minutos: 30, validez_meses: 12, ratio_penalizacion: 3 });
+    setExamForm({ nombre: '', descripcion: '', duracion_minutos: 30, validez_meses: 12, ratio_penalizacion: 3, max_intentos: 1 });
     setShowExamModal(true);
     setError('');
   };
@@ -196,6 +200,7 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
       duracion_minutos: exam.duracion_minutos,
       validez_meses: exam.validez_meses,
       ratio_penalizacion: exam.ratio_penalizacion,
+      max_intentos: exam.max_intentos ?? 1,
     });
     setShowExamModal(true);
     setError('');
@@ -211,6 +216,7 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
         duracion_minutos: examForm.duracion_minutos,
         validez_meses: examForm.validez_meses,
         ratio_penalizacion: examForm.ratio_penalizacion,
+        max_intentos: examForm.max_intentos,
       };
       if (editingExamen) {
         const { error: err } = await supabase.from('examenes').update(payload).eq('id', editingExamen.id);
@@ -300,6 +306,8 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
     setAssignExamen(exam);
     setSelectedEmpleados(new Set());
     setSearchEmpleado('');
+    setAssignEmpresaFilter('');
+    setAssignPuestoFilter('');
     setShowAssignModal(true);
     setError('');
     if (empleados.length === 0) loadEmpleados();
@@ -358,8 +366,9 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
   );
 
   const filteredEmpleados = empleados.filter((e) =>
-    e.nombre.toLowerCase().includes(searchEmpleado.toLowerCase()) ||
-    (e.dni ?? '').toLowerCase().includes(searchEmpleado.toLowerCase())
+    (e.nombre.toLowerCase().includes(searchEmpleado.toLowerCase()) || (e.dni ?? '').toLowerCase().includes(searchEmpleado.toLowerCase())) &&
+    e.id_sociedad?.toLowerCase().includes(assignEmpresaFilter.toLowerCase()) !== false &&
+    (e.puesto ?? '').toLowerCase().includes(assignPuestoFilter.toLowerCase())
   );
 
   const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
@@ -528,6 +537,9 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
                           </span>
                           <span className="flex items-center gap-1 text-xs" style={{ color: '#94A3B8' }}>
                             <CheckCircle2 size={11} /> Validez: {exam.validez_meses} meses
+                          </span>
+                          <span className="flex items-center gap-1 text-xs font-medium" style={{ color: '#0D9488' }}>
+                            <Users size={11} /> {exam.max_intentos ?? 1} intento{(exam.max_intentos ?? 1) === 1 ? '' : 's'}
                           </span>
                         </div>
                       </div>
@@ -745,7 +757,7 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
                   placeholder="Descripcion del examen..."
                 />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Duracion (min)</label>
                   <input
@@ -769,6 +781,15 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
                   <input
                     type="number" min={0} step={0.5} value={examForm.ratio_penalizacion}
                     onChange={(e) => setExamForm({ ...examForm, ratio_penalizacion: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                    style={{ borderColor: '#E2E8F0' }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Máximo de intentos</label>
+                  <input
+                    type="number" min={1} max={20} value={examForm.max_intentos}
+                    onChange={(e) => setExamForm({ ...examForm, max_intentos: Math.min(20, Math.max(1, parseInt(e.target.value) || 1)) })}
                     className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
                     style={{ borderColor: '#E2E8F0' }}
                   />
@@ -874,8 +895,24 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
                 <input
                   type="text" value={searchEmpleado}
                   onChange={(e) => setSearchEmpleado(e.target.value)}
-                  placeholder="Buscar empleado..."
+                  placeholder="Buscar por nombre o DNI..."
                   className="w-full pl-8 pr-3 py-2 rounded-lg text-xs border outline-none"
+                  style={{ borderColor: '#E2E8F0' }}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <input
+                  type="text" value={assignEmpresaFilter}
+                  onChange={(e) => setAssignEmpresaFilter(e.target.value)}
+                  placeholder="Empresa / código"
+                  className="px-3 py-2 rounded-lg text-xs border outline-none"
+                  style={{ borderColor: '#E2E8F0' }}
+                />
+                <input
+                  type="text" value={assignPuestoFilter}
+                  onChange={(e) => setAssignPuestoFilter(e.target.value)}
+                  placeholder="Puesto de trabajo"
+                  className="px-3 py-2 rounded-lg text-xs border outline-none"
                   style={{ borderColor: '#E2E8F0' }}
                 />
               </div>

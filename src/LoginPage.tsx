@@ -2967,7 +2967,7 @@ useEffect(() => {
       if (!emp?.id) { setRealExams([]); return; }
       const { data: asignaciones } = await supabase
         .from('examen_asignaciones')
-        .select('id, examen_id, estado, puntuacion, intentos, fecha_asignacion, fecha_aprobacion, fecha_realizacion, tiempo_empleado_segundos, examenes ( nombre, descripcion, duracion_minutos )')
+        .select('id, examen_id, estado, puntuacion, intentos, fecha_asignacion, fecha_aprobacion, fecha_realizacion, tiempo_empleado_segundos, examenes ( nombre, descripcion, duracion_minutos, max_intentos )')
         .eq('empleado_id', emp.id)
         .order('created_at', { ascending: false });
       if (!asignaciones) { setRealExams([]); return; }
@@ -2981,12 +2981,7 @@ useEffect(() => {
         if (curso?.examen_id) examenDesbloqueadoMap.set(curso.examen_id, ma.examen_desbloqueado);
       }
 
-      const mapped: Exam[] = asignaciones
-        .filter((a: any) => {
-          if (!examenIdsConCurso.has(a.examen_id)) return true;
-          return examenDesbloqueadoMap.get(a.examen_id) === true;
-        })
-        .map((a: any) => ({
+      const mapped: Exam[] = asignaciones.map((a: any) => ({
           id: a.id,
           examenId: a.examen_id,
           title: a.examenes?.nombre ?? 'Examen',
@@ -2996,6 +2991,8 @@ useEffect(() => {
           status: (a.estado as Exam['status']) ?? 'pendiente',
           score: a.puntuacion ?? null,
           attempts: a.intentos ?? 0,
+          maxAttempts: a.examenes?.max_intentos ?? 1,
+          locked: examenIdsConCurso.has(a.examen_id) && examenDesbloqueadoMap.get(a.examen_id) !== true,
         }));
       setRealExams(mapped);
 

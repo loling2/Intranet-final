@@ -96,6 +96,14 @@ export default function ExamsCard({ exams, theme }: Props) {
   }, []);
 
   const handleGoToExam = useCallback(async (exam: Exam) => {
+    if (exam.locked) {
+      setExamError('Completa primero el curso asociado para desbloquear este examen.');
+      return;
+    }
+    if (exam.attempts >= (exam.maxAttempts ?? 1)) {
+      setExamError(`Has alcanzado el máximo de ${exam.maxAttempts ?? 1} intento${(exam.maxAttempts ?? 1) === 1 ? '' : 's'} permitido${(exam.maxAttempts ?? 1) === 1 ? '' : 's'}.`);
+      return;
+    }
     setSsoConnecting(true);
     setActiveExam(exam);
     setQuestions([]);
@@ -299,9 +307,9 @@ export default function ExamsCard({ exams, theme }: Props) {
                         </div>
                         <span
                           className="text-xs font-medium px-2.5 py-1 rounded-md flex-shrink-0"
-                          style={{ color: cfg.color, backgroundColor: `${cfg.color}15`, border: `1px solid ${cfg.border}` }}
+                          style={{ color: exam.locked ? '#64748B' : cfg.color, backgroundColor: exam.locked ? '#F1F5F9' : `${cfg.color}15`, border: `1px solid ${exam.locked ? '#CBD5E1' : cfg.border}` }}
                         >
-                          {cfg.label}
+                          {exam.locked ? 'Bloqueado' : cfg.label}
                         </span>
                       </div>
 
@@ -316,7 +324,7 @@ export default function ExamsCard({ exams, theme }: Props) {
                         </div>
                         <div className="flex items-center gap-1.5">
                           <RotateCcw size={12} style={{ color: theme.textSecondary }} />
-                          <span className="text-xs" style={{ color: theme.textSecondary }}>{exam.attempts} intento{exam.attempts !== 1 ? 's' : ''}</span>
+                          <span className="text-xs" style={{ color: theme.textSecondary }}>{exam.attempts}/{exam.maxAttempts ?? 1} intento{(exam.maxAttempts ?? 1) !== 1 ? 's' : ''}</span>
                         </div>
 
                         {exam.score !== null && (
@@ -326,7 +334,9 @@ export default function ExamsCard({ exams, theme }: Props) {
                           </div>
                         )}
 
-                        {(exam.status === 'pendiente' || exam.status === 'en_curso' || exam.status === 'suspendido') && (
+                        {exam.locked ? (
+                          <span className="ml-auto text-xs font-medium" style={{ color: '#64748B' }}>Completa el curso para acceder</span>
+                        ) : (exam.status === 'pendiente' || exam.status === 'en_curso' || exam.status === 'suspendido') && exam.attempts < (exam.maxAttempts ?? 1) && (
                           <button
                             onClick={() => handleGoToExam(exam)}
                             className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200"

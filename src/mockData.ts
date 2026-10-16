@@ -143,6 +143,8 @@ export interface Exam {
   status: 'pendiente' | 'en_curso' | 'completado' | 'suspendido';
   score: number | null;
   attempts: number;
+  maxAttempts?: number;
+  locked?: boolean;
 }
 
 export const mockCertificates: Record<string, Certificate[]> = {

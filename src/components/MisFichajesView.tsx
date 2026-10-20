@@ -59,7 +59,7 @@ interface Correccion {
   respuesta_rrhh: string | null;
   validado_at: string | null;
   created_at: string;
-  clasificacion_ausencia: 'no_fichado' | 'dia_libre' | 'asuntos_propios' | null;
+  clasificacion_ausencia: 'no_fichado' | 'dia_libre' | 'dia_compensado' | 'festivo' | 'asuntos_propios' | null;
   sociedad_id: string | null;
 }
 
@@ -411,8 +411,10 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
   const [salidaHora, setSalidaHora] = useState(initialSalida ? initialSalida.split(':')[0] : '');
   const [salidaMin, setSalidaMin] = useState(initialSalida ? initialSalida.split(':')[1] : '');
   const [motivo, setMotivo] = useState('');
+  const [ausencia, setAusencia] = useState<'no_fichado' | 'dia_libre' | 'dia_compensado' | 'festivo'>('no_fichado');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const isAusencia = jornada.entrada === null && jornada.salida === null;
 
   const entradaProp = (entradaHora || entradaMin) ? `${entradaHora}:${entradaMin}` : '';
   const salidaProp = (salidaHora || salidaMin) ? `${salidaHora}:${salidaMin}` : '';
@@ -422,7 +424,7 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
     if (!motivo.trim()) { setError('Debes explicar el motivo de la corrección.'); return; }
     const hasEntrada = entradaHora.trim() !== '' && entradaMin.trim() !== '';
     const hasSalida = salidaHora.trim() !== '' && salidaMin.trim() !== '';
-    if (!hasEntrada && !hasSalida) { setError('Debes proponer al menos una hora corregida (horas y minutos).'); return; }
+    if (!isAusencia && !hasEntrada && !hasSalida) { setError('Debes proponer al menos una hora corregida (horas y minutos).'); return; }
     if ((entradaHora.trim() !== '' || entradaMin.trim() !== '') && !hasEntrada) { setError('Completa las horas y minutos de la entrada.'); return; }
     if ((salidaHora.trim() !== '' || salidaMin.trim() !== '') && !hasSalida) { setError('Completa las horas y minutos de la salida.'); return; }
     const entradaNormalizada = hasEntrada ? normalizeTimeInput(`${entradaHora}:${entradaMin}`) : '';
@@ -448,6 +450,7 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
         salida_propuesta: salidaNormalizada ? fromTimeInputValue(jornada.fecha, salidaNormalizada) : null,
         motivo: motivo.trim(),
         estado: 'pendiente',
+        clasificacion_ausencia: isAusencia ? ausencia : null,
         sociedad_id: empleadoSociedadId,
       });
       if (insErr) throw insErr;
@@ -514,7 +517,7 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
             </div>
           </div>
 
-          <div>
+          {!isAusencia && <div>
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
               Nueva entrada
             </label>
@@ -549,9 +552,9 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
                 <p className="text-[10px] text-center mt-1" style={{ color: '#94A3B8' }}>Minutos</p>
               </div>
             </div>
-          </div>
+          </div>}
 
-          <div>
+          {!isAusencia && <div>
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
               Nueva salida
             </label>
@@ -586,7 +589,17 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
                 <p className="text-[10px] text-center mt-1" style={{ color: '#94A3B8' }}>Minutos</p>
               </div>
             </div>
-          </div>
+          </div>}
+
+          {isAusencia && <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Tipo de ausencia</label>
+            <select value={ausencia} onChange={(e) => setAusencia(e.target.value as typeof ausencia)} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer" style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}>
+              <option value="no_fichado">No fichado</option>
+              <option value="dia_libre">Día libre</option>
+              <option value="dia_compensado">Día compensado</option>
+              <option value="festivo">Festivo</option>
+            </select>
+          </div>}
 
           <div>
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
@@ -601,7 +614,7 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
               style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
             />
             <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
-              Introduce las horas y los minutos por separado. La petición se enviará a RRHH para validación.
+              {isAusencia ? 'No se registrarán horas de entrada ni salida. La petición se enviará a RRHH para validación.' : 'Introduce las horas y los minutos por separado. La petición se enviará a RRHH para validación.'}
             </p>
           </div>
 
@@ -669,6 +682,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
   const [vehicleLogs, setVehicleLogs] = useState<VehicleLogEntry[]>([]);
   const [viewMode, setViewMode] = useState<'asistencia' | 'vehiculos'>('asistencia');
   const [empleadoSociedadId, setEmpleadoSociedadId] = useState<string | null>(null);
+  const [pinCreatedAt, setPinCreatedAt] = useState<string | null>(null);
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [correccionPage, setCorreccionPage] = useState(0);
   const CORRECCIONES_PER_PAGE = 5;
@@ -692,10 +706,11 @@ export default function MisFichajesView({ theme, userId }: Props) {
       // Resolve name from user_profiles — this is what fichajes store in nombre_empleado
       const { data: prof } = await supabase
         .from('user_profiles')
-        .select('nombre')
+        .select('nombre, pin_created_at')
         .eq('id', userId)
         .maybeSingle();
       const resolvedNombre = prof?.nombre ?? '';
+      setPinCreatedAt(prof?.pin_created_at ?? null);
 
       // Also try empleados for the name fallback
       const { data: emp } = await supabase
@@ -767,17 +782,13 @@ export default function MisFichajesView({ theme, userId }: Props) {
 
   const resumenesBase = buildResumenes(filteredFichajes);
 
-  // ── Missing-day detection for Gerontalia employees ──
-  // From 2026-09-01 onwards, if a Gerontalia employee has no fichaje on a day
-  // (and no existing correction for that day), show an empty row so they can
-  // request a correction.
-  const GERONTALIA_ID = '6632d8d1-c4e7-4540-aab7-515b9d7913f7';
-  const MISSING_DAYS_START = '2026-09-01';
-  const isGerontalia = empleadoSociedadId === GERONTALIA_ID;
-
+  // ── Missing-day detection ──
+  // Once an employee has a PIN, show weekdays without fichajes from that date
+  // onward so the employee can request an absence classification.
   const missingDays: JornadaResumen[] = (() => {
-    if (!isGerontalia || !desde || !hasta) return [];
-    const startDate = desde < MISSING_DAYS_START ? MISSING_DAYS_START : desde;
+    if (!pinCreatedAt || !desde || !hasta) return [];
+    const pinDate = pinCreatedAt.slice(0, 10);
+    const startDate = desde < pinDate ? pinDate : desde;
     if (startDate > hasta) return [];
 
     // Build a set of dates that already have a fichaje or a correction
@@ -1000,8 +1011,8 @@ export default function MisFichajesView({ theme, userId }: Props) {
                   const corrForDate = correcciones.filter((c) => c.fecha === grupo.fecha);
                   const hasPendiente = corrForDate.some((c) => c.estado === 'pendiente');
                   const hasAprobada = corrForDate.some((c) => c.estado === 'aprobada');
-                  const ausenciaAprobada = corrForDate.find((c) => c.estado === 'aprobada' && (c.clasificacion_ausencia === 'dia_libre' || c.clasificacion_ausencia === 'asuntos_propios'));
-                  const ausenciaLabel = ausenciaAprobada?.clasificacion_ausencia === 'dia_libre' ? 'Día libre' : ausenciaAprobada?.clasificacion_ausencia === 'asuntos_propios' ? 'Asuntos propios' : null;
+                  const ausenciaAprobada = corrForDate.find((c) => c.estado === 'aprobada' && c.clasificacion_ausencia && c.clasificacion_ausencia !== 'no_fichado');
+                  const ausenciaLabel = ausenciaAprobada?.clasificacion_ausencia === 'dia_libre' ? 'Día libre' : ausenciaAprobada?.clasificacion_ausencia === 'dia_compensado' ? 'Día compensado' : ausenciaAprobada?.clasificacion_ausencia === 'festivo' ? 'Festivo' : ausenciaAprobada?.clasificacion_ausencia === 'asuntos_propios' ? 'Asuntos propios' : null;
                   const toggleDate = () => setExpandedDates((current) => {
                     const next = new Set(current);
                     if (next.has(grupo.fecha)) next.delete(grupo.fecha); else next.add(grupo.fecha);
@@ -1197,7 +1208,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
                       {c.clasificacion_ausencia && c.clasificacion_ausencia !== 'no_fichado' && (
                         <p className="text-xs mt-1 inline-flex items-center gap-1.5">
                           <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE' }}>
-                            {c.clasificacion_ausencia === 'dia_libre' ? 'Día libre' : 'Asuntos propios'}
+                            {c.clasificacion_ausencia === 'dia_libre' ? 'Día libre' : c.clasificacion_ausencia === 'dia_compensado' ? 'Día compensado' : c.clasificacion_ausencia === 'festivo' ? 'Festivo' : 'Asuntos propios'}
                           </span>
                         </p>
                       )}

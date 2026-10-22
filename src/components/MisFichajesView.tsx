@@ -54,7 +54,7 @@ interface Correccion {
   entrada_propuesta: string | null;
   salida_propuesta: string | null;
   motivo: string;
-  estado: 'pendiente' | 'aprobada' | 'rechazada';
+  estado: 'pendiente' | 'aprobada' | 'rechazada' | 'anulada';
   validado_por_nombre: string | null;
   respuesta_rrhh: string | null;
   validado_at: string | null;
@@ -369,7 +369,7 @@ function exportPDF(
       doc.setFontSize(9);
       doc.setTextColor(15, 23, 42);
       doc.text(formatPdfDate(correccion.fecha), margin + 6, y + 7);
-      const estadoColor = correccion.estado === 'aprobada' ? [22, 163, 74] : correccion.estado === 'rechazada' ? [220, 38, 38] : [217, 119, 6];
+      const estadoColor = correccion.estado === 'aprobada' ? [22, 163, 74] : correccion.estado === 'rechazada' ? [220, 38, 38] : correccion.estado === 'anulada' ? [100, 116, 139] : [217, 119, 6];
       doc.setTextColor(estadoColor[0], estadoColor[1], estadoColor[2]);
       doc.text(correccion.estado.charAt(0).toUpperCase() + correccion.estado.slice(1), pageWidth - margin - 6, y + 7, { align: 'right' });
       doc.setFont('helvetica', 'normal');
@@ -1028,8 +1028,9 @@ export default function MisFichajesView({ theme, userId }: Props) {
                   );
                   const renderAction = (jornada: JornadaResumen) => {
                     const jornadaCorrecciones = correcciones.filter((c) => c.fecha === jornada.fecha);
-                    if (jornadaCorrecciones.some((c) => c.estado === 'aprobada')) return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}><CheckCircle2 size={11} /> Resuelta</span>;
-                    if (jornadaCorrecciones.some((c) => c.estado === 'pendiente')) return <span className="text-xs font-medium" style={{ color: '#D97706' }}>Petición enviada</span>;
+                    const activeCorrecciones = jornadaCorrecciones.filter((c) => c.estado === 'aprobada' || c.estado === 'pendiente');
+                    if (activeCorrecciones.some((c) => c.estado === 'aprobada')) return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}><CheckCircle2 size={11} /> Resuelta</span>;
+                    if (activeCorrecciones.some((c) => c.estado === 'pendiente')) return <span className="text-xs font-medium" style={{ color: '#D97706' }}>Petición enviada</span>;
                     return <button onClick={() => setCorrectionTarget(jornada)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 hover:opacity-80" style={{ backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' }}><AlertTriangle size={11} /> Corregir</button>;
                   };
                   return (
@@ -1193,9 +1194,9 @@ export default function MisFichajesView({ theme, userId }: Props) {
           </div>
           <div className="divide-y" style={{ borderColor: theme.border }}>
             {pageItems.map((c) => {
-              const estadoColor = c.estado === 'aprobada' ? '#16A34A' : c.estado === 'rechazada' ? '#DC2626' : '#D97706';
-              const estadoBg = c.estado === 'aprobada' ? '#F0FDF4' : c.estado === 'rechazada' ? '#FEF2F2' : '#FFFBEB';
-              const estadoBorder = c.estado === 'aprobada' ? '#BBF7D0' : c.estado === 'rechazada' ? '#FECACA' : '#FDE68A';
+              const estadoColor = c.estado === 'aprobada' ? '#16A34A' : c.estado === 'rechazada' ? '#DC2626' : c.estado === 'anulada' ? '#64748B' : '#D97706';
+              const estadoBg = c.estado === 'aprobada' ? '#F0FDF4' : c.estado === 'rechazada' ? '#FEF2F2' : c.estado === 'anulada' ? '#F8FAFC' : '#FFFBEB';
+              const estadoBorder = c.estado === 'aprobada' ? '#BBF7D0' : c.estado === 'rechazada' ? '#FECACA' : c.estado === 'anulada' ? '#CBD5E1' : '#FDE68A';
               const estadoLabel = c.estado.charAt(0).toUpperCase() + c.estado.slice(1);
               return (
                 <div key={c.id} className="px-5 py-4">

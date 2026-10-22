@@ -411,7 +411,7 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
   const [salidaHora, setSalidaHora] = useState(initialSalida ? initialSalida.split(':')[0] : '');
   const [salidaMin, setSalidaMin] = useState(initialSalida ? initialSalida.split(':')[1] : '');
   const [motivo, setMotivo] = useState('');
-  const [ausencia, setAusencia] = useState<'no_fichado' | 'dia_libre' | 'dia_compensado' | 'festivo'>('no_fichado');
+  const [ausencia, setAusencia] = useState<'dia_libre' | 'asuntos_propios' | 'dia_compensado' | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const isAusencia = jornada.entrada === null && jornada.salida === null;
@@ -424,6 +424,7 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
     if (!motivo.trim()) { setError('Debes explicar el motivo de la corrección.'); return; }
     const hasEntrada = entradaHora.trim() !== '' && entradaMin.trim() !== '';
     const hasSalida = salidaHora.trim() !== '' && salidaMin.trim() !== '';
+    if (isAusencia && !ausencia && !hasEntrada && !hasSalida) { setError('Selecciona una opción o introduce al menos una hora corregida.'); return; }
     if (!isAusencia && !hasEntrada && !hasSalida) { setError('Debes proponer al menos una hora corregida (horas y minutos).'); return; }
     if ((entradaHora.trim() !== '' || entradaMin.trim() !== '') && !hasEntrada) { setError('Completa las horas y minutos de la entrada.'); return; }
     if ((salidaHora.trim() !== '' || salidaMin.trim() !== '') && !hasSalida) { setError('Completa las horas y minutos de la salida.'); return; }
@@ -517,7 +518,33 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
             </div>
           </div>
 
-          {!isAusencia && <div>
+          {isAusencia && <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Si no fichaste, selecciona una opción</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: 'dia_libre' as const, label: 'Día libre' },
+                { value: 'asuntos_propios' as const, label: 'Permiso' },
+                { value: 'dia_compensado' as const, label: 'Compensatorio' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setAusencia(ausencia === option.value ? null : option.value)}
+                  className="px-2 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+                  style={{
+                    backgroundColor: ausencia === option.value ? '#EFF6FF' : '#F8FAFC',
+                    color: ausencia === option.value ? '#0369A1' : '#64748B',
+                    border: `1.5px solid ${ausencia === option.value ? '#7DD3FC' : '#E2E8F0'}`,
+                  }}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {!ausencia && <p className="text-xs mt-2" style={{ color: '#94A3B8' }}>Si no seleccionas ninguna opción, podrás introducir las horas corregidas.</p>}
+          </div>}
+
+          {(!isAusencia || !ausencia) && <div>
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
               Nueva entrada
             </label>
@@ -554,7 +581,7 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
             </div>
           </div>}
 
-          {!isAusencia && <div>
+          {(!isAusencia || !ausencia) && <div>
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
               Nueva salida
             </label>
@@ -591,16 +618,6 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
             </div>
           </div>}
 
-          {isAusencia && <div>
-            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>Tipo de ausencia</label>
-            <select value={ausencia} onChange={(e) => setAusencia(e.target.value as typeof ausencia)} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer" style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}>
-              <option value="no_fichado">No fichado</option>
-              <option value="dia_libre">Día libre</option>
-              <option value="dia_compensado">Día compensado</option>
-              <option value="festivo">Festivo</option>
-            </select>
-          </div>}
-
           <div>
             <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#64748B' }}>
               Motivo / Incidencia *
@@ -614,7 +631,7 @@ function CorrectionModal({ jornada, nombreEmpleado, empleadoSociedadId, onClose,
               style={{ border: '1.5px solid #E2E8F0', color: '#1E293B', backgroundColor: '#F8FAFC' }}
             />
             <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
-              {isAusencia ? 'No se registrarán horas de entrada ni salida. La petición se enviará a RRHH para validación.' : 'Introduce las horas y los minutos por separado. La petición se enviará a RRHH para validación.'}
+              {isAusencia && ausencia ? 'La petición se enviará a RRHH para validar esta opción.' : 'Introduce las horas y los minutos por separado. La petición se enviará a RRHH para validación.'}
             </p>
           </div>
 
@@ -791,9 +808,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
     const startDate = desde < pinDate ? pinDate : desde;
     if (startDate > hasta) return [];
 
-    // Build a set of dates that already have a fichaje or a correction
     const fichadoDates = new Set(filteredFichajes.map((f) => f.fecha));
-    const correccionDates = new Set(correcciones.map((c) => c.fecha));
 
     const result: JornadaResumen[] = [];
     const today = new Date().toISOString().split('T')[0];
@@ -802,8 +817,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
 
     while (cursor <= end) {
       const dateStr = cursor.toISOString().split('T')[0];
-      // Skip Sundays (0 = Sunday)
-      if (cursor.getDay() !== 0 && !fichadoDates.has(dateStr) && !correccionDates.has(dateStr)) {
+      if (!fichadoDates.has(dateStr)) {
         result.push({
           fecha: dateStr,
           entrada: null,
@@ -1012,7 +1026,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
                   const hasPendiente = corrForDate.some((c) => c.estado === 'pendiente');
                   const hasAprobada = corrForDate.some((c) => c.estado === 'aprobada');
                   const ausenciaAprobada = corrForDate.find((c) => c.estado === 'aprobada' && c.clasificacion_ausencia && c.clasificacion_ausencia !== 'no_fichado');
-                  const ausenciaLabel = ausenciaAprobada?.clasificacion_ausencia === 'dia_libre' ? 'Día libre' : ausenciaAprobada?.clasificacion_ausencia === 'dia_compensado' ? 'Día compensado' : ausenciaAprobada?.clasificacion_ausencia === 'festivo' ? 'Festivo' : ausenciaAprobada?.clasificacion_ausencia === 'asuntos_propios' ? 'Asuntos propios' : null;
+                  const ausenciaLabel = ausenciaAprobada?.clasificacion_ausencia === 'dia_libre' ? 'Día libre' : ausenciaAprobada?.clasificacion_ausencia === 'dia_compensado' ? 'Compensatorio' : ausenciaAprobada?.clasificacion_ausencia === 'festivo' ? 'Festivo' : ausenciaAprobada?.clasificacion_ausencia === 'asuntos_propios' ? 'Permiso' : null;
                   const toggleDate = () => setExpandedDates((current) => {
                     const next = new Set(current);
                     if (next.has(grupo.fecha)) next.delete(grupo.fecha); else next.add(grupo.fecha);
@@ -1055,7 +1069,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
                         <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: first.entrada ? '#16A34A' : '#CBD5E1' }}>{formatTime(first.entrada)}{hasMultiple && <span className="block text-[10px] font-normal" style={{ color: theme.textSecondary }}>Primer tramo</span>}</td>
                         <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color: last.salida ? '#DC2626' : '#CBD5E1' }}>{formatTime(last.salida)}{hasMultiple && <span className="block text-[10px] font-normal" style={{ color: theme.textSecondary }}>Último tramo</span>}</td>
                         <td className="px-4 py-3 text-xs" style={{ color: '#7C3AED' }}>{grupo.jornadas.filter((jornada) => jornada.permiso).length > 1 ? 'Varios' : first.permiso ? formatTime(first.permiso) : <span style={{ color: '#CBD5E1' }}>—</span>}</td>
-                        <td className="px-4 py-3 text-sm font-bold" style={{ color: grupo.totalMinutos !== null ? (groupInc ? '#DC2626' : theme.primary) : '#CBD5E1' }}>{formatDuration(grupo.totalMinutos)}</td>
+                        <td className="px-4 py-3 text-sm font-bold" style={{ color: grupo.totalMinutos !== null ? (groupInc ? '#DC2626' : theme.primary) : first.entrada === null ? '#DC2626' : '#CBD5E1' }}>{grupo.totalMinutos === null && first.entrada === null ? 'No fichado' : formatDuration(grupo.totalMinutos)}</td>
                         <td className="px-4 py-3">{ausenciaLabel ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE' }}>{ausenciaLabel}</span> : groupInc ? renderIncident(groupInc, first) : groupIncidences.length > 1 ? <span className="text-xs font-semibold" style={{ color: '#D97706' }}>Varias incidencias</span> : renderIncident(null, first)}</td>
                         <td className="px-4 py-3">{renderAction(first)}</td>
                       </tr>
@@ -1209,7 +1223,7 @@ export default function MisFichajesView({ theme, userId }: Props) {
                       {c.clasificacion_ausencia && c.clasificacion_ausencia !== 'no_fichado' && (
                         <p className="text-xs mt-1 inline-flex items-center gap-1.5">
                           <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE' }}>
-                            {c.clasificacion_ausencia === 'dia_libre' ? 'Día libre' : c.clasificacion_ausencia === 'dia_compensado' ? 'Día compensado' : c.clasificacion_ausencia === 'festivo' ? 'Festivo' : 'Asuntos propios'}
+                            {c.clasificacion_ausencia === 'dia_libre' ? 'Día libre' : c.clasificacion_ausencia === 'dia_compensado' ? 'Compensatorio' : c.clasificacion_ausencia === 'festivo' ? 'Festivo' : 'Permiso'}
                           </span>
                         </p>
                       )}

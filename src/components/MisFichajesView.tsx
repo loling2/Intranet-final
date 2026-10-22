@@ -699,7 +699,6 @@ export default function MisFichajesView({ theme, userId }: Props) {
   const [vehicleLogs, setVehicleLogs] = useState<VehicleLogEntry[]>([]);
   const [viewMode, setViewMode] = useState<'asistencia' | 'vehiculos'>('asistencia');
   const [empleadoSociedadId, setEmpleadoSociedadId] = useState<string | null>(null);
-  const [pinCreatedAt, setPinCreatedAt] = useState<string | null>(null);
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [correccionPage, setCorreccionPage] = useState(0);
   const CORRECCIONES_PER_PAGE = 5;
@@ -723,11 +722,10 @@ export default function MisFichajesView({ theme, userId }: Props) {
       // Resolve name from user_profiles — this is what fichajes store in nombre_empleado
       const { data: prof } = await supabase
         .from('user_profiles')
-        .select('nombre, pin_created_at')
+        .select('nombre')
         .eq('id', userId)
         .maybeSingle();
       const resolvedNombre = prof?.nombre ?? '';
-      setPinCreatedAt(prof?.pin_created_at ?? null);
 
       // Also try empleados for the name fallback
       const { data: emp } = await supabase
@@ -800,19 +798,15 @@ export default function MisFichajesView({ theme, userId }: Props) {
   const resumenesBase = buildResumenes(filteredFichajes);
 
   // ── Missing-day detection ──
-  // Once an employee has a PIN, show weekdays without fichajes from that date
-  // onward so the employee can request an absence classification.
+  // Complete the selected period with dates that have no fichajes.
   const missingDays: JornadaResumen[] = (() => {
-    if (!pinCreatedAt || !desde || !hasta) return [];
-    const pinDate = pinCreatedAt.slice(0, 10);
-    const startDate = desde < pinDate ? pinDate : desde;
-    if (startDate > hasta) return [];
+    if (!desde || !hasta) return [];
 
     const fichadoDates = new Set(filteredFichajes.map((f) => f.fecha));
 
     const result: JornadaResumen[] = [];
     const today = new Date().toISOString().split('T')[0];
-    const cursor = new Date(startDate + 'T00:00:00');
+    const cursor = new Date(desde + 'T00:00:00');
     const end = new Date((hasta < today ? hasta : today) + 'T00:00:00');
 
     while (cursor <= end) {

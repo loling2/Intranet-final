@@ -382,7 +382,7 @@ export default function CursosPanel() {
 
   const handleAssignCurso = async () => {
     if (!selectedCurso) return;
-    const targetEmployees = assignVisibility === 'publico' ? empleados : filteredEmpleados;
+    const targetEmployees = assignVisibility === 'publico' ? empleados : targetEmpleados;
     const employeeIds = (assignAllTarget || assignVisibility === 'publico' ? targetEmployees.map((employee) => employee.id) : Array.from(selectedEmpleados)).filter((employeeId) => !asignacionesCurso.some((assignment) => assignment.empleado_id === employeeId));
     if (employeeIds.length === 0) { setError('Selecciona al menos un empleado o marca “Todos”.'); return; }
     setError('');
@@ -432,7 +432,7 @@ export default function CursosPanel() {
 
   const handleUnassignAllCurso = async () => {
     if (!selectedCurso) return;
-    const targetEmployees = assignVisibility === 'publico' ? empleados : filteredEmpleados;
+    const targetEmployees = assignVisibility === 'publico' ? empleados : targetEmpleados;
     const employeeIds = (assignAllTarget || assignVisibility === 'publico' ? targetEmployees.map((e) => e.id) : Array.from(selectedEmpleados));
     if (employeeIds.length === 0) { setError('Selecciona al menos un empleado o marca “Todos”.'); return; }
     if (!confirm(`¿Desasignar el curso a ${employeeIds.length} empleado(s)?`)) return;
@@ -842,7 +842,7 @@ export default function CursosPanel() {
               {assignVisibility === 'privado' && <div className="space-y-2 mb-3 rounded-lg p-3" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
                 <div className="grid grid-cols-2 gap-2">{(['sociedad', 'centro'] as const).map((scope) => <button key={scope} onClick={() => { setAssignScope(scope); setAssignSociedadId(''); setAssignCentroId(''); setAssignAllTarget(false); setSelectedEmpleados(new Set()); }} className="flex items-center justify-center gap-1 px-2 py-2 rounded-lg text-[11px] font-semibold cursor-pointer" style={{ backgroundColor: assignScope === scope ? '#FFFFFF' : 'transparent', color: assignScope === scope ? '#0D9488' : '#64748B', border: `1px solid ${assignScope === scope ? '#99F6E4' : '#E2E8F0'}` }}>{scope === 'sociedad' ? <Building2 size={12} /> : <MapPin size={12} />}{scope === 'sociedad' ? 'Por sociedad' : 'Por centro'}</button>)}</div>
                 {assignScope === 'sociedad' ? <select value={assignSociedadId} onChange={(e) => { setAssignSociedadId(e.target.value); setAssignAllTarget(false); setSelectedEmpleados(new Set()); }} className="w-full px-3 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#0F172A' }}><option value="">Selecciona una sociedad...</option>{sociedades.map((sociedad) => <option key={sociedad.id} value={sociedad.id}>{sociedad.nombre}</option>)}</select> : <select value={assignCentroId} onChange={(e) => { setAssignCentroId(e.target.value); setAssignAllTarget(false); setSelectedEmpleados(new Set()); }} className="w-full px-3 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#0F172A' }}><option value="">Selecciona un centro...</option>{centros.map((centro) => <option key={centro.id} value={centro.id}>{centro.nombre}</option>)}</select>}
-                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: '#0F172A' }}><input type="checkbox" checked={assignAllTarget} onChange={(e) => { setAssignAllTarget(e.target.checked); if (e.target.checked) setSelectedEmpleados(new Set()); }} /> Todos los empleados de la selección</label>
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: '#0F172A' }}><input type="checkbox" checked={assignAllTarget} onChange={(e) => { const checked = e.target.checked; setAssignAllTarget(checked); setSelectedEmpleados(checked ? new Set(targetEmpleados.map((employee) => employee.id)) : new Set()); }} /> Todos los empleados de la selección</label>
               </div>}
               <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} /><input type="text" value={searchEmpleado} onChange={(e) => setSearchEmpleado(e.target.value)} placeholder="Buscar empleado..." className="w-full pl-8 pr-3 py-2 rounded-lg text-xs outline-none" style={{ border: '1px solid #E2E8F0', color: '#0F172A' }} /></div>
             </div>
@@ -851,10 +851,10 @@ export default function CursosPanel() {
                 const sel = selectedEmpleados.has(emp.id);
                 const yaAsignado = asignacionesCurso.some((a) => a.empleado_id === emp.id);
                 return (
-                  <button key={emp.id} onClick={() => yaAsignado ? handleDeleteAsignacion({ id: asignacionesCurso.find((a) => a.empleado_id === emp.id)?.id ?? '' }) : toggleEmpleado(emp.id)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all" style={{ backgroundColor: yaAsignado ? '#FEF2F2' : sel ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${yaAsignado ? '#FECACA' : sel ? '#99F6E4' : '#E2E8F0'}`, cursor: 'pointer', opacity: yaAsignado ? 0.85 : 1 }}>
+                  <button key={emp.id} onClick={() => toggleEmpleado(emp.id)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all" style={{ backgroundColor: sel ? '#F0FDFA' : yaAsignado ? '#FEF2F2' : '#F8FAFC', border: `1px solid ${sel ? '#99F6E4' : yaAsignado ? '#FECACA' : '#E2E8F0'}`, cursor: 'pointer', opacity: yaAsignado && !sel ? 0.85 : 1 }}>
                     <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: sel ? '#0D9488' : '#FFFFFF', border: `1.5px solid ${sel ? '#0D9488' : '#CBD5E1'}` }}>{sel && <CheckCircle2 size={12} className="text-white" />}</div>
                     <div className="flex-1 min-w-0"><p className="text-xs font-medium truncate" style={{ color: '#0F172A' }}>{emp.nombre}</p><p className="text-[10px]" style={{ color: '#94A3B8' }}>{emp.dni ?? 'Sin DNI'}</p></div>
-                    {yaAsignado && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded" style={{ color: '#DC2626', backgroundColor: '#FEF2F2' }}>Desasignar</span>}
+                    {yaAsignado && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded" style={{ color: sel ? '#0D9488' : '#DC2626', backgroundColor: sel ? '#F0FDFA' : '#FEF2F2' }}>{sel ? 'Seleccionado' : 'Asignado'}</span>}
                   </button>
                 );
               })}

@@ -12,6 +12,7 @@ interface Curso {
   wasabi_prefix: string;
   activo: boolean;
   visible_empleado: boolean;
+  certificado_contenidos: string | null;
   examen_id: string | null;
   created_at: string;
 }
@@ -74,7 +75,7 @@ export default function CursosPanel() {
 
   const [showCursoModal, setShowCursoModal] = useState(false);
   const [editingCurso, setEditingCurso] = useState<Curso | null>(null);
-  const [cursoForm, setCursoForm] = useState({ nombre: '', descripcion: '', categoria: '', duracion_estimada: '', examen_id: '' });
+  const [cursoForm, setCursoForm] = useState({ nombre: '', descripcion: '', categoria: '', duracion_estimada: '', examen_id: '', certificado_contenidos: '' });
   const [savingCurso, setSavingCurso] = useState(false);
   const [examenes, setExamenes] = useState<ExamenOption[]>([]);
   const [searchExamen, setSearchExamen] = useState('');
@@ -151,13 +152,13 @@ export default function CursosPanel() {
 
   const openNewCurso = () => {
     setEditingCurso(null);
-    setCursoForm({ nombre: '', descripcion: '', categoria: '', duracion_estimada: '', examen_id: '' });
+    setCursoForm({ nombre: '', descripcion: '', categoria: '', duracion_estimada: '', examen_id: '', certificado_contenidos: '' });
     setShowCursoModal(true); setError('');
   };
 
   const openEditCurso = (c: Curso) => {
     setEditingCurso(c);
-    setCursoForm({ nombre: c.nombre, descripcion: c.descripcion ?? '', categoria: c.categoria ?? '', duracion_estimada: c.duracion_estimada ?? '', examen_id: c.examen_id ?? '' });
+    setCursoForm({ nombre: c.nombre, descripcion: c.descripcion ?? '', categoria: c.categoria ?? '', duracion_estimada: c.duracion_estimada ?? '', examen_id: c.examen_id ?? '', certificado_contenidos: c.certificado_contenidos ?? '' });
     setShowCursoModal(true); setError('');
   };
 
@@ -174,6 +175,7 @@ export default function CursosPanel() {
         duracion_estimada: cursoForm.duracion_estimada.trim() || null,
         wasabi_prefix: prefix,
         examen_id: cursoForm.examen_id || null,
+        certificado_contenidos: cursoForm.certificado_contenidos.trim() || null,
       };
       if (editingCurso) {
         const prevExamenId = editingCurso.examen_id;
@@ -689,6 +691,11 @@ export default function CursosPanel() {
                   </div>
                 )}
                 <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>Al vincular un examen, se asignara automaticamente a los empleados que tengan este curso. Cuando completen el 100% de la teoria, el examen se desbloqueara.</p>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: '#0F172A' }}>Contenidos del certificado (opcional)</label>
+                <textarea value={cursoForm.certificado_contenidos} onChange={(e) => setCursoForm({ ...cursoForm, certificado_contenidos: e.target.value })} rows={5} placeholder="Escribe un tema por línea. Si lo dejas vacío, se usarán los módulos del curso." className="w-full px-3 py-2 rounded-lg text-xs outline-none resize-none" style={{ border: '1px solid #E2E8F0', color: '#0F172A' }} />
+                <p className="text-[10px] mt-1" style={{ color: '#94A3B8' }}>Estos contenidos aparecerán en la segunda página del certificado como Tema 1, Tema 2, etc.</p>
               </div>
             </div>
             <div className="px-6 py-4 flex items-center justify-end gap-2 sticky bottom-0" style={{ borderTop: '1px solid #E2E8F0', backgroundColor: '#FFFFFF' }}>

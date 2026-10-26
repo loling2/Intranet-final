@@ -29,17 +29,22 @@ export default function CertificatesCard({ certificates, theme }: Props) {
       .eq('id', cert.id)
       .maybeSingle();
     if (!certRow?.examen_id) return;
-    const { data: curso } = await supabase.from('moodle_cursos').select('id, nombre').eq('examen_id', certRow.examen_id).maybeSingle();
+    const { data: curso } = await supabase.from('moodle_cursos').select('id, nombre, duracion_estimada, certificado_contenidos').eq('examen_id', certRow.examen_id).maybeSingle();
     if (!curso) return;
     const { data: mods } = await supabase.from('moodle_modulos').select('titulo, descripcion').eq('curso_id', curso.id).order('orden', { ascending: true });
+    const customTopics = (curso.certificado_contenidos ?? '').split(/\r?\n/).map((topic: string) => topic.trim()).filter(Boolean);
+    const topics = customTopics.length > 0 ? customTopics : (mods ?? []).map((m: any) => m.titulo).filter(Boolean);
+    const codigoVerificacion = `CSV-${cert.code.replace(/[^A-Za-z0-9]/g, '').toUpperCase().padEnd(26, '0').slice(0, 26)}`;
     generateCertificatePDF({
       nombreEmpleado: emp?.nombre ?? 'Empleado',
       dniEmpleado: emp?.dni ?? null,
       nombreCurso: curso.nombre,
+      duracionCurso: curso.duracion_estimada,
       fechaAprobacion: cert.date,
       puntuacion: 100,
-      modulos: (mods ?? []).map((m: any) => ({ titulo: m.titulo, descripcion: m.descripcion })),
+      temas: topics,
       nombreEmpresa: 'Grupo Empresarial',
+      codigoVerificacion,
     });
   };
   const isExpiringSoon = (expiryDate: string) => {

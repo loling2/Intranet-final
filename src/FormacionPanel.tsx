@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck, UserMinus, HelpCircle, BookOpen, Building2, MapPin } from 'lucide-react';
+import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck, UserMinus, HelpCircle, BookOpen, Building2, MapPin, Award } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import HelpPanel from './components/HelpPanel';
 import ProfileSwitcher, { type ProfileOption } from './components/ProfileSwitcher';
 import CursosPanel from './components/CursosPanel';
+import AprobadosPanel from './components/AprobadosPanel';
 
 interface Props {
   email: string;
@@ -65,7 +66,7 @@ interface Asignacion {
   tiempo_empleado_segundos: number | null;
 }
 
-type Tab = 'examenes' | 'cursos' | 'asignaciones' | 'ayuda';
+type Tab = 'examenes' | 'cursos' | 'aprobados' | 'asignaciones' | 'ayuda';
 
 const estadoConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
   pendiente: { label: 'Pendiente', color: '#64748B', bg: '#F8FAFC', border: '#E2E8F0' },
@@ -413,7 +414,8 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
 
   const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
     { id: 'cursos', label: 'Moodle', icon: BookOpen },
-    { id: 'examenes', label: 'Examenes', icon: ClipboardCheck },,
+    { id: 'examenes', label: 'Examenes', icon: ClipboardCheck },
+    { id: 'aprobados', label: 'Aprobados', icon: Award },
     { id: 'asignaciones', label: 'Asignaciones', icon: UserCheck },
     { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
   ];
@@ -757,6 +759,10 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
         {/* ── Tab: Moodle ── */}
         {activeTab === 'cursos' && (
           <CursosPanel />
+        )}
+
+        {activeTab === 'aprobados' && (
+          <AprobadosPanel />
         )}
 
         {/* ── Tab: Asignaciones (global) ── */}

@@ -48,7 +48,6 @@ export function generateCertificatePDF(data: CertificateData): void {
   const fecha = new Date(data.fechaAprobacion).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
 
   drawPageFrame(doc, pageW, pageH);
-  addLogo(doc, data.logoDataUrl, 24, 22);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(muted.r, muted.g, muted.b);
@@ -89,17 +88,17 @@ export function generateCertificatePDF(data: CertificateData): void {
   doc.line(cx - 40, courseBottom + 27, cx + 40, courseBottom + 27);
   doc.setFontSize(10);
   doc.text('Responsable de Formación', cx - 55, courseBottom + 45, { align: 'center' });
-  doc.text(data.nombreEmpresa, cx + 55, courseBottom + 45, { align: 'center' });
   doc.setDrawColor(148, 163, 184);
   doc.setLineWidth(0.3);
   doc.line(cx - 80, courseBottom + 40, cx - 30, courseBottom + 40);
-  doc.line(cx + 30, courseBottom + 40, cx + 80, courseBottom + 40);
-  addLogo(doc, data.logoDataUrl, cx + 39, Math.min(courseBottom + 48, pageH - 42));
+  addLogo(doc, data.logoDataUrl, cx + 39, Math.min(courseBottom + 29, pageH - 63));
+  doc.setFontSize(10);
+  doc.setTextColor(muted.r, muted.g, muted.b);
+  doc.text(data.nombreEmpresa, cx + 55, Math.min(courseBottom + 57, pageH - 35), { align: 'center' });
   addCode(doc, data.codigoVerificacion, pageW, pageH);
 
   doc.addPage('a4', 'landscape');
   drawPageFrame(doc, pageW, pageH);
-  addLogo(doc, data.logoDataUrl, 24, 22);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(21);
   doc.setTextColor(slate.r, slate.g, slate.b);

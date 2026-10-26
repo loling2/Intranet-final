@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Plus, X, Trash2, Search, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Upload, Loader2, CheckCircle2, AlertCircle, Users, Clock, Save, Layers, Lock, Eye, EyeOff, ChevronDown, ChevronRight, GripVertical, FileQuestion, Building2, MapPin } from 'lucide-react';
+import { BookOpen, Plus, X, Trash2, Search, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Upload, Loader2, CheckCircle2, AlertCircle, Users, UserMinus, Clock, Save, Layers, Lock, Eye, EyeOff, ChevronDown, ChevronRight, GripVertical, FileQuestion, Building2, MapPin } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { ensureMoodleCursoFolder, uploadMoodleFile, sanitizeSlug, downloadFromWasabi } from '../lib/wasabi';
 
@@ -416,6 +416,29 @@ export default function CursosPanel() {
     } catch (err: unknown) { setError('No se pudo desasignar el curso.'); }
   };
 
+  const handleUnassignAllCurso = async () => {
+    if (!selectedCurso) return;
+    const targetEmployees = assignVisibility === 'publico' ? empleados : filteredEmpleados;
+    const employeeIds = (assignAllTarget || assignVisibility === 'publico' ? targetEmployees.map((e) => e.id) : Array.from(selectedEmpleados));
+    if (employeeIds.length === 0) { setError('Selecciona al menos un empleado o marca “Todos”.'); return; }
+    if (!confirm(`¿Desasignar el curso a ${employeeIds.length} empleado(s)?`)) return;
+    setError('');
+    try {
+      const { error: delErr } = await supabase.from('moodle_asignaciones').delete().eq('curso_id', selectedCurso.id).in('empleado_id', employeeIds);
+      if (delErr) throw delErr;
+      if (selectedCurso.examen_id) {
+        await supabase.from('examen_asignaciones')
+          .delete()
+          .eq('examen_id', selectedCurso.examen_id)
+          .in('empleado_id', employeeIds)
+          .neq('estado', 'completado');
+      }
+      openAssignModal();
+      setSuccessMsg(`Curso desasignado a ${employeeIds.length} empleado(s).`);
+      setTimeout(() => setSuccessMsg(''), 2500);
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Error al desasignar'); }
+  };
+
   const filteredCursos = cursos.filter((c) => c.nombre.toLowerCase().includes(search.toLowerCase()) || (c.categoria ?? '').toLowerCase().includes(search.toLowerCase()));
   const targetEmpleados = empleados.filter((e) => assignVisibility === 'publico' || (assignScope === 'sociedad' ? assignSociedadId !== '' && e.id_sociedad === assignSociedadId : assignCentroId !== '' && e.centro_id === assignCentroId));
   const filteredEmpleados = targetEmpleados.filter((e) => e.nombre.toLowerCase().includes(searchEmpleado.toLowerCase()) || (e.dni ?? '').toLowerCase().includes(searchEmpleado.toLowerCase()));
@@ -815,9 +838,12 @@ export default function CursosPanel() {
                 );
               })}
             </div>
-            <div className="px-4 py-3 flex items-center justify-between" style={{ borderTop: '1px solid #E2E8F0' }}>
+            <div className="px-4 py-3 flex items-center justify-between gap-2" style={{ borderTop: '1px solid #E2E8F0' }}>
               <span className="text-xs" style={{ color: '#94A3B8' }}>{selectedEmpleados.size} seleccionado(s)</span>
-              <button onClick={handleAssignCurso} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer" style={{ backgroundColor: '#0D9488', color: '#FFFFFF' }}><Users size={12} /> Asignar</button>
+              <div className="flex gap-2">
+                <button onClick={handleAssignCurso} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer" style={{ backgroundColor: '#0D9488', color: '#FFFFFF' }}><Users size={12} /> Asignar</button>
+                <button onClick={handleUnassignAllCurso} disabled={selectedEmpleados.size === 0 && !assignAllTarget && assignVisibility !== 'publico'} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer disabled:opacity-40" style={{ backgroundColor: '#DC2626' }}><UserMinus size={12} /> Desasignar</button>
+              </div>
             </div>
           </div>
         </div>

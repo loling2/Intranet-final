@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck, HelpCircle, BookOpen, Building2, MapPin } from 'lucide-react';
+import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck, UserMinus, HelpCircle, BookOpen, Building2, MapPin } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -376,6 +376,23 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
       if (err) throw err;
       if (selectedExamen) await loadAsignaciones(selectedExamen.id);
     } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Error al eliminar'); }
+  };
+
+  const handleUnassignAll = async () => {
+    if (!assignExamen) return;
+    const targetEmployees = assignVisibility === 'publico' ? empleados : filteredEmpleados;
+    const employeeIds = (assignAllTarget || assignVisibility === 'publico' ? targetEmployees.map((e) => e.id) : Array.from(selectedEmpleados));
+    if (employeeIds.length === 0) { setError('Selecciona al menos un empleado o marca “Todos”.'); return; }
+    if (!confirm(`¿Desasignar el examen a ${employeeIds.length} empleado(s)?`)) return;
+    setAssigning(true); setError('');
+    try {
+      const { error: err } = await supabase.from('examen_asignaciones').delete().eq('examen_id', assignExamen.id).in('empleado_id', employeeIds);
+      if (err) throw err;
+      await loadAsignaciones(assignExamen.id);
+      setSuccessMsg(`Examen desasignado a ${employeeIds.length} empleado(s).`);
+      setTimeout(() => setSuccessMsg(''), 2500);
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Error al desasignar'); }
+    finally { setAssigning(false); }
   };
 
   const filteredExamenes = examenes.filter((e) =>
@@ -993,15 +1010,26 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
                 })}
               </div>
               {error && <p className="text-xs mt-2" style={{ color: '#DC2626' }}>{error}</p>}
-              <button
-                onClick={handleAssign}
-                disabled={assigning || (selectedEmpleados.size === 0 && !assignAllTarget && assignVisibility !== 'publico')}
-                className="mt-3 w-full py-2.5 rounded-lg text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2 transition-all duration-150 flex-shrink-0"
-                style={{ backgroundColor: '#0D9488' }}
-              >
-                {assigning ? <RefreshCw size={14} className="animate-spin" /> : <UserCheck size={14} />}
-                {assigning ? 'Asignando...' : `Asignar a ${assignVisibility === 'publico' || assignAllTarget ? targetEmpleados.length : selectedEmpleados.size} empleado(s)`}
-              </button>
+              <div className="mt-3 flex gap-2 flex-shrink-0">
+                <button
+                  onClick={handleAssign}
+                  disabled={assigning || (selectedEmpleados.size === 0 && !assignAllTarget && assignVisibility !== 'publico')}
+                  className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2 transition-all duration-150"
+                  style={{ backgroundColor: '#0D9488' }}
+                >
+                  {assigning ? <RefreshCw size={14} className="animate-spin" /> : <UserCheck size={14} />}
+                  {assigning ? 'Asignando...' : `Asignar a ${assignVisibility === 'publico' || assignAllTarget ? targetEmpleados.length : selectedEmpleados.size} empleado(s)`}
+                </button>
+                <button
+                  onClick={handleUnassignAll}
+                  disabled={assigning || (selectedEmpleados.size === 0 && !assignAllTarget && assignVisibility !== 'publico')}
+                  className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2 transition-all duration-150"
+                  style={{ backgroundColor: '#DC2626' }}
+                >
+                  {assigning ? <RefreshCw size={14} className="animate-spin" /> : <UserMinus size={14} />}
+                  {assigning ? 'Desasignando...' : 'Desasignar'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

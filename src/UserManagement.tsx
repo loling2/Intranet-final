@@ -20,6 +20,7 @@ const ROLE_COLORS: Record<AppRole, { bg: string; text: string; border: string; l
   administracion: { bg: '#FFF7ED', text: '#C2410C', border: '#FED7AA', label: 'Administracion' },
   formacion:      { bg: '#F0FDFA', text: '#0D9488', border: '#99F6E4', label: 'Formacion' },
   calidad:        { bg: '#F0F9FF', text: '#0369A1', border: '#BAE6FD', label: 'Calidad' },
+  crm:            { bg: '#F0F9FF', text: '#0369A1', border: '#BAE6FD', label: 'CRM' },
   rrhh_gerontalia:           { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE', label: 'RRHH Gerontalia' },
   administrador_gerontalia:  { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA', label: 'Admin Gerontalia' },
   supervisor_gerontalia:     { bg: '#F5F3FF', text: '#7C3AED', border: '#DDD6FE', label: 'Supervisor Gerontalia' },
@@ -80,8 +81,8 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
   const [success, setSuccess] = useState(false);
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia']
-    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee', 'rrhh_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia']
+    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia'];
 
   const toggleRole = (r: AppRole) => {
     if (r === 'employee') return; // empleado is always on
@@ -505,8 +506,8 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const metaDirty = rolesChanged || activo !== user.activo || societiesChanged;
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia']
-    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'employee', 'rrhh_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia']
+    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia'];
 
   const rc = ROLE_COLORS[user.role] ?? ROLE_COLORS['employee'];
 

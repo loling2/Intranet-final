@@ -1492,6 +1492,8 @@ export default function LoginPage() {
         initialView = 'calidad';
       } else if (firstStaffRole === 'formacion') {
         initialView = 'formacion';
+      } else if (firstStaffRole === 'crm') {
+        initialView = 'crm';
       } else {
         if (resolvedSocietyId) setSelectedId(resolvedSocietyId);
       }
@@ -1601,7 +1603,7 @@ export default function LoginPage() {
     if (sessionRoles.includes('administracion')) profileOptions.push({ label: 'Administracion', view: 'administracion', icon: Building2, color: '#2563EB' });
     if (sessionRoles.includes('calidad')) profileOptions.push({ label: 'Calidad', view: 'calidad', icon: CheckCircle2, color: '#0369A1' });
     if (sessionRoles.includes('formacion')) profileOptions.push({ label: 'Formacion', view: 'formacion', icon: ClipboardCheck, color: '#0D9488' });
-    if (sessionRoles.includes('admin') || sessionRoles.includes('rrhh') || sessionRoles.includes('rrhh_gerontalia') || crmAccess) profileOptions.push({ label: 'CRM', view: 'crm', icon: Users, color: '#0369A1' });
+    if (sessionRoles.includes('crm') || sessionRoles.includes('admin') || sessionRoles.includes('rrhh') || sessionRoles.includes('rrhh_gerontalia') || crmAccess) profileOptions.push({ label: 'CRM', view: 'crm', icon: Users, color: '#0369A1' });
     profileOptions.push({ label: 'Empleado', view: 'dashboard', icon: Users, color: '#16A34A' });
 
     if (session.view === 'prevencion') {

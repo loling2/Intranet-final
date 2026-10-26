@@ -76,6 +76,9 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const [selectedUsuario, setSelectedUsuario] = useState<UsuarioServicio | null>(null);
   const [showUsuarioForm, setShowUsuarioForm] = useState(false);
   const [centros, setCentros] = useState<CentroOption[]>([]);
+  const [showQuickNotaPicker, setShowQuickNotaPicker] = useState(false);
+  const [quickNotaSearch, setQuickNotaSearch] = useState('');
+  const [fichaInitialTab, setFichaInitialTab] = useState<'info' | 'calendario'>('info');
 
   // Calendario
   const [calendarDate, setCalendarDate] = useState(new Date());
@@ -232,6 +235,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const nextMonth = () => setCalendarDate(new Date(year, month + 1, 1));
   const goToday = () => setCalendarDate(new Date());
   const openNotaModal = (fechaISO: string) => { setNotaFecha(fechaISO); setNotaContenido(''); setNotaError(''); setEditingNotaId(null); setShowNotaModal(true); };
+  const openQuickNotaPicker = () => { setQuickNotaSearch(''); setShowQuickNotaPicker(true); };
   const openEditNotaModal = (nota: { id: string; fecha: string | null; autor_nombre: string; contenido: string }) => {
     setEditingNotaId(nota.id); setNotaFecha(nota.fecha); setNotaAutor(nota.autor_nombre); setNotaContenido(nota.contenido); setNotaError(''); setShowNotaModal(true);
   };
@@ -375,13 +379,20 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                     <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Residentes</h2>
                     <p className="text-sm" style={{ color: '#64748B' }}>Pacientes asignados a centros</p>
                   </div>
-                  {isAdmin && (
-                    <button onClick={openNewUsuario}
+                  <div className="flex items-center gap-2">
+                    <button onClick={openQuickNotaPicker}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
-                      style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
-                      <Plus size={14} />Nuevo residente
+                      style={{ backgroundColor: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0' }}>
+                      <FileText size={14} />Añadir nota
                     </button>
-                  )}
+                    {isAdmin && (
+                      <button onClick={openNewUsuario}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
+                        style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
+                        <Plus size={14} />Nuevo residente
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <div className="flex items-center gap-2 px-3 py-2 rounded-xl flex-1" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
@@ -410,7 +421,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filteredUsuarios.map((u) => (
                       <div key={u.id} className="rounded-xl p-5 transition-all hover:shadow-md cursor-pointer" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
-                        onClick={() => { setSelectedUsuario(u); setDetailTab('info'); }}>
+                        onClick={() => { setSelectedUsuario(u); setFichaInitialTab('info'); }}>
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex items-center gap-3">
                             <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#EFF6FF' }}>
@@ -446,7 +457,9 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                   <ChevronLeft size={14} /> Volver
                 </button>
               <CrmResidenteFicha
+                key={selectedUsuario.id + (fichaInitialTab === 'calendario' ? '-cal' : '')}
                 usuario={selectedUsuario}
+                initialTab={fichaInitialTab}
                 isAdmin={isAdmin}
                 notas={notas}
                 notasLoading={notasLoading}
@@ -503,6 +516,30 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                       <button onClick={handleSaveUsuario} disabled={formSaving} className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-60" style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>{formSaving ? 'Guardando...' : 'Guardar'}</button>
                       <button onClick={() => setShowUsuarioForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer hover:bg-slate-100" style={{ color: '#64748B' }}>Cancelar</button>
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Acceso rápido a notas */}
+            {showQuickNotaPicker && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+                <div className="w-full max-w-md rounded-2xl p-6" style={{ backgroundColor: '#FFFFFF' }}>
+                  <div className="flex items-center justify-between mb-5">
+                    <div><h3 className="font-bold text-base" style={{ color: '#0F172A' }}>Añadir nota</h3><p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Elige un residente para abrir su calendario</p></div>
+                    <button onClick={() => setShowQuickNotaPicker(false)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#94A3B8' }}><X size={14} /></button>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl mb-3" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                    <Search size={15} style={{ color: '#94A3B8' }} />
+                    <input autoFocus type="text" value={quickNotaSearch} onChange={(e) => setQuickNotaSearch(e.target.value)} placeholder="Buscar residente..." className="flex-1 bg-transparent text-sm outline-none" style={{ color: '#0F172A' }} />
+                  </div>
+                  <div className="max-h-64 overflow-y-auto space-y-1">
+                    {usuarios.filter((u) => `${u.nombre} ${u.apellidos ?? ''}`.toLowerCase().includes(quickNotaSearch.toLowerCase())).map((u) => (
+                      <button key={u.id} onClick={() => { setFichaInitialTab('calendario'); setSelectedUsuario(u); setShowQuickNotaPicker(false); openNotaModal(todayISO); }} className="w-full flex items-center justify-between px-3 py-3 rounded-lg text-left cursor-pointer hover:bg-blue-50" style={{ color: '#0F172A' }}>
+                        <span className="text-sm font-medium">{u.nombre} {u.apellidos ?? ''}</span><ChevronRight size={14} style={{ color: '#94A3B8' }} />
+                      </button>
+                    ))}
+                    {usuarios.filter((u) => `${u.nombre} ${u.apellidos ?? ''}`.toLowerCase().includes(quickNotaSearch.toLowerCase())).length === 0 && <p className="text-center text-xs py-6" style={{ color: '#94A3B8' }}>No hay residentes que coincidan</p>}
                   </div>
                 </div>
               </div>

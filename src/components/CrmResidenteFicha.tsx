@@ -48,6 +48,7 @@ interface Props {
   formatDateDisplay: (iso: string) => string;
   onEdit: () => void;
   autorNombre?: string;
+  initialTab?: DetailTab;
 }
 
 type DetailTab = 'info' | 'contactos' | 'cuentas' | 'medico' | 'tratamiento' | 'calendario' | 'documentos' | 'seguimiento' | 'llamadas' | 'medicacion' | 'abvd' | 'inc_sanitarias' | 'pautas' | 'pai' | 'sesiones';
@@ -100,7 +101,7 @@ interface ResidenteExtra {
 
 export default function CrmResidenteFicha(props: Props) {
   const { usuario, isAdmin } = props;
-  const [detailTab, setDetailTab] = useState<DetailTab>('info');
+  const [detailTab, setDetailTab] = useState<DetailTab>(props.initialTab ?? 'info');
 
   const [extra, setExtra] = useState<ResidenteExtra | null>(null);
   const [extraEditing, setExtraEditing] = useState(false);

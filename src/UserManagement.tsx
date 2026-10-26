@@ -267,12 +267,20 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const [activo, setActivo] = useState(user.activo);
   const [selectedSocieties, setSelectedSocieties] = useState<string[]>(user.societies ?? []);
   const [profesion, setProfesion] = useState<string>(user.profesion ?? '');
+  const [puestoTags, setPuestoTags] = useState<{ id: string; nombre: string }[]>([]);
   const [savingMeta, setSavingMeta] = useState(false);
   const [metaSuccess, setMetaSuccess] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [fieldSuccess, setFieldSuccess] = useState<ActiveField>(null);
   const [error, setError] = useState('');
+
+  // Load puesto_tags (job positions) so profession is linked to the same catalog
+  // used by the employee module (EmployeesModule → puesto_tags).
+  useEffect(() => {
+    supabase.from('puesto_tags').select('id, nombre').order('nombre')
+      .then(({ data }) => { if (data) setPuestoTags(data as { id: string; nombre: string }[]); });
+  }, []);
 
   // Supervisor assignment state
   const [supervisorEmpleados, setSupervisorEmpleados] = useState<Empleado[]>([]);
@@ -566,21 +574,20 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
             </div>
 
             <div>
-              <p className="text-xs font-medium mb-1" style={{ color: '#94A3B8' }}>Profesión (para notas CRM)</p>
-              <p className="text-xs mb-2" style={{ color: '#CBD5E1' }}>Determina qué notas diarias puede ver y escribir en el CRM.</p>
-              <select value={profesion} onChange={(e) => setProfesion(e.target.value)}
+              <p className="text-xs font-medium mb-1" style={{ color: '#94A3B8' }}>Puesto de trabajo / Profesión (para notas CRM)</p>
+              <p className="text-xs mb-2" style={{ color: '#CBD5E1' }}>Vinculado con los puestos de trabajo de empleados. Determina qué notas diarias puede ver y escribir en el CRM.</p>
+              <input
+                type="text"
+                list="puesto-tags-list"
+                value={profesion}
+                onChange={(e) => setProfesion(e.target.value)}
+                placeholder="Sin profesión asignada"
                 className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
-                style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }}>
-                <option value="">Sin profesión asignada</option>
-                <option value="psicologo">Psicología</option>
-                <option value="gerocultor">Gerocultura</option>
-                <option value="enfermero">Enfermería</option>
-                <option value="fisio">Fisioterapia</option>
-                <option value="trabajador_social">Trabajo social</option>
-                <option value="medico">Medicina</option>
-                <option value="terapeuta_ocupacional">Terapia ocupacional</option>
-                <option value="auxiliar">Auxiliar</option>
-              </select>
+                style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }}
+              />
+              <datalist id="puesto-tags-list">
+                {puestoTags.map((p) => <option key={p.id} value={p.nombre} />)}
+              </datalist>
             </div>
 
             <div>

@@ -94,6 +94,7 @@ export function generateCertificatePDF(data: CertificateData): void {
   doc.setLineWidth(0.3);
   doc.line(cx - 80, courseBottom + 40, cx - 30, courseBottom + 40);
   doc.line(cx + 30, courseBottom + 40, cx + 80, courseBottom + 40);
+  addLogo(doc, data.logoDataUrl, cx + 39, Math.min(courseBottom + 48, pageH - 42));
   addCode(doc, data.codigoVerificacion, pageW, pageH);
 
   doc.addPage('a4', 'landscape');

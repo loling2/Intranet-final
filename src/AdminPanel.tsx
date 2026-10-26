@@ -42,8 +42,10 @@ interface Props {
 }
 
 type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'centros' | 'documents' | 'devices' | 'kiosk-devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'seguros' | 'crm' | 'ayuda';
+type AdminSection = 'empresa' | 'usuarios' | 'ajustes';
 
 export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate }: Props) {
+  const [activeSection, setActiveSection] = useState<AdminSection>('empresa');
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [showChangePassword, setShowChangePassword] = useState(false);
   const { activeSocietyId, societies } = useSociety();
@@ -166,6 +168,17 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     { id: 'ayuda',         label: 'Ayuda',                 icon: HelpCircle },
   ];
 
+  const sectionTabs: Record<AdminSection, AdminTab[]> = {
+    empresa: ['overview', 'societies', 'centros', 'vehicles', 'devices', 'kiosk-devices', 'departamentos', 'roles', 'seguros', 'fichajes'],
+    usuarios: ['employees', 'users', 'documents', 'vacations', 'prevencion', 'incidencias', 'crm'],
+    ajustes: ['tags', 'permissions', 'css', 'email', 'audit', 'ayuda'],
+  };
+  const visibleTabs = tabs.filter((tab) => sectionTabs[activeSection].includes(tab.id));
+  const handleSectionChange = (section: AdminSection) => {
+    setActiveSection(section);
+    if (!sectionTabs[section].includes(activeTab)) setActiveTab(sectionTabs[section][0]);
+  };
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F1F5F9' }}>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
@@ -208,7 +221,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
               <span className="hidden sm:inline">Panel RRHH</span>
             </button>
             <button
-              onClick={() => setActiveTab('prevencion')}
+              onClick={() => { setActiveSection('empresa'); setActiveTab('prevencion'); }}
               className="flex items-center gap-1.5 px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer transition-all duration-200"
               style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#CBD5E1', border: '1px solid rgba(255,255,255,0.1)' }}
             >
@@ -254,12 +267,46 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
         </div>
 
         {/* Tab Navigation */}
-        {/* Mobile: Dropdown select */}
-        <div className="md:hidden mb-6">
-          <div
-            className="flex items-center gap-2 px-3 py-2 rounded-xl"
-            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
-          >
+        <div className="mb-6 sm:mb-8 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+          <div className="flex flex-wrap gap-1 p-1 border-b" style={{ borderColor: '#E2E8F0' }}>
+            {([
+              { id: 'empresa' as AdminSection, label: 'Empresa', icon: Building2 },
+              { id: 'usuarios' as AdminSection, label: 'Usuarios', icon: Users },
+              { id: 'ajustes' as AdminSection, label: 'Ajustes', icon: Palette },
+            ]).map((section) => {
+              const SectionIcon = section.icon;
+              const isActive = activeSection === section.id;
+              return (
+                <button
+                  key={section.id}
+                  onClick={() => handleSectionChange(section.id)}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 cursor-pointer"
+                  style={{ backgroundColor: isActive ? '#0F172A' : 'transparent', color: isActive ? '#FFFFFF' : '#64748B' }}
+                >
+                  <SectionIcon size={14} />
+                  {section.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="hidden md:flex flex-wrap gap-1 p-2">
+            {visibleTabs.map((tab) => {
+              const TabIcon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer whitespace-nowrap"
+                  style={{ backgroundColor: isActive ? '#0F172A' : 'transparent', color: isActive ? '#FFFFFF' : '#64748B' }}
+                >
+                  <TabIcon size={13} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="md:hidden flex items-center gap-2 p-2">
             <Menu size={16} style={{ color: '#64748B' }} />
             <select
               value={activeTab}
@@ -267,35 +314,9 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
               className="flex-1 bg-transparent text-sm font-medium outline-none cursor-pointer"
               style={{ color: '#0F172A' }}
             >
-              {tabs.map((tab) => (
-                <option key={tab.id} value={tab.id}>{tab.label}</option>
-              ))}
+              {visibleTabs.map((tab) => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
             </select>
           </div>
-        </div>
-        {/* Desktop: Horizontal tabs */}
-        <div
-          className="hidden md:flex flex-wrap gap-1 p-1 rounded-xl mb-6 sm:mb-8"
-          style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
-        >
-          {tabs.map((tab) => {
-            const TabIcon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 cursor-pointer whitespace-nowrap flex-shrink-0"
-                style={{
-                  backgroundColor: isActive ? '#0F172A' : 'transparent',
-                  color: isActive ? '#FFFFFF' : '#64748B',
-                }}
-              >
-                <TabIcon size={13} />
-                {tab.label}
-              </button>
-            );
-          })}
         </div>
 
         {/* Help Tab */}

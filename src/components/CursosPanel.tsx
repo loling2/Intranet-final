@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Plus, X, Trash2, Search, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Upload, Loader2, CheckCircle2, AlertCircle, Users, Clock, Save, Layers, Lock, Eye, EyeOff, ChevronDown, ChevronRight, GripVertical, FileQuestion } from 'lucide-react';
+import { BookOpen, Plus, X, Trash2, Search, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Upload, Loader2, CheckCircle2, AlertCircle, Users, Clock, Save, Layers, Lock, Eye, EyeOff, ChevronDown, ChevronRight, GripVertical, FileQuestion, Building2, MapPin } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { ensureMoodleCursoFolder, uploadMoodleFile, sanitizeSlug, downloadFromWasabi } from '../lib/wasabi';
 
@@ -100,9 +100,16 @@ export default function CursosPanel() {
   const [savingContenido, setSavingContenido] = useState(false);
 
   const [showAssignModal, setShowAssignModal] = useState(false);
-  const [empleados, setEmpleados] = useState<{ id: string; nombre: string; dni: string | null }[]>([]);
+  const [empleados, setEmpleados] = useState<{ id: string; nombre: string; dni: string | null; id_sociedad: string | null; centro_id: string | null }[]>([]);
   const [searchEmpleado, setSearchEmpleado] = useState('');
   const [selectedEmpleados, setSelectedEmpleados] = useState<Set<string>>(new Set());
+  const [assignVisibility, setAssignVisibility] = useState<'publico' | 'privado'>('publico');
+  const [assignScope, setAssignScope] = useState<'sociedad' | 'centro'>('sociedad');
+  const [assignSociedadId, setAssignSociedadId] = useState('');
+  const [assignCentroId, setAssignCentroId] = useState('');
+  const [assignAllTarget, setAssignAllTarget] = useState(false);
+  const [sociedades, setSociedades] = useState<{ id: string; nombre: string }[]>([]);
+  const [centros, setCentros] = useState<{ id: string; nombre: string; id_sociedad: string | null }[]>([]);
   const [asignacionesCurso, setAsignacionesCurso] = useState<{ id: string; empleado_id: string; estado: string; nombre_empleado: string; dni: string | null }[]>([]);
   const [loadingAsignaciones, setLoadingAsignaciones] = useState(false);
 
@@ -332,11 +339,14 @@ export default function CursosPanel() {
   const openAssignModal = () => {
     if (!selectedCurso) return;
     setShowAssignModal(true); setSelectedEmpleados(new Set()); setSearchEmpleado('');
+    setAssignVisibility('publico'); setAssignScope('sociedad'); setAssignSociedadId(''); setAssignCentroId(''); setAssignAllTarget(false);
     const load = async () => {
-      const { data } = await supabase.from('empleados').select('id, nombre, dni').eq('activo', true).order('nombre');
+      const { data } = await supabase.from('empleados').select('id, nombre, dni, id_sociedad, centro_id').eq('activo', true).order('nombre');
       setEmpleados(data ?? []);
     };
     load();
+    supabase.from('sociedades').select('id, nombre').order('nombre').then(({ data }) => setSociedades(data ?? []));
+    supabase.from('centros').select('id, nombre, id_sociedad').order('nombre').then(({ data }) => setCentros(data ?? []));
     const loadAsig = async () => {
       setLoadingAsignaciones(true);
       const { data } = await supabase.from('moodle_asignaciones').select('id, empleado_id, estado').eq('curso_id', selectedCurso.id);
@@ -357,15 +367,18 @@ export default function CursosPanel() {
   };
 
   const handleAssignCurso = async () => {
-    if (!selectedCurso || selectedEmpleados.size === 0) { setError('Selecciona al menos un empleado.'); return; }
+    if (!selectedCurso) return;
+    const targetEmployees = assignVisibility === 'publico' ? empleados : filteredEmpleados;
+    const employeeIds = (assignAllTarget || assignVisibility === 'publico' ? targetEmployees.map((employee) => employee.id) : Array.from(selectedEmpleados)).filter((employeeId) => !asignacionesCurso.some((assignment) => assignment.empleado_id === employeeId));
+    if (employeeIds.length === 0) { setError('Selecciona al menos un empleado o marca “Todos”.'); return; }
     setError('');
     try {
-      const rows = Array.from(selectedEmpleados).map((empId) => ({ curso_id: selectedCurso.id, empleado_id: empId }));
+      const rows = employeeIds.map((empId) => ({ curso_id: selectedCurso.id, empleado_id: empId }));
       const { error: err } = await supabase.from('moodle_asignaciones').insert(rows);
       if (err) { if (err.code === '23505') setError('Uno o mas empleados ya tienen este curso.'); else throw err; }
 
       if (selectedCurso.examen_id) {
-        const { data: emps } = await supabase.from('empleados').select('id, nombre, dni').in('id', Array.from(selectedEmpleados));
+        const { data: emps } = await supabase.from('empleados').select('id, nombre, dni').in('id', employeeIds);
         const examRows = (emps ?? []).map((emp: any) => ({
           examen_id: selectedCurso.examen_id!,
           empleado_id: emp.id,
@@ -404,7 +417,8 @@ export default function CursosPanel() {
   };
 
   const filteredCursos = cursos.filter((c) => c.nombre.toLowerCase().includes(search.toLowerCase()) || (c.categoria ?? '').toLowerCase().includes(search.toLowerCase()));
-  const filteredEmpleados = empleados.filter((e) => e.nombre.toLowerCase().includes(searchEmpleado.toLowerCase()) || (e.dni ?? '').toLowerCase().includes(searchEmpleado.toLowerCase()));
+  const targetEmpleados = empleados.filter((e) => assignVisibility === 'publico' || (assignScope === 'sociedad' ? assignSociedadId !== '' && e.id_sociedad === assignSociedadId : assignCentroId !== '' && e.centro_id === assignCentroId));
+  const filteredEmpleados = targetEmpleados.filter((e) => e.nombre.toLowerCase().includes(searchEmpleado.toLowerCase()) || (e.dni ?? '').toLowerCase().includes(searchEmpleado.toLowerCase()));
   const formatSize = (bytes: number | null): string => { if (!bytes) return '-'; if (bytes < 1024) return `${bytes} B`; if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1048576).toFixed(1)} MB`; };
 
   return (
@@ -778,6 +792,14 @@ export default function CursosPanel() {
               <button onClick={() => setShowAssignModal(false)} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9' }}><X size={16} style={{ color: '#64748B' }} /></button>
             </div>
             <div className="p-4 border-b" style={{ borderColor: '#E2E8F0' }}>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {(['publico', 'privado'] as const).map((visibility) => <button key={visibility} onClick={() => { setAssignVisibility(visibility); setAssignAllTarget(false); setSelectedEmpleados(new Set()); }} className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer" style={{ backgroundColor: assignVisibility === visibility ? '#F0FDFA' : '#F8FAFC', color: assignVisibility === visibility ? '#0D9488' : '#64748B', border: `1px solid ${assignVisibility === visibility ? '#99F6E4' : '#E2E8F0'}` }}>{visibility === 'publico' ? 'Público · todos' : 'Privado'}</button>)}
+              </div>
+              {assignVisibility === 'privado' && <div className="space-y-2 mb-3 rounded-lg p-3" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                <div className="grid grid-cols-2 gap-2">{(['sociedad', 'centro'] as const).map((scope) => <button key={scope} onClick={() => { setAssignScope(scope); setAssignSociedadId(''); setAssignCentroId(''); setAssignAllTarget(false); setSelectedEmpleados(new Set()); }} className="flex items-center justify-center gap-1 px-2 py-2 rounded-lg text-[11px] font-semibold cursor-pointer" style={{ backgroundColor: assignScope === scope ? '#FFFFFF' : 'transparent', color: assignScope === scope ? '#0D9488' : '#64748B', border: `1px solid ${assignScope === scope ? '#99F6E4' : '#E2E8F0'}` }}>{scope === 'sociedad' ? <Building2 size={12} /> : <MapPin size={12} />}{scope === 'sociedad' ? 'Por sociedad' : 'Por centro'}</button>)}</div>
+                {assignScope === 'sociedad' ? <select value={assignSociedadId} onChange={(e) => { setAssignSociedadId(e.target.value); setAssignAllTarget(false); setSelectedEmpleados(new Set()); }} className="w-full px-3 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#0F172A' }}><option value="">Selecciona una sociedad...</option>{sociedades.map((sociedad) => <option key={sociedad.id} value={sociedad.id}>{sociedad.nombre}</option>)}</select> : <select value={assignCentroId} onChange={(e) => { setAssignCentroId(e.target.value); setAssignAllTarget(false); setSelectedEmpleados(new Set()); }} className="w-full px-3 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#0F172A' }}><option value="">Selecciona un centro...</option>{centros.map((centro) => <option key={centro.id} value={centro.id}>{centro.nombre}</option>)}</select>}
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: '#0F172A' }}><input type="checkbox" checked={assignAllTarget} onChange={(e) => { setAssignAllTarget(e.target.checked); if (e.target.checked) setSelectedEmpleados(new Set()); }} /> Todos los empleados de la selección</label>
+              </div>}
               <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} /><input type="text" value={searchEmpleado} onChange={(e) => setSearchEmpleado(e.target.value)} placeholder="Buscar empleado..." className="w-full pl-8 pr-3 py-2 rounded-lg text-xs outline-none" style={{ border: '1px solid #E2E8F0', color: '#0F172A' }} /></div>
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-1.5">

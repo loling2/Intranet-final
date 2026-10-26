@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck, HelpCircle, BookOpen } from 'lucide-react';
+import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck, HelpCircle, BookOpen, Building2, MapPin } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -46,6 +46,7 @@ interface Empleado {
   dni: string | null;
   email: string | null;
   id_sociedad: string | null;
+  centro_id: string | null;
   activo: boolean;
   puesto: string | null;
 }
@@ -106,6 +107,13 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
   const [searchEmpleado, setSearchEmpleado] = useState('');
   const [assignEmpresaFilter, setAssignEmpresaFilter] = useState('');
   const [assignPuestoFilter, setAssignPuestoFilter] = useState('');
+  const [assignVisibility, setAssignVisibility] = useState<'publico' | 'privado'>('publico');
+  const [assignScope, setAssignScope] = useState<'sociedad' | 'centro'>('sociedad');
+  const [assignSociedadId, setAssignSociedadId] = useState('');
+  const [assignCentroId, setAssignCentroId] = useState('');
+  const [assignAllTarget, setAssignAllTarget] = useState(false);
+  const [sociedades, setSociedades] = useState<{ id: string; nombre: string }[]>([]);
+  const [centros, setCentros] = useState<{ id: string; nombre: string; id_sociedad: string | null }[]>([]);
   const [selectedEmpleados, setSelectedEmpleados] = useState<Set<string>>(new Set());
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignExamen, setAssignExamen] = useState<Examen | null>(null);
@@ -168,7 +176,7 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
   };
 
   const loadEmpleados = useCallback(async () => {
-    const { data, error } = await supabase.from('empleados').select('id, nombre, dni, email, id_sociedad, puesto, activo').eq('activo', true).order('nombre', { ascending: true });
+    const { data, error } = await supabase.from('empleados').select('id, nombre, dni, email, id_sociedad, centro_id, puesto, activo').eq('activo', true).order('nombre', { ascending: true });
     if (error) { setError(error.message); }
     else { setEmpleados(data ?? []); }
   }, []);
@@ -308,9 +316,16 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
     setSearchEmpleado('');
     setAssignEmpresaFilter('');
     setAssignPuestoFilter('');
+    setAssignVisibility('publico');
+    setAssignScope('sociedad');
+    setAssignSociedadId('');
+    setAssignCentroId('');
+    setAssignAllTarget(false);
     setShowAssignModal(true);
     setError('');
     if (empleados.length === 0) loadEmpleados();
+    supabase.from('sociedades').select('id, nombre').order('nombre').then(({ data }) => setSociedades(data ?? []));
+    supabase.from('centros').select('id, nombre, id_sociedad').order('nombre').then(({ data }) => setCentros(data ?? []));
   };
 
   const toggleEmpleado = (id: string) => {
@@ -322,10 +337,13 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
   };
 
   const handleAssign = async () => {
-    if (!assignExamen || selectedEmpleados.size === 0) { setError('Selecciona al menos un empleado.'); return; }
+    if (!assignExamen) return;
+    const targetEmployees = assignVisibility === 'publico' ? empleados : filteredEmpleados;
+    const employeeIds = (assignAllTarget || assignVisibility === 'publico' ? targetEmployees.map((employee) => employee.id) : Array.from(selectedEmpleados)).filter((employeeId) => !asignaciones.some((assignment) => assignment.empleado_id === employeeId));
+    if (employeeIds.length === 0) { setError('Selecciona al menos un empleado o marca “Todos”.'); return; }
     setAssigning(true); setError('');
     try {
-      const rows = Array.from(selectedEmpleados).map((empId) => {
+      const rows = employeeIds.map((empId) => {
         const emp = empleados.find((e) => e.id === empId);
         return {
           examen_id: assignExamen.id,
@@ -365,7 +383,12 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
     (e.descripcion ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
-  const filteredEmpleados = empleados.filter((e) =>
+  const targetEmpleados = empleados.filter((e) => {
+    if (assignVisibility === 'publico') return true;
+    if (assignScope === 'sociedad') return assignSociedadId !== '' && e.id_sociedad === assignSociedadId;
+    return assignCentroId !== '' && e.centro_id === assignCentroId;
+  });
+  const filteredEmpleados = targetEmpleados.filter((e) =>
     (e.nombre.toLowerCase().includes(searchEmpleado.toLowerCase()) || (e.dni ?? '').toLowerCase().includes(searchEmpleado.toLowerCase())) &&
     e.id_sociedad?.toLowerCase().includes(assignEmpresaFilter.toLowerCase()) !== false &&
     (e.puesto ?? '').toLowerCase().includes(assignPuestoFilter.toLowerCase())
@@ -890,6 +913,18 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
               </button>
             </div>
             <div className="p-4 flex flex-col flex-1 overflow-hidden">
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {(['publico', 'privado'] as const).map((visibility) => (
+                  <button key={visibility} onClick={() => { setAssignVisibility(visibility); setAssignAllTarget(false); setSelectedEmpleados(new Set()); }} className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer" style={{ backgroundColor: assignVisibility === visibility ? '#F0FDFA' : '#F8FAFC', color: assignVisibility === visibility ? '#0D9488' : '#64748B', border: `1px solid ${assignVisibility === visibility ? '#99F6E4' : '#E2E8F0'}` }}>{visibility === 'publico' ? 'Público · todos' : 'Privado'}</button>
+                ))}
+              </div>
+              {assignVisibility === 'privado' && <div className="space-y-2 mb-3 rounded-lg p-3" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['sociedad', 'centro'] as const).map((scope) => <button key={scope} onClick={() => { setAssignScope(scope); setAssignSociedadId(''); setAssignCentroId(''); setAssignAllTarget(false); setSelectedEmpleados(new Set()); }} className="flex items-center justify-center gap-1 px-2 py-2 rounded-lg text-[11px] font-semibold cursor-pointer" style={{ backgroundColor: assignScope === scope ? '#FFFFFF' : 'transparent', color: assignScope === scope ? '#0D9488' : '#64748B', border: `1px solid ${assignScope === scope ? '#99F6E4' : '#E2E8F0'}` }}>{scope === 'sociedad' ? <Building2 size={12} /> : <MapPin size={12} />}{scope === 'sociedad' ? 'Por sociedad' : 'Por centro'}</button>)}
+                </div>
+                {assignScope === 'sociedad' ? <select value={assignSociedadId} onChange={(e) => { setAssignSociedadId(e.target.value); setAssignAllTarget(false); setSelectedEmpleados(new Set()); }} className="w-full px-3 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#0F172A' }}><option value="">Selecciona una sociedad...</option>{sociedades.map((sociedad) => <option key={sociedad.id} value={sociedad.id}>{sociedad.nombre}</option>)}</select> : <select value={assignCentroId} onChange={(e) => { setAssignCentroId(e.target.value); setAssignAllTarget(false); setSelectedEmpleados(new Set()); }} className="w-full px-3 py-2 rounded-lg text-xs border outline-none" style={{ borderColor: '#E2E8F0', color: '#0F172A' }}><option value="">Selecciona un centro...</option>{centros.map((centro) => <option key={centro.id} value={centro.id}>{centro.nombre}</option>)}</select>}
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer" style={{ color: '#0F172A' }}><input type="checkbox" checked={assignAllTarget} onChange={(e) => { setAssignAllTarget(e.target.checked); if (e.target.checked) setSelectedEmpleados(new Set()); }} /> Todos los empleados de la selección</label>
+              </div>}
               <div className="relative mb-3 flex-shrink-0">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
                 <input
@@ -960,12 +995,12 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
               {error && <p className="text-xs mt-2" style={{ color: '#DC2626' }}>{error}</p>}
               <button
                 onClick={handleAssign}
-                disabled={assigning || selectedEmpleados.size === 0}
+                disabled={assigning || (selectedEmpleados.size === 0 && !assignAllTarget && assignVisibility !== 'publico')}
                 className="mt-3 w-full py-2.5 rounded-lg text-sm font-semibold text-white cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2 transition-all duration-150 flex-shrink-0"
                 style={{ backgroundColor: '#0D9488' }}
               >
                 {assigning ? <RefreshCw size={14} className="animate-spin" /> : <UserCheck size={14} />}
-                {assigning ? 'Asignando...' : `Asignar a ${selectedEmpleados.size} empleado(s)`}
+                {assigning ? 'Asignando...' : `Asignar a ${assignVisibility === 'publico' || assignAllTarget ? targetEmpleados.length : selectedEmpleados.size} empleado(s)`}
               </button>
             </div>
           </div>

@@ -3086,17 +3086,6 @@ useEffect(() => {
                 <span className="hidden sm:inline">Panel Supervisor</span>
               </button>
             )}
-            <a
-              href="https://aulavitaly.com/login/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 hover:brightness-110"
-              style={{ backgroundColor: 'rgba(16,185,129,0.2)', color: '#6EE7B7', border: '1px solid rgba(16,185,129,0.35)' }}
-              title="Abrir Aula Vitaly"
-            >
-              <GraduationCap size={12} />
-              <span className="hidden sm:inline">Aula Vitaly</span>
-            </a>
             <div className="relative">
               <button
                 onClick={() => {
@@ -3222,15 +3211,28 @@ useEffect(() => {
               Resumen de tus recursos y solicitudes
             </p>
           </div>
-          {isAdmin && (
-            <div
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
-              style={{ backgroundColor: theme.primaryLight, color: theme.primary, border: `1px solid ${theme.border}` }}
+          <div className="flex items-center gap-2">
+            <a
+              href="https://aulavitaly.com/login/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 hover:brightness-105"
+              style={{ backgroundColor: '#D1FAE5', color: '#047857', border: '1px solid #A7F3D0' }}
+              title="Abrir Aula Vitaly"
             >
-              <Shield size={12} />
-              Vista de admin
-            </div>
-          )}
+              <GraduationCap size={13} />
+              Aula Vitaly
+            </a>
+            {isAdmin && (
+              <div
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ backgroundColor: theme.primaryLight, color: theme.primary, border: `1px solid ${theme.border}` }}
+              >
+                <Shield size={12} />
+                Vista de admin
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Ayuda button above tabs */}

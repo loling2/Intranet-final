@@ -266,6 +266,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   if (!selectedRoles.has('employee')) selectedRoles.add('employee');
   const [activo, setActivo] = useState(user.activo);
   const [selectedSocieties, setSelectedSocieties] = useState<string[]>(user.societies ?? []);
+  const [profesion, setProfesion] = useState<string>(user.profesion ?? '');
   const [savingMeta, setSavingMeta] = useState(false);
   const [metaSuccess, setMetaSuccess] = useState(false);
 
@@ -487,7 +488,7 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     setSavingMeta(true); setError('');
     try {
       const rolesArray = Array.from(selectedRoles);
-      const { error: err } = await supabase.from('user_profiles').update({ roles: rolesArray, role: rolesArray.find((r) => r !== 'employee') ?? rolesArray[0], activo, societies: selectedSocieties }).eq('id', user.id);
+      const { error: err } = await supabase.from('user_profiles').update({ roles: rolesArray, role: rolesArray.find((r) => r !== 'employee') ?? rolesArray[0], activo, societies: selectedSocieties, profesion: profesion || null }).eq('id', user.id);
       if (err) throw err;
       if (profile) await writeAuditLog({ evento: 'user_meta_changed', descripcion: `Perfil de ${user.nombre} actualizado: roles=${rolesArray.join(',')}, activo=${activo}`, autor: profile, entidad: 'user', entidad_id: user.id });
       setMetaSuccess(true);
@@ -503,7 +504,8 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
     if (!current.has('employee')) current.add('employee');
     return JSON.stringify([...selectedRoles].sort()) !== JSON.stringify([...current].sort());
   })();
-  const metaDirty = rolesChanged || activo !== user.activo || societiesChanged;
+  const profesionChanged = (profesion || null) !== (user.profesion ?? null);
+  const metaDirty = rolesChanged || activo !== user.activo || societiesChanged || profesionChanged;
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
     ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia']
@@ -561,6 +563,24 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
                   );
                 })}
               </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium mb-1" style={{ color: '#94A3B8' }}>Profesión (para notas CRM)</p>
+              <p className="text-xs mb-2" style={{ color: '#CBD5E1' }}>Determina qué notas diarias puede ver y escribir en el CRM.</p>
+              <select value={profesion} onChange={(e) => setProfesion(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
+                style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }}>
+                <option value="">Sin profesión asignada</option>
+                <option value="psicologo">Psicología</option>
+                <option value="gerocultor">Gerocultura</option>
+                <option value="enfermero">Enfermería</option>
+                <option value="fisio">Fisioterapia</option>
+                <option value="trabajador_social">Trabajo social</option>
+                <option value="medico">Medicina</option>
+                <option value="terapeuta_ocupacional">Terapia ocupacional</option>
+                <option value="auxiliar">Auxiliar</option>
+              </select>
             </div>
 
             <div>

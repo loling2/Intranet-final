@@ -30,6 +30,7 @@ export interface UserProfile {
   societies: string[];
   invited_by: string | null;
   pin: string | null;
+  profesion: string | null;
   created_at: string;
   updated_at: string;
 }

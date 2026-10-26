@@ -11,6 +11,7 @@ interface Curso {
   duracion_estimada: string | null;
   wasabi_prefix: string;
   activo: boolean;
+  visible_empleado: boolean;
   examen_id: string | null;
   created_at: string;
 }
@@ -210,6 +211,17 @@ export default function CursosPanel() {
       setSuccessMsg('Curso guardado.'); setTimeout(() => setSuccessMsg(''), 2500);
     } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Error al guardar'); }
     finally { setSavingCurso(false); }
+  };
+
+  const handleToggleCursoVisibility = async (curso: Curso) => {
+    const nextVisible = !curso.visible_empleado;
+    setError('');
+    const { error: err } = await supabase.from('moodle_cursos').update({ visible_empleado: nextVisible, updated_at: new Date().toISOString() }).eq('id', curso.id);
+    if (err) { setError(err.message); return; }
+    setCursos((prev) => prev.map((item) => item.id === curso.id ? { ...item, visible_empleado: nextVisible } : item));
+    setSelectedCurso((prev) => prev?.id === curso.id ? { ...prev, visible_empleado: nextVisible } : prev);
+    setSuccessMsg(nextVisible ? 'Curso visible para los empleados.' : 'Curso oculto para los empleados.');
+    setTimeout(() => setSuccessMsg(''), 2500);
   };
 
   const handleDeleteCurso = async (c: Curso) => {
@@ -486,8 +498,9 @@ export default function CursosPanel() {
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0D9488, #0F766E)' }}><BookOpen size={20} style={{ color: '#FFFFFF' }} /></div>
                   <div className="flex items-center gap-1">
-                    <button onClick={(e) => { e.stopPropagation(); openEditCurso(curso); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}><Save size={12} /></button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDeleteCurso(curso); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}><Trash2 size={12} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleToggleCursoVisibility(curso); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: curso.visible_empleado ? '#F0FDFA' : '#F1F5F9', color: curso.visible_empleado ? '#0D9488' : '#64748B' }} title={curso.visible_empleado ? 'Ocultar curso a empleados' : 'Hacer visible para empleados'}>{curso.visible_empleado ? <Eye size={12} /> : <EyeOff size={12} />}</button>
+                    <button onClick={(e) => { e.stopPropagation(); openEditCurso(curso); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }} title="Editar curso"><Save size={12} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleDeleteCurso(curso); }} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }} title="Eliminar curso"><Trash2 size={12} /></button>
                   </div>
                 </div>
                 <h4 className="text-sm font-bold leading-tight" style={{ color: '#0F172A' }}>{curso.nombre}</h4>
@@ -500,6 +513,7 @@ export default function CursosPanel() {
                       <FileQuestion size={9} /> {examenes.find((e) => e.id === curso.examen_id)?.nombre ?? 'Examen'}
                     </span>
                   )}
+                  <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md" style={{ color: curso.visible_empleado ? '#0D9488' : '#64748B', backgroundColor: curso.visible_empleado ? '#F0FDFA' : '#F1F5F9', border: `1px solid ${curso.visible_empleado ? '#99F6E4' : '#E2E8F0'}` }}>{curso.visible_empleado ? <Eye size={9} /> : <EyeOff size={9} />} {curso.visible_empleado ? 'Visible' : 'Oculto'}</span>
                   {!curso.activo && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md" style={{ color: '#DC2626', backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>Inactivo</span>}
                 </div>
               </div>

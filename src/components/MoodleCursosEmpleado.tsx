@@ -10,6 +10,7 @@ interface Curso {
   descripcion: string | null;
   categoria: string | null;
   duracion_estimada: string | null;
+  visible_empleado: boolean;
   examen_id: string | null;
 }
 
@@ -103,7 +104,7 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
     const { data: asignaciones } = await supabase.from('moodle_asignaciones').select('id, curso_id, estado, progreso, examen_desbloqueado, fecha_asignacion, fecha_completado').eq('empleado_id', emp.id).order('fecha_asignacion', { ascending: false });
     if (!asignaciones || asignaciones.length === 0) { setLoading(false); return; }
     const cursoIds = asignaciones.map((a: any) => a.curso_id);
-    const { data: cursosData } = await supabase.from('moodle_cursos').select('id, nombre, descripcion, categoria, duracion_estimada, examen_id, activo').in('id', cursoIds).eq('activo', true);
+    const { data: cursosData } = await supabase.from('moodle_cursos').select('id, nombre, descripcion, categoria, duracion_estimada, visible_empleado, examen_id, activo').in('id', cursoIds).eq('activo', true).eq('visible_empleado', true);
     const enriched = (cursosData ?? []).map((c: any) => ({ ...c, asignacion: asignaciones.find((a: any) => a.curso_id === c.id) })).filter((c: any) => c.asignacion);
     setCursos(enriched);
     setLoading(false);

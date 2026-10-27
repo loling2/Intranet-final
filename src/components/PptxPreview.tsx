@@ -2,14 +2,15 @@ import { useEffect, useState } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { ReactPptxViewer } from '@extend-ai/react-pptx';
 import '@extend-ai/react-pptx/styles.css';
-import { getWasabiBlob } from '../lib/wasabi';
+import { downloadFromWasabi, getWasabiBlob } from '../lib/wasabi';
 
 interface PptxPreviewProps {
   wasabiKey: string;
   filename: string | null;
+  allowDownload?: boolean;
 }
 
-export default function PptxPreview({ wasabiKey, filename }: PptxPreviewProps) {
+export default function PptxPreview({ wasabiKey, filename, allowDownload = false }: PptxPreviewProps) {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -41,7 +42,12 @@ export default function PptxPreview({ wasabiKey, filename }: PptxPreviewProps) {
   }, [wasabiKey, filename]);
 
   if (loading) return <div className="flex items-center justify-center gap-2 py-16 text-sm" style={{ color: '#64748B' }}><Loader2 size={20} className="animate-spin" /> Cargando presentación...</div>;
-  if (error) return <div className="flex items-center justify-center gap-2 rounded-xl p-6 text-sm" style={{ backgroundColor: '#FEF2F2', color: '#B91C1C' }}><AlertCircle size={18} /> {error}</div>;
+  if (error) return (
+    <div className="flex flex-col items-center justify-center gap-4 rounded-xl p-8 text-sm text-center" style={{ backgroundColor: '#FEF2F2', color: '#B91C1C' }}>
+      <div className="flex items-center gap-2"><AlertCircle size={18} /> {error}</div>
+      {allowDownload && <button onClick={() => void downloadFromWasabi(wasabiKey, filename || 'presentacion.pptx')} className="rounded-lg px-4 py-2 font-medium cursor-pointer" style={{ backgroundColor: '#B91C1C', color: '#FFFFFF' }}>Descargar presentación</button>}
+    </div>
+  );
   if (!file) return null;
 
   const formatHint = /\.ppt$/i.test(file.name) ? 'ppt' : 'pptx';

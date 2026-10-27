@@ -851,7 +851,7 @@ export default function CursosPanel() {
               <button onClick={() => setPreviewContenido(null)} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer flex-shrink-0" style={{ backgroundColor: '#F1F5F9' }}><X size={16} style={{ color: '#64748B' }} /></button>
             </div>
             <div className="p-3 sm:p-5">
-              {previewContenido.tipo === 'powerpoint' ? <PptxPreview wasabiKey={previewContenido.wasabi_key} filename={previewContenido.nombre_archivo} /> : <p className="text-sm text-center py-10" style={{ color: '#64748B' }}>La previsualización integrada está disponible para PowerPoint.</p>}
+              {previewContenido.tipo === 'powerpoint' ? <PptxPreview wasabiKey={previewContenido.wasabi_key} filename={previewContenido.nombre_archivo} allowDownload /> : <p className="text-sm text-center py-10" style={{ color: '#64748B' }}>La previsualización integrada está disponible para PowerPoint.</p>}
             </div>
           </div>
         </div>

@@ -316,7 +316,7 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
             )}
             {activeContenido.tipo === 'powerpoint' && activeContenido.wasabi_key && (
               <div className="space-y-3">
-                <PptxPreview wasabiKey={activeContenido.wasabi_key} filename={activeContenido.nombre_archivo} />
+                <PptxPreview wasabiKey={activeContenido.wasabi_key} filename={activeContenido.nombre_archivo} allowDownload={activeContenido.descargable} />
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <p className="text-xs" style={{ color: theme.textSecondary }}>{activeContenido.nombre_archivo ?? activeContenido.titulo} · {formatSize(activeContenido.tamano_bytes)}</p>
                   {activeContenido.descargable && <button onClick={() => handleDownload(activeContenido)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}><Download size={16} /> Descargar</button>}

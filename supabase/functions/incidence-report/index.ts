@@ -54,6 +54,10 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+function wrapBase64(value: string): string {
+  return value.match(/.{1,76}/g)?.join("\r\n") ?? "";
+}
+
 function buildCenterPdf(
   targetDate: string,
   centerName: string,
@@ -846,7 +850,7 @@ async function sendSmtp(opts: {
         `--${alternativeBoundary}--`,
       ].join("\r\n");
       const attachments = (opts.attachments ?? []).flatMap((attachment) => [
-        `--${boundary}`, `Content-Type: application/pdf; name="${attachment.filename}"`, `Content-Disposition: attachment; filename="${attachment.filename}"`, `Content-Transfer-Encoding: base64`, ``, attachment.content, ``,
+        `--${boundary}`, `Content-Type: application/pdf; name="${attachment.filename}"`, `Content-Disposition: attachment; filename="${attachment.filename}"`, `Content-Transfer-Encoding: base64`, ``, wrapBase64(attachment.content), ``,
       ]);
       message = [
         `From: ${opts.from}`, `To: ${opts.to}`, `Subject: ${encodedSubject}`,

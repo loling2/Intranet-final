@@ -523,7 +523,7 @@ Deno.serve(async (req: Request) => {
         s.salidaAuto = false;
       }
       if (!s.salida) {
-        incidencias.push({ nombre: s.nombre, entrada: s.entrada, salida: null, duracionMin: 0, tipo: "sin_salida", salidaAuto: false });
+        incidencias.push({ nombre: s.nombre, entrada: s.entrada, salida: "23:59", duracionMin: 0, tipo: "sin_salida", salidaAuto: true });
         continue;
       }
       const durMin = Math.round((new Date(s.salida).getTime() - new Date(s.entrada).getTime()) / 60000);
@@ -733,7 +733,7 @@ Deno.serve(async (req: Request) => {
           if (!s.entrada) continue;
           if (s.salidaReal) { s.salida = s.salidaReal; s.salidaAuto = false; }
           if (!s.salida) {
-            supIncidencias.push({ nombre: s.nombre, entrada: s.entrada, salida: null, duracionMin: 0, tipo: "sin_salida", salidaAuto: false });
+            supIncidencias.push({ nombre: s.nombre, entrada: s.entrada, salida: "23:59", duracionMin: 0, tipo: "sin_salida", salidaAuto: true });
             continue;
           }
           const durMin = Math.round((new Date(s.salida).getTime() - new Date(s.entrada).getTime()) / 60000);

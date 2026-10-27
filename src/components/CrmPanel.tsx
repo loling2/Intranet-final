@@ -31,6 +31,7 @@ interface UsuarioServicio {
   email: string | null;
   telefono: string | null;
   observaciones: string | null;
+  acronimo: string | null;
   activo: boolean;
   centros?: { id: string; nombre: string }[];
 }
@@ -101,6 +102,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const [formEmail, setFormEmail] = useState('');
   const [formTelefono, setFormTelefono] = useState('');
   const [formObservaciones, setFormObservaciones] = useState('');
+  const [formAcronimo, setFormAcronimo] = useState('');
   const [formCentros, setFormCentros] = useState<string[]>([]);
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -133,6 +135,10 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
     const usuariosData = (rpcData ?? []) as { id: string; nombre: string; apellidos: string | null; email: string | null; telefono: string | null; observaciones: string | null; activo: boolean }[];
 
     const userIds = usuariosData.map((u) => u.id);
+    const { data: residentExtras } = userIds.length > 0
+      ? await supabase.from('usuarios_servicios').select('id, acronimo').in('id', userIds)
+      : { data: [] as { id: string; acronimo: string | null }[] };
+    const acronimos = Object.fromEntries(((residentExtras ?? []) as { id: string; acronimo: string | null }[]).map((u) => [u.id, u.acronimo]));
     let centrosMap: Record<string, { id: string; nombre: string }[]> = {};
     if (userIds.length > 0) {
       const { data: asignaciones } = await supabase
@@ -151,7 +157,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
       id: u.id, nombre: u.nombre,
       apellidos: u.apellidos, email: u.email,
       telefono: u.telefono, observaciones: u.observaciones,
-      activo: u.activo, centros: centrosMap[u.id] ?? [],
+      acronimo: acronimos[u.id] ?? '', activo: u.activo, centros: centrosMap[u.id] ?? [],
     }));
     setUsuarios(usuariosWithCentros);
     setUsuariosLoading(false);
@@ -177,13 +183,13 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   // === Usuario form ===
   const openNewUsuario = () => {
     setEditingId(null); setFormNombre(''); setFormApellidos(''); setFormEmail('');
-    setFormTelefono(''); setFormObservaciones(''); setFormCentros([]); setFormError('');
+    setFormTelefono(''); setFormObservaciones(''); setFormAcronimo(''); setFormCentros([]); setFormError('');
     setShowUsuarioForm(true);
   };
   const openEditUsuario = (u: UsuarioServicio) => {
     setEditingId(u.id); setFormNombre(u.nombre); setFormApellidos(u.apellidos ?? '');
     setFormEmail(u.email ?? ''); setFormTelefono(u.telefono ?? '');
-    setFormObservaciones(u.observaciones ?? '');
+    setFormObservaciones(u.observaciones ?? ''); setFormAcronimo(u.acronimo ?? '');
     setFormCentros(u.centros?.map((c) => c.id) ?? []); setFormError('');
     setShowUsuarioForm(true);
   };
@@ -194,7 +200,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
       if (editingId) {
         const { error } = await supabase.from('usuarios_servicios').update({
           nombre: formNombre.trim(), apellidos: formApellidos.trim(), email: formEmail.trim(),
-          telefono: formTelefono.trim(), observaciones: formObservaciones.trim(), updated_at: new Date().toISOString(),
+          telefono: formTelefono.trim(), observaciones: formObservaciones.trim(), acronimo: formAcronimo.trim(), updated_at: new Date().toISOString(),
         }).eq('id', editingId);
         if (error) throw error;
         await supabase.from('usuarios_servicios_centros').delete().eq('usuario_servicio_id', editingId);
@@ -204,7 +210,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
       } else {
         const { data, error } = await supabase.from('usuarios_servicios').insert({
           nombre: formNombre.trim(), apellidos: formApellidos.trim(), email: formEmail.trim(),
-          telefono: formTelefono.trim(), observaciones: formObservaciones.trim(),
+          telefono: formTelefono.trim(), observaciones: formObservaciones.trim(), acronimo: formAcronimo.trim(),
         }).select('id').single();
         if (error) throw error;
         if (formCentros.length > 0) {
@@ -262,6 +268,15 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
           autor_nombre: notaAutor.trim(), contenido: notaContenido.trim(),
         }).select('id, usuario_servicio_id, fecha, autor_nombre, contenido, created_at').single();
         if (error) throw error;
+        const mentionRows = Array.from(notaContenido.matchAll(/@([^\s@]+)/g)).flatMap((match) => {
+          const token = match[1].toLowerCase();
+          const resident = usuarios.find((u) => [u.nombre, u.acronimo ?? '', `${u.nombre} ${u.apellidos ?? ''}`].some((value) => value.toLowerCase() === token));
+          return resident ? [{ nota_id: (data as CrmNota).id, mencionado_usuario_servicio_id: resident.id, texto_mencion: match[1] }] : [];
+        });
+        if (mentionRows.length > 0) {
+          const { error: mentionError } = await supabase.from('crm_nota_menciones').insert(mentionRows);
+          if (mentionError) throw mentionError;
+        }
         setNotas((prev) => [data as CrmNota, ...prev]);
       }
       setShowNotaModal(false); setNotaContenido(''); setEditingNotaId(null);
@@ -279,6 +294,16 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
 
   // Usuario seleccionado display
   const selectedUserLabel = selectedUsuario ? `${selectedUsuario.nombre} ${selectedUsuario.apellidos ?? ''}` : '';
+  const mentionMatch = notaContenido.match(/(?:^|\s)@([^\s@]*)$/);
+  const mentionQuery = mentionMatch?.[1].toLowerCase() ?? '';
+  const mentionCandidates = mentionMatch
+    ? usuarios.filter((u) => `${u.nombre} ${u.apellidos ?? ''} ${u.acronimo ?? ''}`.toLowerCase().includes(mentionQuery)).slice(0, 6)
+    : [];
+  const handleNotaContenidoChange = (value: string) => setNotaContenido(value);
+  const insertMention = (u: UsuarioServicio) => {
+    const mention = `@${u.acronimo || u.nombre}`;
+    setNotaContenido(notaContenido.replace(/(?:^|\s)@[^\s@]*$/, (match) => `${match.startsWith(' ') ? ' ' : ''}${mention} `));
+  };
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
@@ -429,6 +454,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                             </div>
                             <div>
                               <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{u.nombre} {u.apellidos}</p>
+                              {u.acronimo && <p className="text-xs font-medium" style={{ color: '#0369A1' }}>{u.acronimo}</p>}
                               <span className="text-xs px-2 py-0.5 rounded-md font-medium" style={{ backgroundColor: u.activo ? '#F0FDF4' : '#FEF2F2', color: u.activo ? '#16A34A' : '#DC2626' }}>{u.activo ? 'Activo' : 'Inactivo'}</span>
                             </div>
                           </div>
@@ -501,6 +527,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                     </div>
                     <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Email</label><input type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }} /></div>
                     <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Teléfono</label><input type="text" value={formTelefono} onChange={(e) => setFormTelefono(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }} /></div>
+                    <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Acrónimo</label><input type="text" value={formAcronimo} onChange={(e) => setFormAcronimo(e.target.value)} maxLength={30} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }} placeholder="Identificador corto" /></div>
                     <div><label className="block text-xs font-medium mb-2" style={{ color: '#475569' }}>Centros asignados</label>
                       <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
                         {centros.map((c) => { const sel = formCentros.includes(c.id); return (
@@ -556,7 +583,9 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                   <div className="space-y-4">
                     <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Fecha (opcional)</label><input type="date" value={notaFecha} onChange={(e) => setNotaFecha(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }} /></div>
                     <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Nombre de usuario (autor) *</label><input type="text" value={notaAutor} onChange={(e) => setNotaAutor(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }} /></div>
-                    <div><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Nota *</label><textarea value={notaContenido} onChange={(e) => setNotaContenido(e.target.value)} rows={4} className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }} placeholder="Escribe el contenido de la nota..." /></div>
+                    <div className="relative"><label className="block text-xs font-medium mb-1.5" style={{ color: '#475569' }}>Nota *</label><textarea value={notaContenido} onChange={(e) => handleNotaContenidoChange(e.target.value)} rows={4} className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none" style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' }} placeholder="Escribe el contenido. Usa @ para mencionar un residente..." />
+                      {mentionMatch && mentionCandidates.length > 0 && <div className="absolute z-10 left-0 right-0 top-full mt-1 rounded-lg p-1 shadow-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>{mentionCandidates.map((u) => <button key={u.id} type="button" onClick={() => insertMention(u)} className="w-full flex items-center justify-between px-3 py-2 rounded-md text-left cursor-pointer hover:bg-slate-50"><span className="text-sm font-medium" style={{ color: '#0F172A' }}>{u.nombre} {u.apellidos ?? ''}</span>{u.acronimo && <span className="text-xs" style={{ color: '#0369A1' }}>{u.acronimo}</span>}</button>)}</div>}
+                    </div>
                     {notaError && <p className="text-xs" style={{ color: '#DC2626' }}>{notaError}</p>}
                     <div className="flex gap-2">
                       <button onClick={handleSaveNota} disabled={notaSaving} className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-60" style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>{notaSaving ? 'Guardando...' : editingNotaId ? 'Guardar cambios' : 'Guardar nota'}</button>

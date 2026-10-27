@@ -25,6 +25,7 @@ interface Props {
     email: string | null;
     telefono: string | null;
     observaciones: string | null;
+    acronimo: string | null;
     activo: boolean;
     centros?: { id: string; nombre: string }[];
   };
@@ -114,6 +115,7 @@ interface ResidenteExtra {
   pais: string;
   fecha_nacimiento: string | null;
   estado_civil: string;
+  acronimo: string;
   foto_url: string | null;
 }
 
@@ -162,7 +164,7 @@ export default function CrmResidenteFicha(props: Props) {
   const loadExtra = useCallback(async () => {
     const { data } = await supabase
       .from('usuarios_servicios')
-      .select('tipo_identificacion, identificacion, genero, tipo_direccion, direccion, localidad, provincia, codigo_postal, pais, fecha_nacimiento, estado_civil, foto_url')
+      .select('tipo_identificacion, identificacion, genero, tipo_direccion, direccion, localidad, provincia, codigo_postal, pais, fecha_nacimiento, estado_civil, acronimo, foto_url')
       .eq('id', usuario.id)
       .maybeSingle();
     setExtra((data ?? {}) as ResidenteExtra);
@@ -206,6 +208,7 @@ export default function CrmResidenteFicha(props: Props) {
     const { error } = await supabase.from('usuarios_servicios').update({
       tipo_identificacion: extraForm.tipo_identificacion || null,
       identificacion: extraForm.identificacion || null,
+      acronimo: extraForm.acronimo || null,
       genero: extraForm.genero || null,
       tipo_direccion: extraForm.tipo_direccion || null,
       direccion: extraForm.direccion || null,
@@ -483,6 +486,7 @@ export default function CrmResidenteFicha(props: Props) {
                     </select></div>
                   <div><label className="block text-xs font-medium mb-1" style={labelStyle}>Identificación</label><input type="text" value={extraForm.identificacion ?? ''} onChange={e => setExtraForm({ ...extraForm, identificacion: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} /></div>
                 </div>
+                <div><label className="block text-xs font-medium mb-1" style={labelStyle}>Acrónimo</label><input type="text" value={extraForm.acronimo ?? ''} onChange={e => setExtraForm({ ...extraForm, acronimo: e.target.value })} maxLength={30} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} placeholder="Identificador corto" /></div>
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="block text-xs font-medium mb-1" style={labelStyle}>Género</label>
                     <select value={extraForm.genero ?? ''} onChange={e => setExtraForm({ ...extraForm, genero: e.target.value })} className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer" style={inputStyle}>
@@ -515,6 +519,7 @@ export default function CrmResidenteFicha(props: Props) {
             ) : (
               <div className="space-y-3">
                 <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><Contact size={16} style={{ color: '#0369A1' }} /></div><div><p className="text-xs" style={{ color: '#94A3B8' }}>Identificación</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{extra?.tipo_identificacion ? `${extra.tipo_identificacion}: ${extra.identificacion || '-'}` : 'Sin datos'}</p></div></div>
+                <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><User size={16} style={{ color: '#0369A1' }} /></div><div><p className="text-xs" style={{ color: '#94A3B8' }}>Acrónimo</p><p className="text-sm font-medium" style={{ color: extra?.acronimo ? '#0369A1' : '#0F172A' }}>{extra?.acronimo || 'Sin acrónimo'}</p></div></div>
                 <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><User size={16} style={{ color: '#0369A1' }} /></div><div><p className="text-xs" style={{ color: '#94A3B8' }}>Género / Estado civil</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{[extra?.genero, extra?.estado_civil].filter(Boolean).join(' · ') || 'Sin datos'}</p></div></div>
                 <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><Calendar size={16} style={{ color: '#0369A1' }} /></div><div><p className="text-xs" style={{ color: '#94A3B8' }}>Fecha nacimiento</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{extra?.fecha_nacimiento ? new Date(extra.fecha_nacimiento).toLocaleDateString('es-ES') : 'Sin datos'}</p></div></div>
                 <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><MapPin size={16} style={{ color: '#0369A1' }} /></div><div><p className="text-xs" style={{ color: '#94A3B8' }}>Dirección</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{[extra?.direccion, extra?.localidad, extra?.provincia, extra?.codigo_postal].filter(Boolean).join(', ') || 'Sin dirección'}</p></div></div>

@@ -41,7 +41,7 @@ function dayName(d: string): string {
 }
 
 function pdfSafe(value: string): string {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, "?");
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, " ");
 }
 
 function pdfEscape(value: string): string {
@@ -73,17 +73,24 @@ function buildCenterPdf(
 ): string {
   const notClocked = incidencias.filter((item) => item.tipo === "no_fichado").length;
   const ficharon = Math.max(0, totalEmployees - notClocked);
+  const incidentGroups = ["no_fichado", "sin_salida", "exceso", "deficit"].map((type) => ({
+    type,
+    items: incidencias.filter((item) => item.tipo === type),
+  })).filter((group) => group.items.length > 0);
   const detailLines = incidencias.length
-    ? incidencias.flatMap((item) => [
-        { text: `${item.nombre} · ${typeConfig[item.tipo].label}`, color: typeConfig[item.tipo].text, bold: true },
-        { text: `Entrada ${fmtTime(item.entrada)}   Salida ${item.salida ? fmtTime(item.salida) : "—"}   Duración ${item.duracionMin ? fmtDur(item.duracionMin) : "—"}`, color: "#475569", bold: false },
+    ? incidentGroups.flatMap((group) => [
+        { text: `${typeConfig[group.type].label.toUpperCase()} (${group.items.length})`, color: typeConfig[group.type].text, bold: true, section: true },
+        ...group.items.flatMap((item) => [
+          { text: item.nombre, color: "#0F172A", bold: true, section: false },
+          { text: `Entrada: ${item.tipo === "no_fichado" ? "-" : fmtTime(item.entrada)}    Salida: ${item.salida ? fmtTime(item.salida) : "-"}    Duracion: ${item.duracionMin ? fmtDur(item.duracionMin) : "-"}`, color: "#475569", bold: false, section: false },
+        ]),
       ])
-    : [{ text: "Sin incidencias", color: "#15803D", bold: true }];
+    : [{ text: "Sin incidencias", color: "#15803D", bold: true, section: false }];
   const rows = [
     { text: "Detalle de incidencias", color: "#0F172A", bold: true, section: true },
     ...detailLines,
     { text: "Fichajes correctos", color: "#0F172A", bold: true, section: true },
-    ...(correctos.length ? correctos.map((name) => ({ text: `✓ ${name}`, color: "#15803D", bold: false })) : [{ text: "Ninguno", color: "#64748B", bold: false }]),
+    ...(correctos.length ? correctos.map((name) => ({ text: `- ${name}`, color: "#15803D", bold: false, section: false })) : [{ text: "Ninguno", color: "#64748B", bold: false, section: false }]),
   ];
   const maxChars = 88;
   const wrappedRows = rows.flatMap((row) => {

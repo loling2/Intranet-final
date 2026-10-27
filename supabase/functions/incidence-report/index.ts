@@ -520,12 +520,20 @@ Deno.serve(async (req: Request) => {
       try {
         supIndex++;
 
-        // Check for a custom email override for this supervisor
-        const { data: supEmailSetting } = await supabase
-          .from("ui_settings").select("value")
-          .eq("key", `incidence_report_sup_email_${sup.id}`).maybeSingle();
-        const supRecipient = supEmailSetting?.value?.trim() || sup.email;
+        // Check for custom recipient and sender overrides for this supervisor
+        const { data: supSettings } = await supabase
+          .from("ui_settings").select("key, value")
+          .in("key", [`incidence_report_sup_email_${sup.id}`, `incidence_report_sup_sender_cuenta_${sup.id}`]);
+        const supSettingsMap = new Map((supSettings ?? []).map((setting) => [setting.key, setting.value]));
+        const supRecipient = supSettingsMap.get(`incidence_report_sup_email_${sup.id}`)?.trim() || sup.email;
         if (!supRecipient) continue; // skip supervisors with no email
+        const supSenderCuentaId = supSettingsMap.get(`incidence_report_sup_sender_cuenta_${sup.id}`);
+        let supCuenta = cuenta;
+        if (supSenderCuentaId) {
+          const { data: selectedCuenta } = await supabase
+            .from("email_cuentas").select("*").eq("id", supSenderCuentaId).eq("activo", true).maybeSingle();
+          if (selectedCuenta) supCuenta = selectedCuenta;
+        }
 
         // Get this supervisor's employee IDs
         const { data: supEmpData } = await supabase
@@ -624,7 +632,7 @@ Deno.serve(async (req: Request) => {
           const expected = expectedFor(supKey, s.nombre);
           if (s.salidaAuto || durMin > expected + TOLERANCE || durMin < expected - TOLERANCE) {
             supIncidencias.push({
-              nombre: s.nombre, entrada: s.entrada, salida: s.salida, duracionMin,
+              nombre: s.nombre, entrada: s.entrada, salida: s.salida, duracionMin: durMin,
               tipo: s.salidaAuto ? "sin_salida" : durMin > expected + TOLERANCE ? "exceso" : "deficit",
               salidaAuto: s.salidaAuto,
             });
@@ -641,22 +649,21 @@ Deno.serve(async (req: Request) => {
         const supSubject = `📋 Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)} (Responsable: ${sup.nombre})`;
 
         const supResp = await sendSmtp({
-          host: cuenta.smtp_host, port: cuenta.smtp_port, security: cuenta.seguridad,
-          user: cuenta.email, password: cuenta.password, from: cuenta.email,
+          host: supCuenta.smtp_host, port: supCuenta.smtp_port, security: supCuenta.seguridad,
+          user: supCuenta.email, password: supCuenta.password, from: supCuenta.email,
           to: supRecipient, subject: supSubject,
           text: `Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)}. Incidencias: ${supIncidencias.length}. Correctos: ${supCorrectos.length}.`,
           html: supHtml,
         });
 
         const supDiag: Record<string, unknown> = {
-          from: cuenta.email,
+          from: supCuenta.email,
           to: supRecipient,
           num_empleados: supEmpIds.length,
           num_fichajes: supFichajes?.length ?? 0,
           num_incidencias: supIncidencias.length,
           num_correctos: supCorrectos.length,
-          same_from_to: cuenta.email.toLowerCase() === supRecipient.toLowerCase(),
-        };
+          same_from_to: supCuenta.email.toLowerCase() === supRecipient.toLowerCase(),        };
         supervisorResults.push({ email: supRecipient, ok: supResp.ok, error: supResp.error, diagnostics: supDiag });
       } catch (e) {
         supervisorResults.push({ email: sup.email, ok: false, error: e instanceof Error ? e.message : "Error" });

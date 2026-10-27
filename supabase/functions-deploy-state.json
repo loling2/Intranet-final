@@ -1,0 +1,37 @@
+{
+  "projectId": "67165605",
+  "functions": {
+    "admin-login": {
+      "hasChanged": false,
+      "hash": "bc8044d5390e99e0304daeed3c75d6b61e3b86ecadc95323b9c6e90f4e6ddf23"
+    },
+    "incidence-report": {
+      "hasChanged": false,
+      "hash": "eebb1d51f98529757a58347ec11d019ebc19b6a78e3e346a41262e31938cf156"
+    },
+    "manage-user": {
+      "hasChanged": false,
+      "hash": "3332976050b7ed35a859b29e02b91e0361e0262c2615c1255a503cf90b6165c3"
+    },
+    "password-reset": {
+      "hasChanged": false,
+      "hash": "a5568b28ef07bc80bea1aa8c72b84489b4347a723551a43fbcf040fc105702fa"
+    },
+    "prl-report": {
+      "hasChanged": false,
+      "hash": "f96122f1674789a4cd0999d019f187c26167316a08f05513bc49c803507b42cf"
+    },
+    "send-email": {
+      "hasChanged": false,
+      "hash": "44b9591adefe0b9e5143e8638084868a7bc0891ba61884f4bbf3348d37da93a0"
+    },
+    "wasabi-download": {
+      "hasChanged": false,
+      "hash": "046e699f54d8e28f31e5f8f48a544723b1fa2076224443d82cbaa8ec9b206dd9"
+    },
+    "wasabi-manage": {
+      "hasChanged": false,
+      "hash": "ab4cedadb1ff382849521cd4473dbec8dc0736a4d77e539772c10e174330314a"
+    }
+  }
+}

@@ -1207,6 +1207,7 @@ interface SupervisorInfo {
   email: string;
   centros: string[];
   reportEmail: string;
+  senderCuentaId: string;
 }
 
 function IncidenciasSection() {
@@ -1262,6 +1263,7 @@ function IncidenciasSection() {
       // Load custom report emails for each supervisor
       const supIds = (supData ?? []).map((s: { id: string }) => s.id);
       const reportEmailMap = new Map<string, string>();
+      const senderCuentaMap = new Map<string, string>();
       if (supIds.length > 0) {
         const { data: supEmailSettings } = await supabase
           .from('ui_settings').select('key, value')
@@ -1270,12 +1272,20 @@ function IncidenciasSection() {
           const supId = row.key.replace('incidence_report_sup_email_', '');
           reportEmailMap.set(supId, row.value);
         }
+        const { data: supSenderSettings } = await supabase
+          .from('ui_settings').select('key, value')
+          .in('key', supIds.map((id: string) => `incidence_report_sup_sender_cuenta_${id}`));
+        for (const row of (supSenderSettings ?? []) as { key: string; value: string }[]) {
+          const supId = row.key.replace('incidence_report_sup_sender_cuenta_', '');
+          senderCuentaMap.set(supId, row.value);
+        }
       }
 
       const supList: SupervisorInfo[] = (supData ?? []).map((s: { id: string; nombre: string; email: string }) => ({
         id: s.id, nombre: s.nombre, email: s.email,
         centros: centrosMap.get(s.id) ?? [],
         reportEmail: reportEmailMap.get(s.id) ?? '',
+        senderCuentaId: senderCuentaMap.get(s.id) ?? '',
       }));
       setSupervisors(supList);
       setLoading(false);
@@ -1300,7 +1310,7 @@ function IncidenciasSection() {
           'Content-Type': 'application/json',
           ...(anonKey ? { Authorization: `Bearer ${anonKey}`, Apikey: anonKey } : {}),
         },
-        body: JSON.stringify({ supervisor_id: supervisorId, sender_cuenta_id: senderCuentaId || undefined }),
+        body: JSON.stringify({ supervisor_id: supervisorId, sender_cuenta_id: supervisors.find((s) => s.id === supervisorId)?.senderCuentaId || senderCuentaId || undefined }),
       });
       const text = await resp.text();
       let result: { ok?: boolean; error?: string; sender_email?: string; supervisor_reports?: { email: string; ok: boolean; error?: string; diagnostics?: Record<string, unknown> }[] };
@@ -1335,6 +1345,13 @@ function IncidenciasSection() {
     } finally {
       setTestingSupId('');
     }
+  };
+
+  const handleSaveSupSender = async (supervisorId: string, cuentaId: string) => {
+    const key = `incidence_report_sup_sender_cuenta_${supervisorId}`;
+    if (cuentaId) await supabase.from('ui_settings').upsert({ key, value: cuentaId }, { onConflict: 'key' });
+    else await supabase.from('ui_settings').delete().eq('key', key);
+    setSupervisors((prev) => prev.map((s) => s.id === supervisorId ? { ...s, senderCuentaId: cuentaId } : s));
   };
 
   const handleSaveSupEmail = async (supervisorId: string) => {
@@ -1537,7 +1554,7 @@ function IncidenciasSection() {
           </div>
           <div>
             <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>Informe por responsable</p>
-            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Cada responsable puede recibir ahora su informe de fichajes desde la cuenta emisora seleccionada arriba</p>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Cada responsable puede recibir su informe de fichajes desde la cuenta emisora seleccionada para él</p>
           </div>
         </div>
 
@@ -1553,6 +1570,7 @@ function IncidenciasSection() {
                   <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Responsable</th>
                   <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Correo de informe</th>
                   <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Centros</th>
+                  <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Cuenta emisora</th>
                   <th className="text-right py-2.5 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>Acciones</th>
                 </tr>
               </thead>
@@ -1632,6 +1650,16 @@ function IncidenciasSection() {
                       ) : (
                         <span className="text-xs" style={{ color: '#94A3B8' }}>Sin centros</span>
                       )}
+                    </td>
+                    <td className="py-3 px-3">
+                      <select
+                        value={s.senderCuentaId || senderCuentaId}
+                        onChange={(e) => handleSaveSupSender(s.id, e.target.value)}
+                        className="max-w-[220px] px-2 py-1.5 rounded-lg text-xs outline-none cursor-pointer"
+                        style={{ border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#334155' }}
+                      >
+                        {cuentas.filter((c) => c.activo).map((c) => <option key={c.id} value={c.id}>{c.nombre} ({c.email})</option>)}
+                      </select>
                     </td>
                     <td className="py-3 px-3 text-right">
                       <button

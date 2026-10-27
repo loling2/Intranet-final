@@ -1,6 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { Plus, X, Trash2, Clock, FileText, CheckCircle2 } from 'lucide-react';
+import {
+  Plus, X, Trash2, Clock, FileText, CheckCircle2,
+  Upload, Download, Loader2, AlertCircle,
+} from 'lucide-react';
+import {
+  ensureCrmFolder, uploadCrmFile, downloadFromWasabi, getWasabiBlobUrl, deleteFromWasabi,
+} from '../lib/wasabi';
 
 interface Props {
   usuarioId: string;
@@ -21,6 +27,15 @@ interface Pai {
   evaluacion: string;
   estado: string;
   creado_por_nombre: string;
+}
+
+interface PaiDoc {
+  id: string;
+  pai_id: string;
+  nombre_archivo: string;
+  wasabi_key: string;
+  tamano_bytes: number;
+  created_at: string;
 }
 
 const ESTADO_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -44,6 +59,15 @@ export default function CrmPaiModule({ usuarioId, autorNombre, isAdmin }: Props)
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Documents per plan
+  const [docsByPlan, setDocsByPlan] = useState<Record<string, PaiDoc[]>>({});
+  const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
+  const [uploadQueue, setUploadQueue] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase
@@ -56,6 +80,15 @@ export default function CrmPaiModule({ usuarioId, autorNombre, isAdmin }: Props)
   }, [usuarioId]);
 
   useEffect(() => { load(); }, [load]);
+
+  async function loadDocs(paiId: string) {
+    const { data } = await supabase
+      .from('crm_pai_documentos')
+      .select('id, pai_id, nombre_archivo, wasabi_key, tamano_bytes, created_at')
+      .eq('pai_id', paiId)
+      .order('created_at', { ascending: false });
+    setDocsByPlan(prev => ({ ...prev, [paiId]: (data ?? []) as PaiDoc[] }));
+  }
 
   async function handleSave() {
     if (!objetivos.trim() && !areas.trim()) { setError('Indica objetivos o áreas de intervención'); return; }
@@ -92,6 +125,93 @@ export default function CrmPaiModule({ usuarioId, autorNombre, isAdmin }: Props)
     setShowForm(true);
   }
 
+  function togglePlanDocs(paiId: string) {
+    if (expandedPlan === paiId) {
+      setExpandedPlan(null);
+    } else {
+      setExpandedPlan(paiId);
+      if (!docsByPlan[paiId]) loadDocs(paiId);
+    }
+  }
+
+  function addFilesToQueue(incoming: FileList | File[]) {
+    const arr = Array.from(incoming).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    setUploadQueue(prev => {
+      const names = new Set(prev.map(f => f.name));
+      return [...prev, ...arr.filter(f => !names.has(f.name))];
+    });
+  }
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files?.length) addFilesToQueue(e.target.files);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault(); e.stopPropagation();
+    setDragOver(false);
+    if (e.dataTransfer.files?.length) addFilesToQueue(e.dataTransfer.files);
+  }
+
+  async function handleUpload(paiId: string) {
+    if (!uploadQueue.length) return;
+    setUploading(true); setUploadError('');
+    const prefix = `crm/pai/${paiId}/`;
+    try {
+      await ensureCrmFolder(prefix);
+      const { data: userData } = await supabase.auth.getUser();
+      const uploadedBy = userData.user?.id ?? null;
+      const failed: File[] = [];
+      for (const file of uploadQueue) {
+        try {
+          const key = `${prefix}${Date.now()}-${file.name}`;
+          await uploadCrmFile(file, key);
+          await supabase.from('crm_pai_documentos').insert({
+            pai_id: paiId,
+            nombre_archivo: file.name,
+            wasabi_key: key,
+            tamano_bytes: file.size,
+            uploaded_by: uploadedBy,
+          });
+        } catch { failed.push(file); }
+      }
+      if (failed.length) {
+        setUploadQueue(failed);
+        setUploadError(`${failed.length} archivo(s) no se pudieron subir.`);
+      } else {
+        setUploadQueue([]);
+      }
+      await loadDocs(paiId);
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : 'Error al subir archivos');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDeleteDoc(doc: PaiDoc, paiId: string) {
+    try {
+      await deleteFromWasabi(doc.wasabi_key);
+      await supabase.from('crm_pai_documentos').delete().eq('id', doc.id);
+      await loadDocs(paiId);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function handlePreviewDoc(doc: PaiDoc) {
+    try {
+      const url = await getWasabiBlobUrl(doc.wasabi_key);
+      window.open(url, '_blank');
+    } catch (e) { console.error(e); }
+  }
+
+  async function handleDownloadDoc(doc: PaiDoc) {
+    try {
+      await downloadFromWasabi(doc.wasabi_key, doc.nombre_archivo);
+    } catch (e) { console.error(e); }
+  }
+
   const cardStyle = { backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' } as const;
   const inputStyle = { border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', color: '#0F172A' } as const;
 
@@ -117,6 +237,8 @@ export default function CrmPaiModule({ usuarioId, autorNombre, isAdmin }: Props)
         <div className="space-y-3">
           {planes.map((p) => {
             const ec = ESTADO_CONFIG[p.estado] ?? ESTADO_CONFIG.borrador;
+            const isExpanded = expandedPlan === p.id;
+            const docs = docsByPlan[p.id] ?? [];
             return (
               <div key={p.id} className="rounded-xl p-4" style={cardStyle}>
                 <div className="flex items-center justify-between mb-2">
@@ -126,6 +248,9 @@ export default function CrmPaiModule({ usuarioId, autorNombre, isAdmin }: Props)
                     <span className="text-xs" style={{ color: '#94A3B8' }}>{p.fecha_creacion}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
+                    <button onClick={() => togglePlanDocs(p.id)} className="text-xs font-medium cursor-pointer px-2 py-1 rounded-md flex items-center gap-1" style={{ color: '#475569', backgroundColor: '#F1F5F9' }}>
+                      <FileText size={11} /> {docs.length > 0 ? `${docs.length} doc(s)` : 'Documentos'}
+                    </button>
                     <button onClick={() => openEdit(p)} className="text-xs font-medium cursor-pointer px-2 py-1 rounded-md" style={{ color: '#475569', backgroundColor: '#F1F5F9' }}>Editar</button>
                     {isAdmin && <button onClick={() => handleDelete(p.id)} className="w-6 h-6 rounded-md flex items-center justify-center cursor-pointer hover:bg-red-50" style={{ color: '#DC2626' }}><Trash2 size={12} /></button>}
                   </div>
@@ -138,6 +263,90 @@ export default function CrmPaiModule({ usuarioId, autorNombre, isAdmin }: Props)
                   <div className="flex gap-3 mt-2 pt-2 text-xs" style={{ borderTop: '1px solid #F1F5F9', color: '#94A3B8' }}>
                     {p.fecha_revision && <span>Revisión: {p.fecha_revision}</span>}
                     {p.fecha_cierre && <span>Cierre: {p.fecha_cierre}</span>}
+                  </div>
+                )}
+
+                {/* Documents section */}
+                {isExpanded && (
+                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid #F1F5F9' }}>
+                    <p className="text-xs font-semibold mb-2" style={{ color: '#475569' }}>Documentos PDF</p>
+
+                    {/* Drag-and-drop zone */}
+                    <div
+                      onClick={() => !uploading && fileInputRef.current?.click()}
+                      onDrop={handleDrop}
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
+                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }}
+                      className="flex flex-col items-center justify-center gap-2 rounded-xl cursor-pointer transition-all select-none mb-3"
+                      style={{
+                        border: `2px dashed ${dragOver ? '#0369A1' : '#CBD5E1'}`,
+                        backgroundColor: dragOver ? '#EFF6FF' : '#F8FAFC',
+                        padding: '20px 16px', minHeight: 90,
+                      }}
+                    >
+                      <Upload size={22} style={{ color: dragOver ? '#0369A1' : '#94A3B8' }} />
+                      <div className="text-center">
+                        <p className="text-xs font-medium" style={{ color: '#475569' }}>Arrastra PDF aquí o haz clic para seleccionar</p>
+                        <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Solo archivos PDF</p>
+                      </div>
+                      <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" multiple onChange={handleFileInput} disabled={uploading} className="hidden" />
+                    </div>
+
+                    {/* Upload queue */}
+                    {uploadQueue.length > 0 && (
+                      <div className="space-y-1.5 mb-3">
+                        {uploadQueue.map(f => (
+                          <div key={f.name} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                            <FileText size={13} style={{ color: '#DC2626', flexShrink: 0 }} />
+                            <span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{f.name}</span>
+                            <span className="text-xs flex-shrink-0" style={{ color: '#94A3B8' }}>{(f.size / 1024).toFixed(0)} KB</span>
+                            {!uploading && (
+                              <button onClick={e => { e.stopPropagation(); setUploadQueue(prev => prev.filter(x => x.name !== f.name)); }}
+                                className="w-5 h-5 rounded flex items-center justify-center cursor-pointer hover:bg-slate-200">
+                                <X size={11} style={{ color: '#94A3B8' }} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <div className="flex items-center justify-between">
+                          {uploadError ? (
+                            <div className="flex items-center gap-1.5 text-xs" style={{ color: '#DC2626' }}><AlertCircle size={12} /> {uploadError}</div>
+                          ) : <span className="text-xs" style={{ color: '#94A3B8' }}>{uploadQueue.length} archivo(s) listo(s)</span>}
+                          <button onClick={() => handleUpload(p.id)} disabled={uploading}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50 transition-all"
+                            style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
+                            {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                            {uploading ? 'Subiendo...' : 'Subir'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Existing documents */}
+                    {docs.length === 0 ? (
+                      <p className="text-xs text-center py-2" style={{ color: '#94A3B8' }}>No hay documentos adjuntos</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {docs.map(doc => (
+                          <div key={doc.id} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                            <FileText size={14} style={{ color: '#DC2626', flexShrink: 0 }} />
+                            <span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{doc.nombre_archivo}</span>
+                            <span className="text-xs flex-shrink-0" style={{ color: '#94A3B8' }}>{(doc.tamano_bytes / 1024).toFixed(0)} KB</span>
+                            <button onClick={() => handlePreviewDoc(doc)} className="w-6 h-6 rounded flex items-center justify-center cursor-pointer hover:bg-slate-200" title="Ver">
+                              <FileText size={12} style={{ color: '#0369A1' }} />
+                            </button>
+                            <button onClick={() => handleDownloadDoc(doc)} className="w-6 h-6 rounded flex items-center justify-center cursor-pointer hover:bg-slate-200" title="Descargar">
+                              <Download size={12} style={{ color: '#475569' }} />
+                            </button>
+                            {isAdmin && (
+                              <button onClick={() => handleDeleteDoc(doc, p.id)} className="w-6 h-6 rounded flex items-center justify-center cursor-pointer hover:bg-red-50" title="Eliminar">
+                                <Trash2 size={12} style={{ color: '#DC2626' }} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

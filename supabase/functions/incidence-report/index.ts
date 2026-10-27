@@ -39,6 +39,65 @@ function dayName(d: string): string {
   const days = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
   return days[new Date(d + "T12:00:00Z").getUTCDay()];
 }
+
+function pdfSafe(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, "?");
+}
+
+function pdfEscape(value: string): string {
+  return pdfSafe(value).replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+function buildCenterPdf(
+  targetDate: string,
+  centerName: string,
+  supervisorName: string,
+  incidencias: Incidencia[],
+  correctos: string[],
+  totalEmployees: number,
+): string {
+  const lines = [
+    "INFORME DE FICHAJES",
+    `Centro: ${centerName}`,
+    `Responsable: ${supervisorName}`,
+    `Fecha: ${fmtDateShort(targetDate)}`,
+    "",
+    `Empleados: ${totalEmployees}    Ficharon correctamente: ${correctos.length}    Incidencias: ${incidencias.length}`,
+    "",
+    "INCIDENCIAS",
+    ...(incidencias.length ? incidencias.map((item) => `${item.nombre} | ${typeConfig[item.tipo].label} | Entrada: ${fmtTime(item.entrada)} | Salida: ${item.salida ? fmtTime(item.salida) : "—"} | Duración: ${item.duracionMin ? fmtDur(item.duracionMin) : "—"}`) : ["Sin incidencias"]),
+    "",
+    "FICHAJES CORRECTOS",
+    ...(correctos.length ? correctos.map((name) => `- ${name}`) : ["Ninguno"]),
+  ];
+  const pageLines = 46;
+  const pages = Array.from({ length: Math.max(1, Math.ceil(lines.length / pageLines)) }, (_, index) => lines.slice(index * pageLines, (index + 1) * pageLines));
+  const objects: string[] = [];
+  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
+  objects.push(`<< /Type /Pages /Kids [${pages.map((_, index) => `${5 + index * 2} 0 R`).join(" ")}] /Count ${pages.length} >>`);
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  for (const page of pages) {
+    const stream = ["BT", "/F1 10 Tf", "50 770 Td", ...page.map((line, index) => `${index ? "0 -15 Td" : ""} (${pdfEscape(line)}) Tj`), "ET"].join("\n");
+    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents " + `${objects.length + 1} 0 R >>`);
+  }
+  const serializedObjects = objects.map((object, index) => `${index + 1} 0 obj\n${object}\nendobj\n`);
+  const body = serializedObjects.join("");
+  const offsets: number[] = [];
+  let position = "%PDF-1.4\n".length;
+  for (const serialized of serializedObjects) {
+    offsets.push(position);
+    position += serialized.length;
+  }
+  const xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n `).join("\n")}\n`;
+  return bytesToBase64(new TextEncoder().encode(`%PDF-1.4\n${body}${xref}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${position}\n%%EOF`));
+}
 function nextDate(d: string): string {
   const date = new Date(`${d}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + 1);
@@ -644,6 +703,22 @@ Deno.serve(async (req: Request) => {
         supIncidencias.sort((a, b) => a.nombre.localeCompare(b.nombre));
         supCorrectos.sort((a, b) => a.localeCompare(b));
 
+        const centerNames = new Map<string, Set<string>>();
+        for (const employeeId of supEmpIds) {
+          const employee = allActiveEmpleados.get(employeeId);
+          const center = employee?.centro_trabajo?.trim() || "Sin centro asignado";
+          if (!centerNames.has(center)) centerNames.set(center, new Set());
+          if (employee) centerNames.get(center)!.add(employee.nombre);
+        }
+        const attachments = [...centerNames.entries()].map(([center, employeeNames]) => {
+          const centerIncidencias = supIncidencias.filter((item) => employeeNames.has(item.nombre));
+          const centerCorrectos = supCorrectos.filter((name) => employeeNames.has(name));
+          return {
+            filename: `informe-fichajes-${pdfSafe(center).toLowerCase().replace(/\s+/g, "-")}-${targetDate}.pdf`,
+            content: buildCenterPdf(targetDate, center, sup.nombre, centerIncidencias, centerCorrectos, employeeNames.size),
+          };
+        });
+
         // Build the supervisor's email (reuse the same HTML structure)
         const supHtml = buildReportHtml(targetDate, supIncidencias, supCorrectos, supSummaries.size, true, sup.nombre);
         const supSubject = `📋 Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)} (Responsable: ${sup.nombre})`;
@@ -652,8 +727,9 @@ Deno.serve(async (req: Request) => {
           host: supCuenta.smtp_host, port: supCuenta.smtp_port, security: supCuenta.seguridad,
           user: supCuenta.email, password: supCuenta.password, from: supCuenta.email,
           to: supRecipient, subject: supSubject,
-          text: `Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)}. Incidencias: ${supIncidencias.length}. Correctos: ${supCorrectos.length}.`,
+          text: `Informe de Fichajes — ${dayName(targetDate)} ${fmtDateShort(targetDate)}. Incidencias: ${supIncidencias.length}. Correctos: ${supCorrectos.length}. Se adjuntan ${attachments.length} PDF(s), uno por centro.`,
           html: supHtml,
+          attachments,
         });
 
         const supDiag: Record<string, unknown> = {
@@ -682,6 +758,7 @@ async function sendSmtp(opts: {
   host: string; port: number; security: string;
   user: string; password: string; from: string;
   to: string; subject: string; text: string; html?: string;
+  attachments?: { filename: string; content: string }[];
 }): Promise<{ ok: boolean; error?: string }> {
   try {
     const useSSL = opts.security === "SSL";
@@ -761,13 +838,22 @@ async function sendSmtp(opts: {
     const encodedSubject = `=?UTF-8?B?${encodeUtf8Base64(opts.subject).replace(/\r\n/g, "")}?=`;
     let message: string;
 
-    if (opts.html) {
+    if (opts.html || opts.attachments?.length) {
+      const alternativeBoundary = crypto.randomUUID().replace(/-/g, "");
+      const alternative = [
+        `--${alternativeBoundary}`, `Content-Type: text/plain; charset=UTF-8`, `Content-Transfer-Encoding: base64`, ``, encodeUtf8Base64(opts.text), ``,
+        ...(opts.html ? [`--${alternativeBoundary}`, `Content-Type: text/html; charset=UTF-8`, `Content-Transfer-Encoding: base64`, ``, encodeUtf8Base64(opts.html), ``] : []),
+        `--${alternativeBoundary}--`,
+      ].join("\r\n");
+      const attachments = (opts.attachments ?? []).flatMap((attachment) => [
+        `--${boundary}`, `Content-Type: application/pdf; name="${attachment.filename}"`, `Content-Disposition: attachment; filename="${attachment.filename}"`, `Content-Transfer-Encoding: base64`, ``, attachment.content, ``,
+      ]);
       message = [
         `From: ${opts.from}`, `To: ${opts.to}`, `Subject: ${encodedSubject}`,
         `Date: ${date}`, `MIME-Version: 1.0`,
-        `Content-Type: multipart/alternative; boundary="${boundary}"`, ``,
-        `--${boundary}`, `Content-Type: text/plain; charset=UTF-8`, `Content-Transfer-Encoding: base64`, ``, encodeUtf8Base64(opts.text), ``,
-        `--${boundary}`, `Content-Type: text/html; charset=UTF-8`, `Content-Transfer-Encoding: base64`, ``, encodeUtf8Base64(opts.html), ``,
+        `Content-Type: multipart/mixed; boundary="${boundary}"`, ``,
+        `--${boundary}`, `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`, ``, alternative,
+        ...attachments,
         `--${boundary}--`, ``, `.`,
       ].join("\r\n");
     } else {

@@ -128,6 +128,20 @@ export async function getWasabiBlobUrl(key: string): Promise<string> {
   return URL.createObjectURL(blob);
 }
 
+export async function openWasabiPreview(key: string): Promise<void> {
+  const previewWindow = window.open('', '_blank');
+  if (!previewWindow) throw new Error('La ventana de previsualización fue bloqueada.');
+  previewWindow.document.title = 'Cargando previsualización';
+  previewWindow.document.body.innerHTML = '<p style="font-family: sans-serif; padding: 24px">Cargando previsualización...</p>';
+  try {
+    const blobUrl = await getWasabiBlobUrl(key);
+    previewWindow.location.href = blobUrl;
+  } catch (error) {
+    previewWindow.close();
+    throw error;
+  }
+}
+
 // ─── RRHH helpers ─────────────────────────────────────────────────────────────
 
 export interface RrhhFolder {

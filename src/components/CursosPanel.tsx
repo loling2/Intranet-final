@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { BookOpen, Plus, X, Trash2, Search, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Upload, Loader2, CheckCircle2, AlertCircle, Users, UserMinus, Clock, Save, Layers, Lock, Eye, EyeOff, ChevronDown, ChevronRight, GripVertical, FileQuestion, Building2, MapPin } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { ensureMoodleCursoFolder, uploadMoodleFile, sanitizeSlug, downloadFromWasabi } from '../lib/wasabi';
+import { ensureMoodleCursoFolder, uploadMoodleFile, sanitizeSlug, downloadFromWasabi, openWasabiPreview } from '../lib/wasabi';
 
 interface Curso {
   id: string;
@@ -94,7 +94,7 @@ export default function CursosPanel() {
 
   const [showContenidoModal, setShowContenidoModal] = useState(false);
   const [contenidoModuloId, setContenidoModuloId] = useState<string | null>(null);
-  const [contenidoForm, setContenidoForm] = useState<{ titulo: string; tipo: Contenido['tipo']; contenido_texto: string; url_externa: string; duracion_minutos: string; es_obligatorio: boolean; visible_empleado: boolean; descargable: boolean }>({ titulo: '', tipo: 'texto', contenido_texto: '', url_externa: '', duracion_minutos: '0', es_obligatorio: true, visible_empleado: true, descargable: true });
+  const [contenidoForm, setContenidoForm] = useState<{ titulo: string; tipo: Contenido['tipo']; contenido_texto: string; url_externa: string; duracion_minutos: string; es_obligatorio: boolean; visible_empleado: boolean; descargable: boolean }>({ titulo: '', tipo: 'texto', contenido_texto: '', url_externa: '', duracion_minutos: '0', es_obligatorio: true, visible_empleado: true, descargable: false });
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -275,7 +275,7 @@ export default function CursosPanel() {
   // Contenido
   const openNewContenido = (moduloId: string) => {
     setContenidoModuloId(moduloId);
-    setContenidoForm({ titulo: '', tipo: 'texto', contenido_texto: '', url_externa: '', duracion_minutos: '0', es_obligatorio: true, visible_empleado: true, descargable: true });
+    setContenidoForm({ titulo: '', tipo: 'texto', contenido_texto: '', url_externa: '', duracion_minutos: '0', es_obligatorio: true, visible_empleado: true, descargable: false });
     setUploadFile(null);
     setShowContenidoModal(true); setError('');
   };
@@ -343,8 +343,14 @@ export default function CursosPanel() {
     } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Error al eliminar'); }
   };
 
-  const handleDownloadContenido = async (c: Contenido) => {
+  const handlePreviewContenido = async (c: Contenido) => {
     if (!c.wasabi_key) return;
+    try { await openWasabiPreview(c.wasabi_key); }
+    catch { setError('No se pudo abrir la previsualización.'); }
+  };
+
+  const handleDownloadContenido = async (c: Contenido) => {
+    if (!c.wasabi_key || !c.descargable) return;
     try { await downloadFromWasabi(c.wasabi_key, c.nombre_archivo ?? 'archivo'); }
     catch { setError('Error al descargar'); }
   };
@@ -568,7 +574,8 @@ export default function CursosPanel() {
                                             {!c.descargable && c.wasabi_key && <span className="text-[9px] font-medium" style={{ color: '#64748B' }}>No descargable</span>}
                                           </div>
                                         </div>
-                                        {c.wasabi_key && c.descargable && <button onClick={() => handleDownloadContenido(c)} className="text-[9px] font-medium px-1.5 py-0.5 rounded cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>Ver</button>}
+                                        {c.wasabi_key && <button onClick={() => handlePreviewContenido(c)} className="text-[9px] font-medium px-1.5 py-0.5 rounded cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>Ver</button>}
+                                        {c.wasabi_key && c.descargable && <button onClick={() => handleDownloadContenido(c)} className="text-[9px] font-medium px-1.5 py-0.5 rounded cursor-pointer" style={{ backgroundColor: '#F0FDFA', color: '#0D9488' }}>Descargar</button>}
                                         {c.url_externa && <a href={normalizeExternalUrl(c.url_externa) ?? '#'} target="_blank" rel="noopener noreferrer" className="text-[9px] font-medium px-1.5 py-0.5 rounded" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>Abrir</a>}
                                         <button onClick={() => handleDeleteContenido(c)} className="w-5 h-5 rounded flex items-center justify-center cursor-pointer" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}><Trash2 size={8} /></button>
                                       </div>
@@ -814,7 +821,7 @@ export default function CursosPanel() {
                   </label>
                   <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: '#0F172A' }}>
                     <input type="checkbox" checked={contenidoForm.descargable} onChange={(e) => setContenidoForm({ ...contenidoForm, descargable: e.target.checked })} />
-                    Descargable
+                    Permitir descarga
                   </label>
                 </div>
               </div>

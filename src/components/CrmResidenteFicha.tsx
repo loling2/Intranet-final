@@ -81,6 +81,14 @@ interface PrestacionDocumento {
   tamano_bytes: number;
   created_at: string;
 }
+interface TratamientoDocumento {
+  id: string;
+  usuario_servicio_id: string;
+  nombre_archivo: string;
+  wasabi_key: string;
+  tamano_bytes: number;
+  created_at: string;
+}
 interface Medico {
   alergias: string;
   diagnosticos: string;
@@ -142,6 +150,12 @@ export default function CrmResidenteFicha(props: Props) {
   const [tratamiento, setTratamiento] = useState<Tratamiento>({ tratamiento: '', medicacion: '', pautas: '', seguimiento: '' });
   const [tratamientoEditing, setTratamientoEditing] = useState(false);
   const [tratamientoSaving, setTratamientoSaving] = useState(false);
+  const [tratamientoDocumentos, setTratamientoDocumentos] = useState<TratamientoDocumento[]>([]);
+  const [tratamientoFiles, setTratamientoFiles] = useState<File[]>([]);
+  const [tratamientoUploading, setTratamientoUploading] = useState(false);
+  const [tratamientoUploadError, setTratamientoUploadError] = useState('');
+  const [tratamientoDragOver, setTratamientoDragOver] = useState(false);
+  const tratamientoFileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedUserLabel = `${usuario.nombre} ${usuario.apellidos ?? ''}`.trim();
 
@@ -179,7 +193,12 @@ export default function CrmResidenteFicha(props: Props) {
     setTratamiento((data ?? { tratamiento: '', medicacion: '', pautas: '', seguimiento: '' }) as Tratamiento);
   }, [usuario.id]);
 
-  useEffect(() => { loadExtra(); loadContactos(); loadCuentas(); loadPrestacionDocumentos(); loadMedico(); loadTratamiento(); }, [loadExtra, loadContactos, loadCuentas, loadPrestacionDocumentos, loadMedico, loadTratamiento]);
+  const loadTratamientoDocumentos = useCallback(async () => {
+    const { data } = await supabase.from('crm_tratamiento_documentos').select('*').eq('usuario_servicio_id', usuario.id).order('created_at', { ascending: false });
+    setTratamientoDocumentos((data ?? []) as TratamientoDocumento[]);
+  }, [usuario.id]);
+
+  useEffect(() => { loadExtra(); loadContactos(); loadCuentas(); loadPrestacionDocumentos(); loadMedico(); loadTratamiento(); loadTratamientoDocumentos(); }, [loadExtra, loadContactos, loadCuentas, loadPrestacionDocumentos, loadMedico, loadTratamiento, loadTratamientoDocumentos]);
 
   async function saveExtra() {
     if (!extraForm) return;
@@ -320,6 +339,69 @@ export default function CrmResidenteFicha(props: Props) {
     await supabase.from('crm_residente_tratamiento').upsert({ usuario_servicio_id: usuario.id, ...tratamiento, updated_at: new Date().toISOString() });
     setTratamientoEditing(false);
     setTratamientoSaving(false);
+  }
+
+  function addTratamientoFiles(incoming: FileList | File[]) {
+    const pdfs = Array.from(incoming).filter(file => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'));
+    setTratamientoFiles(previous => {
+      const names = new Set(previous.map(file => file.name));
+      return [...previous, ...pdfs.filter(file => !names.has(file.name))];
+    });
+  }
+
+  async function uploadTratamientoFiles() {
+    if (!tratamientoFiles.length) return;
+    setTratamientoUploading(true); setTratamientoUploadError('');
+    const prefix = `crm/tratamiento/${usuario.id}/`;
+    try {
+      await ensureCrmFolder(prefix);
+      const { data: authData } = await supabase.auth.getUser();
+      const failed: File[] = [];
+      for (const file of tratamientoFiles) {
+        try {
+          const key = `${prefix}${Date.now()}-${file.name}`;
+          await uploadCrmFile(file, key);
+          const { error: insertError } = await supabase.from('crm_tratamiento_documentos').insert({ usuario_servicio_id: usuario.id, nombre_archivo: file.name, wasabi_key: key, tamano_bytes: file.size, uploaded_by: authData.user?.id ?? null });
+          if (insertError) throw insertError;
+        } catch {
+          failed.push(file);
+        }
+      }
+      setTratamientoFiles(failed);
+      if (failed.length) setTratamientoUploadError(`${failed.length} archivo(s) no se pudieron subir.`);
+      await loadTratamientoDocumentos();
+    } catch {
+      setTratamientoUploadError('No se pudieron subir los documentos.');
+    } finally {
+      setTratamientoUploading(false);
+    }
+  }
+
+  async function deleteTratamientoDocumento(documento: TratamientoDocumento) {
+    try {
+      await deleteFromWasabi(documento.wasabi_key);
+      await supabase.from('crm_tratamiento_documentos').delete().eq('id', documento.id);
+      await loadTratamientoDocumentos();
+    } catch {
+      setTratamientoUploadError('No se pudo eliminar el documento.');
+    }
+  }
+
+  async function previewTratamientoDocumento(documento: TratamientoDocumento) {
+    try {
+      const url = await getWasabiBlobUrl(documento.wasabi_key);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      setTratamientoUploadError('No se pudo abrir el documento.');
+    }
+  }
+
+  async function downloadTratamientoDocumento(documento: TratamientoDocumento) {
+    try {
+      await downloadFromWasabi(documento.wasabi_key, documento.nombre_archivo);
+    } catch {
+      setTratamientoUploadError('No se pudo descargar el documento.');
+    }
   }
 
   const tabs: { id: DetailTab; label: string; icon: typeof User }[] = [
@@ -705,6 +787,35 @@ export default function CrmResidenteFicha(props: Props) {
               ))}
             </div>
           )}
+          <div className="mt-5 pt-5 space-y-4" style={{ borderTop: '1px solid #E2E8F0' }}>
+            <div>
+              <h4 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Información adicional</h4>
+              <p className="text-xs mt-1" style={{ color: '#64748B' }}>Añade documentos relacionados con el tratamiento y seguimiento.</p>
+            </div>
+            <div
+              onClick={() => !tratamientoUploading && tratamientoFileInputRef.current?.click()}
+              onDrop={e => { e.preventDefault(); setTratamientoDragOver(false); if (e.dataTransfer.files.length) addTratamientoFiles(e.dataTransfer.files); }}
+              onDragOver={e => { e.preventDefault(); setTratamientoDragOver(true); }}
+              onDragLeave={e => { e.preventDefault(); setTratamientoDragOver(false); }}
+              className="flex flex-col items-center justify-center gap-2 rounded-xl cursor-pointer select-none transition-all"
+              style={{ border: `2px dashed ${tratamientoDragOver ? '#0369A1' : '#CBD5E1'}`, backgroundColor: tratamientoDragOver ? '#EFF6FF' : '#F8FAFC', padding: '24px 16px', minHeight: 120 }}
+            >
+              <Upload size={24} style={{ color: tratamientoDragOver ? '#0369A1' : '#94A3B8' }} />
+              <p className="text-sm font-medium" style={{ color: '#475569' }}>Arrastra documentos aquí o haz clic para seleccionar</p>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>Solo archivos PDF</p>
+              <input ref={tratamientoFileInputRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" disabled={tratamientoUploading} onChange={e => { if (e.target.files?.length) addTratamientoFiles(e.target.files); if (tratamientoFileInputRef.current) tratamientoFileInputRef.current.value = ''; }} />
+            </div>
+            {tratamientoFiles.length > 0 && (
+              <div className="space-y-2">
+                {tratamientoFiles.map(file => <div key={file.name} className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}><FileText size={14} style={{ color: '#DC2626' }} /><span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{file.name}</span><span className="text-xs" style={{ color: '#94A3B8' }}>{(file.size / 1024).toFixed(0)} KB</span><button onClick={() => setTratamientoFiles(previous => previous.filter(item => item.name !== file.name))} className="text-xs cursor-pointer" style={{ color: '#DC2626' }}>Quitar</button></div>)}
+                {tratamientoUploadError && <p className="flex items-center gap-1.5 text-xs" style={{ color: '#DC2626' }}><AlertCircle size={12} />{tratamientoUploadError}</p>}
+                <button onClick={uploadTratamientoFiles} disabled={tratamientoUploading} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-60" style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>{tratamientoUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}{tratamientoUploading ? 'Subiendo...' : 'Subir documentos'}</button>
+              </div>
+            )}
+            <div className="space-y-2">
+              {tratamientoDocumentos.length === 0 ? <p className="text-sm text-center py-3" style={{ color: '#94A3B8' }}>Sin documentos adicionales</p> : tratamientoDocumentos.map(documento => <div key={documento.id} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}><FileText size={14} style={{ color: '#DC2626' }} /><span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{documento.nombre_archivo}</span><span className="text-xs" style={{ color: '#94A3B8' }}>{(documento.tamano_bytes / 1024).toFixed(0)} KB</span><button onClick={() => previewTratamientoDocumento(documento)} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Ver</button><button onClick={() => downloadTratamientoDocumento(documento)} className="p-1 cursor-pointer" title="Descargar"><Download size={13} style={{ color: '#475569' }} /></button>{isAdmin && <button onClick={() => deleteTratamientoDocumento(documento)} className="p-1 cursor-pointer" title="Eliminar"><Trash2 size={13} style={{ color: '#DC2626' }} /></button>}</div>)}
+            </div>
+          </div>
         </div>
       )}
 

@@ -24,7 +24,11 @@ export default function PptxPreview({ wasabiKey, filename }: PptxPreviewProps) {
       .then((blob) => {
         if (cancelled) return;
         const safeFilename = filename || 'presentacion.pptx';
-        setFile(new File([blob], safeFilename, { type: blob.type || 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }));
+        const isLegacyPowerPoint = /\.ppt$/i.test(safeFilename);
+        const contentType = isLegacyPowerPoint
+          ? 'application/vnd.ms-powerpoint'
+          : 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+        setFile(new File([blob], safeFilename, { type: contentType }));
       })
       .catch(() => {
         if (!cancelled) setError('No se pudo cargar la presentación.');
@@ -40,15 +44,19 @@ export default function PptxPreview({ wasabiKey, filename }: PptxPreviewProps) {
   if (error) return <div className="flex items-center justify-center gap-2 rounded-xl p-6 text-sm" style={{ backgroundColor: '#FEF2F2', color: '#B91C1C' }}><AlertCircle size={18} /> {error}</div>;
   if (!file) return null;
 
+  const formatHint = /\.ppt$/i.test(file.name) ? 'ppt' : 'pptx';
+
   return (
     <div className="pptx-preview h-[min(72vh,760px)] min-h-[420px] overflow-hidden rounded-xl" style={{ backgroundColor: '#E2E8F0' }}>
       <ReactPptxViewer
         source={file}
+        parseOptions={{ formatHint }}
         mode="continuous"
         defaultZoom="fit-width"
         showToolbar
         showThumbnails
-        renderError={() => <div className="p-6 text-sm" style={{ color: '#B91C1C' }}>Esta presentación no se puede previsualizar en el navegador.</div>}
+        onError={(viewerError) => setError(`No se puede previsualizar este archivo (${viewerError.code}).`)}
+        renderError={(viewerError) => <div className="p-6 text-sm" style={{ color: '#B91C1C' }}>No se puede previsualizar este archivo ({viewerError.code}). Puede que esté dañado, protegido con contraseña o use una función no compatible.</div>}
       />
     </div>
   );

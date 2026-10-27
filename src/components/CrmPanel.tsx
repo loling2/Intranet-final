@@ -288,8 +288,8 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const filteredUsuarios = usuarios.filter((u) => {
     if (filterCentro && !(u.centros ?? []).some((c) => c.id === filterCentro)) return false;
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return u.nombre.toLowerCase().includes(q) || (u.apellidos ?? '').toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q);
+    const q = searchQuery.trim().replace(/^@+/, '').toLowerCase();
+    return u.nombre.toLowerCase().includes(q) || (u.apellidos ?? '').toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q) || (u.acronimo ?? '').toLowerCase().includes(q);
   });
 
   // Usuario seleccionado display
@@ -454,7 +454,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                             </div>
                             <div>
                               <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{u.nombre} {u.apellidos}</p>
-                              {u.acronimo && <p className="text-xs font-medium" style={{ color: '#0369A1' }}>{u.acronimo}</p>}
+                              <p className="text-xs font-medium" style={{ color: u.acronimo ? '#0369A1' : '#94A3B8' }}>{u.acronimo ? `@${u.acronimo}` : 'Sin acrónimo'}</p>
                               <span className="text-xs px-2 py-0.5 rounded-md font-medium" style={{ backgroundColor: u.activo ? '#F0FDF4' : '#FEF2F2', color: u.activo ? '#16A34A' : '#DC2626' }}>{u.activo ? 'Activo' : 'Inactivo'}</span>
                             </div>
                           </div>
@@ -561,12 +561,12 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                     <input autoFocus type="text" value={quickNotaSearch} onChange={(e) => setQuickNotaSearch(e.target.value)} placeholder="Buscar residente..." className="flex-1 bg-transparent text-sm outline-none" style={{ color: '#0F172A' }} />
                   </div>
                   <div className="max-h-64 overflow-y-auto space-y-1">
-                    {usuarios.filter((u) => `${u.nombre} ${u.apellidos ?? ''}`.toLowerCase().includes(quickNotaSearch.toLowerCase())).map((u) => (
+                    {usuarios.filter((u) => `${u.nombre} ${u.apellidos ?? ''} ${u.acronimo ?? ''}`.toLowerCase().includes(quickNotaSearch.trim().replace(/^@+/, '').toLowerCase())).map((u) => (
                       <button key={u.id} onClick={() => { setFichaInitialTab('calendario'); setSelectedUsuario(u); setShowQuickNotaPicker(false); openNotaModal(todayISO); }} className="w-full flex items-center justify-between px-3 py-3 rounded-lg text-left cursor-pointer hover:bg-blue-50" style={{ color: '#0F172A' }}>
-                        <span className="text-sm font-medium">{u.nombre} {u.apellidos ?? ''}</span><ChevronRight size={14} style={{ color: '#94A3B8' }} />
+                        <span className="text-left"><span className="block text-sm font-medium">{u.nombre} {u.apellidos ?? ''}</span>{u.acronimo && <span className="block text-xs mt-0.5" style={{ color: '#0369A1' }}>@{u.acronimo}</span>}</span><ChevronRight size={14} style={{ color: '#94A3B8' }} />
                       </button>
                     ))}
-                    {usuarios.filter((u) => `${u.nombre} ${u.apellidos ?? ''}`.toLowerCase().includes(quickNotaSearch.toLowerCase())).length === 0 && <p className="text-center text-xs py-6" style={{ color: '#94A3B8' }}>No hay residentes que coincidan</p>}
+                    {usuarios.filter((u) => `${u.nombre} ${u.apellidos ?? ''} ${u.acronimo ?? ''}`.toLowerCase().includes(quickNotaSearch.trim().replace(/^@+/, '').toLowerCase())).length === 0 && <p className="text-center text-xs py-6" style={{ color: '#94A3B8' }}>No hay residentes que coincidan</p>}
                   </div>
                 </div>
               </div>

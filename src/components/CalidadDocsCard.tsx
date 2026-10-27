@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { getWasabiBlobUrl, downloadFromWasabi } from '../lib/wasabi';
+import { recordCalidadDownload } from '../lib/calidadDownloads';
 import { societies as allSocieties } from '../themes';
 import type { SocietyTheme } from '../themes';
 
@@ -107,8 +108,10 @@ export default function CalidadDocsCard({ theme, societyId, mini }: Props) {
   }
 
   async function handleDownload(doc: CalidadDoc) {
-    try { await downloadFromWasabi(doc.wasabi_key, doc.nombre_archivo); }
-    catch (e) { console.error(e); }
+    try {
+      await downloadFromWasabi(doc.wasabi_key, doc.nombre_archivo);
+      await recordCalidadDownload(doc.id);
+    } catch (e) { console.error(e); }
   }
 
   const filtered = docs.filter(d => {

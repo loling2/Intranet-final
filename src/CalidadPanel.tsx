@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { uploadToWasabiKey, deleteFromWasabi, getWasabiBlobUrl, downloadFromWasabi } from './lib/wasabi';
+import { recordCalidadDownload } from './lib/calidadDownloads';
+import CalidadDownloadsPanel from './components/CalidadDownloadsPanel';
 import { SocietyProvider } from './context/SocietyContext';
 import { AuthProvider } from './context/AuthContext';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -113,7 +115,7 @@ async function getDroppedFiles(dataTransfer: DataTransfer): Promise<File[]> {
 }
 
 export default function CalidadPanel({ email, onLogout, onNavigateEmployee, availableProfiles, onNavigateProfile }: Props) {
-  const [activeTab, setActiveTab] = useState<'documentos' | 'subir' | 'ayuda'>('documentos');
+  const [activeTab, setActiveTab] = useState<'documentos' | 'descargados' | 'subir' | 'ayuda'>('documentos');
   const [docs, setDocs] = useState<CalidadDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -306,8 +308,10 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
   }
 
   async function handleDownload(doc: CalidadDoc) {
-    try { await downloadFromWasabi(doc.wasabi_key, doc.nombre_archivo); }
-    catch (e) { console.error(e); }
+    try {
+      await downloadFromWasabi(doc.wasabi_key, doc.nombre_archivo);
+      await recordCalidadDownload(doc.id);
+    } catch (e) { console.error(e); }
   }
 
   const filteredDocs = docs.filter(d => {
@@ -388,6 +392,17 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                 }}
               >
                 <FileText size={14} /> Documentos de Calidad
+              </button>
+              <button
+                onClick={() => setActiveTab('descargados')}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all duration-200 flex items-center gap-2"
+                style={{
+                  backgroundColor: activeTab === 'descargados' ? '#0369A1' : '#FFFFFF',
+                  color: activeTab === 'descargados' ? '#FFFFFF' : '#475569',
+                  border: `1px solid ${activeTab === 'descargados' ? '#0369A1' : '#E2E8F0'}`,
+                }}
+              >
+                <Download size={14} /> Descargados
               </button>
               <button
                 onClick={() => setActiveTab('subir')}
@@ -547,7 +562,6 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                   ) : (
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {filteredDocs.map(doc => {
-                        const { Icon, color } = getFileIcon(doc.tipo ?? '');
                         const isImage = doc.tipo?.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(doc.nombre_archivo);
                         const isPdf = doc.tipo === 'application/pdf' || /\.pdf$/i.test(doc.nombre_archivo);
                         const monthLabel = months.find(m => m.value === doc.mes)?.label ?? doc.mes;
@@ -567,6 +581,10 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                   )
                 )}
               </div>
+            )}
+
+            {activeTab === 'descargados' && (
+              <CalidadDownloadsPanel docs={docs} />
             )}
 
             {activeTab === 'subir' && (

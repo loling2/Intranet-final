@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import {
   User, Mail, Phone, Building2, Calendar, FolderOpen, FileText,
   Heart, Pill, Users, CreditCard, Plus, X, Trash2, Save, MapPin,
   Contact, Stethoscope, Activity, ClipboardList, Phone as PhoneIcon, Ambulance, FileSignature,
+  Upload, Download, Loader2, AlertCircle,
 } from 'lucide-react';
 import CrmDocumentosModule from './CrmDocumentosModule';
 import CrmSeguimientoModule from './CrmSeguimientoModule';
@@ -14,6 +15,7 @@ import CrmIncidenciasSanitariasModule from './CrmIncidenciasSanitariasModule';
 import CrmPautasModule from './CrmPautasModule';
 import CrmPaiModule from './CrmPaiModule';
 import CrmSesionesModule from './CrmSesionesModule';
+import { ensureCrmFolder, uploadCrmFile, downloadFromWasabi, getWasabiBlobUrl, deleteFromWasabi } from '../lib/wasabi';
 
 interface Props {
   usuario: {
@@ -71,6 +73,14 @@ interface Cuenta {
   entidad: string;
   observaciones: string;
 }
+interface PrestacionDocumento {
+  id: string;
+  usuario_servicio_id: string;
+  nombre_archivo: string;
+  wasabi_key: string;
+  tamano_bytes: number;
+  created_at: string;
+}
 interface Medico {
   alergias: string;
   diagnosticos: string;
@@ -117,6 +127,13 @@ export default function CrmResidenteFicha(props: Props) {
   const [showCuentaForm, setShowCuentaForm] = useState(false);
   const [cuentaForm, setCuentaForm] = useState<Omit<Cuenta, 'id'>>({ tipo_cuenta: '', titular: '', identificacion_titular: '', iban: '', entidad: '', observaciones: '' });
   const [editingCuentaId, setEditingCuentaId] = useState<string | null>(null);
+  const [prestacionesTab, setPrestacionesTab] = useState<'informacion' | 'cuenta'>('informacion');
+  const [prestacionDocumentos, setPrestacionDocumentos] = useState<PrestacionDocumento[]>([]);
+  const [prestacionFiles, setPrestacionFiles] = useState<File[]>([]);
+  const [prestacionUploading, setPrestacionUploading] = useState(false);
+  const [prestacionUploadError, setPrestacionUploadError] = useState('');
+  const [prestacionDragOver, setPrestacionDragOver] = useState(false);
+  const prestacionFileInputRef = useRef<HTMLInputElement>(null);
 
   const [medico, setMedico] = useState<Medico>({ alergias: '', diagnosticos: '', movilidad: '', dependencia: '', notas: '' });
   const [medicoEditing, setMedicoEditing] = useState(false);
@@ -147,6 +164,11 @@ export default function CrmResidenteFicha(props: Props) {
     setCuentas((data ?? []) as Cuenta[]);
   }, [usuario.id]);
 
+  const loadPrestacionDocumentos = useCallback(async () => {
+    const { data } = await supabase.from('crm_prestaciones_documentos').select('*').eq('usuario_servicio_id', usuario.id).order('created_at', { ascending: false });
+    setPrestacionDocumentos((data ?? []) as PrestacionDocumento[]);
+  }, [usuario.id]);
+
   const loadMedico = useCallback(async () => {
     const { data } = await supabase.from('crm_residente_medico').select('*').eq('usuario_servicio_id', usuario.id).maybeSingle();
     setMedico((data ?? { alergias: '', diagnosticos: '', movilidad: '', dependencia: '', notas: '' }) as Medico);
@@ -157,7 +179,7 @@ export default function CrmResidenteFicha(props: Props) {
     setTratamiento((data ?? { tratamiento: '', medicacion: '', pautas: '', seguimiento: '' }) as Tratamiento);
   }, [usuario.id]);
 
-  useEffect(() => { loadExtra(); loadContactos(); loadCuentas(); loadMedico(); loadTratamiento(); }, [loadExtra, loadContactos, loadCuentas, loadMedico, loadTratamiento]);
+  useEffect(() => { loadExtra(); loadContactos(); loadCuentas(); loadPrestacionDocumentos(); loadMedico(); loadTratamiento(); }, [loadExtra, loadContactos, loadCuentas, loadPrestacionDocumentos, loadMedico, loadTratamiento]);
 
   async function saveExtra() {
     if (!extraForm) return;
@@ -217,6 +239,75 @@ export default function CrmResidenteFicha(props: Props) {
     await loadCuentas();
   }
 
+  function addPrestacionFiles(incoming: FileList | File[]) {
+    const pdfs = Array.from(incoming).filter(file => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'));
+    setPrestacionFiles(previous => {
+      const names = new Set(previous.map(file => file.name));
+      return [...previous, ...pdfs.filter(file => !names.has(file.name))];
+    });
+  }
+
+  async function uploadPrestacionFiles() {
+    if (!prestacionFiles.length) return;
+    setPrestacionUploading(true); setPrestacionUploadError('');
+    const prefix = `crm/prestaciones/${usuario.id}/`;
+    try {
+      await ensureCrmFolder(prefix);
+      const { data: authData } = await supabase.auth.getUser();
+      const failed: File[] = [];
+      for (const file of prestacionFiles) {
+        try {
+          const key = `${prefix}${Date.now()}-${file.name}`;
+          await uploadCrmFile(file, key);
+          const { error: insertError } = await supabase.from('crm_prestaciones_documentos').insert({
+            usuario_servicio_id: usuario.id,
+            nombre_archivo: file.name,
+            wasabi_key: key,
+            tamano_bytes: file.size,
+            uploaded_by: authData.user?.id ?? null,
+          });
+          if (insertError) throw insertError;
+        } catch {
+          failed.push(file);
+        }
+      }
+      setPrestacionFiles(failed);
+      if (failed.length) setPrestacionUploadError(`${failed.length} archivo(s) no se pudieron subir.`);
+      await loadPrestacionDocumentos();
+    } catch {
+      setPrestacionUploadError('No se pudieron subir los documentos.');
+    } finally {
+      setPrestacionUploading(false);
+    }
+  }
+
+  async function deletePrestacionDocumento(documento: PrestacionDocumento) {
+    try {
+      await deleteFromWasabi(documento.wasabi_key);
+      await supabase.from('crm_prestaciones_documentos').delete().eq('id', documento.id);
+      await loadPrestacionDocumentos();
+    } catch {
+      setPrestacionUploadError('No se pudo eliminar el documento.');
+    }
+  }
+
+  async function previewPrestacionDocumento(documento: PrestacionDocumento) {
+    try {
+      const url = await getWasabiBlobUrl(documento.wasabi_key);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      setPrestacionUploadError('No se pudo abrir el documento.');
+    }
+  }
+
+  async function downloadPrestacionDocumento(documento: PrestacionDocumento) {
+    try {
+      await downloadFromWasabi(documento.wasabi_key, documento.nombre_archivo);
+    } catch {
+      setPrestacionUploadError('No se pudo descargar el documento.');
+    }
+  }
+
   async function saveMedico() {
     setMedicoSaving(true);
     await supabase.from('crm_residente_medico').upsert({ usuario_servicio_id: usuario.id, ...medico, updated_at: new Date().toISOString() });
@@ -234,7 +325,7 @@ export default function CrmResidenteFicha(props: Props) {
   const tabs: { id: DetailTab; label: string; icon: typeof User }[] = [
     { id: 'info', label: 'Información', icon: User },
     { id: 'contactos', label: 'Contactos', icon: Users },
-    { id: 'cuentas', label: 'Cuentas', icon: CreditCard },
+    { id: 'cuentas', label: 'Prestaciones', icon: CreditCard },
     { id: 'medico', label: 'Información médica', icon: Stethoscope },
     { id: 'tratamiento', label: 'Tratamiento', icon: Pill },
     { id: 'seguimiento', label: 'Seguimiento diario', icon: Activity },
@@ -431,9 +522,46 @@ export default function CrmResidenteFicha(props: Props) {
         </div>
       )}
 
-      {/* === Tab: Cuentas === */}
+      {/* === Tab: Prestaciones === */}
       {detailTab === 'cuentas' && (
         <div className="space-y-4">
+          <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: '#F1F5F9' }}>
+            <button onClick={() => setPrestacionesTab('informacion')} className="px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer" style={{ backgroundColor: prestacionesTab === 'informacion' ? '#FFFFFF' : 'transparent', color: prestacionesTab === 'informacion' ? '#0369A1' : '#64748B' }}>Información</button>
+            <button onClick={() => setPrestacionesTab('cuenta')} className="px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer" style={{ backgroundColor: prestacionesTab === 'cuenta' ? '#FFFFFF' : 'transparent', color: prestacionesTab === 'cuenta' ? '#0369A1' : '#64748B' }}>Cuenta</button>
+          </div>
+          {prestacionesTab === 'informacion' && (
+            <div className="rounded-2xl p-6 space-y-4" style={cardStyle}>
+              <div>
+                <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Información de prestaciones</h3>
+                <p className="text-xs mt-1" style={{ color: '#64748B' }}>Sube aquí resoluciones, certificados y documentación relacionada con las prestaciones.</p>
+              </div>
+              <div
+                onClick={() => !prestacionUploading && prestacionFileInputRef.current?.click()}
+                onDrop={e => { e.preventDefault(); setPrestacionDragOver(false); if (e.dataTransfer.files.length) addPrestacionFiles(e.dataTransfer.files); }}
+                onDragOver={e => { e.preventDefault(); setPrestacionDragOver(true); }}
+                onDragLeave={e => { e.preventDefault(); setPrestacionDragOver(false); }}
+                className="flex flex-col items-center justify-center gap-2 rounded-xl cursor-pointer select-none transition-all"
+                style={{ border: `2px dashed ${prestacionDragOver ? '#0369A1' : '#CBD5E1'}`, backgroundColor: prestacionDragOver ? '#EFF6FF' : '#F8FAFC', padding: '28px 16px', minHeight: 130 }}
+              >
+                <Upload size={26} style={{ color: prestacionDragOver ? '#0369A1' : '#94A3B8' }} />
+                <p className="text-sm font-medium" style={{ color: '#475569' }}>Arrastra documentos aquí o haz clic para seleccionar</p>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>Solo archivos PDF</p>
+                <input ref={prestacionFileInputRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" disabled={prestacionUploading} onChange={e => { if (e.target.files?.length) addPrestacionFiles(e.target.files); if (prestacionFileInputRef.current) prestacionFileInputRef.current.value = ''; }} />
+              </div>
+              {prestacionFiles.length > 0 && (
+                <div className="space-y-2">
+                  {prestacionFiles.map(file => <div key={file.name} className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}><FileText size={14} style={{ color: '#DC2626' }} /><span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{file.name}</span><span className="text-xs" style={{ color: '#94A3B8' }}>{(file.size / 1024).toFixed(0)} KB</span><button onClick={() => setPrestacionFiles(previous => previous.filter(item => item.name !== file.name))} className="text-xs cursor-pointer" style={{ color: '#DC2626' }}>Quitar</button></div>)}
+                  {prestacionUploadError && <p className="flex items-center gap-1.5 text-xs" style={{ color: '#DC2626' }}><AlertCircle size={12} />{prestacionUploadError}</p>}
+                  <button onClick={uploadPrestacionFiles} disabled={prestacionUploading} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-60" style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>{prestacionUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}{prestacionUploading ? 'Subiendo...' : 'Subir documentos'}</button>
+                </div>
+              )}
+              <div className="space-y-2">
+                {prestacionDocumentos.length === 0 ? <p className="text-sm text-center py-4" style={{ color: '#94A3B8' }}>Sin documentos de prestaciones</p> : prestacionDocumentos.map(documento => <div key={documento.id} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}><FileText size={14} style={{ color: '#DC2626' }} /><span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{documento.nombre_archivo}</span><span className="text-xs" style={{ color: '#94A3B8' }}>{(documento.tamano_bytes / 1024).toFixed(0)} KB</span><button onClick={() => previewPrestacionDocumento(documento)} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Ver</button><button onClick={() => downloadPrestacionDocumento(documento)} className="p-1 cursor-pointer" title="Descargar"><Download size={13} style={{ color: '#475569' }} /></button>{isAdmin && <button onClick={() => deletePrestacionDocumento(documento)} className="p-1 cursor-pointer" title="Eliminar"><Trash2 size={13} style={{ color: '#DC2626' }} /></button>}</div>)}
+              </div>
+            </div>
+          )}
+          {prestacionesTab === 'cuenta' && (
+          <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Cuentas y datos administrativos</h3>
             <button onClick={() => { setEditingCuentaId(null); setCuentaForm({ tipo_cuenta: '', titular: '', identificacion_titular: '', iban: '', entidad: '', observaciones: '' }); setShowCuentaForm(true); }}
@@ -491,6 +619,8 @@ export default function CrmResidenteFicha(props: Props) {
                 </div>
               </div>
             </div>
+          )}
+          </div>
           )}
         </div>
       )}

@@ -58,6 +58,11 @@ function wrapBase64(value: string): string {
   return value.match(/.{1,76}/g)?.join("\r\n") ?? "";
 }
 
+function pdfRgb(hex: string): string {
+  const value = hex.replace("#", "");
+  return [0, 2, 4].map((index) => (parseInt(value.slice(index, index + 2), 16) / 255).toFixed(3)).join(" ");
+}
+
 function buildCenterPdf(
   targetDate: string,
   centerName: string,
@@ -66,28 +71,64 @@ function buildCenterPdf(
   correctos: string[],
   totalEmployees: number,
 ): string {
-  const lines = [
-    "INFORME DE FICHAJES",
-    `Centro: ${centerName}`,
-    `Responsable: ${supervisorName}`,
-    `Fecha: ${fmtDateShort(targetDate)}`,
-    "",
-    `Empleados: ${totalEmployees}    Ficharon correctamente: ${correctos.length}    Incidencias: ${incidencias.length}`,
-    "",
-    "INCIDENCIAS",
-    ...(incidencias.length ? incidencias.map((item) => `${item.nombre} | ${typeConfig[item.tipo].label} | Entrada: ${fmtTime(item.entrada)} | Salida: ${item.salida ? fmtTime(item.salida) : "—"} | Duración: ${item.duracionMin ? fmtDur(item.duracionMin) : "—"}`) : ["Sin incidencias"]),
-    "",
-    "FICHAJES CORRECTOS",
-    ...(correctos.length ? correctos.map((name) => `- ${name}`) : ["Ninguno"]),
+  const notClocked = incidencias.filter((item) => item.tipo === "no_fichado").length;
+  const ficharon = Math.max(0, totalEmployees - notClocked);
+  const detailLines = incidencias.length
+    ? incidencias.flatMap((item) => [
+        { text: `${item.nombre} · ${typeConfig[item.tipo].label}`, color: typeConfig[item.tipo].text, bold: true },
+        { text: `Entrada ${fmtTime(item.entrada)}   Salida ${item.salida ? fmtTime(item.salida) : "—"}   Duración ${item.duracionMin ? fmtDur(item.duracionMin) : "—"}`, color: "#475569", bold: false },
+      ])
+    : [{ text: "Sin incidencias", color: "#15803D", bold: true }];
+  const rows = [
+    { text: "Detalle de incidencias", color: "#0F172A", bold: true, section: true },
+    ...detailLines,
+    { text: "Fichajes correctos", color: "#0F172A", bold: true, section: true },
+    ...(correctos.length ? correctos.map((name) => ({ text: `✓ ${name}`, color: "#15803D", bold: false })) : [{ text: "Ninguno", color: "#64748B", bold: false }]),
   ];
-  const pageLines = 46;
-  const pages = Array.from({ length: Math.max(1, Math.ceil(lines.length / pageLines)) }, (_, index) => lines.slice(index * pageLines, (index + 1) * pageLines));
-  const objects: string[] = [];
-  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
-  objects.push(`<< /Type /Pages /Kids [${pages.map((_, index) => `${5 + index * 2} 0 R`).join(" ")}] /Count ${pages.length} >>`);
-  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  for (const page of pages) {
-    const stream = ["BT", "/F1 10 Tf", "50 770 Td", ...page.map((line, index) => `${index ? "0 -15 Td" : ""} (${pdfEscape(line)}) Tj`), "ET"].join("\n");
+  const maxChars = 88;
+  const wrappedRows = rows.flatMap((row) => {
+    if (row.section || row.text.length <= maxChars) return [row];
+    const chunks: typeof row[] = [];
+    for (let index = 0; index < row.text.length; index += maxChars) chunks.push({ ...row, text: row.text.slice(index, index + maxChars) });
+    return chunks;
+  });
+  const pageRows = 40;
+  const pages = Array.from({ length: Math.max(1, Math.ceil(wrappedRows.length / pageRows)) }, (_, index) => wrappedRows.slice(index * pageRows, (index + 1) * pageRows));
+  const objects: string[] = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${pages.map((_, index) => `${5 + index * 2} 0 R`).join(" ")}] /Count ${pages.length} >>`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  for (const [pageIndex, page] of pages.entries()) {
+    const commands = [
+      "q", "0.047 0.290 0.431 rg", "0 700 595 142 re", "f", "Q",
+      "q", "0.941 0.973 0.996 rg", "36 628 523 52 re", "f", "Q",
+      "q", "0.941 0.992 0.957 rg", "36 568 166 44 re", "f", "Q",
+      "q", "0.941 0.992 0.957 rg", "214 568 166 44 re", "f", "Q",
+      "q", `${incidencias.length ? "1.000 0.969 0.969" : "0.941 0.992 0.957"} rg`, "392 568 167 44 re", "f", "Q",
+      `BT /F1 19 Tf 1 1 1 rg 36 790 Td (${pdfEscape("Informe de Fichajes")}) Tj ET`,
+      `BT /F1 11 Tf 0.900 0.950 1 rg 36 768 Td (${pdfEscape(centerName)}) Tj ET`,
+      `BT /F1 9 Tf 0.800 0.900 0.960 rg 36 748 Td (${pdfEscape(`Responsable: ${supervisorName} · ${dayName(targetDate)}, ${fmtDateShort(targetDate)}`)}) Tj ET`,
+      `BT /F1 17 Tf 0.047 0.290 0.431 rg 52 654 Td (${ficharon}) Tj ET`,
+      `BT /F1 8 Tf 0.100 0.250 0.350 rg 52 638 Td (Ficharon) Tj ET`,
+      `BT /F1 17 Tf 0.047 0.290 0.431 rg 230 654 Td (${correctos.length}) Tj ET`,
+      `BT /F1 8 Tf 0.100 0.250 0.350 rg 230 638 Td (Correctos) Tj ET`,
+      `BT /F1 17 Tf ${incidencias.length ? "0.863 0.149 0.149" : "0.086 0.510 0.227"} rg 408 654 Td (${incidencias.length}) Tj ET`,
+      `BT /F1 8 Tf 0.100 0.250 0.350 rg 408 638 Td (Incidencias) Tj ET`,
+    ];
+    let y = 594;
+    for (const row of page) {
+      if (row.section) {
+        commands.push(`q 0.945 0.965 0.980 rg 36 ${y - 7} 523 22 re f Q`);
+        commands.push(`BT /F1 11 Tf 0.047 0.094 0.165 rg 48 ${y} Td (${pdfEscape(row.text)}) Tj ET`);
+        y -= 30;
+      } else {
+        commands.push(`BT /F1 ${row.bold ? 10 : 9} Tf ${pdfRgb(row.color)} rg 48 ${y} Td (${pdfEscape(row.text)}) Tj ET`);
+        y -= row.bold ? 17 : 15;
+      }
+    }
+    commands.push(`BT /F1 8 Tf 0.580 0.647 0.722 rg 36 28 Td (${pdfEscape(`Control de Presencia · Página ${pageIndex + 1} de ${pages.length}`)}) Tj ET`);
+    const stream = commands.join("\n");
     objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
     objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents " + `${objects.length} 0 R >>`);
   }
@@ -95,10 +136,7 @@ function buildCenterPdf(
   const body = serializedObjects.join("");
   const offsets: number[] = [];
   let position = "%PDF-1.4\n".length;
-  for (const serialized of serializedObjects) {
-    offsets.push(position);
-    position += serialized.length;
-  }
+  for (const serialized of serializedObjects) { offsets.push(position); position += serialized.length; }
   const xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n `).join("\n")}\n`;
   return bytesToBase64(new TextEncoder().encode(`%PDF-1.4\n${body}${xref}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${position}\n%%EOF`));
 }

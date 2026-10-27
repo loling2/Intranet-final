@@ -85,7 +85,7 @@ function buildCenterPdf(
   for (const page of pages) {
     const stream = ["BT", "/F1 10 Tf", "50 770 Td", ...page.map((line, index) => `${index ? "0 -15 Td" : ""} (${pdfEscape(line)}) Tj`), "ET"].join("\n");
     objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
-    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents " + `${objects.length + 1} 0 R >>`);
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents " + `${objects.length} 0 R >>`);
   }
   const serializedObjects = objects.map((object, index) => `${index + 1} 0 obj\n${object}\nendobj\n`);
   const body = serializedObjects.join("");

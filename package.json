@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1051.0",
+    "@extend-ai/react-pptx": "^0.2.2",
     "@supabase/supabase-js": "^2.57.4",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.344.0",

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BookOpen, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Layers, Clock, CheckCircle2, Loader2, ChevronLeft, ChevronRight, Download, Lock, Play, AlertCircle, LayoutDashboard, ListChecks, ArrowUpRight } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { downloadFromWasabi, getWasabiBlobUrl, openWasabiPreview } from '../lib/wasabi';
+import { downloadFromWasabi, getWasabiBlobUrl } from '../lib/wasabi';
 import type { SocietyTheme } from '../themes';
+import PptxPreview from './PptxPreview';
 
 interface Curso {
   id: string;
@@ -249,11 +250,6 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
     setError('');
   };
 
-  const handlePreview = async (c: Contenido) => {
-    if (!c.wasabi_key) return;
-    try { await openWasabiPreview(c.wasabi_key); } catch { setError('No se pudo abrir la previsualización.'); }
-  };
-
   const handleDownload = async (c: Contenido) => {
     if (!c.wasabi_key || !c.descargable) return;
     try { await downloadFromWasabi(c.wasabi_key, c.nombre_archivo ?? 'archivo'); } catch { setError('No se pudo descargar.'); }
@@ -318,15 +314,21 @@ export default function MoodleCursosEmpleado({ theme, onOpenExams }: MoodleCurso
                 </div>
               </div>
             )}
-            {(activeContenido.tipo === 'word' || activeContenido.tipo === 'powerpoint' || activeContenido.tipo === 'video') && activeContenido.wasabi_key && (
+            {activeContenido.tipo === 'powerpoint' && activeContenido.wasabi_key && (
+              <div className="space-y-3">
+                <PptxPreview wasabiKey={activeContenido.wasabi_key} filename={activeContenido.nombre_archivo} />
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="text-xs" style={{ color: theme.textSecondary }}>{activeContenido.nombre_archivo ?? activeContenido.titulo} · {formatSize(activeContenido.tamano_bytes)}</p>
+                  {activeContenido.descargable && <button onClick={() => handleDownload(activeContenido)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}><Download size={16} /> Descargar</button>}
+                </div>
+              </div>
+            )}
+            {(activeContenido.tipo === 'word' || activeContenido.tipo === 'video') && activeContenido.wasabi_key && (
               <div className="flex flex-col items-center gap-3 py-4">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: cfg.bg }}><Icon size={32} style={{ color: cfg.color }} /></div>
                 <p className="text-sm font-medium" style={{ color: theme.textPrimary }}>{activeContenido.nombre_archivo ?? activeContenido.titulo}</p>
                 <p className="text-xs" style={{ color: theme.textSecondary }}>{formatSize(activeContenido.tamano_bytes)}</p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button onClick={() => handlePreview(activeContenido)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}><ArrowUpRight size={16} /> Abrir previsualización</button>
-                  {activeContenido.descargable ? <button onClick={() => handleDownload(activeContenido)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: theme.primaryLight, color: theme.primary, border: `1px solid ${theme.border}` }}><Download size={16} /> Descargar</button> : <p className="text-xs" style={{ color: theme.textSecondary }}>La descarga está desactivada para este recurso.</p>}
-                </div>
+                {activeContenido.descargable ? <button onClick={() => handleDownload(activeContenido)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer" style={{ backgroundColor: theme.primary, color: '#FFFFFF' }}><Download size={16} /> Descargar</button> : <p className="text-xs" style={{ color: theme.textSecondary }}>Este recurso no es descargable.</p>}
               </div>
             )}
             {activeContenido.tipo !== 'diapositivas' && (

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { BookOpen, Plus, X, Trash2, Search, FileText, FileVideo, Presentation, Link as LinkIcon, Type, Upload, Loader2, CheckCircle2, AlertCircle, Users, UserMinus, Clock, Save, Layers, Lock, Eye, EyeOff, ChevronDown, ChevronRight, GripVertical, FileQuestion, Building2, MapPin } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { ensureMoodleCursoFolder, uploadMoodleFile, sanitizeSlug, downloadFromWasabi, openWasabiPreview } from '../lib/wasabi';
+import PptxPreview from './PptxPreview';
+import { ensureMoodleCursoFolder, uploadMoodleFile, sanitizeSlug, downloadFromWasabi, getWasabiBlobUrl } from '../lib/wasabi';
 
 interface Curso {
   id: string;
@@ -100,6 +101,7 @@ export default function CursosPanel() {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [savingContenido, setSavingContenido] = useState(false);
+  const [previewContenido, setPreviewContenido] = useState<Contenido | null>(null);
 
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [empleados, setEmpleados] = useState<{ id: string; nombre: string; dni: string | null; id_sociedad: string | null; centro_id: string | null }[]>([]);
@@ -345,8 +347,15 @@ export default function CursosPanel() {
 
   const handlePreviewContenido = async (c: Contenido) => {
     if (!c.wasabi_key) return;
-    try { await openWasabiPreview(c.wasabi_key); }
-    catch { setError('No se pudo abrir la previsualización.'); }
+    setError('');
+    if (c.tipo === 'powerpoint') {
+      setPreviewContenido(c);
+      return;
+    }
+    const previewWindow = window.open('', '_blank');
+    if (!previewWindow) { setError('La ventana de previsualización fue bloqueada.'); return; }
+    try { previewWindow.location.href = await getWasabiBlobUrl(c.wasabi_key); }
+    catch { previewWindow.close(); setError('No se pudo abrir la previsualización.'); }
   };
 
   const handleDownloadContenido = async (c: Contenido) => {
@@ -829,6 +838,20 @@ export default function CursosPanel() {
             <div className="px-6 py-4 flex items-center justify-end gap-2 sticky bottom-0" style={{ borderTop: '1px solid #E2E8F0', backgroundColor: '#FFFFFF' }}>
               <button onClick={() => setShowContenidoModal(false)} className="px-4 py-2 rounded-lg text-xs font-medium cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}>Cancelar</button>
               <button onClick={handleSaveContenido} disabled={savingContenido || uploading} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer" style={{ backgroundColor: '#0D9488', color: '#FFFFFF' }}>{uploading ? <Loader2 size={12} className="animate-spin" /> : savingContenido ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}{uploading ? 'Subiendo...' : 'Anadir'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewContenido?.wasabi_key && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-6" style={{ backgroundColor: 'rgba(15,23,42,0.72)' }}>
+          <div className="rounded-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden" style={{ backgroundColor: '#FFFFFF' }}>
+            <div className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid #E2E8F0' }}>
+              <div className="min-w-0"><h3 className="text-sm font-semibold truncate" style={{ color: '#0F172A' }}>{previewContenido.titulo}</h3><p className="text-[10px] truncate" style={{ color: '#64748B' }}>{previewContenido.nombre_archivo ?? 'Presentación PowerPoint'}</p></div>
+              <button onClick={() => setPreviewContenido(null)} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer flex-shrink-0" style={{ backgroundColor: '#F1F5F9' }}><X size={16} style={{ color: '#64748B' }} /></button>
+            </div>
+            <div className="p-3 sm:p-5">
+              {previewContenido.tipo === 'powerpoint' ? <PptxPreview wasabiKey={previewContenido.wasabi_key} filename={previewContenido.nombre_archivo} /> : <p className="text-sm text-center py-10" style={{ color: '#64748B' }}>La previsualización integrada está disponible para PowerPoint.</p>}
             </div>
           </div>
         </div>

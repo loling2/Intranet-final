@@ -63,7 +63,7 @@ export async function deleteViaEdgeFunction(key: string): Promise<void> {
 
 async function uploadViaEdgeFunction(bytes: Uint8Array, key: string, contentType: string): Promise<string> {
   const url = manageUrl({ action: 'upload', key, contentType });
-  const resp = await fetch(url, { method: 'PUT', headers: { ...authHeaders(), 'Content-Type': contentType }, body: bytes });
+  const resp = await fetch(url, { method: 'PUT', headers: { ...authHeaders(), 'Content-Type': contentType }, body: bytes as BodyInit });
   if (!resp.ok) {
     let detail = '';
     try {
@@ -120,26 +120,15 @@ export async function uploadBytesToWasabi(bytes: Uint8Array, key: string, conten
   return uploadViaEdgeFunction(bytes, key, contentType);
 }
 
-export async function getWasabiBlobUrl(key: string): Promise<string> {
+export async function getWasabiBlob(key: string): Promise<Blob> {
   const url = `${supabaseUrl}/functions/v1/wasabi-download?key=${encodeURIComponent(key)}`;
   const resp = await fetch(url, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`Error al descargar (${resp.status})`);
-  const blob = await resp.blob();
-  return URL.createObjectURL(blob);
+  return resp.blob();
 }
 
-export async function openWasabiPreview(key: string): Promise<void> {
-  const previewWindow = window.open('', '_blank');
-  if (!previewWindow) throw new Error('La ventana de previsualización fue bloqueada.');
-  previewWindow.document.title = 'Cargando previsualización';
-  previewWindow.document.body.innerHTML = '<p style="font-family: sans-serif; padding: 24px">Cargando previsualización...</p>';
-  try {
-    const blobUrl = await getWasabiBlobUrl(key);
-    previewWindow.location.href = blobUrl;
-  } catch (error) {
-    previewWindow.close();
-    throw error;
-  }
+export async function getWasabiBlobUrl(key: string): Promise<string> {
+  return URL.createObjectURL(await getWasabiBlob(key));
 }
 
 // ─── RRHH helpers ─────────────────────────────────────────────────────────────

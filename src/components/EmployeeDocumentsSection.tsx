@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, type DragEvent } from 'react';
-import { FolderOpen, FolderLock, Upload, Trash2, FileText, Image, FileSpreadsheet, File, RefreshCw, AlertCircle, UploadCloud } from 'lucide-react';
+import { FolderOpen, FolderLock, Upload, Download, Eye, Trash2, FileText, Image, FileSpreadsheet, File, RefreshCw, AlertCircle, UploadCloud } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
-import { uploadToWasabi } from '../lib/wasabi';
+import { downloadFromWasabi, getWasabiBlobUrl, uploadToWasabi } from '../lib/wasabi';
 import { writeAuditLog } from '../lib/auditLog';
 
 interface EmployeeDoc {
@@ -98,6 +98,8 @@ export default function EmployeeDocumentsSection({ employeeId, employeeNombre, s
   const [activeFolder, setActiveFolder] = useState<ActiveFolder>('publica');
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [documentError, setDocumentError] = useState('');
+  const [actionDocId, setActionDocId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canManage = viewerRole === 'admin' || viewerRole === 'rrhh';
@@ -161,6 +163,42 @@ export default function EmployeeDocumentsSection({ employeeId, employeeNombre, s
     }
     await loadDocs();
     setUploading(false);
+  };
+
+  const handlePreview = async (doc: EmployeeDoc) => {
+    const previewWindow = window.open('about:blank', '_blank');
+    if (!previewWindow) {
+      setDocumentError('No se pudo abrir la previsualización. Permite las ventanas emergentes e inténtalo de nuevo.');
+      return;
+    }
+
+    setDocumentError('');
+    setActionDocId(doc.id);
+    previewWindow.document.title = `Vista previa - ${doc.nombre}`;
+    previewWindow.document.body.textContent = 'Cargando documento...';
+
+    try {
+      const blobUrl = await getWasabiBlobUrl(doc.storage_path);
+      previewWindow.location.href = blobUrl;
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch {
+      previewWindow.close();
+      setDocumentError('No se pudo abrir el documento. Inténtalo de nuevo.');
+    } finally {
+      setActionDocId(null);
+    }
+  };
+
+  const handleDownload = async (doc: EmployeeDoc) => {
+    setDocumentError('');
+    setActionDocId(doc.id);
+    try {
+      await downloadFromWasabi(doc.storage_path, doc.nombre);
+    } catch {
+      setDocumentError('No se pudo descargar el documento. Inténtalo de nuevo.');
+    } finally {
+      setActionDocId(null);
+    }
   };
 
   const handleDrop = async (event: DragEvent<HTMLDivElement>) => {
@@ -275,10 +313,10 @@ export default function EmployeeDocumentsSection({ employeeId, employeeNombre, s
         </div>
       )}
 
-      {uploadError && (
+      {(uploadError || documentError) && (
         <div className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
           <AlertCircle size={13} style={{ color: '#DC2626' }} />
-          <p className="text-xs" style={{ color: '#DC2626' }}>{uploadError}</p>
+          <p className="text-xs" style={{ color: '#DC2626' }}>{uploadError || documentError}</p>
         </div>
       )}
 
@@ -307,16 +345,40 @@ export default function EmployeeDocumentsSection({ employeeId, employeeNombre, s
                     {formatBytes(doc.size_bytes)} &middot; {doc.subido_por_nombre} &middot; {new Date(doc.created_at).toLocaleDateString('es-ES')}
                   </p>
                 </div>
-                {canManage && (
+                <div className="flex items-center gap-1.5 flex-shrink-0">
                   <button
-                    onClick={() => handleDelete(doc)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80"
-                    style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}
-                    title="Eliminar"
+                    onClick={() => handlePreview(doc)}
+                    disabled={actionDocId === doc.id}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80 disabled:opacity-50"
+                    style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}
+                    title="Ver documento"
+                    aria-label={`Ver ${doc.nombre}`}
                   >
-                    <Trash2 size={12} style={{ color: '#DC2626' }} />
+                    <Eye size={12} style={{ color: '#2563EB' }} />
                   </button>
-                )}
+                  <button
+                    onClick={() => handleDownload(doc)}
+                    disabled={actionDocId === doc.id}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80 disabled:opacity-50"
+                    style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}
+                    title="Descargar documento"
+                    aria-label={`Descargar ${doc.nombre}`}
+                  >
+                    <Download size={12} style={{ color: '#16A34A' }} />
+                  </button>
+                  {canManage && (
+                    <button
+                      onClick={() => handleDelete(doc)}
+                      disabled={actionDocId === doc.id}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 hover:opacity-80 disabled:opacity-50"
+                      style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}
+                      title="Eliminar"
+                      aria-label={`Eliminar ${doc.nombre}`}
+                    >
+                      <Trash2 size={12} style={{ color: '#DC2626' }} />
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })

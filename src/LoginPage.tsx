@@ -666,17 +666,9 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
                         ? 'Este empleado solo puede fichar desde un kiosco autorizado. Las demás funciones siguen disponibles.'
                         : fichajeMode === 'kiosk_or_corporate'
                         ? 'Este empleado solo puede fichar desde un kiosco o un dispositivo registrado. Las demás funciones siguen disponibles.'
-                        : 'Este dispositivo no está autorizado para fichar. Regístralo a continuación o contacta con RRHH.'}
+                        : 'Este dispositivo no está autorizado para fichar. Contacta con RRHH para autorizarlo.'}
                     </p>
                   </div>
-                  <button
-                    onClick={handleStartPairing}
-                    disabled={loading}
-                    className="mt-2.5 w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold text-white cursor-pointer transition-all hover:scale-[1.01] disabled:opacity-60"
-                    style={{ backgroundColor: '#DC2626' }}>
-                    <Tablet size={14} />
-                    Registrar este dispositivo
-                  </button>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-2">
@@ -714,15 +706,6 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
                   );
                 })}
               </div>
-              <button
-                onClick={handleStartPairing}
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all hover:scale-[1.01] disabled:opacity-60"
-                style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}
-              >
-                <Tablet size={16} />
-                Registrar este dispositivo
-              </button>
               {loading && <div className="flex items-center justify-center gap-2 py-2"><RefreshCw size={14} className="animate-spin" style={{ color: '#94A3B8' }} /><p className="text-xs" style={{ color: '#94A3B8' }}>Registrando...</p></div>}
               {errBox}
             </>

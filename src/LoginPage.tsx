@@ -34,6 +34,8 @@ import VacationsModule from './components/VacationsModule';
 import HelpPanel from './components/HelpPanel';
 import ProfileSwitcher, { type ProfileOption } from './components/ProfileSwitcher';
 
+const BRAND_LOGO = '/image copy 4.png';
+
 const iconMap: Record<string, LucideIcon> = {
   'building-2': Building2,
   landmark: Landmark,
@@ -614,8 +616,8 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
           {step === 'pin' && (
             <>
               <div className="flex flex-col items-center py-5 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
-                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: '#F1F5F9' }}>
-                  <KeyRound size={28} style={{ color: '#94A3B8' }} />
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3 overflow-hidden" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                  <img src={BRAND_LOGO} alt="Resican" className="w-full h-full object-contain p-1" />
                 </div>
                 <p className="text-sm font-medium" style={{ color: '#1E293B' }}>Introduce tu PIN de acceso</p>
               </div>
@@ -1801,14 +1803,10 @@ export default function LoginPage() {
             <div className="absolute w-52 h-52 rounded-full" style={{ border: '1.5px solid rgba(255,255,255,0.18)' }} />
             <div className="absolute w-36 h-36 rounded-full" style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
             <div
-              className="w-24 h-24 rounded-3xl flex items-center justify-center shadow-2xl z-10"
-              style={{ backgroundColor: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.22)' }}
+              className="w-24 h-24 rounded-3xl flex items-center justify-center shadow-2xl z-10 overflow-hidden"
+              style={{ backgroundColor: '#FFFFFF', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.8)' }}
             >
-              {selected ? (
-                <span className="text-4xl font-bold text-white tracking-tight">{selected.logoLetter}</span>
-              ) : (
-                <Building2 size={44} className="text-white/70" />
-              )}
+              <img src={BRAND_LOGO} alt="Resican" className="w-full h-full object-contain p-1.5" />
             </div>
           </div>
 
@@ -1847,14 +1845,10 @@ export default function LoginPage() {
           {/* Mobile branding */}
           <div className="lg:hidden flex items-center justify-center mb-6">
             <div
-              className="w-14 h-14 rounded-2xl flex items-center justify-center"
-              style={{ backgroundColor: selected ? `${selected.primary}18` : '#EFF6FF', border: `2px solid ${selected ? selected.border : '#BFDBFE'}` }}
+              className="w-14 h-14 rounded-2xl flex items-center justify-center overflow-hidden"
+              style={{ backgroundColor: '#FFFFFF', border: `2px solid ${selected ? selected.border : '#BFDBFE'}` }}
             >
-              {selected ? (
-                <span className="text-xl font-bold" style={{ color: selected.primary }}>{selected.logoLetter}</span>
-              ) : (
-                <Building2 size={24} style={{ color: '#0369A1' }} />
-              )}
+              <img src={BRAND_LOGO} alt="Resican" className="w-full h-full object-contain p-1" />
             </div>
           </div>
 

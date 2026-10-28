@@ -1443,7 +1443,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState<string>('');
   const [filterSociety, setFilterSociety] = useState<string>('');
-  const [statusTab, setStatusTab] = useState<'activo' | 'inactivo'>('activo');
+  const [statusTab, setStatusTab] = useState<'activo' | 'inactivo' | 'sin_acceso'>('activo');
   const [showInvite, setShowInvite] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [sendEmailUser, setSendEmailUser] = useState<UserProfile | null>(null);
@@ -1463,7 +1463,10 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   }, []);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
-  useEffect(() => { setPage(1); }, [search, filterRole, filterSociety, statusTab]);
+  useEffect(() => {
+    setPage(1);
+    setSelectedEmps(new Set());
+  }, [search, filterRole, filterSociety, statusTab]);
 
   const userIds = new Set(users.map((u) => u.id));
   const profileEmails = new Set(users.map((u) => u.email?.toLowerCase().trim()).filter(Boolean));
@@ -1475,6 +1478,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   });
 
   const filtered = users.filter((u) => {
+    if (statusTab === 'sin_acceso') return false;
     const matchSearch = !search || u.nombre.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
     const matchRole = !filterRole || u.role === filterRole || (u.roles && u.roles.includes(filterRole));
     const matchSociety = !filterSociety || (u.societies && u.societies.includes(filterSociety));
@@ -1483,9 +1487,11 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
   });
 
   const filteredEmpleados = empleadosSinCuenta.filter((e) => {
-    if (filterRole && filterRole !== 'employee') return false;
-    if (statusTab === 'inactivo' && e.activo) return false;
-    if (statusTab === 'activo' && !e.activo) return false;
+    if (statusTab !== 'sin_acceso') {
+      if (filterRole && filterRole !== 'employee') return false;
+      if (statusTab === 'inactivo' && e.activo) return false;
+      if (statusTab === 'activo' && !e.activo) return false;
+    }
     if (filterSociety && e.id_sociedad !== filterSociety) return false;
     if (!search) return true;
     const q = search.toLowerCase();
@@ -1582,11 +1588,18 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
       </div>
 
       {/* Status tabs */}
-      <div className="flex items-center gap-2 mb-4">
-        {(['activo', 'inactivo'] as const).map((tab) => {
-          const count = tab === 'activo'
-            ? users.filter((u) => u.activo).length + empleadosSinCuenta.filter((e) => e.activo).length
-            : users.filter((u) => !u.activo).length + empleadosSinCuenta.filter((e) => !e.activo).length;
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        {(['activo', 'inactivo', 'sin_acceso'] as const).map((tab) => {
+          const isNoAccess = tab === 'sin_acceso';
+          const isActive = tab === 'activo';
+          const color = isNoAccess ? '#D97706' : isActive ? '#16A34A' : '#DC2626';
+          const background = isNoAccess ? '#FFFBEB' : isActive ? '#F0FDF4' : '#FEF2F2';
+          const border = isNoAccess ? '#FDE68A' : isActive ? '#BBF7D0' : '#FECACA';
+          const count = isNoAccess
+            ? empleadosSinCuenta.length
+            : isActive
+              ? users.filter((u) => u.activo).length + empleadosSinCuenta.filter((e) => e.activo).length
+              : users.filter((u) => !u.activo).length + empleadosSinCuenta.filter((e) => !e.activo).length;
           const isActiveTab = statusTab === tab;
           return (
             <button
@@ -1594,14 +1607,14 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
               onClick={() => setStatusTab(tab)}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer transition-all duration-200"
               style={{
-                backgroundColor: isActiveTab ? (tab === 'activo' ? '#F0FDF4' : '#FEF2F2') : '#FFFFFF',
-                color: isActiveTab ? (tab === 'activo' ? '#16A34A' : '#DC2626') : '#64748B',
-                border: `1.5px solid ${isActiveTab ? (tab === 'activo' ? '#BBF7D0' : '#FECACA') : '#E2E8F0'}`,
+                backgroundColor: isActiveTab ? background : '#FFFFFF',
+                color: isActiveTab ? color : '#64748B',
+                border: `1.5px solid ${isActiveTab ? border : '#E2E8F0'}`,
               }}
             >
-              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isActiveTab ? (tab === 'activo' ? '#22C55E' : '#EF4444') : '#CBD5E1' }} />
-              {tab === 'activo' ? 'Activos' : 'Inactivos'}
-              <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: isActiveTab ? (tab === 'activo' ? '#BBF7D0' : '#FECACA') : '#F1F5F9', color: isActiveTab ? (tab === 'activo' ? '#16A34A' : '#DC2626') : '#94A3B8' }}>
+              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isActiveTab ? color : '#CBD5E1' }} />
+              {isNoAccess ? 'Sin acceso' : isActive ? 'Activos' : 'Inactivos'}
+              <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: isActiveTab ? border : '#F1F5F9', color: isActiveTab ? color : '#94A3B8' }}>
                 {count}
               </span>
             </button>
@@ -1618,7 +1631,7 @@ export default function UserManagement({ currentUserRole, onImpersonate }: Props
           <div className="flex flex-col items-center py-16">
             <Users size={32} style={{ color: '#E2E8F0' }} />
             <p className="text-sm mt-3" style={{ color: '#94A3B8' }}>
-              No hay usuarios {statusTab === 'activo' ? 'activos' : 'inactivos'}
+              {statusTab === 'sin_acceso' ? 'No hay empleados sin acceso' : `No hay usuarios ${statusTab === 'activo' ? 'activos' : 'inactivos'}`}
             </p>
           </div>
         ) : (

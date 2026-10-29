@@ -10,6 +10,7 @@ import { supabase, UserProfile, AppRole, Empleado } from './supabaseClient';
 import { useAuth } from './context/AuthContext';
 import { useSociety } from './context/SocietyContext';
 import { writeAuditLog } from './lib/auditLog';
+import CoordinadorSupervisoresSection from './components/CoordinadorSupervisoresSection';
 
 const ROLE_COLORS: Record<AppRole, { bg: string; text: string; border: string; label: string }> = {
   admin:          { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA', label: 'Admin' },
@@ -25,6 +26,7 @@ const ROLE_COLORS: Record<AppRole, { bg: string; text: string; border: string; l
   administrador_gerontalia:  { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA', label: 'Admin Gerontalia' },
   supervisor_gerontalia:     { bg: '#F5F3FF', text: '#7C3AED', border: '#DDD6FE', label: 'Supervisor Gerontalia' },
   prevencion_gerontalia:      { bg: '#FFFBEB', text: '#D97706', border: '#FDE68A', label: 'Prevencion Gerontalia' },
+  coordinador:                { bg: '#F0FDFA', text: '#0F766E', border: '#99F6E4', label: 'Coordinador' },
 };
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -81,8 +83,8 @@ function InviteModal({ onClose, onInvited, currentUserRole }: InviteModalProps) 
   const [success, setSuccess] = useState(false);
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia']
-    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'coordinador', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia']
+    : ['rrhh', 'prevencion', 'supervisor', 'coordinador', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia'];
 
   const toggleRole = (r: AppRole) => {
     if (r === 'employee') return; // empleado is always on
@@ -516,8 +518,8 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
   const metaDirty = rolesChanged || activo !== user.activo || societiesChanged || profesionChanged;
 
   const availableRoles: AppRole[] = currentUserRole === 'admin'
-    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia']
-    : ['rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia'];
+    ? ['admin', 'rrhh', 'prevencion', 'supervisor', 'coordinador', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia']
+    : ['rrhh', 'prevencion', 'supervisor', 'coordinador', 'administracion', 'formacion', 'calidad', 'crm', 'employee', 'rrhh_gerontalia', 'supervisor_gerontalia', 'prevencion_gerontalia'];
 
   const rc = ROLE_COLORS[user.role] ?? ROLE_COLORS['employee'];
 
@@ -770,6 +772,8 @@ function EditUserModal({ user, onClose, onSaved, currentUserRole }: EditUserModa
             </div>
           </CredentialRow>
         </div>
+
+        {user.role === 'coordinador' && <CoordinadorSupervisoresSection coordinadorId={user.id} />}
 
         {/* ── Supervisor: empleados asignados ── */}
         {(user.role === 'supervisor' || user.role === 'supervisor_gerontalia' || (user.roles && (user.roles.includes('supervisor') || user.roles.includes('supervisor_gerontalia')))) && (
@@ -1078,7 +1082,7 @@ function BulkCreateAccessModal({ employees, onClose, onCreated }: BulkCreateAcce
                 <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: '#64748B' }}>Perfiles asignados</label>
                 <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>Empleado esta siempre activo.</p>
                 <div className="flex gap-2 flex-wrap">
-                  {(['employee', 'rrhh', 'prevencion', 'supervisor', 'administracion', 'formacion', 'calidad', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia'] as AppRole[]).map((r) => {
+                  {(['employee', 'rrhh', 'prevencion', 'supervisor', 'coordinador', 'administracion', 'formacion', 'calidad', 'rrhh_gerontalia', 'administrador_gerontalia', 'supervisor_gerontalia'] as AppRole[]).map((r) => {
                     const rc = ROLE_COLORS[r];
                     const isActive = selectedRoles.has(r);
                     const isEmployee = r === 'employee';

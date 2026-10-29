@@ -18,6 +18,7 @@ import AdminPanel from './AdminPanel';
 import RRHHPanel from './RRHHPanel';
 import PrevencionPanel from './PrevencionPanel';
 import AdministracionPanel from './AdministracionPanel';
+import CoordinadorPanel from './components/CoordinadorPanel';
 import CalidadPanel from './CalidadPanel';
 import FormacionPanel from './FormacionPanel';
 import CrmPanel from './components/CrmPanel';
@@ -1230,7 +1231,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 }
 
 
-type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'administracion' | 'calidad' | 'formacion' | 'rrhh_gerontalia' | 'supervisor_gerontalia' | 'crm';
+type AppView = 'login' | 'admin' | 'rrhh' | 'prevencion' | 'dashboard' | 'supervisor' | 'coordinador' | 'administracion' | 'calidad' | 'formacion' | 'rrhh_gerontalia' | 'supervisor_gerontalia' | 'crm';
 
 interface SessionState {
   email: string;
@@ -1471,6 +1472,8 @@ export default function LoginPage() {
         initialView = 'prevencion';
       } else if (firstStaffRole === 'supervisor' || firstStaffRole === 'supervisor_gerontalia') {
         initialView = 'supervisor';
+      } else if (firstStaffRole === 'coordinador') {
+        initialView = 'coordinador';
       } else if (firstStaffRole === 'administracion') {
         initialView = 'administracion';
       } else if (firstStaffRole === 'calidad') {
@@ -1645,6 +1648,14 @@ export default function LoginPage() {
               onNavigateProfile={(v) => handleNavigate(v as AppView)}
             />
           </SocietyProvider>
+        </AuthProvider>
+      );
+    }
+
+    if (session.view === 'coordinador') {
+      return (
+        <AuthProvider>
+          <CoordinadorPanel email={session.email} onLogout={handleLogout} />
         </AuthProvider>
       );
     }

@@ -17,6 +17,7 @@ export type AppRole =
   | 'rrhh_gerontalia'
   | 'administrador_gerontalia'
   | 'supervisor_gerontalia'
+  | 'coordinador'
   | 'prevencion_gerontalia'
   | string;
 

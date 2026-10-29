@@ -16,13 +16,21 @@ export interface DatosCuadrante {
 
 const TAMANO_PAGINA = 1000;
 
-async function fichajesDelCentro(centroId: string, desde: string, hasta: string): Promise<FichajeEvento[]> {
+async function fichajesDelCentro(
+  centroId: string,
+  empleadoIds: string[],
+  desde: string,
+  hasta: string
+): Promise<FichajeEvento[]> {
+  const filtro = empleadoIds.length > 0
+    ? `centro_id.eq.${centroId},and(centro_id.is.null,empleado_id.in.(${empleadoIds.join(',')}))`
+    : `centro_id.eq.${centroId}`;
   const todos: FichajeEvento[] = [];
   for (let inicio = 0; ; inicio += TAMANO_PAGINA) {
     const { data, error } = await supabase
       .from('fichajes')
       .select('empleado_id, fecha, timestamp, tipo_evento')
-      .eq('centro_id', centroId)
+      .or(filtro)
       .gte('fecha', desde)
       .lte('fecha', hasta)
       .in('tipo_evento', ['entrada', 'salida'])
@@ -39,9 +47,9 @@ async function fichajesDelCentro(centroId: string, desde: string, hasta: string)
 export async function cargarDatosCuadrante(centroId: string, desde: string, hasta: string): Promise<DatosCuadrante> {
   const siguienteDia = new Date(`${hasta}T12:00:00`);
   siguienteDia.setDate(siguienteDia.getDate() + 1);
+  const hastaExclusivo = toFechaISO(siguienteDia);
 
-  const [eventos, asignados, planificados] = await Promise.all([
-    fichajesDelCentro(centroId, desde, toFechaISO(siguienteDia)),
+  const [asignados, planificados] = await Promise.all([
     supabase
       .from('empleados')
       .select('id, nombre, apellidos, puesto')
@@ -58,19 +66,26 @@ export async function cargarDatosCuadrante(centroId: string, desde: string, hast
   if (asignados.error) throw asignados.error;
   if (planificados.error) throw planificados.error;
 
-  const idsFichados = [...new Set(eventos.map((e) => e.empleado_id))];
-  let fichados: EmpleadoCuadrante[] = [];
-  if (idsFichados.length > 0) {
+  const empleadosCentro = (asignados.data as EmpleadoCuadrante[]) ?? [];
+  const eventos = await fichajesDelCentro(
+    centroId,
+    empleadosCentro.map((e) => e.id),
+    desde,
+    hastaExclusivo
+  );
+
+  const porId = new Map<string, EmpleadoCuadrante>();
+  empleadosCentro.forEach((e) => porId.set(e.id, e));
+
+  const idsFichadosFuera = [...new Set(eventos.map((e) => e.empleado_id))].filter((id) => !porId.has(id));
+  if (idsFichadosFuera.length > 0) {
     const { data, error } = await supabase
       .from('empleados')
       .select('id, nombre, apellidos, puesto')
-      .in('id', idsFichados);
+      .in('id', idsFichadosFuera);
     if (error) throw error;
-    fichados = (data as EmpleadoCuadrante[]) ?? [];
+    ((data as EmpleadoCuadrante[]) ?? []).forEach((e) => porId.set(e.id, e));
   }
-
-  const porId = new Map<string, EmpleadoCuadrante>();
-  [...((asignados.data as EmpleadoCuadrante[]) ?? []), ...fichados].forEach((e) => porId.set(e.id, e));
 
   return {
     empleados: [...porId.values()],

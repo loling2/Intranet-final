@@ -39,15 +39,7 @@ const MINUTOS_INICIO_MANANA = 7 * 60;
 const MINUTOS_FIN_MANANA = 15 * 60;
 const MINUTOS_FIN_TARDE = 22 * 60;
 
-const horaMinutoFormatter = new Intl.DateTimeFormat('es-ES', {
-  timeZone: 'Europe/Madrid',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
-
 const horaFormatter = new Intl.DateTimeFormat('es-ES', {
-  timeZone: 'Europe/Madrid',
   hour: '2-digit',
   minute: '2-digit',
   hour12: false,
@@ -61,15 +53,13 @@ export function aHoraCorta(hora: string): string {
   return hora.slice(0, 5);
 }
 
-export function minutosDelDiaMadrid(iso: string): number {
-  const partes = horaMinutoFormatter.formatToParts(new Date(iso));
-  const hora = Number(partes.find((p) => p.type === 'hour')?.value ?? 0);
-  const minuto = Number(partes.find((p) => p.type === 'minute')?.value ?? 0);
-  return hora * 60 + minuto;
+function minutosDelDia(iso: string): number {
+  const fecha = new Date(iso);
+  return fecha.getHours() * 60 + fecha.getMinutes();
 }
 
 export function clasificarTurno(inicioIso: string): TipoTurno {
-  const minutos = minutosDelDiaMadrid(inicioIso);
+  const minutos = minutosDelDia(inicioIso);
   if (minutos >= MINUTOS_INICIO_MANANA && minutos <= MINUTOS_FIN_MANANA) return 'manana';
   if (minutos > MINUTOS_FIN_MANANA && minutos <= MINUTOS_FIN_TARDE) return 'tarde';
   return 'noche';

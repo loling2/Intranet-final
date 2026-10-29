@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Monitor, Smartphone, Laptop, Headphones, Tablet, Phone, Settings, RefreshCw } from 'lucide-react';
+import { Monitor, Smartphone, Laptop, Headphones, Tablet, Phone, Printer, Settings, RefreshCw } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import type { Dispositivo } from './supabaseClient';
@@ -16,6 +16,7 @@ const typeIcons: Record<string, LucideIcon> = {
   Monitor: Monitor,
   Movil: Smartphone,
   Periferico: Headphones,
+  Impresora: Printer,
   Tablet: Tablet,
   VoIP: Phone,
 };

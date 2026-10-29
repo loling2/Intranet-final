@@ -12,7 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import { getSocietyLogo } from '../lib/societyLogos';
 import { uploadToWasabi } from '../lib/wasabi';
 
-const TIPOS = ['Portatil', 'Sobremesa', 'Monitor', 'Movil', 'Tablet', 'Periferico', 'VoIP', 'Otro'];
+const TIPOS = ['Portatil', 'Sobremesa', 'Monitor', 'Movil', 'Tablet', 'Periferico', 'Impresora', 'VoIP', 'Otro'];
 
 function typeIcon(tipo: string) {
   switch (tipo) {

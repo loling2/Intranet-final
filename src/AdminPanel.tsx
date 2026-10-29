@@ -4,7 +4,7 @@ import {
   ClipboardCheck, ChevronRight, BarChart2, LogOut,
   Eye, Activity, Lock, Unlock, Car, ScrollText, ChevronLeft, ShieldCheck, KeyRound, Palette,
   MapPin, Plus, X, RefreshCw, Trash2, AlertCircle, Clock, Mail, Menu, HelpCircle, MonitorSmartphone,
-  RotateCcw, AlertTriangle, CheckCircle2,
+  RotateCcw, AlertTriangle, CheckCircle2, CalendarDays,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { validUsers } from './mockData';
@@ -24,6 +24,7 @@ import IncidenciasModule from './components/IncidenciasModule';
 import DepartamentosModule from './components/DepartamentosModule';
 import EmailModule from './components/EmailModule';
 import FichajesModule from './components/FichajesModule';
+import CuadrantesModule from './components/CuadrantesModule';
 import KioskDevicesPanel from './components/KioskDevicesPanel';
 import CentrosModule from './components/CentrosModule';
 import RoleTabPermissionsManager from './components/RoleTabPermissionsManager';
@@ -41,7 +42,7 @@ interface Props {
   onImpersonate?: (userId: string, societyId: string | null) => void;
 }
 
-type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'centros' | 'documents' | 'devices' | 'kiosk-devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'permissions' | 'seguros' | 'crm' | 'ayuda';
+type AdminTab = 'overview' | 'employees' | 'users' | 'societies' | 'centros' | 'documents' | 'devices' | 'kiosk-devices' | 'vacations' | 'vehicles' | 'prevencion' | 'tags' | 'roles' | 'departamentos' | 'email' | 'audit' | 'css' | 'incidencias' | 'fichajes' | 'cuadrantes' | 'permissions' | 'seguros' | 'crm' | 'ayuda';
 type AdminSection = 'empresa' | 'usuarios' | 'ajustes';
 
 export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate }: Props) {
@@ -162,6 +163,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
     { id: 'css',        label: 'CSS',                 icon: Palette },
     { id: 'incidencias',  label: 'Incidencias',           icon: AlertCircle },
     { id: 'fichajes',     label: 'Fichajes',              icon: Clock },
+    { id: 'cuadrantes',    label: 'Cuadrantes',            icon: CalendarDays },
     { id: 'permissions',  label: 'Permisos de Perfiles',  icon: Lock },
     { id: 'seguros',       label: 'Seguros',              icon: ShieldCheck },
     { id: 'crm',           label: 'CRM',                  icon: Users },
@@ -169,7 +171,7 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
   ];
 
   const sectionTabs: Record<AdminSection, AdminTab[]> = {
-    empresa: ['overview', 'societies', 'centros', 'vehicles', 'devices', 'kiosk-devices', 'departamentos', 'roles', 'seguros', 'fichajes'],
+    empresa: ['overview', 'societies', 'centros', 'vehicles', 'devices', 'kiosk-devices', 'departamentos', 'roles', 'seguros', 'fichajes', 'cuadrantes'],
     usuarios: ['employees', 'users', 'documents', 'vacations', 'prevencion', 'incidencias', 'crm'],
     ajustes: ['tags', 'permissions', 'css', 'email', 'audit', 'ayuda'],
   };
@@ -807,6 +809,10 @@ export default function AdminPanel({ email, onLogout, onNavigate, onImpersonate 
 
         {activeTab === 'fichajes' && (
           <FichajesModule />
+        )}
+
+        {activeTab === 'cuadrantes' && (
+          <CuadrantesModule />
         )}
 
         {activeTab === 'permissions' && (

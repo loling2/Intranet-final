@@ -1107,6 +1107,7 @@ const [sortEtiquetaAsc, setSortEtiquetaAsc] = useState(true);
       return (
         d.marca_modelo.toLowerCase().includes(q) ||
         d.tipo.toLowerCase().includes(q) ||
+        (d.etiquetado && d.etiquetado.toLowerCase().includes(q)) ||
         (d.numero_serie && d.numero_serie.toLowerCase().includes(q)) ||
         (d.usuario_asignado_nombre && d.usuario_asignado_nombre.toLowerCase().includes(q)) ||
         (d.centro_trabajo && d.centro_trabajo.toLowerCase().includes(q))
@@ -1190,7 +1191,7 @@ const totalActivos =
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por modelo, serie, usuario..."
+              placeholder="Buscar por modelo, serie, usuario, etiqueta..."
               className="w-full pl-8 pr-3 py-2 rounded-lg text-xs outline-none"
               style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', color: '#1E293B' }}
             />

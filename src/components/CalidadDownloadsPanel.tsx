@@ -99,7 +99,7 @@ export default function CalidadDownloadsPanel({ docs }: Props) {
       {sortedDocs.length === 0 ? (
         <div className="rounded-2xl p-10 text-center" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
           <FileText size={28} className="mx-auto mb-3" style={{ color: '#CBD5E1' }} />
-          <p className="text-sm font-medium" style={{ color: '#64748B' }}>Todavía no hay documentos de Calidad</p>
+          <p className="text-sm font-medium" style={{ color: '#64748B' }}>Todavía no hay documentos de Protocolos</p>
         </div>
       ) : (
         <div className="grid gap-5 lg:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.6fr)]">

@@ -1589,7 +1589,7 @@ export default function LoginPage() {
     if (sessionRoles.includes('prevencion') || sessionRoles.includes('prevencion_gerontalia')) profileOptions.push({ label: 'Prevencion', view: 'prevencion', icon: ShieldCheck, color: '#059669' });
     if (sessionRoles.includes('supervisor') || sessionRoles.includes('supervisor_gerontalia')) profileOptions.push({ label: 'Supervisor', view: 'supervisor', icon: UserCog, color: '#7C3AED' });
     if (sessionRoles.includes('administracion')) profileOptions.push({ label: 'Administracion', view: 'administracion', icon: Building2, color: '#2563EB' });
-    if (sessionRoles.includes('calidad')) profileOptions.push({ label: 'Calidad', view: 'calidad', icon: CheckCircle2, color: '#0369A1' });
+    if (sessionRoles.includes('calidad')) profileOptions.push({ label: 'Protocolos', view: 'calidad', icon: CheckCircle2, color: '#0369A1' });
     if (sessionRoles.includes('formacion')) profileOptions.push({ label: 'Formacion', view: 'formacion', icon: ClipboardCheck, color: '#0D9488' });
     if (sessionRoles.includes('crm') || sessionRoles.includes('admin') || sessionRoles.includes('rrhh') || sessionRoles.includes('rrhh_gerontalia') || crmAccess) profileOptions.push({ label: 'CRM', view: 'crm', icon: Users, color: '#0369A1' });
     profileOptions.push({ label: 'Empleado', view: 'dashboard', icon: Users, color: '#16A34A' });
@@ -1737,7 +1737,7 @@ export default function LoginPage() {
           sessionRoles.includes('prevencion')               ? { label: 'Volver a Prevencion',     view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
           sessionRoles.includes('prevencion_gerontalia')    ? { label: 'Volver a Prevencion',     view: 'prevencion',     color: '#6EE7B7', border: 'rgba(5,150,105,0.3)'   } :
           sessionRoles.includes('administracion')           ? { label: 'Volver a Administracion', view: 'administracion', color: '#93C5FD', border: 'rgba(37,99,235,0.3)'   } :
-          sessionRoles.includes('calidad')                  ? { label: 'Volver a Calidad',        view: 'calidad',        color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
+          sessionRoles.includes('calidad')                  ? { label: 'Volver a Protocolos',        view: 'calidad',        color: '#7DD3FC', border: 'rgba(3,105,161,0.3)'   } :
           sessionRoles.includes('formacion')                ? { label: 'Volver a Formacion',      view: 'formacion',      color: '#5EEAD4', border: 'rgba(13,148,136,0.3)'  } :
           null;
 
@@ -3000,7 +3000,7 @@ useEffect(() => {
     { id: 'resumen', label: 'Resumen', icon: FileText },
     { id: 'nominas', label: 'Mis Nominas', icon: Zap },
     { id: 'misdocumentos', label: 'Mis Documentos', icon: FileText },
-    { id: 'calidad', label: 'Calidad', icon: ShieldCheck },
+    { id: 'calidad', label: 'Protocolos', icon: ShieldCheck },
     { id: 'prevencion', label: 'Documentos PRL', icon: ShieldCheck },
     { id: 'formacion', label: 'Formacion', icon: GraduationCap },
     { id: 'incidencias', label: 'Incidencias', icon: AlertCircle },

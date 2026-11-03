@@ -342,13 +342,13 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                   <ShieldCheck size={18} style={{ color: '#FFFFFF' }} />
                 </div>
                 <div>
-                  <h1 className="font-bold text-sm" style={{ color: '#FFFFFF' }}>Panel de Calidad</h1>
+                  <h1 className="font-bold text-sm" style={{ color: '#FFFFFF' }}>Panel de Protocolos</h1>
                   <p className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>{email}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 {availableProfiles && onNavigateProfile ? (
-                  <ProfileSwitcher currentLabel="Calidad" options={availableProfiles} onNavigate={onNavigateProfile} headerText="#E0F2FE" />
+                  <ProfileSwitcher currentLabel="Protocolos" options={availableProfiles} onNavigate={onNavigateProfile} headerText="#E0F2FE" />
                 ) : null}
                 {onNavigateEmployee && (
                   <button
@@ -391,7 +391,7 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
                   border: `1px solid ${activeTab === 'documentos' ? '#0369A1' : '#E2E8F0'}`,
                 }}
               >
-                <FileText size={14} /> Documentos de Calidad
+                <FileText size={14} /> Documentos de Protocolos
               </button>
               <button
                 onClick={() => setActiveTab('descargados')}
@@ -432,7 +432,7 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
           {/* Content */}
           <main className="max-w-screen-xl mx-auto px-6 py-6">
             {activeTab === 'ayuda' && (
-              <HelpPanel currentProfileName="Calidad" accentColor="#0369A1" />
+              <HelpPanel currentProfileName="Protocolos" accentColor="#0369A1" />
             )}
             {activeTab === 'documentos' && (
               <div>
@@ -590,7 +590,7 @@ export default function CalidadPanel({ email, onLogout, onNavigateEmployee, avai
             {activeTab === 'subir' && (
               <div className="max-w-2xl mx-auto">
                 <div className="rounded-2xl p-6" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                  <h2 className="text-lg font-semibold mb-1" style={{ color: '#1E293B' }}>Subir Documentos de Calidad</h2>
+                  <h2 className="text-lg font-semibold mb-1" style={{ color: '#1E293B' }}>Subir Documentos de Protocolos</h2>
                   <p className="text-sm mb-6" style={{ color: '#64748B' }}>Sube documentos visibles para todos los empleados o por sociedad</p>
 
                   {/* Upload mode selector */}

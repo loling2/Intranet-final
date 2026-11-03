@@ -244,7 +244,7 @@ export default function CalidadDocsCard({ theme, societyId, mini }: Props) {
             <ShieldCheck size={18} style={{ color: '#0369A1' }} />
           </div>
           <div>
-            <h3 className="text-sm font-semibold" style={{ color: theme.textPrimary }}>Calidad</h3>
+            <h3 className="text-sm font-semibold" style={{ color: theme.textPrimary }}>Protocolos</h3>
             <p className="text-xs" style={{ color: theme.textSecondary }}>
               {visibleDocs.length} documento{visibleDocs.length !== 1 ? 's' : ''} disponible{visibleDocs.length !== 1 ? 's' : ''}
             </p>

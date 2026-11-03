@@ -23,7 +23,7 @@ const ALL_MANUALS: ProfileManual[] = [
       { id: 'documentos', label: 'Documentos', description: 'Ver y descargar documentos asignados a ti por RRHH o administracion (contratos, certificados, comunicados). Los documentos nuevos se destacan con un badge.' },
       { id: 'personal-docs', label: 'Documentos Personales', description: 'Gestion de tus documentos personales: subir, descargar y organizar documentos propios (DNI, contrato, Seguridad Social, etc.).' },
       { id: 'prevencion', label: 'Documentos de Prevencion', description: 'Documentos de Prevencion de Riesgos Laborales asignados a tu puesto segun tus tags y departamentos. El sistema filtra automaticamente los documentos que puedes ver. Incluye planes de prevencion, evaluaciones de riesgos, protocolos de seguridad y entregas de EPIs. Puedes previsualizar y descargar cada documento.' },
-      { id: 'calidad', label: 'Documentos de Calidad', description: 'Documentos del sistema de gestion de calidad (ISO, procedimientos, manuales). Se muestran en dos secciones: General (aplica a todas las sociedades) y por Sociedad. Incluye filtros por ano y mes. Solo consulta y descarga, sin capacidad de subida.' },
+      { id: 'calidad', label: 'Documentos de Protocolos', description: 'Documentos del sistema de gestion de calidad (ISO, procedimientos, manuales). Se muestran en dos secciones: General (aplica a todas las sociedades) y por Sociedad. Incluye filtros por ano y mes. Solo consulta y descarga, sin capacidad de subida.' },
       { id: 'dispositivos', label: 'Dispositivos', description: 'Ver los dispositivos de TI asignados a ti (portatil, movil, tablet, monitor, etc.). Si tienes una entrega pendiente, veras una tarea para subir el acta de entrega firmada. El acta es un documento imprimible con logo de sociedad, datos del trabajador, tabla de dispositivos, Clausula de responsabilidad y lineas de firma.' },
       { id: 'vehiculos', label: 'Vehiculos', description: 'Ver y gestionar el vehiculo asignado a ti. Puedes consultar el estado del vehiculo y su historial de uso.' },
       { id: 'certificaciones', label: 'Certificaciones', description: 'Seguimiento de tus certificados (cursos, habilitaciones, permisos). Control de caducidad con aviso de certificados proximos a vencer.' },
@@ -117,8 +117,8 @@ const ALL_MANUALS: ProfileManual[] = [
     ],
   },
   {
-    profileName: 'Calidad',
-    profileDescription: 'Panel de Calidad con 3 pestañas. Gestion de documentos del sistema de gestion de calidad (ISO, procedimientos, manuales).',
+    profileName: 'Protocolos',
+    profileDescription: 'Panel de Protocolos con 3 pestañas. Gestion de documentos del sistema de gestion de calidad (ISO, procedimientos, manuales).',
     tabs: [
       { id: 'documentos', label: 'Documentos', description: 'Listar, previsualizar, descargar y eliminar documentos de calidad/gestion. Filtros: Todos / General / Por sociedad. Busqueda. Vista previa (PDF/imagen via iframe), descarga, eliminar (con confirmacion: borra de Wasabi y calidad_documentos).' },
       { id: 'subir', label: 'Subir', description: 'Subir documentos de calidad a Wasabi. Campos obligatorios: modo de subida (general o por sociedad), al menos 1 archivo, ano (2024-2027), mes (01-12), sociedad (si modo=sociedad). Se sube a calida/{year}/{month}/{filename} y se inserta en calidad_documentos con nombre_archivo, wasabi_key, tipo, tamano_bytes, es_general, sociedad_ids, anio, mes, subido_por, subido_por_nombre.' },

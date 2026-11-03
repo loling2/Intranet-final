@@ -1,11 +1,15 @@
-import { useState } from 'react';
-import { LogOut, Receipt, Building2, CircleUser as UserCircle, KeyRound, HelpCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { LogOut, Receipt, Building2, CircleUser as UserCircle, KeyRound, HelpCircle, CalendarDays, ShieldCheck } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { AuthProvider } from './context/AuthContext';
 import { SocietyProvider } from './context/SocietyContext';
 import FacturasModule from './components/FacturasModule';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import HelpPanel from './components/HelpPanel';
 import ProfileSwitcher, { type ProfileOption } from './components/ProfileSwitcher';
+import CuadrantesModule from './components/CuadrantesModule';
+import SegurosModule from './components/SegurosModule';
+import { supabase } from './supabaseClient';
 
 interface Props {
   email: string;
@@ -15,9 +19,28 @@ interface Props {
   onNavigateProfile?: (view: string) => void;
 }
 
+type AdministracionTab = 'facturas' | 'cuadrantes' | 'seguros' | 'ayuda';
+
+const PERMISSION_GATED_TABS: { id: 'cuadrantes' | 'seguros'; label: string; icon: LucideIcon }[] = [
+  { id: 'cuadrantes', label: 'Cuadrantes', icon: CalendarDays },
+  { id: 'seguros', label: 'Seguros', icon: ShieldCheck },
+];
+
 export default function AdministracionPanel({ email, onLogout, onNavigateEmployee, availableProfiles, onNavigateProfile }: Props) {
   const [showChangePassword, setShowChangePassword] = useState(false);
-  const [activeTab, setActiveTab] = useState<'facturas' | 'ayuda'>('facturas');
+  const [activeTab, setActiveTab] = useState<AdministracionTab>('facturas');
+  const [enabledTabIds, setEnabledTabIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    supabase
+      .from('role_tab_permissions')
+      .select('tab_id, enabled')
+      .eq('role', 'administracion')
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        setEnabledTabIds(new Set(data.filter(r => r.enabled).map(r => r.tab_id as string)));
+      });
+  }, []);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
@@ -85,6 +108,24 @@ export default function AdministracionPanel({ email, onLogout, onNavigateEmploye
           >
             <Receipt size={14} className="inline mr-1.5" /> Facturas
           </button>
+          {PERMISSION_GATED_TABS.filter(tab => enabledTabIds.has(tab.id)).map(tab => {
+            const TabIcon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
+                style={{
+                  backgroundColor: isActive ? '#0C4A6E' : '#FFFFFF',
+                  color: isActive ? '#FFFFFF' : '#475569',
+                  border: `1px solid ${isActive ? '#0C4A6E' : '#E2E8F0'}`,
+                }}
+              >
+                <TabIcon size={14} className="inline mr-1.5" /> {tab.label}
+              </button>
+            );
+          })}
           <button
             onClick={() => setActiveTab('ayuda')}
             className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all duration-200"
@@ -98,6 +139,8 @@ export default function AdministracionPanel({ email, onLogout, onNavigateEmploye
           </button>
         </div>
         {activeTab === 'facturas' && <FacturasModule isAdmin={true} />}
+        {activeTab === 'cuadrantes' && <CuadrantesModule />}
+        {activeTab === 'seguros' && <SegurosModule />}
         {activeTab === 'ayuda' && <HelpPanel currentProfileName="Administración" accentColor="#0C4A6E" />}
       </main>
     </div>

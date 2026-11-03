@@ -4,7 +4,7 @@ import {
   Shield, Users, Truck, FileText, Palmtree, ShieldCheck, ScrollText,
   AlertCircle, Clock, Receipt, Ligature as FileSignature, Zap, Award,
   ClipboardCheck, BarChart2, Plus, Trash2, X, Check, BedSingle, UserCog,
-  MonitorSmartphone,
+  MonitorSmartphone, CalendarDays,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -38,6 +38,8 @@ const ALL_TABS: TabDef[] = [
   { id: 'prl-docs',       label: 'Documentos PRL',        icon: ShieldCheck },
   { id: 'supervisor-empleados', label: 'Empleados Asignados', icon: UserCog },
   { id: 'crm',           label: 'CRM',                    icon: Users },
+  { id: 'cuadrantes',     label: 'Cuadrantes',             icon: CalendarDays },
+  { id: 'seguros',        label: 'Seguros',                icon: ShieldCheck },
 ];
 
 interface RoleDef {

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { ChevronLeft, ChevronRight, Loader2, AlertCircle, Sun, Sunset, Moon, Building2 } from 'lucide-react';
 import type { Medicacion, Pauta } from './CrmTratamientosModule';
-import CrmMedicacionTomaRow, { type TomaRegistro } from './CrmMedicacionTomaRow';
+import CrmMedicacionTomaRow, { CrmTomaRegistradaItem, type TomaRegistro } from './CrmMedicacionTomaRow';
 
 interface TratamientoDiario {
   id: string;
@@ -23,6 +23,8 @@ interface TomaDb {
   medicacion_id: string;
   tomada: boolean;
   anotacion: string;
+  registrado_por_nombre: string;
+  updated_at: string;
 }
 
 interface CentroOption { id: string; nombre: string; }
@@ -112,7 +114,7 @@ export default function CrmTratamientosDiarioModule() {
     setTomas({});
     supabase
       .from('crm_tratamiento_tomas')
-      .select('medicacion_id, tomada, anotacion')
+      .select('medicacion_id, tomada, anotacion, registrado_por_nombre, updated_at')
       .eq('fecha', diaIso)
       .then(({ data, error: err }) => {
         if (cancelado) return;
@@ -122,7 +124,13 @@ export default function CrmTratamientosDiarioModule() {
         }
         const mapa: Record<string, TomaRegistro> = {};
         for (const fila of (data ?? []) as TomaDb[]) {
-          mapa[fila.medicacion_id] = { tomada: fila.tomada, anotacion: fila.anotacion ?? '' };
+          mapa[fila.medicacion_id] = {
+            medicacionId: fila.medicacion_id,
+            tomada: fila.tomada,
+            anotacion: fila.anotacion ?? '',
+            registradoPorNombre: fila.registrado_por_nombre ?? '',
+            updatedAt: fila.updated_at,
+          };
         }
         setTomas(mapa);
       });
@@ -132,10 +140,23 @@ export default function CrmTratamientosDiarioModule() {
   const guardarToma = async (medicacionId: string, tomada: boolean, anotacion: string) => {
     setGuardandoId(medicacionId);
     setError('');
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth.user?.id ?? null;
+    let nombre = auth.user?.email ?? '';
+    if (userId) {
+      const { data: empleado } = await supabase
+        .from('empleados')
+        .select('nombre, apellidos')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (empleado) nombre = `${empleado.nombre} ${empleado.apellidos ?? ''}`.trim();
+    }
+    const updatedAt = new Date().toISOString();
+    const textoAnotacion = tomada ? '' : anotacion;
     const { error: err } = await supabase
       .from('crm_tratamiento_tomas')
       .upsert(
-        { medicacion_id: medicacionId, fecha: diaIso, tomada, anotacion: tomada ? '' : anotacion, updated_at: new Date().toISOString() },
+        { medicacion_id: medicacionId, fecha: diaIso, tomada, anotacion: textoAnotacion, registrado_por: userId, registrado_por_nombre: nombre, updated_at: updatedAt },
         { onConflict: 'medicacion_id,fecha' },
       );
     setGuardandoId(null);
@@ -143,7 +164,10 @@ export default function CrmTratamientosDiarioModule() {
       setError('No se pudo guardar el registro. Inténtalo de nuevo.');
       return;
     }
-    setTomas((prev) => ({ ...prev, [medicacionId]: { tomada, anotacion: tomada ? '' : anotacion } }));
+    setTomas((prev) => ({
+      ...prev,
+      [medicacionId]: { medicacionId, tomada, anotacion: textoAnotacion, registradoPorNombre: nombre, updatedAt },
+    }));
   };
 
   const entradasPorTurno = useMemo(() => {
@@ -235,6 +259,8 @@ export default function CrmTratamientosDiarioModule() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {TURNOS.map(turno => {
             const entradas = entradasPorTurno[turno.id];
+            const pendientes = entradas.filter((e) => !tomas[e.medicacionId]);
+            const registradas = entradas.filter((e) => tomas[e.medicacionId]);
             const TurnoIcon = turno.Icon;
             return (
               <div key={turno.id} className="rounded-2xl p-4 space-y-3" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
@@ -243,24 +269,42 @@ export default function CrmTratamientosDiarioModule() {
                     <span className="p-1.5 rounded-lg" style={{ backgroundColor: turno.bg, border: `1px solid ${turno.border}` }}><TurnoIcon size={14} /></span>
                     {turno.label}
                   </span>
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>{entradas.length}</span>
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>{pendientes.length}</span>
                 </div>
-                {entradas.length === 0 ? (
-                  <p className="text-sm text-center py-6" style={{ color: '#94A3B8' }}>Sin medicación en este turno</p>
+                {pendientes.length === 0 ? (
+                  <p className="text-sm text-center py-6" style={{ color: '#94A3B8' }}>
+                    {registradas.length === 0 ? 'Sin medicación en este turno' : 'Todo registrado en este turno'}
+                  </p>
                 ) : (
                   <div className="space-y-2">
-                    {entradas.map(entrada => (
+                    {pendientes.map(entrada => (
                       <CrmMedicacionTomaRow
                         key={entrada.key}
                         residente={entrada.residente}
                         tratamiento={entrada.tratamiento}
                         medicacion={entrada.medicacion}
-                        registro={tomas[entrada.medicacionId]}
                         guardando={guardandoId === entrada.medicacionId}
                         onGuardar={(tomada, anotacion) => guardarToma(entrada.medicacionId, tomada, anotacion)}
                       />
                     ))}
                   </div>
+                )}
+                {registradas.length > 0 && (
+                  <details className="group">
+                    <summary className="text-xs font-medium cursor-pointer select-none" style={{ color: '#475569' }}>
+                      Registradas ({registradas.length})
+                    </summary>
+                    <div className="space-y-2 mt-2">
+                      {registradas.map(entrada => (
+                        <CrmTomaRegistradaItem
+                          key={entrada.key}
+                          residente={entrada.residente}
+                          medicacion={entrada.medicacion}
+                          registro={tomas[entrada.medicacionId]}
+                        />
+                      ))}
+                    </div>
+                  </details>
                 )}
               </div>
             );

@@ -11,6 +11,7 @@ export interface Medicacion {
   id: string;
   nombre: string;
   dosis: string;
+  frecuencia_horas: number | null;
   pauta: Pauta;
   orden: number;
 }
@@ -163,6 +164,7 @@ export default function CrmTratamientosModule({ usuarioId }: Props) {
                     <Pill size={12} style={{ color: '#0369A1' }} />
                     <span className="font-medium">{med.nombre}</span>
                     {med.dosis && <span style={{ color: '#64748B' }}>· {med.dosis}</span>}
+                    {med.frecuencia_horas && <span style={{ color: '#64748B' }}>· cada {med.frecuencia_horas} h</span>}
                     <span className="ml-auto px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E0F2FE', color: '#0369A1' }}>{PAUTA_LABEL[med.pauta]}</span>
                   </div>
                 ))}

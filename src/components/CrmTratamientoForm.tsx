@@ -16,6 +16,7 @@ interface MedicacionForm {
   key: string;
   nombre: string;
   dosis: string;
+  frecuencia: string;
   pauta: Pauta;
 }
 
@@ -37,11 +38,11 @@ function newKey() {
 
 function medicacionesIniciales(tratamiento: Tratamiento | null): MedicacionForm[] {
   if (!tratamiento || tratamiento.crm_tratamiento_medicaciones.length === 0) {
-    return [{ key: newKey(), nombre: '', dosis: '', pauta: 'manana' }];
+    return [{ key: newKey(), nombre: '', dosis: '', frecuencia: '', pauta: 'manana' }];
   }
   return [...tratamiento.crm_tratamiento_medicaciones]
     .sort((a, b) => a.orden - b.orden)
-    .map((m: Medicacion) => ({ key: m.id, nombre: m.nombre, dosis: m.dosis, pauta: m.pauta }));
+    .map((m: Medicacion) => ({ key: m.id, nombre: m.nombre, dosis: m.dosis, frecuencia: m.frecuencia_horas?.toString() ?? '', pauta: m.pauta }));
 }
 
 export default function CrmTratamientoForm({ usuarioId, tratamiento, onClose, onSaved }: Props) {
@@ -61,7 +62,7 @@ export default function CrmTratamientoForm({ usuarioId, tratamiento, onClose, on
 
   const addMedicacion = () => {
     if (medicaciones.length >= MAX_MEDICACIONES) return;
-    setMedicaciones(prev => [...prev, { key: newKey(), nombre: '', dosis: '', pauta: 'manana' }]);
+    setMedicaciones(prev => [...prev, { key: newKey(), nombre: '', dosis: '', frecuencia: '', pauta: 'manana' }]);
   };
 
   const removeMedicacion = (key: string) => {
@@ -71,6 +72,11 @@ export default function CrmTratamientoForm({ usuarioId, tratamiento, onClose, on
   const handleSave = async () => {
     const nombreLimpio = nombre.trim();
     const medicacionesValidas = medicaciones.filter(m => m.nombre.trim());
+    const frecuenciaInvalida = medicacionesValidas.some(m => m.frecuencia.trim() && !(Number.isInteger(Number(m.frecuencia)) && Number(m.frecuencia) >= 1 && Number(m.frecuencia) <= 168));
+    if (frecuenciaInvalida) {
+      setError('La frecuencia debe ser un número de horas entre 1 y 168.');
+      return;
+    }
     if (!nombreLimpio) {
       setError('Escribe el nombre del tratamiento.');
       return;
@@ -125,6 +131,7 @@ export default function CrmTratamientoForm({ usuarioId, tratamiento, onClose, on
         tratamiento_id: tratamientoId,
         nombre: m.nombre.trim(),
         dosis: m.dosis.trim(),
+        frecuencia_horas: m.frecuencia.trim() ? Number(m.frecuencia) : null,
         pauta: m.pauta,
         orden: index,
       })),
@@ -180,9 +187,10 @@ export default function CrmTratamientoForm({ usuarioId, tratamiento, onClose, on
           </div>
           {medicaciones.map(m => (
             <div key={m.key} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center p-3 rounded-xl" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-              <input value={m.nombre} onChange={e => updateMedicacion(m.key, { nombre: e.target.value })} placeholder="Medicación" className="sm:col-span-5 px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} />
+              <input value={m.nombre} onChange={e => updateMedicacion(m.key, { nombre: e.target.value })} placeholder="Medicación" className="sm:col-span-4 px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} />
               <input value={m.dosis} onChange={e => updateMedicacion(m.key, { dosis: e.target.value })} placeholder="Dosis" className="sm:col-span-3 px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} />
-              <select value={m.pauta} onChange={e => updateMedicacion(m.key, { pauta: e.target.value as Pauta })} className="sm:col-span-3 px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle}>
+              <input type="number" min={1} max={168} value={m.frecuencia} onChange={e => updateMedicacion(m.key, { frecuencia: e.target.value })} placeholder="Cada X h" title="Frecuencia en horas (8 = cada 8 horas, 24 = una vez al día)" className="sm:col-span-2 px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} />
+              <select value={m.pauta} onChange={e => updateMedicacion(m.key, { pauta: e.target.value as Pauta })} className="sm:col-span-2 px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle}>
                 <option value="manana">Mañana</option>
                 <option value="tarde">Tarde</option>
                 <option value="noche">Noche</option>

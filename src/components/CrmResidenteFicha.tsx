@@ -10,6 +10,7 @@ import CrmDocumentosModule from './CrmDocumentosModule';
 import CrmSeguimientoModule from './CrmSeguimientoModule';
 import CrmLlamadasModule from './CrmLlamadasModule';
 import CrmMedicacionModule from './CrmMedicacionModule';
+import CrmTratamientosModule from './CrmTratamientosModule';
 import CrmAbvdModule from './CrmAbvdModule';
 import CrmIncidenciasSanitariasModule from './CrmIncidenciasSanitariasModule';
 import CrmPautasModule from './CrmPautasModule';
@@ -760,6 +761,12 @@ export default function CrmResidenteFicha(props: Props) {
       {/* === Tab: Tratamiento === */}
       {detailTab === 'tratamiento' && (
         <div className="rounded-2xl p-6" style={cardStyle}>
+          <h3 className="font-semibold text-sm flex items-center gap-2 mb-4" style={{ color: '#0F172A' }}><Pill size={16} style={{ color: '#0369A1' }} /> Tratamientos</h3>
+          <CrmTratamientosModule usuarioId={usuario.id} />
+        </div>
+      )}
+      {detailTab === 'tratamiento' && (
+        <div className="rounded-2xl p-6 mt-6" style={cardStyle}>
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-sm flex items-center gap-2" style={{ color: '#0F172A' }}><Pill size={16} style={{ color: '#0369A1' }} /> Tratamiento y seguimiento</h3>
             {!tratamientoEditing && <button onClick={() => setTratamientoEditing(true)} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Editar</button>}

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
-import { ChevronLeft, ChevronRight, Loader2, AlertCircle, Pill, Sun, Sunset, Moon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, AlertCircle, Sun, Sunset, Moon, Building2 } from 'lucide-react';
 import type { Medicacion, Pauta } from './CrmTratamientosModule';
+import CrmMedicacionTomaRow, { type TomaRegistro } from './CrmMedicacionTomaRow';
 
 interface TratamientoDiario {
   id: string;
@@ -9,12 +10,26 @@ interface TratamientoDiario {
   fecha_inicio: string | null;
   fecha_fin: string | null;
   estado: 'en_proceso' | 'finalizado';
-  usuarios_servicios: { nombre: string; apellidos: string | null; activo: boolean | null } | null;
+  usuarios_servicios: {
+    nombre: string;
+    apellidos: string | null;
+    activo: boolean | null;
+    usuarios_servicios_centros: { centro_id: string }[] | null;
+  } | null;
   crm_tratamiento_medicaciones: Medicacion[];
 }
 
+interface TomaDb {
+  medicacion_id: string;
+  tomada: boolean;
+  anotacion: string;
+}
+
+interface CentroOption { id: string; nombre: string; }
+
 interface EntradaTurno {
   key: string;
+  medicacionId: string;
   residente: string;
   tratamiento: string;
   medicacion: Medicacion;
@@ -55,6 +70,10 @@ function aplicaEnDia(tratamiento: TratamientoDiario, dia: string): boolean {
 
 export default function CrmTratamientosDiarioModule() {
   const [tratamientos, setTratamientos] = useState<TratamientoDiario[]>([]);
+  const [centros, setCentros] = useState<CentroOption[]>([]);
+  const [filterCentro, setFilterCentro] = useState('');
+  const [tomas, setTomas] = useState<Record<string, TomaRegistro>>({});
+  const [guardandoId, setGuardandoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [hoy] = useState(() => new Date());
@@ -62,20 +81,25 @@ export default function CrmTratamientosDiarioModule() {
 
   const semanaInicio = useMemo(() => startOfWeek(seleccionado), [seleccionado]);
   const diasSemana = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(semanaInicio, i)), [semanaInicio]);
+  const diaIso = toIsoDate(seleccionado);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
-    const { data, error: err } = await supabase
-      .from('crm_tratamientos')
-      .select('id, nombre, fecha_inicio, fecha_fin, estado, usuarios_servicios(nombre, apellidos, activo), crm_tratamiento_medicaciones(*)')
-      .eq('estado', 'en_proceso');
-    if (err) {
+    const [tratRes, centrosRes] = await Promise.all([
+      supabase
+        .from('crm_tratamientos')
+        .select('id, nombre, fecha_inicio, fecha_fin, estado, usuarios_servicios(nombre, apellidos, activo, usuarios_servicios_centros(centro_id)), crm_tratamiento_medicaciones(*)')
+        .eq('estado', 'en_proceso'),
+      supabase.from('centros').select('id, nombre').order('nombre'),
+    ]);
+    if (tratRes.error) {
       setError('No se pudieron cargar los tratamientos.');
       setTratamientos([]);
     } else {
-      setTratamientos((data ?? []) as unknown as TratamientoDiario[]);
+      setTratamientos((tratRes.data ?? []) as unknown as TratamientoDiario[]);
     }
+    setCentros((centrosRes.data ?? []) as CentroOption[]);
     setLoading(false);
   }, []);
 
@@ -83,23 +107,62 @@ export default function CrmTratamientosDiarioModule() {
     load();
   }, [load]);
 
-  const diaIso = toIsoDate(seleccionado);
+  useEffect(() => {
+    let cancelado = false;
+    setTomas({});
+    supabase
+      .from('crm_tratamiento_tomas')
+      .select('medicacion_id, tomada, anotacion')
+      .eq('fecha', diaIso)
+      .then(({ data, error: err }) => {
+        if (cancelado) return;
+        if (err) {
+          setError('No se pudieron cargar los registros de tomas.');
+          return;
+        }
+        const mapa: Record<string, TomaRegistro> = {};
+        for (const fila of (data ?? []) as TomaDb[]) {
+          mapa[fila.medicacion_id] = { tomada: fila.tomada, anotacion: fila.anotacion ?? '' };
+        }
+        setTomas(mapa);
+      });
+    return () => { cancelado = true; };
+  }, [diaIso]);
+
+  const guardarToma = async (medicacionId: string, tomada: boolean, anotacion: string) => {
+    setGuardandoId(medicacionId);
+    setError('');
+    const { error: err } = await supabase
+      .from('crm_tratamiento_tomas')
+      .upsert(
+        { medicacion_id: medicacionId, fecha: diaIso, tomada, anotacion: tomada ? '' : anotacion, updated_at: new Date().toISOString() },
+        { onConflict: 'medicacion_id,fecha' },
+      );
+    setGuardandoId(null);
+    if (err) {
+      setError('No se pudo guardar el registro. Inténtalo de nuevo.');
+      return;
+    }
+    setTomas((prev) => ({ ...prev, [medicacionId]: { tomada, anotacion: tomada ? '' : anotacion } }));
+  };
 
   const entradasPorTurno = useMemo(() => {
     const grupos: Record<Pauta, EntradaTurno[]> = { manana: [], tarde: [], noche: [] };
     for (const t of tratamientos) {
       if (!t.usuarios_servicios || t.usuarios_servicios.activo === false) continue;
       if (!aplicaEnDia(t, diaIso)) continue;
+      const centrosResidente = (t.usuarios_servicios.usuarios_servicios_centros ?? []).map((c) => c.centro_id);
+      if (filterCentro && !centrosResidente.includes(filterCentro)) continue;
       const residente = `${t.usuarios_servicios.nombre} ${t.usuarios_servicios.apellidos ?? ''}`.trim();
       for (const med of t.crm_tratamiento_medicaciones) {
-        grupos[med.pauta].push({ key: `${t.id}-${med.id}`, residente, tratamiento: t.nombre, medicacion: med });
+        grupos[med.pauta].push({ key: `${t.id}-${med.id}`, medicacionId: med.id, residente, tratamiento: t.nombre, medicacion: med });
       }
     }
     for (const turno of TURNOS) {
       grupos[turno.id].sort((a, b) => a.residente.localeCompare(b.residente) || a.medicacion.orden - b.medicacion.orden);
     }
     return grupos;
-  }, [tratamientos, diaIso]);
+  }, [tratamientos, diaIso, filterCentro]);
 
   const esHoy = toIsoDate(hoy) === diaIso;
   const tituloDia = seleccionado.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -111,7 +174,20 @@ export default function CrmTratamientosDiarioModule() {
           <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Tratamientos del día</h2>
           <p className="text-xs mt-1" style={{ color: '#64748B' }}>Medicación que preparar por turno. Solo tratamientos en proceso.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+            <Building2 size={16} style={{ color: '#64748B' }} />
+            <select
+              value={filterCentro}
+              onChange={(e) => setFilterCentro(e.target.value)}
+              aria-label="Filtrar por centro"
+              className="bg-transparent text-sm outline-none cursor-pointer min-w-[140px]"
+              style={{ color: '#0F172A' }}
+            >
+              <option value="">Todos los centros</option>
+              {centros.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+          </div>
           <button onClick={() => setSeleccionado(addDays(semanaInicio, -7))} className="p-2 rounded-lg cursor-pointer transition-colors hover:bg-slate-100" aria-label="Semana anterior">
             <ChevronLeft size={16} style={{ color: '#475569' }} />
           </button>
@@ -174,18 +250,15 @@ export default function CrmTratamientosDiarioModule() {
                 ) : (
                   <div className="space-y-2">
                     {entradas.map(entrada => (
-                      <div key={entrada.key} className="rounded-xl p-3" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                        <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>{entrada.residente}</p>
-                        <p className="flex items-center gap-1.5 text-xs mt-1" style={{ color: '#1E293B' }}>
-                          <Pill size={12} style={{ color: '#0369A1' }} />
-                          <span className="font-medium">{entrada.medicacion.nombre}</span>
-                          {entrada.medicacion.dosis && <span style={{ color: '#64748B' }}>· {entrada.medicacion.dosis}</span>}
-                        </p>
-                        <p className="text-xs mt-1" style={{ color: '#64748B' }}>
-                          {entrada.tratamiento}
-                          {entrada.medicacion.frecuencia_horas ? ` · cada ${entrada.medicacion.frecuencia_horas} h` : ''}
-                        </p>
-                      </div>
+                      <CrmMedicacionTomaRow
+                        key={entrada.key}
+                        residente={entrada.residente}
+                        tratamiento={entrada.tratamiento}
+                        medicacion={entrada.medicacion}
+                        registro={tomas[entrada.medicacionId]}
+                        guardando={guardandoId === entrada.medicacionId}
+                        onGuardar={(tomada, anotacion) => guardarToma(entrada.medicacionId, tomada, anotacion)}
+                      />
                     ))}
                   </div>
                 )}

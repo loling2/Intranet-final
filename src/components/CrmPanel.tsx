@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 import {
   Users, Calendar, Plus, X, Search, Building2, ChevronLeft, ChevronRight,
   LogOut, KeyRound, Clock, AlertCircle, User, Phone, Mail, FileText,
-  FolderOpen, AlertTriangle, BarChart3, ClipboardList,
+  FolderOpen, AlertTriangle, BarChart3, ClipboardList, Pill,
 } from 'lucide-react';
 import ChangePasswordModal from './ChangePasswordModal';
 import SocietySwitcher from '../SocietySwitcher';
@@ -15,6 +15,7 @@ import CrmResidenteFicha from './CrmResidenteFicha';
 import CrmActividadesModule from './CrmActividadesModule';
 import CrmActasModule from './CrmActasModule';
 import CrmEstadisticasModule from './CrmEstadisticasModule';
+import CrmTratamientosDiarioModule from './CrmTratamientosDiarioModule';
 
 interface Props {
   email: string;
@@ -47,7 +48,7 @@ interface CrmNota {
 
 interface CentroOption { id: string; nombre: string; }
 
-type CrmTab = 'residentes' | 'incidencias' | 'actividades' | 'actas' | 'estadisticas' | 'ayuda';
+type CrmTab = 'residentes' | 'incidencias' | 'actividades' | 'actas' | 'tratamientos' | 'estadisticas' | 'ayuda';
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -368,6 +369,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
               <option value="incidencias">Incidencias</option>
               <option value="actividades">Actividades</option>
               <option value="actas">Actas</option>
+              <option value="tratamientos">Tratamientos</option>
               <option value="estadisticas">Estadísticas</option>
               <option value="ayuda">Ayuda</option>
             </select>
@@ -379,6 +381,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
             { id: 'incidencias', label: 'Incidencias', icon: AlertTriangle },
             { id: 'actividades', label: 'Actividades', icon: Calendar },
             { id: 'actas', label: 'Actas', icon: ClipboardList },
+            { id: 'tratamientos', label: 'Tratamientos', icon: Pill },
             { id: 'estadisticas', label: 'Estadísticas', icon: BarChart3 },
             { id: 'ayuda', label: 'Ayuda', icon: AlertCircle },
           ] as const).map((tab) => {
@@ -612,6 +615,9 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
         {activeTab === 'actas' && (
           <CrmActasModule isAdmin={isAdmin} centros={centros} />
         )}
+
+        {/* === Tab: Tratamientos (calendario diario por turnos) === */}
+        {activeTab === 'tratamientos' && <CrmTratamientosDiarioModule />}
 
         {/* === Tab: Estadísticas === */}
         {activeTab === 'estadisticas' && (

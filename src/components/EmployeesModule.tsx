@@ -1898,8 +1898,12 @@ export default function EmployeesModule({ currentUserRole }: Props) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const { data: profile } = await supabase.from('user_profiles').select('nombre').eq('id', session?.user?.id ?? '').maybeSingle();
-      await supabase.from('empleados').update({ estado_contrato: contratoModal.estadoNuevo }).eq('id', contratoModal.empleadoId);
-      await supabase.from('historial_contrato').insert({
+      const { error: updErr } = await supabase
+        .from('empleados')
+        .update({ estado_contrato: contratoModal.estadoNuevo })
+        .eq('id', contratoModal.empleadoId);
+      if (updErr) throw updErr;
+      const { error: histErr } = await supabase.from('historial_contrato').insert({
         empleado_id: contratoModal.empleadoId,
         estado_anterior: contratoModal.estadoActual,
         estado_nuevo: contratoModal.estadoNuevo,
@@ -1907,6 +1911,8 @@ export default function EmployeesModule({ currentUserRole }: Props) {
         cambiado_por: session?.user?.id ?? null,
         cambiado_por_nombre: (profile as { nombre?: string } | null)?.nombre ?? session?.user?.email ?? '',
       });
+      if (histErr) throw histErr;
+      setForm((prev) => ({ ...prev, estado_contrato: contratoModal.estadoNuevo }));
       setContratoModal(null);
       setContratoJustificacion('');
       await loadData();

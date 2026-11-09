@@ -131,7 +131,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     { id: 'documents', label: 'Documentos', icon: FileText },
     { id: 'personal-docs', label: 'Documentos Personales', icon: FileText },
     { id: 'pdf-split', label: 'Nominas', icon: Zap },
-    { id: 'contratos', label: 'Contratos', icon: FileSignature, badge: contratosPendientes > 0 ? contratosPendientes : undefined },
+    { id: 'contratos', label: 'Contratos', icon: FileSignature },
     { id: 'vacations', label: 'Vacaciones', icon: Palmtree, badge: vacationsPending.length },
     { id: 'certificates', label: 'Certificaciones', icon: Award },
     { id: 'exams', label: 'Examenes', icon: ClipboardCheck },

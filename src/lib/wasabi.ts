@@ -300,6 +300,19 @@ export async function downloadFromWasabi(key: string, filename: string): Promise
   setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
 }
 
+// ─── Seguros helpers ─────────────────────────────────────────────────────────
+
+function polizaFolderName(numeroPoliza: string): string {
+  return numeroPoliza.trim().replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/\s+/g, ' ');
+}
+
+export async function uploadPolizaPdf(file: File, numeroPoliza: string): Promise<string> {
+  await createWasabiFolder('polizas/');
+  const folder = `polizas/${polizaFolderName(numeroPoliza)}/`;
+  await createWasabiFolder(folder);
+  return uploadToWasabiKey(file, `${folder}${Date.now()}-${file.name}`);
+}
+
 // ─── CRM helpers ─────────────────────────────────────────────────────────────
 
 export async function ensureCrmFolder(prefix: string): Promise<void> {

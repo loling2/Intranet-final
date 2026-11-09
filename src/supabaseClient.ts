@@ -276,6 +276,7 @@ export interface Seguro {
   vehiculo_id: string | null;
   descripcion: string | null;
   numero_asistencia: string | null;
+  documento_key: string | null;
   created_at: string;
   updated_at: string;
 }

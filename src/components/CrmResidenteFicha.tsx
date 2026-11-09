@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { CRM_FICHA_PESTANAS } from '../lib/crmPestanas';
 import { supabase } from '../supabaseClient';
 import {
   User, Mail, Phone, Building2, Calendar, FolderOpen, FileText,
@@ -53,9 +54,12 @@ interface Props {
   onEdit: () => void;
   autorNombre?: string;
   initialTab?: DetailTab;
+  pestanasPermitidas: string[];
 }
 
 type DetailTab = 'info' | 'contactos' | 'cuentas' | 'medico' | 'tratamiento' | 'calendario' | 'documentos' | 'seguimiento' | 'llamadas' | 'medicacion' | 'abvd' | 'inc_sanitarias' | 'pautas' | 'pai' | 'sesiones';
+
+const FICHA_TAB_IDS = CRM_FICHA_PESTANAS.map((p) => p.key as DetailTab);
 
 interface Contacto {
   id: string;
@@ -123,6 +127,12 @@ interface ResidenteExtra {
 export default function CrmResidenteFicha(props: Props) {
   const { usuario, isAdmin } = props;
   const [detailTab, setDetailTab] = useState<DetailTab>(props.initialTab ?? 'info');
+
+  useEffect(() => {
+    if (props.pestanasPermitidas.includes(detailTab)) return;
+    const primera = FICHA_TAB_IDS.find((id) => props.pestanasPermitidas.includes(id));
+    if (primera) setDetailTab(primera);
+  }, [props.pestanasPermitidas, detailTab]);
 
   const [extra, setExtra] = useState<ResidenteExtra | null>(null);
   const [extraEditing, setExtraEditing] = useState(false);
@@ -450,7 +460,7 @@ export default function CrmResidenteFicha(props: Props) {
 
       {/* Sub-tabs */}
       <div className="flex flex-wrap gap-1 p-1 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-        {tabs.map((tab) => {
+        {tabs.filter((tab) => props.pestanasPermitidas.includes(tab.id)).map((tab) => {
           const TabIcon = tab.icon;
           const isActive = detailTab === tab.id;
           return (

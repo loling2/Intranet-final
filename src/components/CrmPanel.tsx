@@ -16,6 +16,8 @@ import CrmActividadesModule from './CrmActividadesModule';
 import CrmActasModule from './CrmActasModule';
 import CrmEstadisticasModule from './CrmEstadisticasModule';
 import CrmTratamientosDiarioModule from './CrmTratamientosDiarioModule';
+import CrmPermisosModule from './CrmPermisosModule';
+import { fetchCrmPestanasPermitidas } from '../lib/crmPestanas';
 
 interface Props {
   email: string;
@@ -48,7 +50,22 @@ interface CrmNota {
 
 interface CentroOption { id: string; nombre: string; }
 
-type CrmTab = 'residentes' | 'incidencias' | 'actividades' | 'actas' | 'tratamientos' | 'estadisticas' | 'ayuda';
+type CrmTab = 'residentes' | 'incidencias' | 'actividades' | 'actas' | 'tratamientos' | 'estadisticas' | 'ayuda' | 'permisos';
+
+const CRM_TABS: { id: CrmTab; label: string; icon: typeof Users }[] = [
+  { id: 'residentes', label: 'Residentes', icon: Users },
+  { id: 'incidencias', label: 'Incidencias', icon: AlertTriangle },
+  { id: 'actividades', label: 'Actividades', icon: Calendar },
+  { id: 'actas', label: 'Actas', icon: ClipboardList },
+  { id: 'tratamientos', label: 'Tratamientos', icon: Pill },
+  { id: 'estadisticas', label: 'Estadísticas', icon: BarChart3 },
+  { id: 'ayuda', label: 'Ayuda', icon: AlertCircle },
+  { id: 'permisos', label: 'Permisos', icon: KeyRound },
+];
+
+function tabVisible(id: CrmTab, permitidas: string[], admin: boolean): boolean {
+  return id === 'permisos' ? admin : permitidas.includes(id);
+}
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -69,6 +86,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [pestanasPermitidas, setPestanasPermitidas] = useState<string[] | null>(null);
 
   // Usuarios
   const [usuarios, setUsuarios] = useState<UsuarioServicio[]>([]);
@@ -119,10 +137,18 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
             setCurrentUserNombre(nombre);
             setNotaAutor(nombre);
             setIsAdmin((data as { role: string } | null)?.role === 'admin');
+            fetchCrmPestanasPermitidas(uid).then(setPestanasPermitidas);
           });
       }
     });
   }, [email]);
+
+  useEffect(() => {
+    if (!pestanasPermitidas) return;
+    if (tabVisible(activeTab, pestanasPermitidas, isAdmin)) return;
+    const primera = CRM_TABS.find((t) => tabVisible(t.id, pestanasPermitidas, isAdmin));
+    if (primera) setActiveTab(primera.id);
+  }, [pestanasPermitidas, isAdmin, activeTab]);
 
   const loadCentros = useCallback(async () => {
     const { data } = await supabase.from('centros').select('id, nombre').order('nombre');
@@ -365,26 +391,14 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
             <select value={activeTab} onChange={(e) => setActiveTab(e.target.value as CrmTab)}
               className="flex-1 bg-transparent text-sm font-medium outline-none cursor-pointer" style={{ color: '#0F172A' }}>
-              <option value="residentes">Residentes</option>
-              <option value="incidencias">Incidencias</option>
-              <option value="actividades">Actividades</option>
-              <option value="actas">Actas</option>
-              <option value="tratamientos">Tratamientos</option>
-              <option value="estadisticas">Estadísticas</option>
-              <option value="ayuda">Ayuda</option>
+              {CRM_TABS.filter((t) => tabVisible(t.id, pestanasPermitidas ?? [], isAdmin)).map((t) => (
+                <option key={t.id} value={t.id}>{t.label}</option>
+              ))}
             </select>
           </div>
         </div>
         <div className="hidden md:flex flex-wrap gap-1 p-1 rounded-xl mb-6 sm:mb-8" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-          {([
-            { id: 'residentes', label: 'Residentes', icon: Users },
-            { id: 'incidencias', label: 'Incidencias', icon: AlertTriangle },
-            { id: 'actividades', label: 'Actividades', icon: Calendar },
-            { id: 'actas', label: 'Actas', icon: ClipboardList },
-            { id: 'tratamientos', label: 'Tratamientos', icon: Pill },
-            { id: 'estadisticas', label: 'Estadísticas', icon: BarChart3 },
-            { id: 'ayuda', label: 'Ayuda', icon: AlertCircle },
-          ] as const).map((tab) => {
+          {CRM_TABS.filter((t) => tabVisible(t.id, pestanasPermitidas ?? [], isAdmin)).map((tab) => {
             const TabIcon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
@@ -489,6 +503,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                 key={selectedUsuario.id + (fichaInitialTab === 'calendario' ? '-cal' : '')}
                 usuario={selectedUsuario}
                 initialTab={fichaInitialTab}
+                pestanasPermitidas={pestanasPermitidas ?? []}
                 isAdmin={isAdmin}
                 notas={notas}
                 notasLoading={notasLoading}
@@ -626,6 +641,9 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
 
         {/* === Tab: Ayuda === */}
         {activeTab === 'ayuda' && <HelpPanel currentProfileName="CRM" accentColor="#0369A1" />}
+
+        {/* === Tab: Permisos (solo admin) === */}
+        {activeTab === 'permisos' && isAdmin && <CrmPermisosModule />}
       </div>
     </div>
   );

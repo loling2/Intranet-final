@@ -14,7 +14,7 @@ interface Props {
 
 const METODOS: { id: string; label: string }[] = [
   { id: 'quimico', label: 'Química (medicación)' },
-  { id: 'fuerza_fisica', label: 'Fuerza física' },
+  { id: 'fuerza_fisica', label: 'Sujeciones' },
   { id: 'ambos', label: 'Ambos' },
 ];
 

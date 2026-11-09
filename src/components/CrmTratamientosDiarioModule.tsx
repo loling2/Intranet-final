@@ -46,8 +46,8 @@ interface RescateDb {
 
 const METODO_LABEL: Record<string, string> = {
   quimico: 'Química',
-  fuerza_fisica: 'Fuerza física',
-  ambos: 'Química y física',
+  fuerza_fisica: 'Sujeciones',
+  ambos: 'Química y sujeciones',
 };
 
 interface EntradaTurno {

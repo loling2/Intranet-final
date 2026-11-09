@@ -16,7 +16,6 @@ import CrmActividadesModule from './CrmActividadesModule';
 import CrmActasModule from './CrmActasModule';
 import CrmEstadisticasModule from './CrmEstadisticasModule';
 import CrmTratamientosDiarioModule from './CrmTratamientosDiarioModule';
-import CrmPermisosModule from './CrmPermisosModule';
 import CrmAsignacionesTabs from './CrmAsignacionesTabs';
 import { fetchCrmPestanasPermitidas } from '../lib/crmPestanas';
 
@@ -647,10 +646,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
 
         {/* === Tab: Permisos (gestores y puestos con el permiso activo) === */}
         {activeTab === 'permisos' && (
-          <div className="space-y-10">
-            <CrmPermisosModule />
-            <CrmAsignacionesTabs />
-          </div>
+          <CrmAsignacionesTabs />
         )}
       </div>
     </div>

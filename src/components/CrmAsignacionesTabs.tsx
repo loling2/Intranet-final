@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import CrmAsignacionPanel from './CrmAsignacionPanel';
+import CrmPermisosModule from './CrmPermisosModule';
 import {
   alternarCentroTrabajador,
   alternarCoordinadorSupervisor,
@@ -48,6 +49,8 @@ export default function CrmAsignacionesTabs() {
           </p>
         </div>
       )}
+
+      {seccion !== 'admin' && <CrmPermisosModule />}
 
       {seccion === 'supervisor' && (
         <CrmAsignacionPanel

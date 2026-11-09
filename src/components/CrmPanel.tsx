@@ -17,6 +17,7 @@ import CrmActasModule from './CrmActasModule';
 import CrmEstadisticasModule from './CrmEstadisticasModule';
 import CrmTratamientosDiarioModule from './CrmTratamientosDiarioModule';
 import CrmPermisosModule from './CrmPermisosModule';
+import CrmCentrosAsignacion from './CrmCentrosAsignacion';
 import { fetchCrmPestanasPermitidas } from '../lib/crmPestanas';
 
 interface Props {
@@ -63,8 +64,8 @@ const CRM_TABS: { id: CrmTab; label: string; icon: typeof Users }[] = [
   { id: 'permisos', label: 'Permisos', icon: KeyRound },
 ];
 
-function tabVisible(id: CrmTab, permitidas: string[], admin: boolean): boolean {
-  return id === 'permisos' ? admin : permitidas.includes(id);
+function tabVisible(id: CrmTab, permitidas: string[], gestor: boolean): boolean {
+  return id === 'permisos' ? gestor : permitidas.includes(id);
 }
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -86,6 +87,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isGestor, setIsGestor] = useState(false);
   const [pestanasPermitidas, setPestanasPermitidas] = useState<string[] | null>(null);
 
   // Usuarios
@@ -138,6 +140,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
             setNotaAutor(nombre);
             setIsAdmin((data as { role: string } | null)?.role === 'admin');
             fetchCrmPestanasPermitidas(uid).then(setPestanasPermitidas);
+            supabase.rpc('crm_es_gestor').then(({ data }) => setIsGestor(data === true));
           });
       }
     });
@@ -145,10 +148,10 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
 
   useEffect(() => {
     if (!pestanasPermitidas) return;
-    if (tabVisible(activeTab, pestanasPermitidas, isAdmin)) return;
-    const primera = CRM_TABS.find((t) => tabVisible(t.id, pestanasPermitidas, isAdmin));
+    if (tabVisible(activeTab, pestanasPermitidas, isGestor)) return;
+    const primera = CRM_TABS.find((t) => tabVisible(t.id, pestanasPermitidas, isGestor));
     if (primera) setActiveTab(primera.id);
-  }, [pestanasPermitidas, isAdmin, activeTab]);
+  }, [pestanasPermitidas, isGestor, activeTab]);
 
   const loadCentros = useCallback(async () => {
     const { data } = await supabase.from('centros').select('id, nombre').order('nombre');
@@ -391,14 +394,14 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
             <select value={activeTab} onChange={(e) => setActiveTab(e.target.value as CrmTab)}
               className="flex-1 bg-transparent text-sm font-medium outline-none cursor-pointer" style={{ color: '#0F172A' }}>
-              {CRM_TABS.filter((t) => tabVisible(t.id, pestanasPermitidas ?? [], isAdmin)).map((t) => (
+              {CRM_TABS.filter((t) => tabVisible(t.id, pestanasPermitidas ?? [], isGestor)).map((t) => (
                 <option key={t.id} value={t.id}>{t.label}</option>
               ))}
             </select>
           </div>
         </div>
         <div className="hidden md:flex flex-wrap gap-1 p-1 rounded-xl mb-6 sm:mb-8" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-          {CRM_TABS.filter((t) => tabVisible(t.id, pestanasPermitidas ?? [], isAdmin)).map((tab) => {
+          {CRM_TABS.filter((t) => tabVisible(t.id, pestanasPermitidas ?? [], isGestor)).map((tab) => {
             const TabIcon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
@@ -642,8 +645,13 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
         {/* === Tab: Ayuda === */}
         {activeTab === 'ayuda' && <HelpPanel currentProfileName="CRM" accentColor="#0369A1" />}
 
-        {/* === Tab: Permisos (solo admin) === */}
-        {activeTab === 'permisos' && isAdmin && <CrmPermisosModule />}
+        {/* === Tab: Permisos (admin, rrhh y supervisor) === */}
+        {activeTab === 'permisos' && isGestor && (
+          <div className="space-y-10">
+            <CrmPermisosModule />
+            <CrmCentrosAsignacion />
+          </div>
+        )}
       </div>
     </div>
   );

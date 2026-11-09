@@ -2,11 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   ShieldCheck, Plus, X, RefreshCw, Trash2, Search, Calendar, Building2, Euro,
   FileText, AlertCircle, ChevronUp, ChevronDown, CreditCard as Edit3, Save, Car, Phone,
-  Upload, Eye, Download,
 } from 'lucide-react';
 import { supabase, type Seguro, type Sociedad, type Vehicle } from '../supabaseClient';
 import { useSociety } from '../context/SocietyContext';
-import { uploadPolizaPdf, downloadFromWasabi, getWasabiBlob } from '../lib/wasabi';
+import SeguroPolizaModal from './SeguroPolizaModal';
 
 const CATEGORIAS = [
   { value: 'salud', label: 'Salud' },
@@ -20,8 +19,6 @@ const CATEGORIAS = [
 ];
 
 const categoriaLabel = (v: string) => CATEGORIAS.find((c) => c.value === v)?.label ?? 'Otro';
-
-const polizaFileName = (key: string) => (key.split('/').pop() ?? key).replace(/^\d+-/, '');
 
 const ESTADOS = ['activo', 'vencido', 'cancelado'];
 
@@ -81,8 +78,7 @@ export default function SegurosModule() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [docBusy, setDocBusy] = useState<string | null>(null);
+  const [polizaSeguro, setPolizaSeguro] = useState<Seguro | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -145,7 +141,6 @@ export default function SegurosModule() {
   const cancelForm = () => {
     setShowForm(false);
     setEditingId(null);
-    setPdfFile(null);
     setForm({ ...EMPTY_FORM });
   };
 
@@ -168,9 +163,6 @@ export default function SegurosModule() {
     setSaving(true);
     setError('');
     try {
-      const documentoKey = pdfFile
-        ? await uploadPolizaPdf(pdfFile, form.numero_poliza.trim())
-        : seguros.find((s) => s.id === editingId)?.documento_key ?? null;
       const payload = {
         sociedad_id: form.sociedad_id || null,
         categoria: form.categoria,
@@ -187,7 +179,6 @@ export default function SegurosModule() {
         vehiculo_id: form.vehiculo_id || null,
         descripcion: form.descripcion.trim() || null,
         numero_asistencia: form.numero_asistencia.trim() || null,
-        documento_key: documentoKey,
       };
       if (editingId) {
         const { error: err } = await supabase.from('seguros').update(payload).eq('id', editingId);
@@ -205,30 +196,6 @@ export default function SegurosModule() {
       setError(msg);
     } finally {
       setSaving(false);
-    }
-  };
-
-  const openPoliza = async (s: Seguro, mode: 'ver' | 'descargar') => {
-    if (!s.documento_key) return;
-    const key = s.documento_key;
-    setDocBusy(s.id);
-    setError('');
-    const win = mode === 'ver' ? window.open('', '_blank') : null;
-    try {
-      if (mode === 'descargar') {
-        await downloadFromWasabi(key, polizaFileName(key));
-      } else {
-        if (!win) throw new Error('El navegador bloqueo la ventana. Permite las ventanas emergentes para ver la poliza.');
-        const blob = await getWasabiBlob(key);
-        const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
-        win.location.href = url;
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
-      }
-    } catch (e: unknown) {
-      win?.close();
-      setError(e instanceof Error ? e.message : 'Error al abrir la poliza');
-    } finally {
-      setDocBusy(null);
     }
   };
 
@@ -316,7 +283,6 @@ export default function SegurosModule() {
   };
 
   const isVehiculo = form.categoria === 'vehiculo';
-  const editingSeguro = editingId ? seguros.find((s) => s.id === editingId) : undefined;
 
   return (
     <div className="space-y-6">
@@ -467,26 +433,6 @@ export default function SegurosModule() {
                 </div>
               </>
             )}
-
-            {/* Poliza PDF */}
-            <div className="sm:col-span-2 lg:col-span-3">
-              <label className="block text-xs font-medium mb-1" style={{ color: '#64748B' }}>Poliza (PDF)</label>
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-200 hover:opacity-90"
-                  style={{ border: '1px dashed #94A3B8', backgroundColor: '#F8FAFC', color: '#475569' }}>
-                  <Upload size={14} />
-                  {pdfFile ? pdfFile.name : 'Seleccionar PDF'}
-                  <input type="file" accept="application/pdf" className="hidden"
-                    onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)} />
-                </label>
-                {editingSeguro?.documento_key && !pdfFile && (
-                  <span className="text-xs" style={{ color: '#64748B' }}>
-                    Archivo actual: {polizaFileName(editingSeguro.documento_key)}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Al guardar, el PDF se sube a la carpeta de la poliza en Wasabi.</p>
-            </div>
 
             {/* Descripcion */}
             <div className="sm:col-span-2 lg:col-span-3">
@@ -655,20 +601,13 @@ export default function SegurosModule() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5">
-                        {s.documento_key && (
-                          <>
-                            <button onClick={() => openPoliza(s, 'ver')} disabled={docBusy === s.id} title="Ver poliza"
-                              className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:opacity-80 disabled:opacity-50"
-                              style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', color: '#0369A1' }}>
-                              {docBusy === s.id ? <RefreshCw size={12} className="animate-spin" /> : <Eye size={12} />}
-                            </button>
-                            <button onClick={() => openPoliza(s, 'descargar')} disabled={docBusy === s.id} title="Descargar poliza"
-                              className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:opacity-80 disabled:opacity-50"
-                              style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', color: '#0369A1' }}>
-                              <Download size={12} />
-                            </button>
-                          </>
-                        )}
+                        <button onClick={() => setPolizaSeguro(s)} title="Poliza PDF"
+                          className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:opacity-80"
+                          style={s.documento_key
+                            ? { backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', color: '#0369A1' }
+                            : { backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
+                          <FileText size={12} />
+                        </button>
                         <button onClick={() => openEdit(s)} title="Editar"
                           className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200"
                           style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
@@ -735,20 +674,13 @@ export default function SegurosModule() {
                 {s.descripcion && (
                   <p className="text-xs mt-2" style={{ color: '#475569' }}>{s.descripcion}</p>
                 )}
-                {s.documento_key && (
-                  <div className="flex gap-2 mt-3">
-                    <button onClick={() => openPoliza(s, 'ver')} disabled={docBusy === s.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50"
-                      style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', color: '#0369A1' }}>
-                      <Eye size={11} /> Ver poliza
-                    </button>
-                    <button onClick={() => openPoliza(s, 'descargar')} disabled={docBusy === s.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-50"
-                      style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', color: '#0369A1' }}>
-                      <Download size={11} /> Descargar
-                    </button>
-                  </div>
-                )}
+                <button onClick={() => setPolizaSeguro(s)}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 mt-3 rounded-lg text-xs font-medium cursor-pointer"
+                  style={s.documento_key
+                    ? { backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', color: '#0369A1' }
+                    : { backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
+                  <FileText size={11} /> {s.documento_key ? 'Ver / descargar poliza' : 'Subir poliza PDF'}
+                </button>
                 <div className="flex gap-2 mt-3">
                   <button onClick={() => openEdit(s)} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
                     style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
@@ -764,6 +696,10 @@ export default function SegurosModule() {
           })}
         </div>
       </div>
+
+      {polizaSeguro && (
+        <SeguroPolizaModal seguro={polizaSeguro} onClose={() => setPolizaSeguro(null)} onChanged={loadData} />
+      )}
 
       {/* Summary footer */}
       {!loading && filtered.length > 0 && (

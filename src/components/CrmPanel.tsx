@@ -17,7 +17,7 @@ import CrmActasModule from './CrmActasModule';
 import CrmEstadisticasModule from './CrmEstadisticasModule';
 import CrmTratamientosDiarioModule from './CrmTratamientosDiarioModule';
 import CrmPermisosModule from './CrmPermisosModule';
-import CrmCentrosAsignacion from './CrmCentrosAsignacion';
+import CrmAsignacionesTabs from './CrmAsignacionesTabs';
 import { fetchCrmPestanasPermitidas } from '../lib/crmPestanas';
 
 interface Props {
@@ -649,7 +649,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
         {activeTab === 'permisos' && (
           <div className="space-y-10">
             <CrmPermisosModule />
-            <CrmCentrosAsignacion />
+            <CrmAsignacionesTabs />
           </div>
         )}
       </div>

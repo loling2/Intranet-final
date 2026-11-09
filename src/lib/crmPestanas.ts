@@ -36,7 +36,9 @@ export const CRM_FICHA_PESTANAS: CrmPestanaDef[] = [
 
 export const CRM_TODAS_PESTANAS = [...CRM_PANEL_PESTANAS, ...CRM_FICHA_PESTANAS].map((p) => p.key);
 
-/** Pestañas CRM visibles para el usuario. Admin y RRHH ven todas; sin perfil de puesto no hay restricción. */
+const CRM_PESTANAS_SIN_PERMISOS = CRM_TODAS_PESTANAS.filter((k) => k !== 'permisos');
+
+/** Pestañas CRM visibles para el usuario. Admin y RRHH ven todas; sin perfil de puesto ven todas salvo Permisos. */
 export async function fetchCrmPestanasPermitidas(userId: string): Promise<string[]> {
   const { data: profile } = await supabase
     .from('user_profiles').select('role, roles').eq('id', userId).maybeSingle();
@@ -45,14 +47,14 @@ export async function fetchCrmPestanasPermitidas(userId: string): Promise<string
 
   const { data: empleado } = await supabase
     .from('empleados').select('puesto_tag_id').eq('user_id', userId).maybeSingle();
-  if (!empleado?.puesto_tag_id) return CRM_TODAS_PESTANAS;
+  if (!empleado?.puesto_tag_id) return CRM_PESTANAS_SIN_PERMISOS;
 
   const { data: perfil } = await supabase
     .from('crm_perfiles')
     .select('crm_perfil_pestanas(pestana, activo)')
     .eq('puesto_tag_id', empleado.puesto_tag_id)
     .maybeSingle();
-  if (!perfil) return CRM_TODAS_PESTANAS;
+  if (!perfil) return CRM_PESTANAS_SIN_PERMISOS;
 
   const filas = (perfil as unknown as { crm_perfil_pestanas: { pestana: string; activo: boolean }[] }).crm_perfil_pestanas ?? [];
   return filas.filter((f) => f.activo).map((f) => f.pestana);

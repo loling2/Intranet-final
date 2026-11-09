@@ -89,6 +89,7 @@ export default function CrmSeguimientoModule({ usuarioId, autorNombre, isAdmin }
   const [notaSaving, setNotaSaving] = useState(false);
   const [notaError, setNotaError] = useState('');
   const [editingNotaId, setEditingNotaId] = useState<string | null>(null);
+  const [notaProfesionSel, setNotaProfesionSel] = useState(PROFESIONES[0].value);
 
   // Calendar
   const [calDate, setCalDate] = useState(new Date());
@@ -194,7 +195,7 @@ export default function CrmSeguimientoModule({ usuarioId, autorNombre, isAdmin }
   };
   const handleSaveNota = async () => {
     if (!notaContenido.trim()) { setNotaError('El contenido es obligatorio'); return; }
-    const prof = myProfesion === '__admin__' ? null : myProfesion;
+    const prof = myProfesion === '__admin__' ? notaProfesionSel : myProfesion;
     if (!prof) { setNotaError('Tu usuario no tiene profesión asignada. Pide al administrador que la configure.'); return; }
     setNotaSaving(true); setNotaError('');
     try {
@@ -428,7 +429,7 @@ export default function CrmSeguimientoModule({ usuarioId, autorNombre, isAdmin }
               <div>
                 <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>{editingNotaId ? 'Editar nota' : 'Nueva nota diaria'}</h3>
                 <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
-                  {usuarioNombre} · {myProfesion && myProfesion !== '__admin__' ? profesionLabel(myProfesion) : 'Profesión'}
+                  {usuarioNombre}{myProfesion && myProfesion !== '__admin__' ? ` · ${profesionLabel(myProfesion)}` : ''}
                 </p>
               </div>
               <button onClick={() => setShowNotaForm(false)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#94A3B8' }}><X size={14} /></button>
@@ -436,6 +437,12 @@ export default function CrmSeguimientoModule({ usuarioId, autorNombre, isAdmin }
             <div className="space-y-4">
               <div><label className="block text-xs font-medium mb-1" style={{ color: '#475569' }}>Fecha</label>
                 <input type="date" value={notaFecha} onChange={(e) => setNotaFecha(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} /></div>
+              {myProfesion === '__admin__' && !editingNotaId && (
+                <div><label className="block text-xs font-medium mb-1" style={{ color: '#475569' }}>Profesión</label>
+                  <select value={notaProfesionSel} onChange={(e) => setNotaProfesionSel(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer" style={inputStyle}>
+                    {PROFESIONES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  </select></div>
+              )}
               <div><label className="block text-xs font-medium mb-1" style={{ color: '#475569' }}>Nota *</label>
                 <textarea value={notaContenido} onChange={(e) => setNotaContenido(e.target.value)} rows={4} className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none" style={inputStyle} placeholder="Escribe la información del día..." /></div>
               {notaError && <p className="text-xs" style={{ color: '#DC2626' }}>{notaError}</p>}

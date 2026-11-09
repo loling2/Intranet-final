@@ -65,7 +65,7 @@ const CRM_TABS: { id: CrmTab; label: string; icon: typeof Users }[] = [
 ];
 
 function tabVisible(id: CrmTab, permitidas: string[], gestor: boolean): boolean {
-  return id === 'permisos' ? gestor : permitidas.includes(id);
+  return permitidas.includes(id) || (id === 'permisos' && gestor);
 }
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -645,8 +645,8 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
         {/* === Tab: Ayuda === */}
         {activeTab === 'ayuda' && <HelpPanel currentProfileName="CRM" accentColor="#0369A1" />}
 
-        {/* === Tab: Permisos (admin, rrhh y supervisor) === */}
-        {activeTab === 'permisos' && isGestor && (
+        {/* === Tab: Permisos (gestores y puestos con el permiso activo) === */}
+        {activeTab === 'permisos' && (
           <div className="space-y-10">
             <CrmPermisosModule />
             <CrmCentrosAsignacion />

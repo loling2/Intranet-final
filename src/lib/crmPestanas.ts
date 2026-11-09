@@ -13,6 +13,7 @@ export const CRM_PANEL_PESTANAS: CrmPestanaDef[] = [
   { key: 'tratamientos', label: 'Tratamientos' },
   { key: 'estadisticas', label: 'Estadísticas' },
   { key: 'ayuda', label: 'Ayuda' },
+  { key: 'permisos', label: 'Permisos' },
 ];
 
 export const CRM_FICHA_PESTANAS: CrmPestanaDef[] = [

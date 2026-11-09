@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
-import { ChevronLeft, ChevronRight, Loader2, AlertCircle, Sun, Sunset, Moon, Building2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, AlertCircle, Sun, Sunset, Moon, Building2, User, AlertTriangle } from 'lucide-react';
 import type { Medicacion, Pauta } from './CrmTratamientosModule';
 import CrmMedicacionTomaRow, { CrmTomaRegistradaItem, type TomaRegistro } from './CrmMedicacionTomaRow';
+import CrmRescateModal, { type ResidenteOption } from './CrmRescateModal';
+import { obtenerAutorActual } from '../lib/crmAutor';
 
 interface TratamientoDiario {
   id: string;
@@ -10,6 +12,7 @@ interface TratamientoDiario {
   fecha_inicio: string | null;
   fecha_fin: string | null;
   estado: 'en_proceso' | 'finalizado';
+  usuario_servicio_id: string;
   usuarios_servicios: {
     nombre: string;
     apellidos: string | null;
@@ -28,6 +31,24 @@ interface TomaDb {
 }
 
 interface CentroOption { id: string; nombre: string; }
+
+interface RescateDb {
+  id: string;
+  usuario_servicio_id: string;
+  fecha_hora: string;
+  metodo: string;
+  medicacion: string;
+  dosis: string;
+  descripcion: string;
+  registrado_por_nombre: string;
+  usuarios_servicios: { nombre: string; apellidos: string | null } | null;
+}
+
+const METODO_LABEL: Record<string, string> = {
+  quimico: 'Química',
+  fuerza_fisica: 'Fuerza física',
+  ambos: 'Química y física',
+};
 
 interface EntradaTurno {
   key: string;
@@ -74,6 +95,10 @@ export default function CrmTratamientosDiarioModule() {
   const [tratamientos, setTratamientos] = useState<TratamientoDiario[]>([]);
   const [centros, setCentros] = useState<CentroOption[]>([]);
   const [filterCentro, setFilterCentro] = useState('');
+  const [filterResidente, setFilterResidente] = useState('');
+  const [residentes, setResidentes] = useState<ResidenteOption[]>([]);
+  const [rescates, setRescates] = useState<RescateDb[]>([]);
+  const [showRescate, setShowRescate] = useState(false);
   const [tomas, setTomas] = useState<Record<string, TomaRegistro>>({});
   const [guardandoId, setGuardandoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -91,10 +116,16 @@ export default function CrmTratamientosDiarioModule() {
     const [tratRes, centrosRes] = await Promise.all([
       supabase
         .from('crm_tratamientos')
-        .select('id, nombre, fecha_inicio, fecha_fin, estado, usuarios_servicios(nombre, apellidos, activo, usuarios_servicios_centros(centro_id)), crm_tratamiento_medicaciones(*)')
+        .select('id, nombre, fecha_inicio, fecha_fin, estado, usuario_servicio_id, usuarios_servicios(nombre, apellidos, activo, usuarios_servicios_centros(centro_id)), crm_tratamiento_medicaciones(*)')
         .eq('estado', 'en_proceso'),
       supabase.from('centros').select('id, nombre').order('nombre'),
     ]);
+    const { data: residentesData } = await supabase
+      .from('usuarios_servicios')
+      .select('id, nombre, apellidos')
+      .eq('activo', true)
+      .order('nombre');
+    setResidentes((residentesData ?? []) as ResidenteOption[]);
     if (tratRes.error) {
       setError('No se pudieron cargar los tratamientos.');
       setTratamientos([]);
@@ -108,6 +139,28 @@ export default function CrmTratamientosDiarioModule() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadRescates = useCallback(async () => {
+    const [anio, mes, dia] = diaIso.split('-').map(Number);
+    const inicio = new Date(anio, mes - 1, dia);
+    const fin = new Date(anio, mes - 1, dia + 1);
+    const { data, error: err } = await supabase
+      .from('crm_rescates')
+      .select('id, usuario_servicio_id, fecha_hora, metodo, medicacion, dosis, descripcion, registrado_por_nombre, usuarios_servicios(nombre, apellidos)')
+      .gte('fecha_hora', inicio.toISOString())
+      .lt('fecha_hora', fin.toISOString())
+      .order('fecha_hora', { ascending: false });
+    if (err) {
+      setError('No se pudieron cargar los rescates.');
+      setRescates([]);
+      return;
+    }
+    setRescates((data ?? []) as unknown as RescateDb[]);
+  }, [diaIso]);
+
+  useEffect(() => {
+    loadRescates();
+  }, [loadRescates]);
 
   useEffect(() => {
     let cancelado = false;
@@ -140,17 +193,7 @@ export default function CrmTratamientosDiarioModule() {
   const guardarToma = async (medicacionId: string, tomada: boolean, anotacion: string) => {
     setGuardandoId(medicacionId);
     setError('');
-    const { data: auth } = await supabase.auth.getUser();
-    const userId = auth.user?.id ?? null;
-    let nombre = auth.user?.email ?? '';
-    if (userId) {
-      const { data: empleado } = await supabase
-        .from('empleados')
-        .select('nombre, apellidos')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (empleado) nombre = `${empleado.nombre} ${empleado.apellidos ?? ''}`.trim();
-    }
+    const { userId, nombre } = await obtenerAutorActual();
     const updatedAt = new Date().toISOString();
     const textoAnotacion = tomada ? '' : anotacion;
     const { error: err } = await supabase
@@ -177,6 +220,7 @@ export default function CrmTratamientosDiarioModule() {
       if (!aplicaEnDia(t, diaIso)) continue;
       const centrosResidente = (t.usuarios_servicios.usuarios_servicios_centros ?? []).map((c) => c.centro_id);
       if (filterCentro && !centrosResidente.includes(filterCentro)) continue;
+      if (filterResidente && t.usuario_servicio_id !== filterResidente) continue;
       const residente = `${t.usuarios_servicios.nombre} ${t.usuarios_servicios.apellidos ?? ''}`.trim();
       for (const med of t.crm_tratamiento_medicaciones) {
         grupos[med.pauta].push({ key: `${t.id}-${med.id}`, medicacionId: med.id, residente, tratamiento: t.nombre, medicacion: med });
@@ -186,7 +230,12 @@ export default function CrmTratamientosDiarioModule() {
       grupos[turno.id].sort((a, b) => a.residente.localeCompare(b.residente) || a.medicacion.orden - b.medicacion.orden);
     }
     return grupos;
-  }, [tratamientos, diaIso, filterCentro]);
+  }, [tratamientos, diaIso, filterCentro, filterResidente]);
+
+  const rescatesFiltrados = useMemo(
+    () => (filterResidente ? rescates.filter((r) => r.usuario_servicio_id === filterResidente) : rescates),
+    [rescates, filterResidente],
+  );
 
   const esHoy = toIsoDate(hoy) === diaIso;
   const tituloDia = seleccionado.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -199,6 +248,22 @@ export default function CrmTratamientosDiarioModule() {
           <p className="text-xs mt-1" style={{ color: '#64748B' }}>Medicación que preparar por turno. Solo tratamientos en proceso.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setShowRescate(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all hover:opacity-90" style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}>
+            <AlertTriangle size={14} />RESCATE
+          </button>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+            <User size={16} style={{ color: '#64748B' }} />
+            <select
+              value={filterResidente}
+              onChange={(e) => setFilterResidente(e.target.value)}
+              aria-label="Filtrar por usuario"
+              className="bg-transparent text-sm outline-none cursor-pointer min-w-[140px]"
+              style={{ color: '#0F172A' }}
+            >
+              <option value="">Todos los usuarios</option>
+              {residentes.map((r) => <option key={r.id} value={r.id}>{`${r.nombre} ${r.apellidos ?? ''}`.trim()}</option>)}
+            </select>
+          </div>
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
             <Building2 size={16} style={{ color: '#64748B' }} />
             <select
@@ -310,6 +375,39 @@ export default function CrmTratamientosDiarioModule() {
             );
           })}
         </div>
+      )}
+
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold" style={{ color: '#DC2626' }}>Rescates del día ({rescatesFiltrados.length})</h3>
+        {rescatesFiltrados.length === 0 ? (
+          <p className="text-sm" style={{ color: '#94A3B8' }}>No hay rescates registrados este día</p>
+        ) : (
+          rescatesFiltrados.map((r) => {
+            const hora = new Date(r.fecha_hora).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            const residente = `${r.usuarios_servicios?.nombre ?? ''} ${r.usuarios_servicios?.apellidos ?? ''}`.trim();
+            return (
+              <div key={r.id} className="rounded-xl p-4 space-y-2" style={{ backgroundColor: '#FFFFFF', border: '1px solid #FECACA', borderLeft: '4px solid #DC2626' }}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-md" style={{ backgroundColor: '#FEF2F2', color: '#DC2626' }}>{METODO_LABEL[r.metodo] ?? r.metodo}</span>
+                  <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>{residente}</span>
+                  <span className="text-xs" style={{ color: '#64748B' }}>{hora}</span>
+                </div>
+                {r.medicacion && <p className="text-xs" style={{ color: '#475569' }}><strong>Medicación:</strong> {r.medicacion}{r.dosis ? ` (${r.dosis})` : ''}</p>}
+                <p className="text-sm" style={{ color: '#1E293B' }}>{r.descripcion}</p>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>Registrado por {r.registrado_por_nombre || 'desconocido'}</p>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {showRescate && (
+        <CrmRescateModal
+          residentes={residentes}
+          residenteInicialId={filterResidente}
+          onClose={() => setShowRescate(false)}
+          onSaved={() => { setShowRescate(false); loadRescates(); }}
+        />
       )}
     </div>
   );

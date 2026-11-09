@@ -67,7 +67,7 @@ function formatISO(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-export default function CrmSeguimientoModule({ usuarioId, autorNombre, isAdmin }: Props) {
+export default function CrmSeguimientoModule({ usuarioId, usuarioNombre, autorNombre, isAdmin }: Props) {
   // --- Existing seguimiento diario state (unchanged) ---
   const [registros, setRegistros] = useState<Seguimiento[]>([]);
   const [loading, setLoading] = useState(true);

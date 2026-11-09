@@ -10,7 +10,6 @@ import {
 import CrmDocumentosModule from './CrmDocumentosModule';
 import CrmSeguimientoModule from './CrmSeguimientoModule';
 import CrmLlamadasModule from './CrmLlamadasModule';
-import CrmMedicacionModule from './CrmMedicacionModule';
 import CrmTratamientosModule from './CrmTratamientosModule';
 import CrmAbvdModule from './CrmAbvdModule';
 import CrmIncidenciasSanitariasModule from './CrmIncidenciasSanitariasModule';
@@ -57,7 +56,7 @@ interface Props {
   pestanasPermitidas: string[];
 }
 
-type DetailTab = 'info' | 'contactos' | 'cuentas' | 'medico' | 'tratamiento' | 'calendario' | 'documentos' | 'seguimiento' | 'llamadas' | 'medicacion' | 'abvd' | 'inc_sanitarias' | 'pautas' | 'pai' | 'sesiones';
+type DetailTab = 'info' | 'contactos' | 'cuentas' | 'medico' | 'tratamiento' | 'calendario' | 'documentos' | 'seguimiento' | 'llamadas' | 'abvd' | 'inc_sanitarias' | 'pautas' | 'pai' | 'sesiones';
 
 const FICHA_TAB_IDS = CRM_FICHA_PESTANAS.map((p) => p.key as DetailTab);
 
@@ -426,7 +425,6 @@ export default function CrmResidenteFicha(props: Props) {
     { id: 'tratamiento', label: 'Tratamiento', icon: Pill },
     { id: 'seguimiento', label: 'Seguimiento diario', icon: Activity },
     { id: 'llamadas', label: 'Llamadas y visitas', icon: PhoneIcon },
-    { id: 'medicacion', label: 'Medicación', icon: Pill },
     { id: 'abvd', label: 'ABVD', icon: Heart },
     { id: 'inc_sanitarias', label: 'Inc. sanitarias', icon: Ambulance },
     { id: 'pautas', label: 'Pautas', icon: ClipboardList },
@@ -919,11 +917,6 @@ export default function CrmResidenteFicha(props: Props) {
       {/* === Tab: Llamadas y visitas === */}
       {detailTab === 'llamadas' && (
         <CrmLlamadasModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={isAdmin} />
-      )}
-
-      {/* === Tab: Medicación === */}
-      {detailTab === 'medicacion' && (
-        <CrmMedicacionModule usuarioId={usuario.id} isAdmin={isAdmin} />
       )}
 
       {/* === Tab: ABVD === */}

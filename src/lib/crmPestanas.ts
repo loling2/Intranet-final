@@ -24,7 +24,6 @@ export const CRM_FICHA_PESTANAS: CrmPestanaDef[] = [
   { key: 'tratamiento', label: 'Tratamiento' },
   { key: 'seguimiento', label: 'Seguimiento diario' },
   { key: 'llamadas', label: 'Llamadas y visitas' },
-  { key: 'medicacion', label: 'Medicación' },
   { key: 'abvd', label: 'ABVD' },
   { key: 'inc_sanitarias', label: 'Inc. sanitarias' },
   { key: 'pautas', label: 'Pautas' },

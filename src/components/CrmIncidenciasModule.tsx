@@ -18,6 +18,7 @@ interface Incidencia {
   descripcion: string;
   estado: string;
   prioridad: string;
+  tipo: string;
   fecha: string;
   fecha_resolucion: string | null;
   creado_por_nombre: string;
@@ -45,6 +46,14 @@ const ESTADO_COLORS: Record<string, { bg: string; text: string; dot: string; lab
   resuelta: { bg: '#DCFCE7', text: '#166534', dot: '#22C55E', label: 'Resuelta' },
 };
 
+const TIPOS_INCIDENCIA: { value: string; label: string }[] = [
+  { value: 'alteracion_conducta', label: 'Alteración de conducta' },
+  { value: 'derivacion_hospitalaria', label: 'Derivación hospitalaria' },
+  { value: 'caidas', label: 'Caídas' },
+  { value: 'otro', label: 'Otro' },
+];
+const TIPO_LABEL: Record<string, string> = Object.fromEntries(TIPOS_INCIDENCIA.map(t => [t.value, t.label]));
+
 export default function CrmIncidenciasModule({ isAdmin, centros }: Props) {
   const [incidencias, setIncidencias] = useState<Incidencia[]>([]);
   const [loading, setLoading] = useState(false);
@@ -66,13 +75,14 @@ export default function CrmIncidenciasModule({ isAdmin, centros }: Props) {
   const [formDescripcion, setFormDescripcion] = useState('');
   const [formEstado, setFormEstado] = useState('pendiente');
   const [formPrioridad, setFormPrioridad] = useState('normal');
+  const [formTipo, setFormTipo] = useState('otro');
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
   const loadIncidencias = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('crm_incidencias').select(`
-      id, usuario_servicio_id, centro_id, titulo, descripcion, estado, prioridad,
+      id, usuario_servicio_id, centro_id, titulo, descripcion, estado, prioridad, tipo,
       fecha, fecha_resolucion, creado_por_nombre
     `);
     if (filterCentro) query = query.eq('centro_id', filterCentro);
@@ -185,6 +195,14 @@ export default function CrmIncidenciasModule({ isAdmin, centros }: Props) {
       : 0,
   };
 
+  function openModal(tipo: string) {
+    setFormTipo(tipo);
+    setFormError('');
+    setFormResidente(''); setFormCentro(''); setFormTitulo(tipo === 'otro' ? '' : TIPO_LABEL[tipo]);
+    setFormDescripcion(''); setFormEstado('pendiente'); setFormPrioridad('normal');
+    setShowModal(true);
+  }
+
   async function handleSave() {
     if (!formResidente) { setFormError('Selecciona un residente'); return; }
     if (!formTitulo.trim()) { setFormError('El título es obligatorio'); return; }
@@ -193,6 +211,7 @@ export default function CrmIncidenciasModule({ isAdmin, centros }: Props) {
       const { error } = await supabase.from('crm_incidencias').insert({
         usuario_servicio_id: formResidente,
         centro_id: formCentro || null,
+        tipo: formTipo,
         titulo: formTitulo.trim(),
         descripcion: formDescripcion.trim(),
         estado: formEstado,
@@ -201,8 +220,6 @@ export default function CrmIncidenciasModule({ isAdmin, centros }: Props) {
       });
       if (error) throw error;
       setShowModal(false);
-      setFormResidente(''); setFormCentro(''); setFormTitulo(''); setFormDescripcion('');
-      setFormEstado('pendiente'); setFormPrioridad('normal');
       await loadIncidencias();
     } catch {
       setFormError('No se pudo guardar la incidencia.');
@@ -236,11 +253,17 @@ export default function CrmIncidenciasModule({ isAdmin, centros }: Props) {
           <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>Incidencias</h2>
           <p className="text-sm" style={{ color: '#64748B' }}>Incidencias de residentes por centro</p>
         </div>
-        <button onClick={() => { setShowModal(true); setFormError(''); setFormResidente(''); setFormCentro(''); setFormTitulo(''); setFormDescripcion(''); setFormEstado('pendiente'); setFormPrioridad('normal'); }}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
-          style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
-          <Plus size={14} /> Nueva incidencia
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {TIPOS_INCIDENCIA.map(t => (
+            <button key={t.value} onClick={() => openModal(t.value)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all hover:opacity-90"
+              style={t.value === 'otro'
+                ? { backgroundColor: '#FFFFFF', color: '#0369A1', border: '1px solid #BFDBFE' }
+                : { backgroundColor: '#0369A1', color: '#FFFFFF' }}>
+              <Plus size={14} /> {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Filters */}
@@ -367,6 +390,7 @@ export default function CrmIncidenciasModule({ isAdmin, centros }: Props) {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs font-bold px-2 py-0.5 rounded-md" style={{ backgroundColor: colors.bg, color: colors.text }}>{colors.label}</span>
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-md" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>{TIPO_LABEL[inc.tipo] ?? TIPO_LABEL.otro}</span>
                           {inc.prioridad === 'alta' && <span className="text-xs font-bold px-2 py-0.5 rounded-md" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>Alta prioridad</span>}
                         </div>
                         <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>{inc.titulo}</p>
@@ -399,7 +423,7 @@ export default function CrmIncidenciasModule({ isAdmin, centros }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="w-full max-w-lg rounded-2xl p-6 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
             <div className="flex items-center justify-between mb-5">
-              <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>Nueva incidencia</h3>
+              <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>{TIPO_LABEL[formTipo]}</h3>
               <button onClick={() => setShowModal(false)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#94A3B8' }}><X size={14} /></button>
             </div>
             <div className="space-y-4">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
-import { Plus, X, Trash2, Clock, AlertTriangle, Ambulance, Pill, Phone, Heart } from 'lucide-react';
+import { Plus, X, Trash2, Clock, AlertTriangle, Ambulance, Activity, Pill, Phone, Heart } from 'lucide-react';
 
 interface Props {
   usuarioId: string;
@@ -22,12 +22,18 @@ interface IncidenciaSanitaria {
 }
 
 const TIPO_CONFIG: Record<string, { label: string; icon: typeof AlertTriangle; color: string; bg: string }> = {
+  alteracion_conducta: { label: 'Alteración de conducta', icon: Activity, color: '#D97706', bg: '#FFFBEB' },
+  derivacion_hospitalaria: { label: 'Derivación hospitalaria', icon: Ambulance, color: '#DC2626', bg: '#FEF2F2' },
+  caidas: { label: 'Caídas', icon: AlertTriangle, color: '#DC2626', bg: '#FEF2F2' },
+  otro: { label: 'Otro', icon: AlertTriangle, color: '#475569', bg: '#F1F5F9' },
   caida: { label: 'Caída', icon: AlertTriangle, color: '#DC2626', bg: '#FEF2F2' },
   ambulancia: { label: 'Ambulancia', icon: Ambulance, color: '#DC2626', bg: '#FEF2F2' },
   medicacion: { label: 'Medicación', icon: Pill, color: '#D97706', bg: '#FFFBEB' },
   emergencia: { label: 'Emergencia', icon: Phone, color: '#DC2626', bg: '#FEF2F2' },
   otra: { label: 'Otra', icon: AlertTriangle, color: '#475569', bg: '#F1F5F9' },
 };
+
+const TIPOS_NUEVA_INCIDENCIA = ['alteracion_conducta', 'derivacion_hospitalaria', 'caidas', 'otro'];
 
 const GRAVEDAD_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   leve: { label: 'Leve', color: '#16A34A', bg: '#F0FDF4' },
@@ -39,7 +45,7 @@ export default function CrmIncidenciasSanitariasModule({ usuarioId, isAdmin }: P
   const [registros, setRegistros] = useState<IncidenciaSanitaria[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [tipo, setTipo] = useState('caida');
+  const [tipo, setTipo] = useState('otro');
   const [fechaHora, setFechaHora] = useState(new Date().toISOString().slice(0, 16));
   const [descripcion, setDescripcion] = useState('');
   const [gravedad, setGravedad] = useState('leve');
@@ -61,6 +67,12 @@ export default function CrmIncidenciasSanitariasModule({ usuarioId, isAdmin }: P
   }, [usuarioId]);
 
   useEffect(() => { load(); }, [load]);
+
+  function openForm(nuevoTipo: string) {
+    setTipo(nuevoTipo);
+    setError('');
+    setShowForm(true);
+  }
 
   async function handleSave() {
     if (!descripcion.trim()) { setError('La descripción es obligatoria'); return; }
@@ -101,11 +113,17 @@ export default function CrmIncidenciasSanitariasModule({ usuarioId, isAdmin }: P
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Incidencias sanitarias y de urgencia</h3>
-        <button onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
-          style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
-          <Plus size={12} />Nueva incidencia
-        </button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {TIPOS_NUEVA_INCIDENCIA.map((t) => (
+          <button key={t} onClick={() => openForm(t)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all hover:opacity-90"
+            style={t === 'otro'
+              ? { backgroundColor: '#FFFFFF', color: '#0369A1', border: '1px solid #BFDBFE' }
+              : { backgroundColor: '#0369A1', color: '#FFFFFF' }}>
+            <Plus size={12} />{TIPO_CONFIG[t].label}
+          </button>
+        ))}
       </div>
 
       {loading ? (
@@ -157,14 +175,10 @@ export default function CrmIncidenciasSanitariasModule({ usuarioId, isAdmin }: P
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="w-full max-w-md rounded-2xl p-6 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
             <div className="flex items-center justify-between mb-5">
-              <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>Nueva incidencia sanitaria</h3>
+              <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>{TIPO_CONFIG[tipo].label}</h3>
               <button onClick={() => setShowForm(false)} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#94A3B8' }}><X size={14} /></button>
             </div>
             <div className="space-y-4">
-              <div><label className="block text-xs font-medium mb-1" style={{ color: '#475569' }}>Tipo</label>
-                <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer" style={inputStyle}>
-                  {Object.entries(TIPO_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                </select></div>
               <div><label className="block text-xs font-medium mb-1" style={{ color: '#475569' }}>Fecha y hora</label>
                 <input type="datetime-local" value={fechaHora} onChange={(e) => setFechaHora(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} /></div>
               <div><label className="block text-xs font-medium mb-1" style={{ color: '#475569' }}>Descripción *</label>

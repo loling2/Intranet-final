@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
-import { Plus, X, Trash2, Clock, FileText } from 'lucide-react';
-import { PLANES_MODELO, type PlanModelo } from '../lib/crmPlanModelos';
+import { Plus, X, Trash2, Clock, FileText, Building2, Home, Heart } from 'lucide-react';
+import { PLANES_MODELO, type PlanModelo, type TablaPlan } from '../lib/crmPlanModelos';
 import CrmPlanModeloForm, { type PlanGuardado } from './CrmPlanModeloForm';
 import CrmPaiLegacyList from './CrmPaiLegacyList';
 
@@ -143,23 +143,38 @@ export default function CrmPaiModule({ usuarioId, autorNombre, isAdmin }: Props)
   );
 }
 
+const TEMA_MODELO: Record<TablaPlan, { icono: typeof Building2; fondo: string; borde: string; acento: string; texto: string }> = {
+  crm_pai_residencia: { icono: Building2, fondo: '#F0F9FF', borde: '#BAE6FD', acento: '#0369A1', texto: '#075985' },
+  crm_pai_spap: { icono: Home, fondo: '#F0FDF4', borde: '#BBF7D0', acento: '#15803D', texto: '#166534' },
+  crm_plan_vida: { icono: Heart, fondo: '#FFFBEB', borde: '#FDE68A', acento: '#B45309', texto: '#92400E' },
+};
+
 function SelectorModelo({ onClose, onElegir }: { onClose: () => void; onElegir: (modelo: PlanModelo) => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(15,23,42,0.45)' }}>
       <div className="w-full max-w-lg rounded-2xl p-6" style={{ backgroundColor: '#FFFFFF' }}>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-5">
           <h3 className="font-bold text-base" style={{ color: '#0F172A' }}>Elige el modelo de plan</h3>
           <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" style={{ color: '#94A3B8' }}><X size={14} /></button>
         </div>
-        <div className="space-y-2">
-          {PLANES_MODELO.map(modelo => (
-            <button key={modelo.id} onClick={() => onElegir(modelo)}
-              className="w-full text-left rounded-xl p-4 cursor-pointer transition-all hover:bg-sky-50"
-              style={{ border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF' }}>
-              <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>{modelo.nombre}</p>
-              <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{modelo.descripcion}</p>
-            </button>
-          ))}
+        <div className="grid grid-cols-1 gap-3">
+          {PLANES_MODELO.map(modelo => {
+            const tema = TEMA_MODELO[modelo.id];
+            const Icono = tema.icono;
+            return (
+              <button key={modelo.id} onClick={() => onElegir(modelo)}
+                className="group w-full text-left rounded-xl p-4 flex items-start gap-3 cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                style={{ border: `1px solid ${tema.borde}`, backgroundColor: tema.fondo }}>
+                <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: tema.acento, color: '#FFFFFF' }}>
+                  <Icono size={18} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold" style={{ color: tema.texto }}>{modelo.nombre}</span>
+                  <span className="block text-xs mt-0.5" style={{ color: '#475569' }}>{modelo.descripcion}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

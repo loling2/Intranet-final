@@ -469,13 +469,6 @@ export default function CrmResidenteFicha(props: Props) {
             </button>
           );
         })}
-        {isAdmin && (
-          <button onClick={props.onEdit}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all ml-auto"
-            style={{ backgroundColor: '#F8FAFC', color: '#475569', border: '1px solid #E2E8F0' }}>
-            Editar
-          </button>
-        )}
       </div>
 
       {/* === Tab: Información === */}
@@ -536,7 +529,10 @@ export default function CrmResidenteFicha(props: Props) {
             )}
           </div>
           <div className="rounded-2xl p-6" style={cardStyle}>
-            <h3 className="font-semibold text-sm mb-4" style={{ color: '#0F172A' }}>Contacto y observaciones</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Contacto y observaciones</h3>
+              {isAdmin && <button onClick={props.onEdit} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Editar</button>}
+            </div>
             <div className="space-y-3">
               <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><Mail size={16} style={{ color: '#0369A1' }} /></div><div><p className="text-xs" style={{ color: '#94A3B8' }}>Email</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{usuario.email || 'Sin email'}</p></div></div>
               <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><Phone size={16} style={{ color: '#0369A1' }} /></div><div><p className="text-xs" style={{ color: '#94A3B8' }}>Teléfono</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{usuario.telefono || 'Sin teléfono'}</p></div></div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
-import { Plus, X, Trash2, Clock, FileText, Building2, Home, Heart } from 'lucide-react';
+import { Plus, X, Trash2, Clock, FileText, Building2, Home, Heart, ClipboardList, Users } from 'lucide-react';
 import { PLANES_MODELO, type PlanModelo, type TablaPlan } from '../lib/crmPlanModelos';
 import CrmPlanModeloForm, { type PlanGuardado } from './CrmPlanModeloForm';
 import CrmPaiLegacyList from './CrmPaiLegacyList';
@@ -77,7 +77,7 @@ export default function CrmPaiModule({ usuarioId, autorNombre, isAdmin }: Props)
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Planes de Atención Individualizada (PAI/PIE)</h3>
+        <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Planes de Atención Individualizada (PAI/PIR)</h3>
         <button onClick={() => setSelectorOpen(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
           style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>
@@ -147,6 +147,8 @@ const TEMA_MODELO: Record<TablaPlan, { icono: typeof Building2; fondo: string; b
   crm_pai_residencia: { icono: Building2, fondo: '#F0F9FF', borde: '#BAE6FD', acento: '#0369A1', texto: '#075985' },
   crm_pai_spap: { icono: Home, fondo: '#F0FDF4', borde: '#BBF7D0', acento: '#15803D', texto: '#166534' },
   crm_plan_vida: { icono: Heart, fondo: '#FFFBEB', borde: '#FDE68A', acento: '#B45309', texto: '#92400E' },
+  crm_pai_pir: { icono: ClipboardList, fondo: '#F0FDFA', borde: '#99F6E4', acento: '#0F766E', texto: '#115E59' },
+  crm_plan_intervencion_social: { icono: Users, fondo: '#FFF1F2', borde: '#FECDD3', acento: '#BE123C', texto: '#9F1239' },
 };
 
 function SelectorModelo({ onClose, onElegir }: { onClose: () => void; onElegir: (modelo: PlanModelo) => void }) {

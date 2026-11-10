@@ -1,4 +1,4 @@
-export type TablaPlan = 'crm_pai_residencia' | 'crm_pai_spap' | 'crm_plan_vida';
+export type TablaPlan = 'crm_pai_residencia' | 'crm_pai_spap' | 'crm_plan_vida' | 'crm_pai_pir' | 'crm_plan_intervencion_social';
 
 export interface CampoTexto { tipo: 'texto' | 'area' | 'fecha'; clave: string; etiqueta: string }
 export interface CampoSelect { tipo: 'select'; clave: string; etiqueta: string; opciones: { valor: string; etiqueta: string }[] }
@@ -24,6 +24,13 @@ const NIVEL_AUTONOMIA = [
   { valor: 'dependiente', etiqueta: 'Dependiente' },
 ];
 const nivel = (clave: string, etiqueta: string): CampoSelect => ({ tipo: 'select', clave, etiqueta, opciones: NIVEL_AUTONOMIA });
+
+const NIVEL_PIR = [
+  { valor: 'independiente', etiqueta: 'Independiente' },
+  { valor: 'supervision', etiqueta: 'Supervisión' },
+  { valor: 'apoyo', etiqueta: 'Apoyo' },
+];
+const nivelPir = (clave: string, etiqueta: string): CampoSelect => ({ tipo: 'select', clave, etiqueta, opciones: NIVEL_PIR });
 
 const abvd = (clave: string, etiqueta: string): CampoTexto[] => [
   t(`${clave}_nivel`, `${etiqueta}: nivel de desempeño`),
@@ -435,7 +442,372 @@ const PLAN_VIDA: PlanModelo = {
   ],
 };
 
-export const PLANES_MODELO: PlanModelo[] = [PAI_RESIDENCIA, PAI_SPAP, PLAN_VIDA];
+const PAI_PIR: PlanModelo = {
+  id: 'crm_pai_pir',
+  nombre: 'PAI/PIR',
+  descripcion: 'Programa de Atención Individual / Plan Individualizado de Rehabilitación (PG 00, Anexo II)',
+  secciones: [
+    {
+      titulo: 'Datos personales',
+      campos: [
+        t('tipo_plan', 'Tipo de plan (PAI/PIR inicial o revisión n.º)'),
+        f('fecha_elaboracion', 'Fecha de elaboración'),
+        t('nombre_apellidos', 'Nombre y apellidos'),
+        f('fecha_nacimiento', 'Fecha de nacimiento'),
+        t('dni_nie', 'DNI/NIE'),
+        f('fecha_incorporacion', 'Fecha de incorporación al centro'),
+        t('direccion_actual', 'Dirección actual'),
+        t('telefonos_contacto', 'Teléfonos de contacto'),
+        t('persona_referencia', 'Persona de referencia (nombre, parentesco y teléfono)'),
+        t('representante_legal', 'Representante legal / medidas de apoyo (Ley 8/2021)'),
+        t('guardador_hecho', 'Guardador/a de hecho (en su caso)'),
+        t('profesional_referencia_crps', 'Profesional de referencia (tutor/a) en el CRPS'),
+      ],
+    },
+    {
+      titulo: 'Datos sociosanitarios',
+      campos: [
+        t('centro_salud', 'Centro de salud y médico/a de atención primaria'),
+        t('telefono_centro_salud', 'Teléfono del centro de salud'),
+        t('usm', 'Unidad de Salud Mental (USM)'),
+        t('psiquiatra_usm', 'Psiquiatra de referencia de la USM'),
+        t('telefono_usm', 'Teléfono de la USM'),
+        a('diagnostico', 'Diagnóstico (según informe médico)'),
+        t('grado_discapacidad', 'Grado de discapacidad'),
+        t('grado_dependencia', 'Grado de dependencia'),
+        a('tratamiento_farmacologico', 'Tratamiento farmacológico vigente (según informe)'),
+        t('alergias', 'Alergias'),
+        {
+          tipo: 'select',
+          clave: 'supervision_medicacion',
+          etiqueta: 'Supervisión de la medicación autorizada',
+          opciones: [
+            { valor: 'si', etiqueta: 'Sí (autorización firmada)' },
+            { valor: 'no', etiqueta: 'No' },
+          ],
+        },
+      ],
+    },
+    {
+      titulo: 'Síntesis de antecedentes y metas personales',
+      campos: [
+        a('sintesis_antecedentes', 'Síntesis de antecedentes relevantes'),
+        a('metas_personales', 'Metas personales de la persona usuaria (en sus propias palabras)'),
+      ],
+    },
+    {
+      titulo: 'Autonomía: autocuidados',
+      campos: [
+        nivelPir('higiene_personal', 'Higiene personal'),
+        nivelPir('vestido_imagen', 'Vestido e imagen personal'),
+        nivelPir('habitos_alimentacion', 'Hábitos de alimentación'),
+        nivelPir('sueno_descanso', 'Sueño y descanso'),
+        nivelPir('cuidado_salud', 'Cuidado de la propia salud'),
+      ],
+    },
+    {
+      titulo: 'Autonomía: actividades instrumentales',
+      campos: [
+        nivelPir('compras', 'Compras'),
+        nivelPir('preparacion_comidas', 'Preparación de comidas'),
+        nivelPir('tareas_domesticas', 'Tareas domésticas'),
+        nivelPir('manejo_dinero', 'Manejo del dinero'),
+        nivelPir('uso_transporte', 'Uso del transporte'),
+        nivelPir('uso_telefono_tecnologia', 'Uso del teléfono y la tecnología'),
+        nivelPir('gestion_medicacion', 'Gestión de la medicación'),
+        nivelPir('gestion_citas_tramites', 'Gestión de citas médicas y trámites'),
+      ],
+    },
+    {
+      titulo: 'Autonomía: actividades avanzadas',
+      campos: [
+        nivelPir('ocio_tiempo_libre', 'Ocio y tiempo libre'),
+        nivelPir('relaciones_sociales', 'Relaciones sociales'),
+        nivelPir('participacion_comunitaria', 'Participación comunitaria'),
+        nivelPir('formacion_prelaboral', 'Formación / actividad prelaboral'),
+        nivelPir('actividad_fisica', 'Actividad física y deporte'),
+      ],
+    },
+    {
+      titulo: 'Valoración psicológica (psicólogo/a general sanitario/a)',
+      campos: [
+        a('antecedentes_psiquiatricos_psicologicos', 'Antecedentes psiquiátricos y psicológicos'),
+        a('psicopatologia_actual', 'Psicopatología actual'),
+        a('conciencia_enfermedad_adherencia', 'Conciencia de enfermedad y adherencia'),
+        a('consumo_toxicos', 'Consumo de tóxicos'),
+        a('funciones_cognitivas', 'Funciones cognitivas'),
+        a('estado_afectivo_riesgo_autolitico', 'Estado afectivo y riesgo autolítico'),
+        a('motivacion_objetivos', 'Motivación y capacidad para fijar objetivos'),
+      ],
+    },
+    {
+      titulo: 'Valoración social y de integración comunitaria (TS y TIS)',
+      campos: [
+        a('historia_social_familiar', 'Historia social y familiar'),
+        a('red_apoyo', 'Red de apoyo y persona de referencia'),
+        a('convivencia_vivienda', 'Convivencia y vivienda'),
+        a('situacion_legal', 'Situación legal y medidas de apoyo'),
+        a('situacion_economica', 'Situación económica y gestiones'),
+        a('formacion_antecedentes_laborales', 'Formación y antecedentes laborales'),
+        a('recursos_comunitarios_ocio', 'Uso de recursos comunitarios, ocio, creencias y valores'),
+        a('habilidades_sociales', 'Habilidades sociales y de comunicación'),
+        a('necesidades_familia', 'Necesidades de la familia o persona de referencia'),
+      ],
+    },
+    {
+      titulo: 'Valoración ocupacional y funcional (terapeuta ocupacional)',
+      campos: [
+        a('desempeno_ocupacional', 'Desempeño ocupacional (ABVD, AIVD y avanzadas)'),
+        a('rutinas_habitos_roles', 'Rutinas, hábitos y roles'),
+        a('intereses_motivacion_ocupacional', 'Intereses y motivación ocupacional'),
+        a('gestion_salud_medicacion', 'Gestión de la salud y de la medicación'),
+        a('cognicion_desempeno_diario', 'Cognición en el desempeño diario'),
+        a('entorno_domestico_comunitario', 'Entorno doméstico y comunitario (apoyos y recursos)'),
+        {
+          tipo: 'filas',
+          clave: 'instrumentos',
+          etiqueta: 'Instrumentos aplicados',
+          columnas: [
+            { clave: 'instrumento', etiqueta: 'Instrumento' },
+            { clave: 'fecha', etiqueta: 'Fecha' },
+            { clave: 'resultado', etiqueta: 'Resultado / puntuación' },
+          ],
+        },
+      ],
+    },
+    {
+      titulo: 'Plan de prevención de recaídas',
+      campos: [
+        a('senales_alerta', 'Señales de alerta'),
+        a('factores_desencadenantes', 'Factores desencadenantes'),
+        a('estrategias_afrontamiento', 'Estrategias de afrontamiento acordadas'),
+        a('personas_apoyo_contactos', 'Personas de apoyo y contactos (familia, USM, otros)'),
+        a('actuacion_crisis', 'Actuación acordada en caso de crisis'),
+      ],
+    },
+    {
+      titulo: 'Propuesta de trabajo individualizado e indicadores de logro',
+      campos: [
+        {
+          tipo: 'filas',
+          clave: 'objetivos',
+          etiqueta: 'Objetivos por área (psicológica, social, integración comunitaria, ocupacional)',
+          columnas: [
+            { clave: 'area', etiqueta: 'Área' },
+            { clave: 'objetivo_general', etiqueta: 'Objetivo general' },
+            { clave: 'objetivos_especificos', etiqueta: 'Objetivos específicos (concretos y medibles)' },
+            { clave: 'programas_centro', etiqueta: 'Programa(s) del centro (n.º)' },
+            { clave: 'acciones', etiqueta: 'Acciones / intervenciones' },
+            { clave: 'profesional_responsable', etiqueta: 'Profesional responsable' },
+            { clave: 'temporalizacion', etiqueta: 'Temporalización' },
+            { clave: 'indicador_logro', etiqueta: 'Indicador de logro' },
+          ],
+        },
+      ],
+    },
+    {
+      titulo: 'Equipo interdisciplinar y conformidad',
+      campos: [
+        {
+          tipo: 'filas',
+          clave: 'equipo_interdisciplinar',
+          etiqueta: 'Equipo interdisciplinar',
+          columnas: [
+            { clave: 'nombre', etiqueta: 'Nombre y apellidos' },
+            { clave: 'categoria', etiqueta: 'Categoría profesional' },
+            { clave: 'firma', etiqueta: 'Firma' },
+          ],
+        },
+        t('firma_persona_usuaria', 'Firma de la persona usuaria'),
+        t('firma_representante', 'Firma del/de la representante legal o persona de apoyo (en su caso)'),
+        f('fecha_conformidad', 'Fecha de conformidad'),
+      ],
+    },
+    {
+      titulo: 'Revisión del PAI/PIR (mínimo cada seis meses)',
+      campos: [
+        f('fecha_revision', 'Fecha de revisión'),
+        {
+          tipo: 'filas',
+          clave: 'seguimiento',
+          etiqueta: 'Seguimiento de objetivos',
+          columnas: [
+            { clave: 'area', etiqueta: 'Área' },
+            { clave: 'objetivo', etiqueta: 'Objetivo' },
+            { clave: 'seguimiento', etiqueta: 'Seguimiento' },
+            { clave: 'grado_logro', etiqueta: 'Grado de logro (logrado, en proceso, no logrado)' },
+            { clave: 'nuevos_objetivos', etiqueta: 'Nuevos objetivos' },
+          ],
+        },
+        a('modificaciones_propuestas', 'Modificaciones propuestas'),
+        a('actualizacion_prevencion_recaidas', 'Plan de prevención de recaídas: actualización'),
+        {
+          tipo: 'filas',
+          clave: 'equipo_revision',
+          etiqueta: 'Equipo interdisciplinar (revisión)',
+          columnas: [
+            { clave: 'nombre', etiqueta: 'Nombre y apellidos' },
+            { clave: 'categoria', etiqueta: 'Categoría profesional' },
+            { clave: 'firma', etiqueta: 'Firma' },
+          ],
+        },
+        t('firma_revision_persona_usuaria', 'Firma de la persona usuaria (conformidad con la revisión)'),
+        t('firma_revision_representante', 'Firma del/de la representante legal o persona de apoyo (revisión)'),
+      ],
+    },
+  ],
+};
+
+const PLAN_INTERVENCION_SOCIAL: PlanModelo = {
+  id: 'crm_plan_intervencion_social',
+  nombre: 'Plan de intervención social',
+  descripcion: 'Plan de intervención social (IASS / SERCA)',
+  secciones: [
+    {
+      titulo: 'Datos de la persona usuaria',
+      campos: [
+        t('nombre_apellidos', 'Nombre y apellidos'),
+        t('dni_nie', 'DNI/NIE'),
+        f('fecha_alta_servicio', 'Fecha de alta en el servicio'),
+        f('fecha_nacimiento', 'Fecha de nacimiento'),
+        t('estado_civil', 'Estado civil'),
+        t('domicilio', 'Domicilio'),
+        t('cp_municipio', 'CP / Municipio'),
+        a('personas_contacto', 'Personas, teléfonos y correos de contacto'),
+      ],
+    },
+    {
+      titulo: 'Datos sociodemográficos',
+      campos: [
+        t('regimen_asistencia_sanitaria', 'Régimen de asistencia sanitaria'),
+        t('nivel_grado_dependencia', 'Nivel y grado de dependencia'),
+        t('grado_discapacidad', 'Grado de discapacidad'),
+        t('incapacidad_legal', 'Incapacidad legal'),
+        t('num_afiliacion_ss', 'Nº de afiliación a la Seguridad Social'),
+        t('centro_salud', 'Centro de salud al que está adscrito'),
+        t('medico_atencion_primaria', 'Médico/a de atención primaria'),
+      ],
+    },
+    {
+      titulo: 'Profesionales que intervienen en el plan',
+      campos: [
+        {
+          tipo: 'filas',
+          clave: 'profesionales',
+          etiqueta: 'Profesionales',
+          columnas: COLUMNAS_EQUIPO,
+        },
+      ],
+    },
+    {
+      titulo: 'Antecedentes familiares',
+      campos: [a('antecedente_familiar', 'Antecedente familiar')],
+    },
+    {
+      titulo: 'Valoración inicial: salud',
+      campos: [
+        a('diagnosticos', 'Diagnósticos'),
+        a('salud_percibida', 'Salud percibida'),
+        a('nivel_funcional_abvd', 'Nivel funcional en las ABVD (deficitarios, limitaciones y capacidades)'),
+        a('nivel_cognitivo', 'Nivel cognitivo (deficitarios, limitaciones y capacidades)'),
+        a('nivel_emocional', 'Nivel emocional (deficitarios, limitaciones y capacidades)'),
+      ],
+    },
+    {
+      titulo: 'Valoración inicial: capacidad en la toma de decisiones',
+      campos: [
+        a('decisiones_cotidianas_sencillas', 'Situaciones cotidianas sencillas'),
+        a('decisiones_complejas', 'Situaciones de mayor complejidad'),
+      ],
+    },
+    {
+      titulo: 'Valoración inicial: relaciones y apoyo social',
+      campos: [
+        a('apoyo_informal', 'Apoyo informal (familia, amigos/as y vecinos/as)'),
+        a('apoyo_formal', 'Apoyo formal (servicios profesionales, intervenciones en el domicilio, voluntariado)'),
+        a('percepcion_apoyo', 'Percepción del apoyo que recibe'),
+        a('participacion_social', 'Participación social (centros sociales, asociaciones)'),
+        a('dificultades_relaciones', 'Dificultades en las relaciones sociales'),
+        a('fortalezas_relaciones', 'Fortalezas en las relaciones sociales'),
+      ],
+    },
+    {
+      titulo: 'Valoración inicial: ocio y entorno',
+      campos: [
+        a('intereses_ocio', 'Intereses relacionados con aficiones y ocio'),
+        a('ocio_organizado', 'Participación en actividades de ocio organizadas'),
+        a('actividades_propias', 'Actividades gratificantes que suele realizar por su cuenta'),
+        a('domicilio_habitual', 'Entorno: domicilio habitual (accesibilidad y adecuación)'),
+        a('barrio', 'Entorno: barrio'),
+        a('otros_lugares', 'Entorno: otros lugares'),
+      ],
+    },
+    {
+      titulo: 'Objetivos de intervención',
+      campos: [a('objetivos_intervencion', 'Objetivos de intervención')],
+    },
+    {
+      titulo: 'Propuesta de atención: servicios',
+      campos: [
+        a('servicio_accion_social', 'Servicio de acción social'),
+        a('servicios_cuidado_personal', 'Servicios de apoyo al cuidado personal (peluquería, podología, apoyo a las ABVD)'),
+        a('servicio_permanencia_vivienda', 'Servicio para la permanencia y mantenimiento de la vivienda'),
+        a('servicios_salud_prevencion', 'Servicios para el fomento de la salud y prevención de enfermedades (prevención, logopedia)'),
+        a('servicios_alimentacion_lavanderia', 'Servicio de alimentación, lavandería, mantenimiento, transporte'),
+        a('otros_servicios', 'Otros servicios'),
+      ],
+    },
+    {
+      titulo: 'Propuesta de atención: apoyos que precisa',
+      campos: [
+        a('productos_apoyo', 'Productos de apoyo'),
+        a('medidas_intervencion_ambiental', 'Medidas de intervención ambiental (supresión de barreras, adaptaciones, seguridad, confort)'),
+        a('otros_apoyos', 'Otros apoyos (simplificación de tareas, apoyo en la comunicación, apoyo de otras personas)'),
+      ],
+    },
+    {
+      titulo: 'Pautas para la atención personalizada e intervención con familias',
+      campos: [
+        a('habitos_gratificantes', 'Hábitos cotidianos gratificantes a mantener/reforzar'),
+        a('preferencias_servicio', 'Preferencias relacionadas con el servicio'),
+        a('otras_pautas', 'Otras pautas'),
+        a('orientaciones_buen_cuidado', 'Orientaciones para el buen cuidado de la persona'),
+        a('servicio_respiro_familiar', 'Servicio de respiro familiar'),
+        a('orientaciones_cuidado', 'Orientaciones para el cuidado'),
+      ],
+    },
+    {
+      titulo: 'Planificación de las actuaciones',
+      campos: [a('planificacion_actuaciones', 'Planificación de las actuaciones')],
+    },
+    {
+      titulo: 'Seguimientos y ajustes del plan',
+      campos: [
+        t('profesional_referencia', 'Profesional de referencia'),
+        {
+          tipo: 'filas',
+          clave: 'revisiones',
+          etiqueta: 'Revisiones y seguimientos',
+          columnas: [
+            { clave: 'fecha', etiqueta: 'Fecha' },
+            { clave: 'valoracion_cumplimiento', etiqueta: 'Breve valoración del cumplimiento del plan' },
+            { clave: 'modificaciones_acordadas', etiqueta: 'Modificaciones acordadas' },
+          ],
+        },
+      ],
+    },
+    {
+      titulo: 'Declaración de toma de decisiones compartidas',
+      campos: [
+        a('declaracion_persona_usuaria', 'Persona usuaria (o persona representante)'),
+        a('declaracion_equipo', 'Miembros del equipo profesional'),
+        f('fecha_declaracion', 'Fecha'),
+      ],
+    },
+  ],
+};
+
+export const PLANES_MODELO: PlanModelo[] = [PAI_RESIDENCIA, PAI_SPAP, PLAN_VIDA, PAI_PIR, PLAN_INTERVENCION_SOCIAL];
 
 export function getPlanModelo(id: TablaPlan): PlanModelo {
   const modelo = PLANES_MODELO.find(m => m.id === id);

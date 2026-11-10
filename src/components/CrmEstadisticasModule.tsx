@@ -71,7 +71,7 @@ export default function CrmEstadisticasModule({ centros }: Props) {
     { label: 'Actividades este mes', value: stats?.actividadesMes ?? '—', color: '#16A34A', bg: '#F0FDF4', icon: Calendar },
     { label: 'Sesiones este mes', value: stats?.sesionesMes ?? '—', color: '#7C3AED', bg: '#F5F3FF', icon: FileText },
     { label: 'Pautas activas', value: stats?.pautasActivas ?? '—', color: '#D97706', bg: '#FFFBEB', icon: ClipboardList },
-    { label: 'PAI/PIE activos', value: stats?.planesActivos ?? '—', color: '#0369A1', bg: '#EFF6FF', icon: FileText },
+    { label: 'PAI/PIR activos', value: stats?.planesActivos ?? '—', color: '#0369A1', bg: '#EFF6FF', icon: FileText },
     { label: 'Actas este mes', value: stats?.actasMes ?? '—', color: '#475569', bg: '#F1F5F9', icon: FileText },
   ];
 

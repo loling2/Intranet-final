@@ -31,6 +31,7 @@ interface Props {
     centros?: { id: string; nombre: string }[];
   };
   isAdmin: boolean;
+  isGestor: boolean;
   notas: unknown[];
   notasLoading: boolean;
   calendarCells: { date: Date | null; iso: string | null }[];
@@ -124,7 +125,8 @@ interface ResidenteExtra {
 }
 
 export default function CrmResidenteFicha(props: Props) {
-  const { usuario, isAdmin } = props;
+  const { usuario, isAdmin, isGestor } = props;
+  const canEdit = isAdmin || isGestor;
   const [detailTab, setDetailTab] = useState<DetailTab>(props.initialTab ?? 'info');
 
   useEffect(() => {
@@ -477,7 +479,7 @@ export default function CrmResidenteFicha(props: Props) {
           <div className="rounded-2xl p-6" style={cardStyle}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Datos personales</h3>
-              {isAdmin && !extraEditing && <button onClick={() => { setExtraForm(extra ?? {} as ResidenteExtra); setExtraEditing(true); }} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Editar</button>}
+              {canEdit && !extraEditing && <button onClick={() => { setExtraForm(extra ?? {} as ResidenteExtra); setExtraEditing(true); }} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Editar</button>}
             </div>
             {extraEditing && extraForm ? (
               <div className="space-y-3">
@@ -531,7 +533,7 @@ export default function CrmResidenteFicha(props: Props) {
           <div className="rounded-2xl p-6" style={cardStyle}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-sm" style={{ color: '#0F172A' }}>Contacto y observaciones</h3>
-              {isAdmin && <button onClick={props.onEdit} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Editar</button>}
+              {canEdit && <button onClick={props.onEdit} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Editar</button>}
             </div>
             <div className="space-y-3">
               <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}><Mail size={16} style={{ color: '#0369A1' }} /></div><div><p className="text-xs" style={{ color: '#94A3B8' }}>Email</p><p className="text-sm font-medium" style={{ color: '#0F172A' }}>{usuario.email || 'Sin email'}</p></div></div>
@@ -648,7 +650,7 @@ export default function CrmResidenteFicha(props: Props) {
                 </div>
               )}
               <div className="space-y-2">
-                {prestacionDocumentos.length === 0 ? <p className="text-sm text-center py-4" style={{ color: '#94A3B8' }}>Sin documentos de prestaciones</p> : prestacionDocumentos.map(documento => <div key={documento.id} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}><FileText size={14} style={{ color: '#DC2626' }} /><span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{documento.nombre_archivo}</span><span className="text-xs" style={{ color: '#94A3B8' }}>{(documento.tamano_bytes / 1024).toFixed(0)} KB</span><button onClick={() => previewPrestacionDocumento(documento)} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Ver</button><button onClick={() => downloadPrestacionDocumento(documento)} className="p-1 cursor-pointer" title="Descargar"><Download size={13} style={{ color: '#475569' }} /></button>{isAdmin && <button onClick={() => deletePrestacionDocumento(documento)} className="p-1 cursor-pointer" title="Eliminar"><Trash2 size={13} style={{ color: '#DC2626' }} /></button>}</div>)}
+                {prestacionDocumentos.length === 0 ? <p className="text-sm text-center py-4" style={{ color: '#94A3B8' }}>Sin documentos de prestaciones</p> : prestacionDocumentos.map(documento => <div key={documento.id} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}><FileText size={14} style={{ color: '#DC2626' }} /><span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{documento.nombre_archivo}</span><span className="text-xs" style={{ color: '#94A3B8' }}>{(documento.tamano_bytes / 1024).toFixed(0)} KB</span><button onClick={() => previewPrestacionDocumento(documento)} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Ver</button><button onClick={() => downloadPrestacionDocumento(documento)} className="p-1 cursor-pointer" title="Descargar"><Download size={13} style={{ color: '#475569' }} /></button>{canEdit && <button onClick={() => deletePrestacionDocumento(documento)} className="p-1 cursor-pointer" title="Eliminar"><Trash2 size={13} style={{ color: '#DC2626' }} /></button>}</div>)}
               </div>
             </div>
           )}
@@ -829,7 +831,7 @@ export default function CrmResidenteFicha(props: Props) {
               </div>
             )}
             <div className="space-y-2">
-              {tratamientoDocumentos.length === 0 ? <p className="text-sm text-center py-3" style={{ color: '#94A3B8' }}>Sin documentos adicionales</p> : tratamientoDocumentos.map(documento => <div key={documento.id} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}><FileText size={14} style={{ color: '#DC2626' }} /><span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{documento.nombre_archivo}</span><span className="text-xs" style={{ color: '#94A3B8' }}>{(documento.tamano_bytes / 1024).toFixed(0)} KB</span><button onClick={() => previewTratamientoDocumento(documento)} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Ver</button><button onClick={() => downloadTratamientoDocumento(documento)} className="p-1 cursor-pointer" title="Descargar"><Download size={13} style={{ color: '#475569' }} /></button>{isAdmin && <button onClick={() => deleteTratamientoDocumento(documento)} className="p-1 cursor-pointer" title="Eliminar"><Trash2 size={13} style={{ color: '#DC2626' }} /></button>}</div>)}
+              {tratamientoDocumentos.length === 0 ? <p className="text-sm text-center py-3" style={{ color: '#94A3B8' }}>Sin documentos adicionales</p> : tratamientoDocumentos.map(documento => <div key={documento.id} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}><FileText size={14} style={{ color: '#DC2626' }} /><span className="flex-1 text-xs truncate" style={{ color: '#1E293B' }}>{documento.nombre_archivo}</span><span className="text-xs" style={{ color: '#94A3B8' }}>{(documento.tamano_bytes / 1024).toFixed(0)} KB</span><button onClick={() => previewTratamientoDocumento(documento)} className="text-xs font-medium cursor-pointer" style={{ color: '#0369A1' }}>Ver</button><button onClick={() => downloadTratamientoDocumento(documento)} className="p-1 cursor-pointer" title="Descargar"><Download size={13} style={{ color: '#475569' }} /></button>{canEdit && <button onClick={() => deleteTratamientoDocumento(documento)} className="p-1 cursor-pointer" title="Eliminar"><Trash2 size={13} style={{ color: '#DC2626' }} /></button>}</div>)}
             </div>
           </div>
         </div>
@@ -902,42 +904,42 @@ export default function CrmResidenteFicha(props: Props) {
 
       {/* === Tab: Documentos === */}
       {detailTab === 'documentos' && (
-        <CrmDocumentosModule usuarioServicioId={usuario.id} usuarioNombre={selectedUserLabel} isAdmin={isAdmin} />
+        <CrmDocumentosModule usuarioServicioId={usuario.id} usuarioNombre={selectedUserLabel} isAdmin={canEdit} />
       )}
 
       {/* === Tab: Seguimiento diario === */}
       {detailTab === 'seguimiento' && (
-        <CrmSeguimientoModule usuarioId={usuario.id} usuarioNombre={selectedUserLabel} autorNombre={props.autorNombre ?? ''} isAdmin={isAdmin} />
+        <CrmSeguimientoModule usuarioId={usuario.id} usuarioNombre={selectedUserLabel} autorNombre={props.autorNombre ?? ''} isAdmin={canEdit} />
       )}
 
       {/* === Tab: Llamadas y visitas === */}
       {detailTab === 'llamadas' && (
-        <CrmLlamadasModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={isAdmin} />
+        <CrmLlamadasModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={canEdit} />
       )}
 
       {/* === Tab: ABVD === */}
       {detailTab === 'abvd' && (
-        <CrmAbvdModule usuarioId={usuario.id} isAdmin={isAdmin} />
+        <CrmAbvdModule usuarioId={usuario.id} isAdmin={canEdit} />
       )}
 
       {/* === Tab: Incidencias sanitarias === */}
       {detailTab === 'inc_sanitarias' && (
-        <CrmIncidenciasSanitariasModule usuarioId={usuario.id} isAdmin={isAdmin} />
+        <CrmIncidenciasSanitariasModule usuarioId={usuario.id} isAdmin={canEdit} />
       )}
 
       {/* === Tab: Pautas profesionales === */}
       {detailTab === 'pautas' && (
-        <CrmPautasModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={isAdmin} />
+        <CrmPautasModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={canEdit} />
       )}
 
       {/* === Tab: PAI / PIE === */}
       {detailTab === 'pai' && (
-        <CrmPaiModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={isAdmin} />
+        <CrmPaiModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={canEdit} />
       )}
 
       {/* === Tab: Sesiones === */}
       {detailTab === 'sesiones' && (
-        <CrmSesionesModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={isAdmin} />
+        <CrmSesionesModule usuarioId={usuario.id} autorNombre={props.autorNombre ?? ''} isAdmin={canEdit} />
       )}
     </div>
   );

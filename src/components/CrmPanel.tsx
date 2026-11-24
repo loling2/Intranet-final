@@ -507,6 +507,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                 initialTab={fichaInitialTab}
                 pestanasPermitidas={pestanasPermitidas ?? []}
                 isAdmin={isAdmin}
+                isGestor={isGestor}
                 notas={notas}
                 notasLoading={notasLoading}
                 calendarCells={calendarCells}

@@ -429,7 +429,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                       style={{ backgroundColor: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0' }}>
                       <FileText size={14} />Añadir nota
                     </button>
-                    {isAdmin && (
+                    {(isAdmin || isGestor) && (
                       <button onClick={openNewUsuario}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all"
                         style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>

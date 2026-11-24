@@ -224,6 +224,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   };
   const handleSaveUsuario = async () => {
     if (!formNombre.trim()) { setFormError('El nombre es obligatorio'); return; }
+    if (!editingId && formCentros.length === 0) { setFormError('Selecciona al menos un centro'); return; }
     setFormSaving(true); setFormError('');
     try {
       if (editingId) {
@@ -232,22 +233,31 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
           telefono: formTelefono.trim(), observaciones: formObservaciones.trim(), acronimo: formAcronimo.trim(), updated_at: new Date().toISOString(),
         }).eq('id', editingId);
         if (error) throw error;
-        await supabase.from('usuarios_servicios_centros').delete().eq('usuario_servicio_id', editingId);
+        const { error: deleteCentrosError } = await supabase.from('usuarios_servicios_centros').delete().eq('usuario_servicio_id', editingId);
+        if (deleteCentrosError) throw deleteCentrosError;
         if (formCentros.length > 0) {
-          await supabase.from('usuarios_servicios_centros').insert(formCentros.map((c) => ({ usuario_servicio_id: editingId, centro_id: c })));
+          const { error: insertCentrosError } = await supabase.from('usuarios_servicios_centros').insert(
+            formCentros.map((c) => ({ usuario_servicio_id: editingId, centro_id: c })),
+          );
+          if (insertCentrosError) throw insertCentrosError;
         }
       } else {
-        const { data, error } = await supabase.from('usuarios_servicios').insert({
-          nombre: formNombre.trim(), apellidos: formApellidos.trim(), email: formEmail.trim(),
-          telefono: formTelefono.trim(), observaciones: formObservaciones.trim(), acronimo: formAcronimo.trim(),
-        }).select('id').single();
+        const { error } = await supabase.rpc('create_crm_residente', {
+          p_nombre: formNombre.trim(),
+          p_apellidos: formApellidos.trim(),
+          p_email: formEmail.trim(),
+          p_telefono: formTelefono.trim(),
+          p_observaciones: formObservaciones.trim(),
+          p_acronimo: formAcronimo.trim(),
+          p_centro_ids: formCentros,
+        });
         if (error) throw error;
-        if (formCentros.length > 0) {
-          await supabase.from('usuarios_servicios_centros').insert(formCentros.map((c) => ({ usuario_servicio_id: data.id, centro_id: c })));
-        }
       }
       setShowUsuarioForm(false); await loadUsuarios();
-    } catch { setFormError('No se pudo guardar. Inténtalo de nuevo.'); }
+    } catch (error) {
+      console.error('CRM resident save failed', error);
+      setFormError('No se pudo guardar. Inténtalo de nuevo.');
+    }
     finally { setFormSaving(false); }
   };
   // === Calendario ===

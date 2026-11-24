@@ -16,6 +16,7 @@ interface ResponsableInfo {
   nombre: string;
   email: string;
   role: string;
+  roles?: string[] | null;
 }
 
 export default function CentrosModule() {
@@ -45,7 +46,7 @@ export default function CentrosModule() {
       supabase.from('centros').select('id, nombre, id_sociedad').order('nombre', { ascending: true }),
       supabase.from('sociedades').select('id, nombre').order('nombre', { ascending: true }),
       supabase.from('kiosk_devices').select('id, site_name, is_active, centro_id').order('site_name', { ascending: true }),
-      supabase.from('user_profiles').select('id, nombre, email, role, roles').in('role', ['supervisor', 'rrhh', 'prevencion', 'supervisor_gerontalia', 'rrhh_gerontalia', 'prevencion_gerontalia']).eq('activo', true).order('nombre'),
+      supabase.from('user_profiles').select('id, nombre, email, role, roles').eq('activo', true).order('nombre'),
       supabase.from('supervisor_centros').select('supervisor_id, centro_id'),
     ]);
     if (cenRes.error) { setError(cenRes.error.message); setCentros([]); }
@@ -65,7 +66,16 @@ export default function CentrosModule() {
     }
     // Also include users who have these roles in their roles[] array but whose primary role is different
     const allProfiles = (supRes.data as ResponsableInfo[]) ?? [];
-    const responsableRoles = ['supervisor', 'rrhh', 'prevencion', 'supervisor_gerontalia', 'rrhh_gerontalia', 'prevencion_gerontalia'];
+    const responsableRoles = [
+      'supervisor',
+      'rrhh',
+      'coordinador',
+      'prevencion',
+      'supervisor_gerontalia',
+      'rrhh_gerontalia',
+      'coordinador_gerontalia',
+      'prevencion_gerontalia',
+    ];
     const filtered = allProfiles.filter((u) => {
       if (responsableRoles.includes(u.role)) return true;
       if (u.roles && Array.isArray(u.roles)) return u.roles.some((r: string) => responsableRoles.includes(r));

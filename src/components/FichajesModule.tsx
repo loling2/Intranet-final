@@ -1353,7 +1353,7 @@ export default function FichajesModule() {
             />
           </div>
 
-          {/* Period filter */}
+          {/* Period quick presets */}
           <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
             {(['hoy', 'semana', 'mes', 'personalizado'] as PeriodFilter[]).map((p) => (
               <button key={p} onClick={() => setPeriodFilter(p)}
@@ -1364,19 +1364,27 @@ export default function FichajesModule() {
             ))}
           </div>
 
-          {/* Custom date range (only visible when personalizado) */}
-          {periodFilter === 'personalizado' && (
-            <div className="flex items-center gap-1">
-              <Calendar size={13} style={{ color: '#94A3B8' }} />
-              <input type="date" value={filterDesde} onChange={(e) => setFilterDesde(e.target.value)}
-                className="px-2 py-1.5 rounded-lg text-sm outline-none cursor-pointer"
-                style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569' }} />
-              <span className="text-xs" style={{ color: '#94A3B8' }}>—</span>
-              <input type="date" value={filterHasta} onChange={(e) => setFilterHasta(e.target.value)}
-                className="px-2 py-1.5 rounded-lg text-sm outline-none cursor-pointer"
-                style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569' }} />
-            </div>
-          )}
+          {/* Date range selector — always visible */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <Calendar size={14} style={{ color: '#94A3B8' }} />
+            <input
+              type="date"
+              value={filterDesde}
+              onChange={(e) => { setFilterDesde(e.target.value); setPeriodFilter('personalizado'); }}
+              className="text-sm outline-none cursor-pointer bg-transparent"
+              style={{ color: '#475569' }}
+              aria-label="Fecha desde"
+            />
+            <span className="text-xs font-medium" style={{ color: '#94A3B8' }}>→</span>
+            <input
+              type="date"
+              value={filterHasta}
+              onChange={(e) => { setFilterHasta(e.target.value); setPeriodFilter('personalizado'); }}
+              className="text-sm outline-none cursor-pointer bg-transparent"
+              style={{ color: '#475569' }}
+              aria-label="Fecha hasta"
+            />
+          </div>
 
           {/* Worker filter */}
           <div className="relative w-full sm:w-[240px]" onBlur={(event) => {

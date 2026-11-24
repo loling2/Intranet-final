@@ -1006,7 +1006,7 @@ const getGeolocation = (): Promise<string | null> =>
 
 export default function FichajesModule() {
   const { profile } = useAuth();
-  const isSupervisor = profile?.role === 'supervisor';
+  const isSupervisor = profile?.role === 'supervisor' || profile?.role === 'coordinador';
   const [supervisorEmpIds, setSupervisorEmpIds] = useState<Set<string> | null>(null);
   const [fichajes, setFichajes] = useState<Fichaje[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1030,14 +1030,29 @@ export default function FichajesModule() {
   const [workerYearFichajes, setWorkerYearFichajes] = useState<Fichaje[]>([]);
   const [workerCorrecciones, setWorkerCorrecciones] = useState<CorreccionAprobada[]>([]);
 
-  // Load reference data + supervisor's employee IDs if supervisor
+  // Load reference data + supervisor/coordinador's assigned employee IDs
   useEffect(() => {
     (async () => {
-      // If supervisor, fetch their assigned employee IDs first
+      let scopedIds: Set<string> | null = null;
+
       if (isSupervisor && profile) {
-        const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: profile.id });
-        const ids = new Set(((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id));
-        setSupervisorEmpIds(ids);
+        let ids: string[] = [];
+        if (profile.role === 'coordinador') {
+          const { data: supRows } = await supabase
+            .from('coordinador_supervisores')
+            .select('supervisor_id')
+            .eq('coordinador_id', profile.id);
+          const supervisorIds = ((supRows ?? []) as { supervisor_id: string }[]).map((r) => r.supervisor_id);
+          for (const supId of supervisorIds) {
+            const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: supId });
+            ids = ids.concat(((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id));
+          }
+        } else {
+          const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: profile.id });
+          ids = ((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id);
+        }
+        scopedIds = new Set(ids);
+        setSupervisorEmpIds(scopedIds);
       } else {
         setSupervisorEmpIds(null);
       }
@@ -1047,9 +1062,8 @@ export default function FichajesModule() {
         supabase.from('sociedades').select('id, nombre').order('nombre'),
         supabase.from('centros').select('id, nombre, id_sociedad').order('nombre'),
       ]);
-      // If supervisor, filter empleados to only their assigned ones
-      if (isSupervisor && supervisorEmpIds) {
-        setEmpleados(((empData ?? []) as Empleado[]).filter((e) => supervisorEmpIds.has(e.id)));
+      if (scopedIds) {
+        setEmpleados(((empData ?? []) as Empleado[]).filter((e) => scopedIds!.has(e.id)));
       } else {
         setEmpleados((empData ?? []) as Empleado[]);
       }
@@ -1078,8 +1092,22 @@ export default function FichajesModule() {
     try {
       let supervisorEmployeeIds: string[] | null = null;
       if (isSupervisor && profile) {
-        const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: profile.id });
-        supervisorEmployeeIds = ((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id);
+        let ids: string[] = [];
+        if (profile.role === 'coordinador') {
+          const { data: supRows } = await supabase
+            .from('coordinador_supervisores')
+            .select('supervisor_id')
+            .eq('coordinador_id', profile.id);
+          const supervisorIds = ((supRows ?? []) as { supervisor_id: string }[]).map((r) => r.supervisor_id);
+          for (const supId of supervisorIds) {
+            const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: supId });
+            ids = ids.concat(((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id));
+          }
+        } else {
+          const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: profile.id });
+          ids = ((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id);
+        }
+        supervisorEmployeeIds = [...new Set(ids)];
         if (supervisorEmployeeIds.length === 0) {
           setFichajes([]);
           return;

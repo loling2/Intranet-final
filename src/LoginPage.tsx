@@ -3188,7 +3188,7 @@ useEffect(() => {
       </header>
 
       {/* Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-24 sm:pb-8">
         {/* Welcome */}
         <div className="mb-5 sm:mb-6 flex items-start justify-between">
           <div>
@@ -3239,9 +3239,9 @@ useEffect(() => {
           </button>
         </div>
 
-        {/* Tab Navigation */}
+        {/* Tab Navigation — hidden on mobile, replaced by fixed bottom bar */}
         <div
-          className="flex gap-1 p-1 rounded-xl mb-6 sm:mb-8 overflow-x-auto"
+          className="hidden sm:flex gap-1 p-1 rounded-xl mb-6 sm:mb-8 overflow-x-auto"
           style={{
             backgroundColor: theme.bgCard,
             border: `1px solid ${theme.border}`,
@@ -3402,6 +3402,47 @@ useEffect(() => {
           <HelpPanel currentProfileName="Empleado" accentColor={theme.primary} />
         )}
       </main>
-    </div>
+
+        {/* Fixed bottom tab bar — mobile only */}
+        <nav
+          className="sm:hidden fixed bottom-0 left-0 right-0 z-50 flex items-stretch overflow-x-auto"
+          style={{
+            backgroundColor: theme.bgCard,
+            borderTop: `1px solid ${theme.border}`,
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+            boxShadow: '0 -4px 20px rgba(0,0,0,0.08)',
+          }}
+          aria-label="Navegación principal"
+        >
+          {tabs.map((tab) => {
+            const TabIcon = tab.icon;
+            const isActive = activeTab === tab.id;
+            const badge = tabBadges[tab.id] ?? 0;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => handleTabClick(tab.id)}
+                className="relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 flex-shrink-0 cursor-pointer transition-colors"
+                style={{
+                  color: isActive ? theme.primary : theme.textSecondary,
+                }}
+                aria-label={tab.label}
+                aria-current={isActive ? 'page' : undefined}
+              >
+                <TabIcon size={20} />
+                <span className="text-[9px] font-medium leading-none truncate max-w-full px-0.5">{tab.label}</span>
+                {badge > 0 && (
+                  <span
+                    className="absolute top-1 right-1 min-w-[16px] h-[16px] flex items-center justify-center text-white text-[9px] font-bold rounded-full px-1"
+                    style={{ backgroundColor: '#EF4444', border: '1.5px solid #FFFFFF' }}
+                  >
+                    {badge > 99 ? '99+' : badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
   );
 }

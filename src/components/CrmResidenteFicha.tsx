@@ -139,6 +139,7 @@ export default function CrmResidenteFicha(props: Props) {
   const [extraEditing, setExtraEditing] = useState(false);
   const [extraForm, setExtraForm] = useState<ResidenteExtra | null>(null);
   const [extraSaving, setExtraSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const [contactos, setContactos] = useState<Contacto[]>([]);
   const [showContactoForm, setShowContactoForm] = useState(false);
@@ -217,6 +218,7 @@ export default function CrmResidenteFicha(props: Props) {
   async function saveExtra() {
     if (!extraForm) return;
     setExtraSaving(true);
+    setSaveError('');
     const { error } = await supabase.from('usuarios_servicios').update({
       tipo_identificacion: extraForm.tipo_identificacion || null,
       identificacion: extraForm.identificacion || null,
@@ -233,16 +235,26 @@ export default function CrmResidenteFicha(props: Props) {
       foto_url: extraForm.foto_url || null,
       updated_at: new Date().toISOString(),
     }).eq('id', usuario.id);
-    if (!error) { setExtra(extraForm); setExtraEditing(false); }
+    if (error) {
+      console.error('CRM resident information save failed', error);
+      setSaveError('No se pudo guardar la información del residente.');
+    } else {
+      setExtra(extraForm);
+      setExtraEditing(false);
+    }
     setExtraSaving(false);
   }
 
   async function saveContacto() {
     if (!contactoForm.nombre.trim()) return;
-    if (editingContactoId) {
-      await supabase.from('crm_residente_contactos').update({ ...contactoForm, updated_at: new Date().toISOString() }).eq('id', editingContactoId);
-    } else {
-      await supabase.from('crm_residente_contactos').insert({ ...contactoForm, usuario_servicio_id: usuario.id });
+    setSaveError('');
+    const result = editingContactoId
+      ? await supabase.from('crm_residente_contactos').update({ ...contactoForm, updated_at: new Date().toISOString() }).eq('id', editingContactoId)
+      : await supabase.from('crm_residente_contactos').insert({ ...contactoForm, usuario_servicio_id: usuario.id });
+    if (result.error) {
+      console.error('CRM resident contact save failed', result.error);
+      setSaveError('No se pudo guardar el contacto.');
+      return;
     }
     setShowContactoForm(false);
     setEditingContactoId(null);
@@ -257,10 +269,14 @@ export default function CrmResidenteFicha(props: Props) {
 
   async function saveCuenta() {
     if (!cuentaForm.titular.trim() && !cuentaForm.iban.trim()) return;
-    if (editingCuentaId) {
-      await supabase.from('crm_residente_cuentas').update({ ...cuentaForm, updated_at: new Date().toISOString() }).eq('id', editingCuentaId);
-    } else {
-      await supabase.from('crm_residente_cuentas').insert({ ...cuentaForm, usuario_servicio_id: usuario.id });
+    setSaveError('');
+    const result = editingCuentaId
+      ? await supabase.from('crm_residente_cuentas').update({ ...cuentaForm, updated_at: new Date().toISOString() }).eq('id', editingCuentaId)
+      : await supabase.from('crm_residente_cuentas').insert({ ...cuentaForm, usuario_servicio_id: usuario.id });
+    if (result.error) {
+      console.error('CRM resident account save failed', result.error);
+      setSaveError('No se pudo guardar la cuenta.');
+      return;
     }
     setShowCuentaForm(false);
     setEditingCuentaId(null);
@@ -344,15 +360,27 @@ export default function CrmResidenteFicha(props: Props) {
 
   async function saveMedico() {
     setMedicoSaving(true);
-    await supabase.from('crm_residente_medico').upsert({ usuario_servicio_id: usuario.id, ...medico, updated_at: new Date().toISOString() });
-    setMedicoEditing(false);
+    setSaveError('');
+    const { error } = await supabase.from('crm_residente_medico').upsert({ usuario_servicio_id: usuario.id, ...medico, updated_at: new Date().toISOString() });
+    if (error) {
+      console.error('CRM resident medical information save failed', error);
+      setSaveError('No se pudo guardar la información médica.');
+    } else {
+      setMedicoEditing(false);
+    }
     setMedicoSaving(false);
   }
 
   async function saveTratamiento() {
     setTratamientoSaving(true);
-    await supabase.from('crm_residente_tratamiento').upsert({ usuario_servicio_id: usuario.id, ...tratamiento, updated_at: new Date().toISOString() });
-    setTratamientoEditing(false);
+    setSaveError('');
+    const { error } = await supabase.from('crm_residente_tratamiento').upsert({ usuario_servicio_id: usuario.id, ...tratamiento, updated_at: new Date().toISOString() });
+    if (error) {
+      console.error('CRM resident treatment save failed', error);
+      setSaveError('No se pudo guardar el tratamiento.');
+    } else {
+      setTratamientoEditing(false);
+    }
     setTratamientoSaving(false);
   }
 
@@ -443,6 +471,13 @@ export default function CrmResidenteFicha(props: Props) {
   return (
     <div className="space-y-6">
       {/* Header with back */}
+      {saveError && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}>
+          <AlertCircle size={16} />
+          <span>{saveError}</span>
+        </div>
+      )}
+
       <div className="flex items-center gap-3 mb-2">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#EFF6FF' }}>

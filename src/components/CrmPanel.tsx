@@ -3,7 +3,8 @@ import { supabase } from '../supabaseClient';
 import {
   Users, Calendar, Plus, X, Search, Building2, ChevronLeft, ChevronRight,
   LogOut, KeyRound, Clock, AlertCircle, User, Phone, Mail, FileText,
-  FolderOpen, AlertTriangle, BarChart3, ClipboardList, Pill,
+  FolderOpen, AlertTriangle, BarChart3, ClipboardList, Pill, Trash2,
+  ToggleLeft, ToggleRight, ScrollText,
 } from 'lucide-react';
 import ChangePasswordModal from './ChangePasswordModal';
 import SocietySwitcher from '../SocietySwitcher';
@@ -17,6 +18,7 @@ import CrmActasModule from './CrmActasModule';
 import CrmEstadisticasModule from './CrmEstadisticasModule';
 import CrmTratamientosDiarioModule from './CrmTratamientosDiarioModule';
 import CrmAsignacionesTabs from './CrmAsignacionesTabs';
+import CrmLogsModule from './CrmLogsModule';
 import { fetchCrmPestanasPermitidas } from '../lib/crmPestanas';
 
 interface Props {
@@ -36,6 +38,7 @@ interface UsuarioServicio {
   observaciones: string | null;
   acronimo: string | null;
   activo: boolean;
+  borrado_at: string | null;
   centros?: { id: string; nombre: string }[];
 }
 
@@ -50,7 +53,8 @@ interface CrmNota {
 
 interface CentroOption { id: string; nombre: string; }
 
-type CrmTab = 'residentes' | 'incidencias' | 'actividades' | 'actas' | 'tratamientos' | 'estadisticas' | 'ayuda' | 'permisos';
+type CrmTab = 'residentes' | 'incidencias' | 'actividades' | 'actas' | 'tratamientos' | 'estadisticas' | 'ayuda' | 'permisos' | 'logs';
+type ResidentStatus = 'activos' | 'inactivos' | 'borrados';
 
 const CRM_TABS: { id: CrmTab; label: string; icon: typeof Users }[] = [
   { id: 'residentes', label: 'Residentes', icon: Users },
@@ -61,11 +65,19 @@ const CRM_TABS: { id: CrmTab; label: string; icon: typeof Users }[] = [
   { id: 'estadisticas', label: 'Estadísticas', icon: BarChart3 },
   { id: 'ayuda', label: 'Ayuda', icon: AlertCircle },
   { id: 'permisos', label: 'Permisos', icon: KeyRound },
+  { id: 'logs', label: 'Logs', icon: ScrollText },
 ];
 
-function tabVisible(id: CrmTab, permitidas: string[], gestor: boolean): boolean {
+function tabVisible(id: CrmTab, permitidas: string[], gestor: boolean, admin: boolean): boolean {
+  if (id === 'logs') return admin;
   return permitidas.includes(id) || (id === 'permisos' && gestor);
 }
+
+const RESIDENT_MANAGER_ROLES = [
+  'admin', 'rrhh', 'prevencion', 'supervisor', 'coordinador',
+  'rrhh_gerontalia', 'administrador_gerontalia',
+  'supervisor_gerontalia', 'prevencion_gerontalia',
+];
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAY_NAMES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -87,6 +99,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [isGestor, setIsGestor] = useState(false);
+  const [canManageResidents, setCanManageResidents] = useState(false);
   const [pestanasPermitidas, setPestanasPermitidas] = useState<string[] | null>(null);
 
   // Usuarios
@@ -94,12 +107,21 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const [usuariosLoading, setUsuariosLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCentro, setFilterCentro] = useState<string>('');
+  const [residentStatus, setResidentStatus] = useState<ResidentStatus>('activos');
   const [selectedUsuario, setSelectedUsuario] = useState<UsuarioServicio | null>(null);
   const [showUsuarioForm, setShowUsuarioForm] = useState(false);
   const [centros, setCentros] = useState<CentroOption[]>([]);
   const [showQuickNotaPicker, setShowQuickNotaPicker] = useState(false);
   const [quickNotaSearch, setQuickNotaSearch] = useState('');
   const [fichaInitialTab, setFichaInitialTab] = useState<'info' | 'calendario'>('info');
+  const [residentActionId, setResidentActionId] = useState<string | null>(null);
+  const [residentActionError, setResidentActionError] = useState('');
+  const [deleteCandidate, setDeleteCandidate] = useState<UsuarioServicio | null>(null);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [showDeletePin, setShowDeletePin] = useState(false);
+  const [deletePin, setDeletePin] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteSaving, setDeleteSaving] = useState(false);
 
   // Calendario
   const [calendarDate, setCalendarDate] = useState(new Date());
@@ -132,14 +154,17 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
     supabase.auth.getSession().then(({ data: { session } }) => {
       const uid = session?.user?.id ?? null;
       if (uid) {
-        supabase.from('user_profiles').select('nombre, role').eq('id', uid).maybeSingle()
+        supabase.from('user_profiles').select('nombre, role, roles').eq('id', uid).maybeSingle()
           .then(({ data }) => {
-            const nombre = data?.nombre ?? email;
+            const profileData = data as { nombre?: string; role?: string; roles?: string[] } | null;
+            const roles = new Set([profileData?.role, ...(profileData?.roles ?? [])].filter((role): role is string => Boolean(role)));
+            const nombre = profileData?.nombre ?? email;
             setCurrentUserNombre(nombre);
             setNotaAutor(nombre);
-            setIsAdmin((data as { role: string } | null)?.role === 'admin');
+            setIsAdmin(roles.has('admin'));
+            setCanManageResidents(RESIDENT_MANAGER_ROLES.some((role) => roles.has(role)));
             fetchCrmPestanasPermitidas(uid).then(setPestanasPermitidas);
-            supabase.rpc('crm_es_gestor').then(({ data }) => setIsGestor(data === true));
+            supabase.rpc('crm_es_gestor').then(({ data: gestor }) => setIsGestor(gestor === true));
           });
       }
     });
@@ -147,8 +172,8 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
 
   useEffect(() => {
     if (!pestanasPermitidas) return;
-    if (tabVisible(activeTab, pestanasPermitidas, isGestor)) return;
-    const primera = CRM_TABS.find((t) => tabVisible(t.id, pestanasPermitidas, isGestor));
+    if (tabVisible(activeTab, pestanasPermitidas, isGestor, isAdmin)) return;
+    const primera = CRM_TABS.find((t) => tabVisible(t.id, pestanasPermitidas, isGestor, isAdmin));
     if (primera) setActiveTab(primera.id);
   }, [pestanasPermitidas, isGestor, activeTab]);
 
@@ -165,9 +190,9 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
 
     const userIds = usuariosData.map((u) => u.id);
     const { data: residentExtras } = userIds.length > 0
-      ? await supabase.from('usuarios_servicios').select('id, acronimo').in('id', userIds)
-      : { data: [] as { id: string; acronimo: string | null }[] };
-    const acronimos = Object.fromEntries(((residentExtras ?? []) as { id: string; acronimo: string | null }[]).map((u) => [u.id, u.acronimo]));
+      ? await supabase.from('usuarios_servicios').select('id, acronimo, borrado_at').in('id', userIds)
+      : { data: [] as { id: string; acronimo: string | null; borrado_at: string | null }[] };
+    const extras = Object.fromEntries(((residentExtras ?? []) as { id: string; acronimo: string | null; borrado_at: string | null }[]).map((u) => [u.id, u]));
     let centrosMap: Record<string, { id: string; nombre: string }[]> = {};
     if (userIds.length > 0) {
       const { data: asignaciones } = await supabase
@@ -186,7 +211,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
       id: u.id, nombre: u.nombre,
       apellidos: u.apellidos, email: u.email,
       telefono: u.telefono, observaciones: u.observaciones,
-      acronimo: acronimos[u.id] ?? '', activo: u.activo, centros: centrosMap[u.id] ?? [],
+      acronimo: extras[u.id]?.acronimo ?? '', activo: u.activo, borrado_at: extras[u.id]?.borrado_at ?? null, centros: centrosMap[u.id] ?? [],
     }));
     setUsuarios(usuariosWithCentros);
     setUsuariosLoading(false);
@@ -261,6 +286,71 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
     finally { setFormSaving(false); }
   };
   // === Calendario ===
+  const handleToggleActivo = async (usuario: UsuarioServicio) => {
+    if (!canManageResidents || usuario.borrado_at || residentActionId) return;
+    setResidentActionId(usuario.id);
+    setResidentActionError('');
+    const { error } = await supabase.rpc('crm_toggle_residente_activo', {
+      p_residente_id: usuario.id,
+      p_activo: !usuario.activo,
+    });
+    if (error) {
+      console.error('CRM resident status change failed', error);
+      setResidentActionError('No se pudo cambiar el estado del residente.');
+    } else {
+      await loadUsuarios();
+      setSelectedUsuario((current) => current?.id === usuario.id ? { ...current, activo: !usuario.activo } : current);
+    }
+    setResidentActionId(null);
+  };
+
+  const requestDelete = (usuario: UsuarioServicio) => {
+    if (!canManageResidents || usuario.borrado_at) return;
+    setDeleteCandidate(usuario);
+    setDeleteError('');
+    setShowDeleteConfirmation(true);
+  };
+
+  const openDeletePin = () => {
+    setShowDeleteConfirmation(false);
+    setDeletePin('');
+    setDeleteError('');
+    setShowDeletePin(true);
+  };
+
+  const getDeleteError = (message: string): string => {
+    if (message.includes('PIN_REQUIRED')) return 'Introduce tu PIN para continuar.';
+    if (message.includes('PIN_INVALID')) return 'El PIN no es válido para tu usuario.';
+    if (message.includes('NOT_AUTHORIZED')) return 'No tienes permiso para realizar esta acción.';
+    if (message.includes('RESIDENT_ALREADY_DELETED')) return 'Este residente ya está en la papelera.';
+    if (message.includes('RESIDENT_NOT_VISIBLE')) return 'No puedes gestionar este residente.';
+    return 'No se pudo borrar el residente.';
+  };
+
+  const handleDeleteResident = async () => {
+    if (!deleteCandidate || !deletePin.trim()) {
+      setDeleteError('Introduce tu PIN para continuar.');
+      return;
+    }
+    setDeleteSaving(true);
+    setDeleteError('');
+    const { error } = await supabase.rpc('crm_borrar_residente', {
+      p_residente_id: deleteCandidate.id,
+      p_pin: deletePin.trim(),
+    });
+    if (error) {
+      console.error('CRM resident deletion failed', error);
+      setDeleteError(getDeleteError(error.message ?? ''));
+    } else {
+      setShowDeletePin(false);
+      setDeleteCandidate(null);
+      setDeletePin('');
+      setSelectedUsuario((current) => current?.id === deleteCandidate.id ? null : current);
+      await loadUsuarios();
+    }
+    setDeleteSaving(false);
+  };
+
   const year = calendarDate.getFullYear();
   const month = calendarDate.getMonth();
   const firstDay = new Date(year, month, 1);
@@ -325,6 +415,7 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
   const notasDisplay = filterFecha ? notas.filter((n) => n.fecha === filterFecha) : notas;
 
   const filteredUsuarios = usuarios.filter((u) => {
+    if (residentStatus === 'borrados' ? !u.borrado_at : u.borrado_at || (residentStatus === 'activos' ? !u.activo : u.activo)) return false;
     if (filterCentro && !(u.centros ?? []).some((c) => c.id === filterCentro)) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.trim().replace(/^@+/, '').toLowerCase();
@@ -403,14 +494,14 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
             <select value={activeTab} onChange={(e) => setActiveTab(e.target.value as CrmTab)}
               className="flex-1 bg-transparent text-sm font-medium outline-none cursor-pointer" style={{ color: '#0F172A' }}>
-              {CRM_TABS.filter((t) => tabVisible(t.id, pestanasPermitidas ?? [], isGestor)).map((t) => (
+              {CRM_TABS.filter((t) => tabVisible(t.id, pestanasPermitidas ?? [], isGestor, isAdmin)).map((t) => (
                 <option key={t.id} value={t.id}>{t.label}</option>
               ))}
             </select>
           </div>
         </div>
         <div className="hidden md:flex flex-wrap gap-1 p-1 rounded-xl mb-6 sm:mb-8" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-          {CRM_TABS.filter((t) => tabVisible(t.id, pestanasPermitidas ?? [], isGestor)).map((tab) => {
+          {CRM_TABS.filter((t) => tabVisible(t.id, pestanasPermitidas ?? [], isGestor, isAdmin)).map((tab) => {
             const TabIcon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
@@ -448,6 +539,22 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                     )}
                   </div>
                 </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap gap-1 p-1 rounded-xl" style={{ backgroundColor: '#E2E8F0' }}>
+                    {([
+                      { id: 'activos' as ResidentStatus, label: 'Activos' },
+                      { id: 'inactivos' as ResidentStatus, label: 'Inactivos' },
+                      { id: 'borrados' as ResidentStatus, label: 'Borrados' },
+                    ]).map((status) => (
+                      <button key={status.id} onClick={() => { setResidentStatus(status.id); setSelectedUsuario(null); }}
+                        className="px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold cursor-pointer transition-all"
+                        style={{ backgroundColor: residentStatus === status.id ? '#FFFFFF' : 'transparent', color: residentStatus === status.id ? '#0369A1' : '#64748B', boxShadow: residentStatus === status.id ? '0 1px 2px rgba(15,23,42,0.08)' : 'none' }}>
+                        {status.label}
+                      </button>
+                    ))}
+                  </div>
+                  {residentActionError && <p className="text-xs font-medium" style={{ color: '#B91C1C' }}>{residentActionError}</p>}
+                </div>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <div className="flex items-center gap-2 px-3 py-2 rounded-xl flex-1" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                     <Search size={16} style={{ color: '#64748B' }} />
@@ -476,18 +583,32 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                     {filteredUsuarios.map((u) => (
                       <div key={u.id} className="rounded-xl p-5 transition-all hover:shadow-md cursor-pointer" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}
                         onClick={() => { setSelectedUsuario(u); setFichaInitialTab('info'); }}>
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#EFF6FF' }}>
-                              <User size={22} style={{ color: '#0369A1' }} />
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: u.borrado_at ? '#FEF2F2' : '#EFF6FF' }}>
+                              <User size={22} style={{ color: u.borrado_at ? '#DC2626' : '#0369A1' }} />
                             </div>
-                            <div>
-                              <p className="font-semibold text-sm" style={{ color: '#0F172A' }}>{u.nombre} {u.apellidos}</p>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm truncate" style={{ color: '#0F172A' }}>{u.nombre} {u.apellidos}</p>
                               <p className="text-xs font-medium" style={{ color: u.acronimo ? '#0369A1' : '#94A3B8' }}>{u.acronimo ? `@${u.acronimo}` : 'Sin acrónimo'}</p>
-                              <span className="text-xs px-2 py-0.5 rounded-md font-medium" style={{ backgroundColor: u.activo ? '#F0FDF4' : '#FEF2F2', color: u.activo ? '#16A34A' : '#DC2626' }}>{u.activo ? 'Activo' : 'Inactivo'}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-md font-medium" style={{ backgroundColor: u.borrado_at ? '#FEF2F2' : u.activo ? '#F0FDF4' : '#FFF7ED', color: u.borrado_at ? '#DC2626' : u.activo ? '#16A34A' : '#C2410C' }}>{u.borrado_at ? 'Borrado' : u.activo ? 'Activo' : 'Inactivo'}</span>
                             </div>
                           </div>
-                          <ChevronRight size={16} style={{ color: '#CBD5E1' }} />
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {canManageResidents && !u.borrado_at && (
+                              <>
+                                <button type="button" title={u.activo ? 'Marcar como inactivo' : 'Marcar como activo'} aria-label={u.activo ? 'Marcar como inactivo' : 'Marcar como activo'} disabled={residentActionId === u.id}
+                                  onClick={(event) => { event.stopPropagation(); handleToggleActivo(u); }} className="p-1.5 rounded-lg cursor-pointer transition-colors disabled:opacity-50 hover:bg-slate-100">
+                                  {u.activo ? <ToggleRight size={20} style={{ color: '#16A34A' }} /> : <ToggleLeft size={20} style={{ color: '#C2410C' }} />}
+                                </button>
+                                <button type="button" title="Enviar a borrados" aria-label="Enviar residente a borrados"
+                                  onClick={(event) => { event.stopPropagation(); requestDelete(u); }} className="p-1.5 rounded-lg cursor-pointer transition-colors hover:bg-red-50">
+                                  <Trash2 size={16} style={{ color: '#DC2626' }} />
+                                </button>
+                              </>
+                            )}
+                            <ChevronRight size={16} style={{ color: '#CBD5E1' }} />
+                          </div>
                         </div>
                         <div className="space-y-1.5 mb-3">
                           {u.email && <div className="flex items-center gap-2 text-xs" style={{ color: '#64748B' }}><Mail size={12} /><span className="truncate">{u.email}</span></div>}
@@ -539,6 +660,9 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                 formatDateDisplay={formatDateDisplay}
                 onEdit={() => openEditUsuario(selectedUsuario)}
                 autorNombre={currentUserNombre}
+                canManageResident={canManageResidents}
+                onToggleActivo={() => handleToggleActivo(selectedUsuario)}
+                onDelete={() => requestDelete(selectedUsuario)}
               />
               </div>
             )}
@@ -574,6 +698,39 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
                       <button onClick={handleSaveUsuario} disabled={formSaving} className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all disabled:opacity-60" style={{ backgroundColor: '#0369A1', color: '#FFFFFF' }}>{formSaving ? 'Guardando...' : 'Guardar'}</button>
                       <button onClick={() => setShowUsuarioForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer hover:bg-slate-100" style={{ color: '#64748B' }}>Cancelar</button>
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showDeleteConfirmation && deleteCandidate && (
+              <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(15,23,42,0.48)', backdropFilter: 'blur(3px)' }}>
+                <div className="w-full max-w-md rounded-2xl p-6 shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FEF2F2' }}><Trash2 size={18} style={{ color: '#DC2626' }} /></div>
+                    <div><h3 className="font-bold text-base" style={{ color: '#0F172A' }}>Borrar residente</h3><p className="text-sm mt-1" style={{ color: '#475569' }}>¿Quieres enviar a <strong>{deleteCandidate.nombre} {deleteCandidate.apellidos ?? ''}</strong> a la pestaña Borrados?</p><p className="text-xs mt-2" style={{ color: '#94A3B8' }}>Sus notas y documentos se conservarán.</p></div>
+                  </div>
+                  <div className="flex justify-end gap-2 mt-6">
+                    <button onClick={() => { setShowDeleteConfirmation(false); setDeleteCandidate(null); }} className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>Cancelar</button>
+                    <button onClick={openDeletePin} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer" style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}><KeyRound size={14} /> Continuar</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showDeletePin && deleteCandidate && (
+              <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(15,23,42,0.48)', backdropFilter: 'blur(3px)' }}>
+                <div className="w-full max-w-md rounded-2xl p-6 shadow-2xl" style={{ backgroundColor: '#FFFFFF' }}>
+                  <div className="flex items-start gap-3 mb-5">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FFF7ED' }}><KeyRound size={18} style={{ color: '#C2410C' }} /></div>
+                    <div><h3 className="font-bold text-base" style={{ color: '#0F172A' }}>Confirmar con PIN</h3><p className="text-sm mt-1" style={{ color: '#475569' }}>Introduce tu PIN para borrar a {deleteCandidate.nombre}.</p></div>
+                  </div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: '#475569' }}>PIN de seguridad</label>
+                  <input autoFocus type="password" inputMode="numeric" maxLength={12} value={deletePin} onChange={(event) => setDeletePin(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') handleDeleteResident(); }} className="w-full px-3 py-2.5 rounded-lg text-sm outline-none tracking-[0.25em]" style={{ border: '1px solid #CBD5E1', backgroundColor: '#F8FAFC', color: '#0F172A' }} />
+                  {deleteError && <p className="mt-2 text-xs" style={{ color: '#DC2626' }}>{deleteError}</p>}
+                  <div className="flex justify-end gap-2 mt-6">
+                    <button onClick={() => { setShowDeletePin(false); setDeleteCandidate(null); setDeletePin(''); }} disabled={deleteSaving} className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>Cancelar</button>
+                    <button onClick={handleDeleteResident} disabled={deleteSaving} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-60" style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}><Trash2 size={14} /> {deleteSaving ? 'Borrando...' : 'Borrar residente'}</button>
                   </div>
                 </div>
               </div>
@@ -659,6 +816,8 @@ export default function CrmPanel({ email, onLogout, onNavigateEmployee, availabl
         {activeTab === 'permisos' && (
           <CrmAsignacionesTabs />
         )}
+
+        {activeTab === 'logs' && isAdmin && <CrmLogsModule />}
       </div>
     </div>
   );

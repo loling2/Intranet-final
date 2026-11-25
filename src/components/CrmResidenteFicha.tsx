@@ -5,7 +5,7 @@ import {
   User, Mail, Phone, Building2, Calendar, FolderOpen, FileText,
   Heart, Pill, Users, CreditCard, Plus, X, Trash2, Save, MapPin,
   Contact, Stethoscope, Activity, ClipboardList, Phone as PhoneIcon, Ambulance, FileSignature,
-  Upload, Download, Loader2, AlertCircle,
+  Upload, Download, Loader2, AlertCircle, ToggleLeft, ToggleRight, KeyRound,
 } from 'lucide-react';
 import CrmDocumentosModule from './CrmDocumentosModule';
 import CrmSeguimientoModule from './CrmSeguimientoModule';
@@ -28,6 +28,7 @@ interface Props {
     observaciones: string | null;
     acronimo: string | null;
     activo: boolean;
+    borrado_at?: string | null;
     centros?: { id: string; nombre: string }[];
   };
   isAdmin: boolean;
@@ -55,6 +56,9 @@ interface Props {
   autorNombre?: string;
   initialTab?: DetailTab;
   pestanasPermitidas: string[];
+  canManageResident?: boolean;
+  onToggleActivo?: () => void;
+  onDelete?: () => void;
 }
 
 type DetailTab = 'info' | 'contactos' | 'cuentas' | 'medico' | 'tratamiento' | 'calendario' | 'documentos' | 'seguimiento' | 'llamadas' | 'abvd' | 'inc_sanitarias' | 'pautas' | 'pai' | 'sesiones';
@@ -486,9 +490,27 @@ export default function CrmResidenteFicha(props: Props) {
           <div>
             <h2 className="text-lg font-bold" style={{ color: '#0F172A' }}>{selectedUserLabel}</h2>
             <div className="flex items-center gap-2">
-              <span className="text-xs px-2 py-0.5 rounded-md font-medium" style={{ backgroundColor: usuario.activo ? '#F0FDF4' : '#FEF2F2', color: usuario.activo ? '#16A34A' : '#DC2626' }}>{usuario.activo ? 'Activo' : 'Inactivo'}</span>
+              <span className="text-xs px-2 py-0.5 rounded-md font-medium" style={{ backgroundColor: usuario.borrado_at ? '#FEF2F2' : usuario.activo ? '#F0FDF4' : '#FFF7ED', color: usuario.borrado_at ? '#DC2626' : usuario.activo ? '#16A34A' : '#C2410C' }}>{usuario.borrado_at ? 'Borrado' : usuario.activo ? 'Activo' : 'Inactivo'}</span>
               {usuario.centros && usuario.centros.map((c) => <span key={c.id} className="text-xs px-2 py-0.5 rounded-md" style={{ backgroundColor: '#F1F5F9', color: '#475569' }}>{c.nombre}</span>)}
+              {props.canManageResident && !usuario.borrado_at && (
+                <>
+                  <button type="button" title={usuario.activo ? 'Marcar como inactivo' : 'Marcar como activo'} disabled={props.onToggleActivo === undefined}
+                    onClick={props.onToggleActivo}
+                    className="p-1.5 rounded-lg cursor-pointer transition-colors disabled:opacity-50 hover:bg-slate-100">
+                    {usuario.activo ? <ToggleRight size={18} style={{ color: '#16A34A' }} /> : <ToggleLeft size={18} style={{ color: '#C2410C' }} />}
+                  </button>
+                  <button type="button" title="Enviar a borrados" onClick={props.onDelete}
+                    className="p-1.5 rounded-lg cursor-pointer transition-colors hover:bg-red-50">
+                    <Trash2 size={15} style={{ color: '#DC2626' }} />
+                  </button>
+                </>
+              )}
             </div>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button onClick={props.onEdit} title="Editar residente" className="p-2 rounded-lg cursor-pointer transition-colors hover:bg-blue-50">
+              <FileText size={16} style={{ color: '#0369A1' }} />
+            </button>
           </div>
         </div>
       </div>

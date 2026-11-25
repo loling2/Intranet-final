@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck, UserMinus, HelpCircle, BookOpen, Building2, MapPin, Award } from 'lucide-react';
+import { ClipboardCheck, Plus, X, Trash2, CreditCard as Edit2, Users, Clock, CheckCircle2, XCircle, Search, ChevronLeft, ChevronUp, ChevronDown, KeyRound, AlertCircle, Save, RefreshCw, ListChecks, UserCheck, UserMinus, HelpCircle, BookOpen, Building2, MapPin, Award } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -304,8 +304,8 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
     if (!preguntaForm.texto.trim()) { setError('El texto de la pregunta es obligatorio.'); return; }
     const letters = lettersForQuestionType(preguntaForm.tipo_respuesta);
     const optionValues: Record<AnswerLetter, string> = {
-      A: preguntaForm.tipo_respuesta === '2' ? 'Verdadera' : preguntaForm.opcion_a.trim(),
-      B: preguntaForm.tipo_respuesta === '2' ? 'Falsa' : preguntaForm.opcion_b.trim(),
+      A: preguntaForm.opcion_a.trim(),
+      B: preguntaForm.opcion_b.trim(),
       C: preguntaForm.opcion_c.trim(),
       D: preguntaForm.opcion_d.trim(),
       E: preguntaForm.opcion_e.trim(),
@@ -925,9 +925,19 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
                 <label className="text-xs font-medium mb-2 block" style={{ color: '#64748B' }}>Tipo de respuesta *</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {QUESTION_TYPES.map((type) => (
-                    <button key={type.id} type="button" onClick={() => setPreguntaForm({ ...preguntaForm, tipo_respuesta: type.id, respuestas_correctas: ['A'] })}
+                    <button
+                      key={type.id}
+                      type="button"
+                      onClick={() => setPreguntaForm((previous) => ({
+                        ...previous,
+                        tipo_respuesta: type.id,
+                        opcion_a: type.id === '2' && previous.tipo_respuesta !== '2' ? 'Verdadera' : previous.opcion_a,
+                        opcion_b: type.id === '2' && previous.tipo_respuesta !== '2' ? 'Falsa' : previous.opcion_b,
+                        respuestas_correctas: ['A'],
+                      }))}
                       className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all"
-                      style={{ backgroundColor: preguntaForm.tipo_respuesta === type.id ? '#F0FDFA' : '#F8FAFC', color: preguntaForm.tipo_respuesta === type.id ? '#0D9488' : '#64748B', border: `1px solid ${preguntaForm.tipo_respuesta === type.id ? '#5EEAD4' : '#E2E8F0'}` }}>
+                      style={{ backgroundColor: preguntaForm.tipo_respuesta === type.id ? '#F0FDFA' : '#F8FAFC', color: preguntaForm.tipo_respuesta === type.id ? '#0D9488' : '#64748B', border: `1px solid ${preguntaForm.tipo_respuesta === type.id ? '#5EEAD4' : '#E2E8F0'}` }}
+                    >
                       {type.label}
                     </button>
                   ))}
@@ -935,9 +945,49 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
               </div>
               {preguntaForm.tipo_respuesta === '2' ? (
                 <div className="space-y-2">
-                  <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}><p className="text-xs font-semibold" style={{ color: '#15803D' }}>Respuesta 1 · Verdadera</p></div>
-                  <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}><p className="text-xs font-semibold" style={{ color: '#64748B' }}>Respuesta 2 · Falsa</p></div>
-                  <p className="text-xs" style={{ color: '#94A3B8' }}>La primera respuesta es la correcta.</p>
+                  {(['opcion_a', 'opcion_b'] as const).map((key, index) => {
+                    const isFirst = index === 0;
+                    const optionValue = preguntaForm[key];
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-center gap-2 rounded-lg px-3 py-2.5"
+                        style={{ backgroundColor: isFirst ? '#F0FDF4' : '#F8FAFC', border: `1px solid ${isFirst ? '#BBF7D0' : '#E2E8F0'}` }}
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!isFirst) setPreguntaForm((previous) => ({ ...previous, opcion_a: previous.opcion_b, opcion_b: previous.opcion_a }));
+                            }}
+                            disabled={isFirst}
+                            aria-label="Subir opción"
+                            className="w-6 h-6 rounded flex items-center justify-center cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                            style={{ color: '#0D9488', backgroundColor: '#F0FDFA' }}
+                          >
+                            <ChevronUp size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isFirst) setPreguntaForm((previous) => ({ ...previous, opcion_a: previous.opcion_b, opcion_b: previous.opcion_a }));
+                            }}
+                            disabled={!isFirst}
+                            aria-label="Bajar opción"
+                            className="w-6 h-6 rounded flex items-center justify-center cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                            style={{ color: '#0D9488', backgroundColor: '#F0FDFA' }}
+                          >
+                            <ChevronDown size={14} />
+                          </button>
+                        </div>
+                        <p className="text-xs font-semibold" style={{ color: isFirst ? '#15803D' : '#64748B' }}>
+                          Respuesta {index + 1} · {optionValue}
+                          {isFirst ? ' (correcta)' : ''}
+                        </p>
+                      </div>
+                    );
+                  })}
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>Usa las flechas para colocar primero la respuesta correcta.</p>
                 </div>
               ) : (
                 lettersForQuestionType(preguntaForm.tipo_respuesta).map((letter) => {

@@ -89,7 +89,7 @@ export default function ExamsCard({ exams, theme }: Props) {
       const type = p.tipo_respuesta ?? '4';
       const optionCount = type === '2' ? 2 : type === '3' ? 3 : type === '5' || type === 'multiple' ? 5 : 4;
       const rawOptions = type === '2'
-        ? ['Verdadera', 'Falsa']
+        ? [p.opcion_a ?? 'Verdadera', p.opcion_b ?? 'Falsa']
         : [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d, p.opcion_e].slice(0, optionCount);
       const storedCorrectLetters = Array.isArray(p.respuestas_correctas) && p.respuestas_correctas.length > 0
         ? p.respuestas_correctas

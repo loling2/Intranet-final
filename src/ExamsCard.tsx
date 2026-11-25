@@ -22,7 +22,8 @@ interface RealQuestion {
   id: string;
   text: string;
   options: string[];
-  correctIndex: number;
+  correctIndices: number[];
+  multiple: boolean;
 }
 
 interface ExamenConfig {
@@ -46,7 +47,7 @@ export default function ExamsCard({ exams, theme }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [examStarted, setExamStarted] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number[]>>({});
   const [examSubmitted, setExamSubmitted] = useState(false);
   const [examScore, setExamScore] = useState(0);
   const [questions, setQuestions] = useState<RealQuestion[]>([]);
@@ -75,7 +76,7 @@ export default function ExamsCard({ exams, theme }: Props) {
     setExamenConfig({ ratioPenalizacion: exData?.ratio_penalizacion ?? 3 });
     const { data, error } = await supabase
       .from('preguntas')
-      .select('id, texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, orden')
+      .select('id, texto, opcion_a, opcion_b, opcion_c, opcion_d, opcion_e, respuesta_correcta, respuestas_correctas, tipo_respuesta, orden')
       .eq('examen_id', examenId)
       .order('orden', { ascending: true });
     setLoadingQuestions(false);
@@ -83,14 +84,27 @@ export default function ExamsCard({ exams, theme }: Props) {
       setExamError('No se pudieron cargar las preguntas del examen.');
       return [];
     }
-    const letterToIndex: Record<string, number> = { 'A': 0, 'B': 1, 'C': 2, 'D': 3 };
+    const letterToIndex: Record<string, number> = { A: 0, B: 1, C: 2, D: 3, E: 4 };
     const mapped: RealQuestion[] = (data ?? []).map((p: any) => {
-      const correctIdx = letterToIndex[p.respuesta_correcta] ?? 0;
-      const rawOptions = [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d];
-      const indices = shuffleArray([0, 1, 2, 3]);
-      const shuffledOptions = indices.map((i) => rawOptions[i]);
-      const newCorrectIdx = indices.indexOf(correctIdx);
-      return { id: p.id, text: p.texto, options: shuffledOptions, correctIndex: newCorrectIdx };
+      const type = p.tipo_respuesta ?? '4';
+      const optionCount = type === '2' ? 2 : type === '3' ? 3 : type === '5' || type === 'multiple' ? 5 : 4;
+      const rawOptions = type === '2'
+        ? ['Verdadera', 'Falsa']
+        : [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d, p.opcion_e].slice(0, optionCount);
+      const storedCorrectLetters = Array.isArray(p.respuestas_correctas) && p.respuestas_correctas.length > 0
+        ? p.respuestas_correctas
+        : [p.respuesta_correcta ?? 'A'];
+      const correctIndices = storedCorrectLetters.map((letter: string) => letterToIndex[letter]).filter((index: number | undefined): index is number => index !== undefined && index < optionCount);
+      const originalCorrectIndices = correctIndices.length > 0 ? correctIndices : [0];
+      const indices = shuffleArray(Array.from({ length: optionCount }, (_, index) => index));
+      const shuffledOptions = indices.map((index) => rawOptions[index]);
+      return {
+        id: p.id,
+        text: p.texto,
+        options: shuffledOptions,
+        correctIndices: originalCorrectIndices.map((index) => indices.indexOf(index)),
+        multiple: type === 'multiple',
+      };
     });
     return mapped;
   }, []);
@@ -125,19 +139,32 @@ export default function ExamsCard({ exams, theme }: Props) {
 
   const handleSelectAnswer = (questionId: string, optionIndex: number) => {
     if (examSubmitted) return;
-    setSelectedAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
+    setSelectedAnswers((prev) => {
+      const current = prev[questionId] ?? [];
+      const question = questions.find((item) => item.id === questionId);
+      if (!question?.multiple) return { ...prev, [questionId]: [optionIndex] };
+      return { ...prev, [questionId]: current.includes(optionIndex) ? current.filter((index) => index !== optionIndex) : [...current, optionIndex] };
+    });
   };
 
   const handleSubmitExam = async () => {
-    let correct = 0;
+    let earnedQuestions = 0;
     let incorrect = 0;
     questions.forEach((q) => {
-      if (selectedAnswers[q.id] === q.correctIndex) correct++;
-      else incorrect++;
+      const selected = selectedAnswers[q.id] ?? [];
+      if (q.multiple) {
+        const matched = selected.filter((index) => q.correctIndices.includes(index)).length;
+        earnedQuestions += q.correctIndices.length > 0 ? matched / q.correctIndices.length : 0;
+        if (matched < q.correctIndices.length) incorrect++;
+      } else if (selected.length === 1 && selected[0] === q.correctIndices[0]) {
+        earnedQuestions++;
+      } else {
+        incorrect++;
+      }
     });
     const ratio = examenConfig.ratioPenalizacion;
     const penalized = ratio > 0 ? Math.floor(incorrect / ratio) : 0;
-    const netCorrect = Math.max(0, correct - penalized);
+    const netCorrect = Math.max(0, earnedQuestions - penalized);
     const score = questions.length > 0 ? Math.round((netCorrect / questions.length) * 100) : 0;
     setExamScore(score);
     setExamSubmitted(true);
@@ -500,10 +527,13 @@ export default function ExamsCard({ exams, theme }: Props) {
 
                   <div className="space-y-3 mb-8">
                     {questions[currentQuestion].options.map((option, i) => {
-                      const isSelected = selectedAnswers[questions[currentQuestion].id] === i;
+                      const currentQuestionAnswers = selectedAnswers[questions[currentQuestion].id] ?? [];
+                      const isSelected = currentQuestionAnswers.includes(i);
+                      const isMultiple = questions[currentQuestion].multiple;
                       return (
                         <button
                           key={i}
+                          type="button"
                           onClick={() => handleSelectAnswer(questions[currentQuestion].id, i)}
                           className="w-full text-left px-4 py-3.5 rounded-xl text-sm transition-all duration-200 cursor-pointer"
                           style={{
@@ -514,14 +544,14 @@ export default function ExamsCard({ exams, theme }: Props) {
                         >
                           <div className="flex items-center gap-3">
                             <div
-                              className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                              className={`${isMultiple ? 'rounded-md' : 'rounded-full'} w-6 h-6 flex items-center justify-center flex-shrink-0 text-xs font-bold`}
                               style={{
                                 backgroundColor: isSelected ? theme.primary : 'transparent',
                                 color: isSelected ? '#FFFFFF' : theme.textSecondary,
                                 border: `1.5px solid ${isSelected ? theme.primary : theme.border}`,
                               }}
                             >
-                              {String.fromCharCode(65 + i)}
+                              {isMultiple && isSelected ? '✓' : String.fromCharCode(65 + i)}
                             </div>
                             {option}
                           </div>
@@ -599,26 +629,24 @@ export default function ExamsCard({ exams, theme }: Props) {
 
                   <div className="w-full space-y-2 mb-6">
                     {questions.map((q, i) => {
-                      const isCorrect = selectedAnswers[q.id] === q.correctIndex;
+                      const selected = selectedAnswers[q.id] ?? [];
+                      const matched = selected.filter((index) => q.correctIndices.includes(index)).length;
+                      const fraction = q.correctIndices.length > 0 ? matched / q.correctIndices.length : 0;
+                      const isCorrect = fraction === 1;
+                      const isPartial = q.multiple && fraction > 0 && fraction < 1;
                       return (
                         <div
                           key={q.id}
                           className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-left"
                           style={{
-                            backgroundColor: isCorrect ? '#F0FDF4' : '#FEF2F2',
-                            border: `1px solid ${isCorrect ? '#BBF7D0' : '#FECACA'}`,
+                            backgroundColor: isCorrect ? '#F0FDF4' : isPartial ? '#FFFBEB' : '#FEF2F2',
+                            border: `1px solid ${isCorrect ? '#BBF7D0' : isPartial ? '#FDE68A' : '#FECACA'}`,
                           }}
                         >
-                          {isCorrect ? (
-                            <CheckCircle2 size={16} style={{ color: '#16A34A' }} />
-                          ) : (
-                            <XCircle size={16} style={{ color: '#DC2626' }} />
-                          )}
-                          <span className="text-xs font-medium flex-1" style={{ color: theme.textPrimary }}>
-                            Pregunta {i + 1}
-                          </span>
-                          <span className="text-xs font-medium" style={{ color: isCorrect ? '#16A34A' : '#DC2626' }}>
-                            {isCorrect ? 'Correcta' : 'Incorrecta'}
+                          {isCorrect ? <CheckCircle2 size={16} style={{ color: '#16A34A' }} /> : isPartial ? <CheckCircle2 size={16} style={{ color: '#D97706' }} /> : <XCircle size={16} style={{ color: '#DC2626' }} />}
+                          <span className="text-xs font-medium flex-1" style={{ color: theme.textPrimary }}>Pregunta {i + 1}</span>
+                          <span className="text-xs font-medium" style={{ color: isCorrect ? '#16A34A' : isPartial ? '#B45309' : '#DC2626' }}>
+                            {isCorrect ? 'Correcta' : isPartial ? `${Math.round(fraction * 100)}% de la pregunta` : 'Incorrecta'}
                           </span>
                         </div>
                       );

@@ -29,6 +29,9 @@ interface Examen {
   created_at: string;
 }
 
+type AnswerLetter = 'A' | 'B' | 'C' | 'D' | 'E';
+type QuestionType = '2' | '3' | '4' | '5' | 'multiple';
+
 interface Pregunta {
   id: string;
   examen_id: string;
@@ -37,8 +40,26 @@ interface Pregunta {
   opcion_b: string;
   opcion_c: string;
   opcion_d: string;
-  respuesta_correcta: 'A' | 'B' | 'C' | 'D';
+  opcion_e: string | null;
+  respuesta_correcta: AnswerLetter;
+  respuestas_correctas: AnswerLetter[];
+  tipo_respuesta: QuestionType;
   orden: number;
+}
+
+const QUESTION_TYPES: { id: QuestionType; label: string }[] = [
+  { id: '2', label: '2 respuestas' },
+  { id: '3', label: '3 respuestas' },
+  { id: '4', label: '4 respuestas' },
+  { id: '5', label: '5 respuestas' },
+  { id: 'multiple', label: 'Varias respuestas' },
+];
+
+function lettersForQuestionType(type: QuestionType): AnswerLetter[] {
+  if (type === '2') return ['A', 'B'];
+  if (type === '3') return ['A', 'B', 'C'];
+  if (type === '5' || type === 'multiple') return ['A', 'B', 'C', 'D', 'E'];
+  return ['A', 'B', 'C', 'D'];
 }
 
 interface Empleado {
@@ -98,7 +119,7 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
   // Question editor modal
   const [showPreguntaModal, setShowPreguntaModal] = useState(false);
   const [editingPregunta, setEditingPregunta] = useState<Pregunta | null>(null);
-  const [preguntaForm, setPreguntaForm] = useState({ texto: '', opcion_a: '', opcion_b: '', opcion_c: '', opcion_d: '', respuesta_correcta: 'A' as 'A' | 'B' | 'C' | 'D' });
+  const [preguntaForm, setPreguntaForm] = useState({ texto: '', opcion_a: '', opcion_b: '', opcion_c: '', opcion_d: '', opcion_e: '', tipo_respuesta: '4' as QuestionType, respuestas_correctas: ['A'] as AnswerLetter[] });
   const [savingPregunta, setSavingPregunta] = useState(false);
 
   // Asignaciones
@@ -257,14 +278,23 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
   const openNewPregunta = () => {
     if (!selectedExamen) return;
     setEditingPregunta(null);
-    setPreguntaForm({ texto: '', opcion_a: '', opcion_b: '', opcion_c: '', opcion_d: '', respuesta_correcta: 'A' });
+    setPreguntaForm({ texto: '', opcion_a: '', opcion_b: '', opcion_c: '', opcion_d: '', opcion_e: '', tipo_respuesta: '4', respuestas_correctas: ['A'] });
     setShowPreguntaModal(true);
     setError('');
   };
 
   const openEditPregunta = (p: Pregunta) => {
     setEditingPregunta(p);
-    setPreguntaForm({ texto: p.texto, opcion_a: p.opcion_a, opcion_b: p.opcion_b, opcion_c: p.opcion_c, opcion_d: p.opcion_d, respuesta_correcta: p.respuesta_correcta });
+    setPreguntaForm({
+      texto: p.texto,
+      opcion_a: p.opcion_a,
+      opcion_b: p.opcion_b,
+      opcion_c: p.opcion_c,
+      opcion_d: p.opcion_d,
+      opcion_e: p.opcion_e ?? '',
+      tipo_respuesta: p.tipo_respuesta ?? '4',
+      respuestas_correctas: p.respuestas_correctas?.length ? p.respuestas_correctas : [p.respuesta_correcta],
+    });
     setShowPreguntaModal(true);
     setError('');
   };
@@ -272,19 +302,32 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
   const handleSavePregunta = async () => {
     if (!selectedExamen) return;
     if (!preguntaForm.texto.trim()) { setError('El texto de la pregunta es obligatorio.'); return; }
-    if (!preguntaForm.opcion_a.trim() || !preguntaForm.opcion_b.trim() || !preguntaForm.opcion_c.trim() || !preguntaForm.opcion_d.trim()) {
-      setError('Las 4 opciones son obligatorias.'); return;
+    const letters = lettersForQuestionType(preguntaForm.tipo_respuesta);
+    const optionValues: Record<AnswerLetter, string> = {
+      A: preguntaForm.tipo_respuesta === '2' ? 'Verdadera' : preguntaForm.opcion_a.trim(),
+      B: preguntaForm.tipo_respuesta === '2' ? 'Falsa' : preguntaForm.opcion_b.trim(),
+      C: preguntaForm.opcion_c.trim(),
+      D: preguntaForm.opcion_d.trim(),
+      E: preguntaForm.opcion_e.trim(),
+    };
+    if (letters.some((letter) => !optionValues[letter])) {
+      setError(`Completa las ${letters.length} respuestas de la pregunta.`); return;
     }
+    const correctAnswers = preguntaForm.tipo_respuesta === 'multiple' ? preguntaForm.respuestas_correctas : ['A' as AnswerLetter];
+    if (correctAnswers.length === 0) { setError('Selecciona al menos una respuesta correcta.'); return; }
     setSavingPregunta(true); setError('');
     try {
       const payload = {
         examen_id: selectedExamen.id,
         texto: preguntaForm.texto.trim(),
-        opcion_a: preguntaForm.opcion_a.trim(),
-        opcion_b: preguntaForm.opcion_b.trim(),
-        opcion_c: preguntaForm.opcion_c.trim(),
-        opcion_d: preguntaForm.opcion_d.trim(),
-        respuesta_correcta: preguntaForm.respuesta_correcta,
+        opcion_a: optionValues.A,
+        opcion_b: optionValues.B,
+        opcion_c: optionValues.C || '',
+        opcion_d: optionValues.D || '',
+        opcion_e: optionValues.E || null,
+        tipo_respuesta: preguntaForm.tipo_respuesta,
+        respuestas_correctas: correctAnswers,
+        respuesta_correcta: correctAnswers[0],
         orden: editingPregunta ? editingPregunta.orden : preguntas.length,
       };
       if (editingPregunta) {
@@ -656,14 +699,14 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
                                   <div className="flex-1 min-w-0">
                                     <p className="text-xs font-medium" style={{ color: '#0F172A' }}>{p.texto}</p>
                                     <div className="grid grid-cols-2 gap-1 mt-2">
-                                      {(['A', 'B', 'C', 'D'] as const).map((letter) => {
-                                        const optionText = letter === 'A' ? p.opcion_a : letter === 'B' ? p.opcion_b : letter === 'C' ? p.opcion_c : p.opcion_d;
-                                        const isCorrect = p.respuesta_correcta === letter;
+                                      {lettersForQuestionType(p.tipo_respuesta ?? '4').map((letter) => {
+                                        const optionText: Record<AnswerLetter, string | null> = { A: p.opcion_a, B: p.opcion_b, C: p.opcion_c, D: p.opcion_d, E: p.opcion_e };
+                                        const isCorrect = (p.respuestas_correctas?.length ? p.respuestas_correctas : [p.respuesta_correcta]).includes(letter);
                                         return (
                                           <div key={letter} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded"
                                             style={{ backgroundColor: isCorrect ? '#F0FDF4' : '#F8FAFC', border: `1px solid ${isCorrect ? '#BBF7D0' : '#E2E8F0'}` }}>
                                             <span className="font-bold" style={{ color: isCorrect ? '#16A34A' : '#94A3B8' }}>{letter})</span>
-                                            <span style={{ color: isCorrect ? '#15803D' : '#64748B' }}>{optionText}</span>
+                                            <span style={{ color: isCorrect ? '#15803D' : '#64748B' }}>{optionText[letter]}</span>
                                             {isCorrect && <CheckCircle2 size={11} style={{ color: '#16A34A', marginLeft: 'auto' }} />}
                                           </div>
                                         );
@@ -878,35 +921,49 @@ export default function FormacionPanel({ email, onLogout, onNavigateEmployee, av
                   placeholder="Escribe la pregunta..."
                 />
               </div>
-              {(['A', 'B', 'C', 'D'] as const).map((letter) => {
-                const key = `opcion_${letter.toLowerCase()}` as 'opcion_a' | 'opcion_b' | 'opcion_c' | 'opcion_d';
-                return (
-                  <div key={letter}>
-                    <label className="text-xs font-medium mb-1 flex items-center gap-1.5" style={{ color: '#64748B' }}>
-                      <button
-                        onClick={() => setPreguntaForm({ ...preguntaForm, respuesta_correcta: letter })}
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold cursor-pointer transition-all"
-                        style={{
-                          backgroundColor: preguntaForm.respuesta_correcta === letter ? '#16A34A' : '#F1F5F9',
-                          color: preguntaForm.respuesta_correcta === letter ? '#fff' : '#94A3B8',
-                          border: `1.5px solid ${preguntaForm.respuesta_correcta === letter ? '#16A34A' : '#E2E8F0'}`,
-                        }}
-                      >
-                        {letter}
-                      </button>
-                      <span>Respuesta {letter}{preguntaForm.respuesta_correcta === letter ? ' (correcta)' : ''}</span>
-                    </label>
-                    <input
-                      type="text" value={preguntaForm[key]}
-                      onChange={(e) => setPreguntaForm({ ...preguntaForm, [key]: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                      style={{ borderColor: '#E2E8F0' }}
-                      placeholder={`Opcion ${letter}...`}
-                    />
-                  </div>
-                );
-              })}
-              <p className="text-xs" style={{ color: '#94A3B8' }}>Haz clic en la letra para marcar la respuesta correcta.</p>
+              <div>
+                <label className="text-xs font-medium mb-2 block" style={{ color: '#64748B' }}>Tipo de respuesta *</label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {QUESTION_TYPES.map((type) => (
+                    <button key={type.id} type="button" onClick={() => setPreguntaForm({ ...preguntaForm, tipo_respuesta: type.id, respuestas_correctas: ['A'] })}
+                      className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                      style={{ backgroundColor: preguntaForm.tipo_respuesta === type.id ? '#F0FDFA' : '#F8FAFC', color: preguntaForm.tipo_respuesta === type.id ? '#0D9488' : '#64748B', border: `1px solid ${preguntaForm.tipo_respuesta === type.id ? '#5EEAD4' : '#E2E8F0'}` }}>
+                      {type.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {preguntaForm.tipo_respuesta === '2' ? (
+                <div className="space-y-2">
+                  <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}><p className="text-xs font-semibold" style={{ color: '#15803D' }}>Respuesta 1 · Verdadera</p></div>
+                  <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}><p className="text-xs font-semibold" style={{ color: '#64748B' }}>Respuesta 2 · Falsa</p></div>
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>La primera respuesta es la correcta.</p>
+                </div>
+              ) : (
+                lettersForQuestionType(preguntaForm.tipo_respuesta).map((letter) => {
+                  const key = `opcion_${letter.toLowerCase()}` as 'opcion_a' | 'opcion_b' | 'opcion_c' | 'opcion_d' | 'opcion_e';
+                  const isMultiple = preguntaForm.tipo_respuesta === 'multiple';
+                  const isCorrect = preguntaForm.respuestas_correctas.includes(letter);
+                  return (
+                    <div key={letter}>
+                      <label className="text-xs font-medium mb-1 flex items-center gap-1.5" style={{ color: '#64748B' }}>
+                        {isMultiple ? (
+                          <input type="checkbox" checked={isCorrect} onChange={() => setPreguntaForm({ ...preguntaForm, respuestas_correctas: isCorrect ? preguntaForm.respuestas_correctas.filter((item) => item !== letter) : [...preguntaForm.respuestas_correctas, letter] })} className="accent-teal-600" />
+                        ) : <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ backgroundColor: letter === 'A' ? '#16A34A' : '#F1F5F9', color: letter === 'A' ? '#fff' : '#94A3B8' }}>{letter}</span>}
+                        <span>Respuesta {letter}{!isMultiple && letter === 'A' ? ' (correcta)' : isMultiple && isCorrect ? ' (correcta)' : ''}</span>
+                      </label>
+                      <input
+                        type="text" value={preguntaForm[key]}
+                        onChange={(e) => setPreguntaForm({ ...preguntaForm, [key]: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                        style={{ borderColor: '#E2E8F0' }}
+                        placeholder={`Opcion ${letter}...`}
+                      />
+                    </div>
+                  );
+                })
+              )}
+              <p className="text-xs" style={{ color: '#94A3B8' }}>{preguntaForm.tipo_respuesta === 'multiple' ? 'Marca en el checklist todas las respuestas correctas. La puntuación será proporcional.' : 'La primera respuesta siempre se considera la correcta.'}</p>
               {error && <p className="text-xs" style={{ color: '#DC2626' }}>{error}</p>}
               <button
                 onClick={handleSavePregunta}

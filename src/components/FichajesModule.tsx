@@ -1446,7 +1446,7 @@ export default function FichajesModule() {
                 style={{ color: '#1E293B' }}
                 aria-label="Buscar trabajador para filtrar"
               />
-              {workerSearch && (
+              {search && (
                 <button
                   type="button"
                   onClick={() => { setSearch(''); setFilterEmpleado(''); setWorkerDropdownOpen(false); }}
@@ -1462,7 +1462,7 @@ export default function FichajesModule() {
               <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-lg p-1 shadow-lg" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                 <button
                   type="button"
-                  onClick={() => { setFilterEmpleado(''); setWorkerSearch(''); setWorkerDropdownOpen(false); }}
+                  onClick={() => { setFilterEmpleado(''); setSearch(''); setWorkerDropdownOpen(false); }}
                   className="w-full rounded-md px-3 py-2 text-left text-sm cursor-pointer hover:bg-slate-50"
                   style={{ color: '#475569' }}
                 >

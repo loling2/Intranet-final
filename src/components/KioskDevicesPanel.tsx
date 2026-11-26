@@ -51,7 +51,7 @@ interface Empleado {
   id_sociedad?: string | null;
 }
 
-type PanelTab = 'kiosk' | 'corporate' | 'permissions' | 'solicitudes' | 'telemetria';
+type PanelTab = 'kiosk' | 'corporate' | 'permissions' | 'solicitudes' | 'telemetria' | 'movilidad_pap';
 
 // ── Utils ──────────────────────────────────────────────────────────────────────
 
@@ -1183,6 +1183,141 @@ function SolicitudesTab() {
   );
 }
 
+// ── Movilidad PAP Tab ──────────────────────────────────────────────────────────
+
+interface MovilidadPAPUser {
+  id: string;
+  nombre: string;
+  email: string;
+  activo: boolean;
+  movilidad_pap: boolean;
+}
+
+function MovilidadPAPTab() {
+  const [users, setUsers] = useState<MovilidadPAPUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [saving, setSaving] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  async function load() {
+    setLoading(true);
+    setError('');
+    const { data, error: queryError } = await supabase.rpc('get_movilidad_pap_users');
+    if (queryError) {
+      setError('No se pudo cargar la configuración de Movilidad PAP.');
+      setUsers([]);
+    } else {
+      setUsers((data ?? []) as MovilidadPAPUser[]);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function toggleUser(user: MovilidadPAPUser) {
+    setSaving(user.id);
+    setError('');
+    const { data, error: updateError } = await supabase.rpc('set_movilidad_pap', {
+      p_user_id: user.id,
+      p_enabled: !user.movilidad_pap,
+    });
+    if (updateError || typeof data !== 'boolean') {
+      setError('No se pudo guardar el cambio. Inténtalo de nuevo.');
+    } else {
+      setUsers(current => current.map(item => item.id === user.id ? { ...item, movilidad_pap: data } : item));
+    }
+    setSaving(null);
+  }
+
+  const filteredUsers = users.filter(user => {
+    const term = search.trim().toLowerCase();
+    return !term || user.nombre.toLowerCase().includes(term) || user.email.toLowerCase().includes(term);
+  });
+  const enabledCount = users.filter(user => user.movilidad_pap).length;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="font-bold text-sm" style={{ color: '#0F172A' }}>Movilidad PAP por usuario</h3>
+          <p className="text-xs mt-1" style={{ color: '#64748B' }}>
+            Activa o desactiva esta opción individualmente. No cambia los permisos del perfil.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0' }}>
+            {enabledCount} activados
+          </span>
+          <button onClick={load} className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100" title="Actualizar" style={{ color: '#64748B' }}>
+            <RefreshCw size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+        <input
+          type="text"
+          value={search}
+          onChange={event => setSearch(event.target.value)}
+          placeholder="Buscar usuario..."
+          className="w-full pl-7 pr-3 py-2 rounded-lg text-sm outline-none"
+          style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#1E293B' }}
+        />
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
+          <AlertCircle size={13} />
+          {error}
+        </div>
+      )}
+
+      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #E2E8F0' }}>
+        {loading ? (
+          <div className="flex items-center justify-center py-12 gap-2" style={{ color: '#94A3B8' }}><Loader2 size={16} className="animate-spin" /> Cargando usuarios...</div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-2"><Users size={26} style={{ color: '#CBD5E1' }} /><p className="text-sm" style={{ color: '#94A3B8' }}>No hay usuarios que mostrar</p></div>
+        ) : (
+          <div className="divide-y" style={{ divideColor: '#F1F5F9' }}>
+            {filteredUsers.map(user => {
+              const isSaving = saving === user.id;
+              return (
+                <div key={user.id} className="px-4 py-3 flex items-center justify-between gap-3" style={{ backgroundColor: user.activo ? '#FFFFFF' : '#FAFAFA' }}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ backgroundColor: user.movilidad_pap ? '#ECFDF5' : '#F1F5F9', color: user.movilidad_pap ? '#047857' : '#64748B' }}>
+                      {user.nombre.charAt(0).toUpperCase() || '?'}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color: user.activo ? '#0F172A' : '#94A3B8' }}>{user.nombre || 'Sin nombre'}</p>
+                      <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{user.email}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleUser(user)}
+                    disabled={isSaving}
+                    role="switch"
+                    aria-checked={user.movilidad_pap}
+                    aria-label={`${user.movilidad_pap ? 'Desactivar' : 'Activar'} Movilidad PAP para ${user.nombre}`}
+                    className="relative flex-shrink-0 w-11 h-6 rounded-full cursor-pointer transition-colors disabled:opacity-60"
+                    style={{ backgroundColor: user.movilidad_pap ? '#047857' : '#CBD5E1' }}
+                  >
+                    {isSaving ? <Loader2 size={13} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin" style={{ color: '#FFFFFF' }} /> : (
+                      <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-all" style={{ left: user.movilidad_pap ? '22px' : '2px' }} />
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Telemetria Tab ─────────────────────────────────────────────────────────────
 
 function TelemetriaTab() {
@@ -1344,6 +1479,7 @@ export default function KioskDevicesPanel({ allowedSocietyId }: { allowedSociety
     { id: 'permissions', label: 'Permisos por empleado',  icon: Settings2,       desc: 'Control de acceso individual' },
     { id: 'solicitudes', label: 'Solicitudes',            icon: Inbox,           desc: 'Pendientes de emparejamiento' },
     { id: 'telemetria', label: 'Telemetría',             icon: Activity,        desc: 'Actividad y estado de dispositivos' },
+    { id: 'movilidad_pap', label: 'Movilidad PAP',       icon: MapPin,          desc: 'Activación individual por usuario' },
   ];
 
   return (
@@ -1388,6 +1524,7 @@ export default function KioskDevicesPanel({ allowedSocietyId }: { allowedSociety
         {activeTab === 'permissions' && <PermissionsTab allowedSocietyId={allowedSocietyId} />}
         {activeTab === 'solicitudes' && <SolicitudesTab />}
         {activeTab === 'telemetria' && <TelemetriaTab />}
+        {activeTab === 'movilidad_pap' && <MovilidadPAPTab />}
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../context/AuthContext';
+import { Pagination } from './Pagination';
 
 interface Correccion {
   id: string;
@@ -37,6 +38,8 @@ function formatDateTime(iso: string | null) {
   return new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+const CORRECCIONES_PAGE_SIZE = 6;
+
 export default function CorreccionesFichajesModule() {
   const { profile } = useAuth();
   const allRoles: string[] = [...(profile?.roles ?? []), ...(profile?.role ? [profile.role] : [])];
@@ -49,6 +52,7 @@ export default function CorreccionesFichajesModule() {
   const [respuesta, setRespuesta] = useState('');
   const [saving, setSaving] = useState(false);
   const [clasificaciones, setClasificaciones] = useState<Record<string, 'no_fichado' | 'dia_libre' | 'asuntos_propios'>>({});
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,8 +112,12 @@ export default function CorreccionesFichajesModule() {
   }, [isSupervisor, profile]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [filterEstado]);
 
   const filtered = filterEstado ? correcciones.filter((c) => c.estado === filterEstado) : correcciones;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / CORRECCIONES_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * CORRECCIONES_PAGE_SIZE, safePage * CORRECCIONES_PAGE_SIZE);
   const pendientes = correcciones.filter((c) => c.estado === 'pendiente').length;
   const aprobadas = correcciones.filter((c) => c.estado === 'aprobada').length;
   const rechazadas = correcciones.filter((c) => c.estado === 'rechazada').length;
@@ -296,7 +304,10 @@ export default function CorreccionesFichajesModule() {
         ].map((f) => (
           <button
             key={f.id}
-            onClick={() => setFilterEstado(f.id as typeof filterEstado)}
+            onClick={() => {
+              setFilterEstado(f.id as typeof filterEstado);
+              setPage(1);
+            }}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer"
             style={{
               backgroundColor: filterEstado === f.id ? '#FFFFFF' : 'transparent',
@@ -328,7 +339,7 @@ export default function CorreccionesFichajesModule() {
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: '#F1F5F9' }}>
-            {filtered.map((c) => {
+            {paginated.map((c) => {
               const estadoColor = c.estado === 'aprobada' ? '#16A34A' : c.estado === 'rechazada' ? '#DC2626' : '#D97706';
               const estadoBg = c.estado === 'aprobada' ? '#F0FDF4' : c.estado === 'rechazada' ? '#FEF2F2' : '#FFFBEB';
               const estadoBorder = c.estado === 'aprobada' ? '#BBF7D0' : c.estado === 'rechazada' ? '#FECACA' : '#FDE68A';
@@ -427,6 +438,13 @@ export default function CorreccionesFichajesModule() {
             })}
           </div>
         )}
+        <Pagination
+          page={safePage}
+          totalPages={totalPages}
+          totalItems={filtered.length}
+          pageSize={CORRECCIONES_PAGE_SIZE}
+          onPage={setPage}
+        />
       </div>
 
       {/* Response modal */}

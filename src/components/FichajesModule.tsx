@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Clock, Search, RefreshCw, Download, FileText, Calendar,
   AlertTriangle, LogIn, LogOut, ChevronDown, ChevronUp, MapPin, Moon,
@@ -60,6 +60,7 @@ interface Empleado {
   nombre: string;
   id_sociedad: string | null;
   centro_trabajo: string | null;
+  centro_id: string | null;
   horas_diarias: number | null;
 }
 
@@ -708,6 +709,55 @@ async function exportHoursPDF(
   doc.save(`informe_horas_${today}.pdf`);
 }
 
+// Fetch fichajes for a date range only. Role scoping (RRHH/admin see everyone,
+// supervisors/coordinadores only their assigned workers) is enforced by the
+// database policies, so no client-side assignment lookup is needed.
+async function fetchFichajesRango(desde: string, hasta: string, empleadoId: string, empleadoIds: string[] | null = null): Promise<Fichaje[]> {
+  let query = supabase
+    .from('fichajes')
+    .select('*')
+    .gte('fecha', desde)
+    .lte('fecha', hasta)
+    .order('timestamp', { ascending: false });
+  if (empleadoId) {
+    query = query.eq('empleado_id', empleadoId);
+  } else if (empleadoIds) {
+    if (empleadoIds.length === 0) return [];
+    query = query.in('empleado_id', empleadoIds);
+  }
+
+  const pageSize = 1000;
+  const all: Fichaje[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await query.range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    const page = (data ?? []) as Fichaje[];
+    all.push(...page);
+    if (page.length < pageSize) break;
+    offset += pageSize;
+  }
+  return all;
+}
+
+async function fetchCorreccionesAprobadas(desde: string, hasta: string, empleadoId: string, empleadoIds: string[] | null = null): Promise<CorreccionAprobada[]> {
+  let query = supabase
+    .from('fichajes_correcciones')
+    .select('empleado_id,nombre_empleado,fecha,entrada_propuesta,salida_propuesta,clasificacion_ausencia')
+    .eq('estado', 'aprobada')
+    .gte('fecha', desde)
+    .lte('fecha', hasta);
+  if (empleadoId) {
+    query = query.eq('empleado_id', empleadoId);
+  } else if (empleadoIds) {
+    if (empleadoIds.length === 0) return [];
+    query = query.in('empleado_id', empleadoIds);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as unknown as CorreccionAprobada[];
+}
+
 // ── Clock In/Out Panel ───────────────────────────────────────────────────────
 
 interface ClockPanelProps {
@@ -1006,9 +1056,8 @@ const getGeolocation = (): Promise<string | null> =>
 
 export default function FichajesModule() {
   const { profile } = useAuth();
-  const isSupervisor = profile?.role === 'supervisor' || profile?.role === 'coordinador';
-  const [supervisorEmpIds, setSupervisorEmpIds] = useState<Set<string> | null>(null);
   const [fichajes, setFichajes] = useState<Fichaje[]>([]);
+  const [correcciones, setCorrecciones] = useState<CorreccionAprobada[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
@@ -1016,7 +1065,6 @@ export default function FichajesModule() {
   const [filterHasta, setFilterHasta] = useState('');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('hoy');
   const [filterEmpleado, setFilterEmpleado] = useState('');
-  const [workerSearch, setWorkerSearch] = useState('');
   const [workerDropdownOpen, setWorkerDropdownOpen] = useState(false);
   const [filterSociedad, setFilterSociedad] = useState('');
   const [filterCentro, setFilterCentro] = useState('');
@@ -1030,43 +1078,17 @@ export default function FichajesModule() {
   const [workerYearFichajes, setWorkerYearFichajes] = useState<Fichaje[]>([]);
   const [workerCorrecciones, setWorkerCorrecciones] = useState<CorreccionAprobada[]>([]);
 
-  // Load reference data + supervisor/coordinador's assigned employee IDs
+  // Load reference data. `empleados` comes back already scoped by the database
+  // policies (RRHH/admin: everyone; supervisors/coordinadores: assigned workers;
+  // rrhh_gerontalia: their society).
   useEffect(() => {
     (async () => {
-      let scopedIds: Set<string> | null = null;
-
-      if (isSupervisor && profile) {
-        let ids: string[] = [];
-        if (profile.role === 'coordinador') {
-          const { data: supRows } = await supabase
-            .from('coordinador_supervisores')
-            .select('supervisor_id')
-            .eq('coordinador_id', profile.id);
-          const supervisorIds = ((supRows ?? []) as { supervisor_id: string }[]).map((r) => r.supervisor_id);
-          for (const supId of supervisorIds) {
-            const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: supId });
-            ids = ids.concat(((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id));
-          }
-        } else {
-          const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: profile.id });
-          ids = ((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id);
-        }
-        scopedIds = new Set(ids);
-        setSupervisorEmpIds(scopedIds);
-      } else {
-        setSupervisorEmpIds(null);
-      }
-
       const [{ data: empData }, { data: socData }, { data: cenData }] = await Promise.all([
-        supabase.from('empleados').select('id, user_id, nombre, id_sociedad, centro_trabajo, horas_diarias').order('nombre'),
+        supabase.from('empleados').select('id, user_id, nombre, id_sociedad, centro_trabajo, centro_id, horas_diarias').order('nombre'),
         supabase.from('sociedades').select('id, nombre').order('nombre'),
         supabase.from('centros').select('id, nombre, id_sociedad').order('nombre'),
       ]);
-      if (scopedIds) {
-        setEmpleados(((empData ?? []) as Empleado[]).filter((e) => scopedIds!.has(e.id)));
-      } else {
-        setEmpleados((empData ?? []) as Empleado[]);
-      }
+      setEmpleados((empData ?? []) as Empleado[]);
       setSociedades((socData ?? []) as Sociedad[]);
       setCentros((cenData ?? []) as Centro[]);
 
@@ -1086,63 +1108,21 @@ export default function FichajesModule() {
     })();
   }, []);
 
-  // Load all fichajes in pages because the Data API caps each response at 1,000 rows
+  // Screen load: only the visible date range is fetched; changing filters re-queries.
   const loadFichajes = useCallback(async () => {
+    if (!filterDesde || !filterHasta) return;
     setLoading(true);
     try {
-      let supervisorEmployeeIds: string[] | null = null;
-      if (isSupervisor && profile) {
-        let ids: string[] = [];
-        if (profile.role === 'coordinador') {
-          const { data: supRows } = await supabase
-            .from('coordinador_supervisores')
-            .select('supervisor_id')
-            .eq('coordinador_id', profile.id);
-          const supervisorIds = ((supRows ?? []) as { supervisor_id: string }[]).map((r) => r.supervisor_id);
-          for (const supId of supervisorIds) {
-            const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: supId });
-            ids = ids.concat(((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id));
-          }
-        } else {
-          const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: profile.id });
-          ids = ((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id);
-        }
-        supervisorEmployeeIds = [...new Set(ids)];
-        if (supervisorEmployeeIds.length === 0) {
-          setFichajes([]);
-          return;
-        }
-      }
-
-      const pageSize = 1000;
-      const allFichajes: Fichaje[] = [];
-      let offset = 0;
-
-      while (true) {
-        let pageQuery = supabase
-          .from('fichajes')
-          .select('*')
-          .order('timestamp', { ascending: false })
-          .range(offset, offset + pageSize - 1);
-
-        if (supervisorEmployeeIds) {
-          pageQuery = pageQuery.in('empleado_id', supervisorEmployeeIds);
-        }
-
-        const { data, error } = await pageQuery;
-        if (error) throw error;
-
-        const page = (data ?? []) as Fichaje[];
-        allFichajes.push(...page);
-        if (page.length < pageSize) break;
-        offset += pageSize;
-      }
-
-      setFichajes(allFichajes);
+      const [rows, corrRows] = await Promise.all([
+        fetchFichajesRango(filterDesde, filterHasta, filterEmpleado),
+        fetchCorreccionesAprobadas(filterDesde, filterHasta, filterEmpleado),
+      ]);
+      setFichajes(rows);
+      setCorrecciones(corrRows);
     } finally {
       setLoading(false);
     }
-  }, [isSupervisor, profile]);
+  }, [filterDesde, filterHasta, filterEmpleado]);
 
   useEffect(() => { loadFichajes(); }, [loadFichajes]);
 
@@ -1162,11 +1142,14 @@ export default function FichajesModule() {
 
   useEffect(() => { setPage(1); }, [search, filterTipo, filterDesde, filterHasta, viewMode, filterEmpleado, filterSociedad, filterCentro, showIncidentOnly]);
 
-  // When a worker is selected, fetch ALL their fichajes + approved corrections for the current year
+  // When a worker is selected, fetch their fichajes + approved corrections for
+  // the year, so the week/month/year cards cover those periods without loading
+  // every employee's year.
   useEffect(() => {
     if (!filterEmpleado) { setWorkerYearFichajes([]); setWorkerCorrecciones([]); return; }
     const yearStart = `${new Date().getFullYear()}-01-01`;
     const yearEnd = `${new Date().getFullYear()}-12-31`;
+    let cancelled = false;
     (async () => {
       const [fichRes, corrRes] = await Promise.all([
         supabase
@@ -1184,14 +1167,19 @@ export default function FichajesModule() {
           .gte('fecha', yearStart)
           .lte('fecha', yearEnd),
       ]);
+      if (cancelled) return;
       setWorkerYearFichajes((fichRes.data ?? []) as Fichaje[]);
       setWorkerCorrecciones((corrRes.data ?? []) as unknown as CorreccionAprobada[]);
     })();
+    return () => { cancelled = true; };
   }, [filterEmpleado]);
 
   // Build lookup by empleado_id (robust against name variations like with/without comma)
-  const empleadoById = new Map<string, Empleado>();
-  for (const e of empleados) empleadoById.set(e.id, e);
+  const empleadoById = useMemo(() => {
+    const map = new Map<string, Empleado>();
+    for (const e of empleados) map.set(e.id, e);
+    return map;
+  }, [empleados]);
 
   // Helper: expected daily minutes for a given employee ID
   const expectedMinutesFor = (empId: string | null): number => {
@@ -1207,39 +1195,47 @@ export default function FichajesModule() {
     return true;
   };
 
-  const applyEmpleadoSociedadCentro = (f: Fichaje) => {
-    if (filterEmpleado && f.empleado_id !== filterEmpleado) return false;
+  // Sociedad/centro matching: by centro_id when present, falling back to name
+  const matchesSociedadCentro = (emp: Empleado | undefined) => {
     if (filterSociedad || filterCentro) {
-      const emp = f.empleado_id ? empleadoById.get(f.empleado_id) : undefined;
       if (!emp) return false;
       if (filterSociedad && emp.id_sociedad !== filterSociedad) return false;
       if (filterCentro) {
         const centro = centros.find((c) => c.id === filterCentro);
-        if (centro && emp.centro_trabajo !== centro.nombre) return false;
+        if (centro && (emp.centro_id ? emp.centro_id !== centro.id : emp.centro_trabajo !== centro.nombre)) return false;
       }
     }
     return true;
   };
 
-  const filteredFichajes = fichajes.filter((f) => {
+  const matchesTextFilters = (f: Fichaje) => {
     if (search && !f.nombre_empleado.toLowerCase().includes(search.toLowerCase())) return false;
+    return matchesSociedadCentro(f.empleado_id ? empleadoById.get(f.empleado_id) : undefined);
+  };
+
+  // Approved corrections prevail over original timestamps everywhere
+  const displayFichajes = useMemo(
+    () => mergeCorreccionesIntoFichajes(fichajes, correcciones),
+    [fichajes, correcciones],
+  );
+
+  const filteredFichajes = useMemo(() => displayFichajes.filter((f) => {
     if (filterTipo && f.tipo_evento !== filterTipo) return false;
     if (!applyDateRange(f)) return false;
-    if (!applyEmpleadoSociedadCentro(f)) return false;
-    return true;
-  });
+    return matchesTextFilters(f);
+  }), [displayFichajes, filterTipo, filterDesde, filterHasta, search, filterSociedad, filterCentro, empleadoById]);
 
-  const resumenesBase = fichajes.filter((f) => {
-    if (search && !f.nombre_empleado.toLowerCase().includes(search.toLowerCase())) return false;
+  const resumenesBase = useMemo(() => displayFichajes.filter((f) => {
     if (!applyDateRange(f)) return false;
-    if (!applyEmpleadoSociedadCentro(f)) return false;
-    return true;
-  });
+    return matchesTextFilters(f);
+  }), [displayFichajes, filterDesde, filterHasta, search, filterSociedad, filterCentro, empleadoById]);
 
-  let resumenes = buildResumenes(resumenesBase);
-  if (showIncidentOnly) {
-    resumenes = resumenes.filter((r) => isIncident(r.duracion_neta, expectedMinutesFor(r.empleado_id)));
-  }
+  const allResumenes = useMemo(() => buildResumenes(resumenesBase), [resumenesBase]);
+
+  const resumenes = useMemo(() => (showIncidentOnly
+    ? allResumenes.filter((r) => isIncident(r.duracion_neta, expectedMinutesFor(r.empleado_id)))
+    : allResumenes
+  ), [allResumenes, showIncidentOnly, empleadoById]);
 
   const tp = viewMode === 'eventos'
     ? calcTotalPages(filteredFichajes.length, 25)
@@ -1256,14 +1252,16 @@ export default function FichajesModule() {
   const monthRange = getMonthRange(today);
   const yearRange = getYearRange(today);
 
-  // Period totals: worker-specific when selected, all workers otherwise
+  // Period totals: worker-specific when selected
   const selectedEmpleadoNombre = filterEmpleado
     ? empleados.find((e) => e.id === filterEmpleado)?.nombre ?? ''
     : '';
-  const allResumenesForTotals = buildResumenes(fichajes);
-  const workerResumenes = filterEmpleado
-    ? buildResumenes(mergeCorreccionesIntoFichajes(workerYearFichajes, workerCorrecciones))
-    : allResumenesForTotals;
+  const workerResumenes = useMemo(
+    () => (filterEmpleado
+      ? buildResumenes(mergeCorreccionesIntoFichajes(workerYearFichajes, workerCorrecciones))
+      : []),
+    [filterEmpleado, workerYearFichajes, workerCorrecciones],
+  );
   const weekMinutes = sumMinutesInRange(workerResumenes, weekRange.start, weekRange.end);
   const monthMinutes = sumMinutesInRange(workerResumenes, monthRange.start, monthRange.end);
   const yearMinutes = sumMinutesInRange(workerResumenes, yearRange.start, yearRange.end);
@@ -1275,24 +1273,64 @@ export default function FichajesModule() {
   const reportEmpleados = empleados.filter((empleado) => {
     if (filterEmpleado && empleado.id !== filterEmpleado) return false;
     if (search && !empleado.nombre.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filterSociedad && empleado.id_sociedad !== filterSociedad) return false;
-    if (filterCentro) {
-      const centro = centros.find((candidate) => candidate.id === filterCentro);
-      if (centro && empleado.centro_trabajo !== centro.nombre) return false;
-    }
-    return true;
+    return matchesSociedadCentro(empleado);
   });
 
   const workerOptions = empleados.filter((empleado) => {
     if (filterSociedad && empleado.id_sociedad !== filterSociedad) return false;
-    if (filterCentro) {
-      const centro = centros.find((candidate) => candidate.id === filterCentro);
-      if (centro && empleado.centro_trabajo !== centro.nombre) return false;
-    }
-    return empleado.nombre.toLowerCase().includes(workerSearch.trim().toLowerCase());
+    if (!matchesSociedadCentro(empleado)) return false;
+    return empleado.nombre.toLowerCase().includes(search.trim().toLowerCase());
   });
 
-  const allResumenes = buildResumenes(fichajes);
+  // Exports query Supabase directly with the active filters, the role scope
+  // enforced by RLS, and approved-corrections prevalence.
+  const exportarExcel = async () => {
+    if (!filterDesde || !filterHasta) return;
+    const [rows, corrRows] = await Promise.all([
+      fetchFichajesRango(filterDesde, filterHasta, filterEmpleado),
+      fetchCorreccionesAprobadas(filterDesde, filterHasta, filterEmpleado),
+    ]);
+    const resumenesExport = buildResumenes(mergeCorreccionesIntoFichajes(rows, corrRows)).filter((r) => {
+      if (search && !r.nombre.toLowerCase().includes(search.toLowerCase())) return false;
+      return matchesSociedadCentro(r.empleado_id ? empleadoById.get(r.empleado_id) : undefined);
+    });
+    let totalsRes: JornadaResumen[] = workerResumenes;
+    if (!filterEmpleado) {
+      const yearStart = `${new Date().getFullYear()}-01-01`;
+      const yearEnd = `${new Date().getFullYear()}-12-31`;
+      const empIds = empleados.map((e) => e.id);
+      const [yearRows, yearCorr] = await Promise.all([
+        fetchFichajesRango(yearStart, yearEnd, '', empIds),
+        fetchCorreccionesAprobadas(yearStart, yearEnd, '', empIds),
+      ]);
+      totalsRes = buildResumenes(mergeCorreccionesIntoFichajes(yearRows, yearCorr));
+    }
+    exportExcel(resumenesExport, expectedMinutesFor, totalsRes, selectedEmpleadoNombre);
+  };
+
+  const exportarIncidencias = async () => {
+    if (!filterDesde || !filterHasta) return;
+    const [rows, corrRows] = await Promise.all([
+      fetchFichajesRango(filterDesde, filterHasta, filterEmpleado),
+      fetchCorreccionesAprobadas(filterDesde, filterHasta, filterEmpleado),
+    ]);
+    const resumenesExport = buildResumenes(mergeCorreccionesIntoFichajes(rows, corrRows)).filter((r) => {
+      if (search && !r.nombre.toLowerCase().includes(search.toLowerCase())) return false;
+      return matchesSociedadCentro(r.empleado_id ? empleadoById.get(r.empleado_id) : undefined);
+    });
+    exportIncidentPDF(resumenesExport, filterDesde, filterHasta, expectedMinutesFor, selectedEmpleadoNombre);
+  };
+
+  const exportarHoras = async () => {
+    const yearStart = `${new Date().getFullYear()}-01-01`;
+    const yearEnd = `${new Date().getFullYear()}-12-31`;
+    const empIds = reportEmpleados.map((e) => e.id);
+    const [rows, corrRows] = await Promise.all([
+      fetchFichajesRango(yearStart, yearEnd, '', empIds),
+      fetchCorreccionesAprobadas(yearStart, yearEnd, '', empIds),
+    ]);
+    await exportHoursPDF(reportEmpleados, rows, corrRows);
+  };
 
   const deviceLabel = (key: string | null): string => {
     if (!key) return '—';
@@ -1303,7 +1341,7 @@ export default function FichajesModule() {
     <div className="space-y-4">
       {/* Clock panel for the current user */}
       {profile && (
-        <ClockPanel profile={{ id: profile.id, nombre: profile.nombre }} onChanged={loadFichajes} />
+        <ClockPanel profile={{ id: profile.id, nombre: profile.nombre }} onChanged={() => { loadFichajes(); }} />
       )}
 
       {/* KPIs */}
@@ -1347,7 +1385,8 @@ export default function FichajesModule() {
           <div className="flex items-center gap-2 flex-1 min-w-[160px] px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
             <Search size={13} style={{ color: '#94A3B8' }} />
             <input
-              type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+              type="text" value={search}
+              onChange={(e) => { setSearch(e.target.value); if (filterEmpleado) setFilterEmpleado(''); }}
               placeholder="Buscar trabajador por nombre..."
               className="flex-1 text-sm outline-none bg-transparent" style={{ color: '#1E293B' }}
             />
@@ -1394,11 +1433,11 @@ export default function FichajesModule() {
               <Search size={13} style={{ color: '#94A3B8' }} />
               <input
                 type="text"
-                value={workerSearch}
+                value={search}
                 onFocus={() => setWorkerDropdownOpen(true)}
                 onClick={(event) => event.currentTarget.select()}
                 onChange={(event) => {
-                  setWorkerSearch(event.target.value);
+                  setSearch(event.target.value);
                   if (filterEmpleado) setFilterEmpleado('');
                   setWorkerDropdownOpen(true);
                 }}
@@ -1410,7 +1449,7 @@ export default function FichajesModule() {
               {workerSearch && (
                 <button
                   type="button"
-                  onClick={() => { setWorkerSearch(''); setFilterEmpleado(''); setWorkerDropdownOpen(false); }}
+                  onClick={() => { setSearch(''); setFilterEmpleado(''); setWorkerDropdownOpen(false); }}
                   className="text-xs cursor-pointer"
                   style={{ color: '#94A3B8' }}
                   aria-label="Limpiar trabajador"
@@ -1433,7 +1472,7 @@ export default function FichajesModule() {
                   <button
                     type="button"
                     key={empleado.id}
-                    onClick={() => { setFilterEmpleado(empleado.id); setWorkerSearch(empleado.nombre); setWorkerDropdownOpen(false); }}
+                    onClick={() => { setFilterEmpleado(empleado.id); setSearch(empleado.nombre); setWorkerDropdownOpen(false); }}
                     className="w-full rounded-md px-3 py-2 text-left text-sm cursor-pointer hover:bg-slate-50"
                     style={{ color: '#1E293B', backgroundColor: filterEmpleado === empleado.id ? '#EFF6FF' : undefined }}
                   >
@@ -1509,54 +1548,21 @@ export default function FichajesModule() {
 
           {/* Export buttons */}
           <button
-            onClick={() => viewMode === 'resumen' ? exportExcel(resumenes, expectedMinutesFor, workerResumenes, selectedEmpleadoNombre) : null}
+            onClick={() => { if (viewMode === 'resumen') exportarExcel(); }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
             <Download size={12} />
             Excel
           </button>
           <button
-            onClick={() => exportIncidentPDF(resumenes, filterDesde, filterHasta, expectedMinutesFor, selectedEmpleadoNombre)}
+            onClick={exportarIncidencias}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
             <FileText size={12} />
             Informe Incidencias PDF
           </button>
           <button
-            onClick={async () => {
-              const yearStart = `${new Date().getFullYear()}-01-01`;
-              const yearEnd = `${new Date().getFullYear()}-12-31`;
-              const empIds = reportEmpleados.map((e) => e.id);
-              const [fichRes, corrRes] = await Promise.all([
-                empIds.length > 0
-                  ? (async () => {
-                      const pageSize = 1000;
-                      const allRows: Fichaje[] = [];
-                      let offset = 0;
-                      while (true) {
-                        const { data, error } = await supabase
-                          .from('fichajes')
-                          .select('*')
-                          .in('empleado_id', empIds)
-                          .gte('fecha', yearStart)
-                          .lte('fecha', yearEnd)
-                          .order('timestamp', { ascending: true })
-                          .range(offset, offset + pageSize - 1);
-                        if (error) throw error;
-                        const page = (data ?? []) as Fichaje[];
-                        allRows.push(...page);
-                        if (page.length < pageSize) break;
-                        offset += pageSize;
-                      }
-                      return { data: allRows, error: null };
-                    })()
-                  : Promise.resolve({ data: [], error: null }),
-                supabase.from('fichajes_correcciones').select('empleado_id,nombre_empleado,fecha,entrada_propuesta,salida_propuesta,clasificacion_ausencia').eq('estado', 'aprobada').gte('fecha', yearStart).lte('fecha', yearEnd),
-              ]);
-              const allFichajes = (fichRes.data ?? []) as Fichaje[];
-              const correcciones = (corrRes.data ?? []) as unknown as { empleado_id: string | null; nombre_empleado: string; fecha: string; entrada_propuesta: string | null; salida_propuesta: string | null; clasificacion_ausencia: string | null }[];
-              await exportHoursPDF(reportEmpleados, allFichajes, correcciones);
-            }}
+            onClick={exportarHoras}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors hover:opacity-80"
             style={{ backgroundColor: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE' }}>
             <FileText size={12} />

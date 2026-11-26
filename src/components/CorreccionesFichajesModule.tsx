@@ -39,7 +39,8 @@ function formatDateTime(iso: string | null) {
 
 export default function CorreccionesFichajesModule() {
   const { profile } = useAuth();
-  const isSupervisor = profile?.role === 'supervisor' || profile?.role === 'coordinador';
+  const allRoles: string[] = [...(profile?.roles ?? []), ...(profile?.role ? [profile.role] : [])];
+  const isSupervisor = allRoles.includes('supervisor') || allRoles.includes('coordinador');
   const [correcciones, setCorrecciones] = useState<Correccion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -59,42 +60,46 @@ export default function CorreccionesFichajesModule() {
         .order('created_at', { ascending: false });
 
       // If supervisor or coordinador, filter to only their employees' corrections
+      const ids: string[] = [];
       if (isSupervisor && profile) {
-        let ids: string[] = [];
-        if (profile.role === 'coordinador') {
+        const esCoordinador = allRoles.includes('coordinador');
+        const esSupervisor = allRoles.includes('supervisor');
+        if (esCoordinador) {
           // Coordinador: get all supervisors assigned to them, then aggregate their employees
           const { data: supRows } = await supabase
             .from('coordinador_supervisores')
             .select('supervisor_id')
             .eq('coordinador_id', profile.id);
           const supervisorIds = ((supRows ?? []) as { supervisor_id: string }[]).map((r) => r.supervisor_id);
-          if (supervisorIds.length > 0) {
-            const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: supervisorIds[0] });
-            ids = ((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id);
-            for (let i = 1; i < supervisorIds.length; i++) {
-              const { data: moreIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: supervisorIds[i] });
-              ids = ids.concat(((moreIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id));
-            }
+          if (esSupervisor) {
+            const { data: ownIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: profile.id });
+            ids.push(...(((ownIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id)));
+          }
+          for (const sid of supervisorIds) {
+            const { data: moreIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: sid });
+            ids.push(...(((moreIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id)));
           }
         } else {
           // Supervisor: get their own employees
           const { data: supEmpIds } = await supabase.rpc('get_supervisor_empleados', { p_supervisor_id: profile.id });
-          ids = ((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id);
+          ids.push(...(((supEmpIds ?? []) as { empleado_id: string }[]).map((r) => r.empleado_id)));
         }
-        // Also include corrections where empleado_id is null but the employee name matches
         const uniqueIds = [...new Set(ids)];
         if (uniqueIds.length > 0) {
           query = query.in('empleado_id', uniqueIds);
         } else {
-          setCorrecciones([]);
-          setLoading(false);
-          return;
+          // Sin asignaciones: solo pueden ver sus propias peticiones
+          query = query.eq('user_id', profile.id);
         }
       }
 
       const { data, error: dbErr } = await query;
       if (dbErr) throw dbErr;
-      setCorrecciones((data ?? []) as Correccion[]);
+      let rows = (data ?? []) as Correccion[];
+      if (isSupervisor && profile) {
+        rows = rows.filter((c) => c.user_id === profile.id || (c.empleado_id != null && ids.includes(c.empleado_id)));
+      }
+      setCorrecciones(rows);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al cargar correcciones');
     } finally {

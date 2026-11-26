@@ -56,6 +56,7 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserNombre, setCurrentUserNombre] = useState('');
   const [enabledTabIds, setEnabledTabIds] = useState<Set<string> | null>(null);
+  const [movilidadVisible, setMovilidadVisible] = useState(false);
   const [docsEmployeeDni, setDocsEmployeeDni] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -99,6 +100,30 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
         setEnabledTabIds(enabled);
       });
   }, [role, isSupervisor, isAdmin]);
+
+  // Movilidad: visible solo si algún perfil/rol del usuario la tiene activada
+  useEffect(() => {
+    (async () => {
+      const roleSet = new Set<string>(role ? [role] : []);
+      const { data: sessionData } = await supabase.auth.getSession();
+      const uid = sessionData.data?.session?.user?.id ?? null;
+      if (uid) {
+        const { data: prof } = await supabase.from('user_profiles').select('role, roles').eq('id', uid).maybeSingle();
+        if (prof) {
+          if (prof.role) roleSet.add(prof.role);
+          for (const r of (prof.roles ?? [])) roleSet.add(r);
+        }
+      }
+      roleSet.delete('');
+      if (roleSet.size === 0) { setMovilidadVisible(false); return; }
+      const { data } = await supabase
+        .from('role_tab_permissions')
+        .select('role, enabled')
+        .eq('tab_id', 'movilidad')
+        .in('role', Array.from(roleSet));
+      setMovilidadVisible(!!data?.some((r) => r.enabled));
+    })();
+  }, [role]);
 
   const allVacations = Object.entries(mockVacations).flatMap(([sId, v]) =>
     v.requests.map((r) => ({ ...r, societyId: sId }))
@@ -149,13 +174,14 @@ export default function RRHHPanel({ email, onLogout, onNavigateAdmin, isAdmin, i
     { id: 'ayuda', label: 'Ayuda', icon: HelpCircle },
   ];
 
-  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'devices', 'vacations', 'certificates', 'exams', 'fichajes', 'movilidad', 'supervisor-empleados', 'ayuda'];
+  const supervisorTabIds: RRHHTab[] = ['overview', 'employees', 'vehicles', 'devices', 'vacations', 'certificates', 'exams', 'fichajes', 'supervisor-empleados', 'ayuda'];
 
-  const tabs = enabledTabIds !== null
+  const tabs = (enabledTabIds !== null
     ? allTabs.filter(t => t.id === 'ayuda' || enabledTabIds.has(t.id))
     : isSupervisor
       ? allTabs.filter(t => supervisorTabIds.includes(t.id))
-      : allTabs;
+      : allTabs
+  ).filter(t => t.id !== 'movilidad' || movilidadVisible);
 
   const getSociety = (id: string) => societies.find((s) => s.id === id);
 

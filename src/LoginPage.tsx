@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ChevronLeft, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle, Tablet, Timer, Send, Calendar, ToggleLeft, ToggleRight, UserCog, BookOpen } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ChevronLeft, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle, Tablet, Timer, Send, Calendar, ToggleLeft, ToggleRight, UserCog, BookOpen, MapPin } from 'lucide-react';
 import { APP_VERSION } from './version';
 import type { LucideIcon } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
@@ -59,13 +59,14 @@ interface VehicleInfo {
   current_user_id?: string | null;
 }
 
-type JornadaAction = 'entrada' | 'salida' | 'permiso' | 'vehiculo' | 'incidencia_vehiculo' | 'incidencia_fichaje' | 'reserva_vehiculo';
+type JornadaAction = 'entrada' | 'salida' | 'permiso' | 'vehiculo' | 'incidencia_vehiculo' | 'incidencia_fichaje' | 'reserva_vehiculo' | 'inicio_domicilio' | 'fin_domicilio';
 
 function JornadaModal({ onClose }: { onClose: () => void }) {
   // ── Global steps: pin → menu → sub-flow ──
   const [step, setStep] = useState<'pin' | 'menu' | 'vehiculo_plate' | 'vehiculo_action' | 'incidencia_vehiculo' | 'fichaje_form' | 'pair_name' | 'pair_device' | 'reserva_vehiculo' | 'done'>('pin');
   const [pin, setPin] = useState('');
   const [usuarioPin, setUsuarioPin] = useState<any>(null);
+  const [movilidadEnabled, setMovilidadEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [doneMsg, setDoneMsg] = useState('');
@@ -269,10 +270,11 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     setError('');
     setLoading(true);
     try {
-      const { data, error: rpcErr } = await supabase.rpc('validate_vehicle_pin', { p_pin: pin.trim() });
+      const { data, error: rpcErr } = await supabase.rpc('validate_vehicle_pin_with_mobility', { p_pin: pin.trim() });
       if (rpcErr || !data?.[0]) { setError('PIN incorrecto o no encontrado'); return; }
       // Store the entered PIN alongside the profile so it can be forwarded to web_register_fichaje
       setUsuarioPin({ ...data[0], pin: pin.trim() });
+      setMovilidadEnabled(!!data[0].movilidad_enabled);
       const { data: devData } = await supabase.rpc('kiosk_check_device_by_profile', {
         p_device_key: getDeviceKey(),
         p_user_profile_id: data[0].id,
@@ -386,6 +388,50 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
         : `${actualTipoLabel} registrada`;
       setDoneMsg(`${alternatedMessage} — ${usuarioPin.nombre}`);
       setDoneColor(tipo === 'salida' ? '#DC2626' : '#16A34A');
+      setStep('done');
+    } catch (err: any) { setError(err.message ?? 'Error al registrar'); }
+    finally { setLoading(false); }
+  };
+
+  // ── Domicilio save (Movilidad) ──
+  const handleSaveDomicilio = async (tipo: 'inicio_domicilio' | 'fin_domicilio') => {
+    if (!usuarioPin) return;
+    setError('');
+    setLoading(true);
+    try {
+      let geo = cachedGeoRef.current;
+      if (!geo) geo = await getGeolocation();
+      if (!geo) {
+        setError('No se pudo obtener tu ubicación GPS. Activa la ubicación e inténtalo de nuevo. Sin ubicación no se puede registrar el domicilio.');
+        setLoading(false);
+        return;
+      }
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('register_fichaje_domicilio_with_pin', {
+        p_tipo_evento: tipo,
+        p_latitud: geo.lat,
+        p_longitud: geo.lon,
+        p_ubicacion: geo.ubicacion,
+        p_dispositivo: getDeviceInfo(),
+        p_pin: usuarioPin.pin,
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+      const result = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      if (!result?.success) {
+        const msg = result?.error_msg || 'Error al registrar';
+        if (msg === 'LOCATION_REQUIRED') {
+          throw new Error('No se pudo obtener tu ubicación GPS. Sin ubicación no se puede registrar el domicilio.');
+        } else if (msg === 'PIN_INCORRECTO') {
+          throw new Error('PIN incorrecto. Introduce tu PIN de nuevo.');
+        } else if (msg === 'MOVILIDAD_NO_AUTORIZADA') {
+          throw new Error('Tu perfil no tiene la movilidad activada. Contacta con RRHH.');
+        } else {
+          throw new Error(msg);
+        }
+      }
+      setDoneMsg(tipo === 'inicio_domicilio'
+        ? `Inicio de domicilio registrado — ${usuarioPin.nombre}`
+        : `Fin de domicilio registrado — ${usuarioPin.nombre}`);
+      setDoneColor(tipo === 'inicio_domicilio' ? '#16A34A' : '#DC2626');
       setStep('done');
     } catch (err: any) { setError(err.message ?? 'Error al registrar'); }
     finally { setLoading(false); }
@@ -565,6 +611,10 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     { id: 'entrada',             label: 'Entrada',             icon: Play,        color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' },
     { id: 'salida',              label: 'Salida',              icon: Square,      color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
     { id: 'permiso',             label: 'Permiso',             icon: Plane,       color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
+    ...(movilidadEnabled ? [
+      { id: 'inicio_domicilio' as JornadaAction, label: 'Inicio Domicilio', icon: MapPin,        color: '#047857', bg: '#ECFDF5', border: '#A7F3D0' },
+      { id: 'fin_domicilio' as JornadaAction,    label: 'Fin Domicilio',    icon: MapPin,        color: '#B45309', bg: '#FEF3C7', border: '#FDE68A' },
+    ] : []),
     { id: 'vehiculo',            label: 'Vehículo',            icon: Car,         color: '#0F172A', bg: '#F8FAFC', border: '#E2E8F0' },
     { id: 'reserva_vehiculo',    label: 'Reserva Vehículo',    icon: Calendar,    color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
     { id: 'incidencia_vehiculo', label: 'Incidencia Vehículo', icon: Wrench,      color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' },
@@ -674,6 +724,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
                   const isFichaje = ['entrada', 'salida', 'permiso'].includes(action.id);
                   return !isFichaje || deviceAuthorized;
                 }).map((action) => {
+                  const isDomicilio = action.id === 'inicio_domicilio' || action.id === 'fin_domicilio';
                   const Icon = action.icon;
                   const isFichaje = ['entrada', 'salida', 'permiso'].includes(action.id);
                   return (
@@ -683,6 +734,8 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
                         setError('');
                         if (isFichaje) {
                           handleSaveFichaje(action.id);
+                        } else if (isDomicilio) {
+                          handleSaveDomicilio(action.id as 'inicio_domicilio' | 'fin_domicilio');
                         } else if (action.id === 'vehiculo') {
                           setStep('vehiculo_plate');
                         } else if (action.id === 'incidencia_vehiculo') {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ChevronLeft, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Coffee, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle, Tablet, Timer, Send, Calendar, ToggleLeft, ToggleRight, UserCog, BookOpen } from 'lucide-react';
+import { Building2, Landmark, Gem, Shield, ChevronDown, ChevronUp, ChevronLeft, ArrowRight, Eye, EyeOff, User, Lock, LogOut, Bell, FileText, Laptop, Award, ClipboardCheck, Car, QrCode, X, RefreshCw, AlertCircle, ShieldCheck, Search, Download, Folder, Tag, Zap, Users, KeyRound, Clock, Play, Square, Plane, Wrench, Camera, Trash2, Hash, CheckCircle2, GraduationCap, HelpCircle, Tablet, Timer, Send, Calendar, ToggleLeft, ToggleRight, UserCog, BookOpen } from 'lucide-react';
 import { APP_VERSION } from './version';
 import type { LucideIcon } from 'lucide-react';
 import { societies as staticSocieties, SocietyTheme } from './themes';
@@ -59,7 +59,7 @@ interface VehicleInfo {
   current_user_id?: string | null;
 }
 
-type JornadaAction = 'entrada' | 'descanso' | 'fin_descanso' | 'salida' | 'permiso' | 'vehiculo' | 'incidencia_vehiculo' | 'incidencia_fichaje' | 'reserva_vehiculo';
+type JornadaAction = 'entrada' | 'salida' | 'permiso' | 'vehiculo' | 'incidencia_vehiculo' | 'incidencia_fichaje' | 'reserva_vehiculo';
 
 function JornadaModal({ onClose }: { onClose: () => void }) {
   // ── Global steps: pin → menu → sub-flow ──
@@ -337,8 +337,6 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     try {
       const tipoEvento = tipo === 'entrada' ? 'entrada'
         : tipo === 'salida' ? 'salida'
-        : tipo === 'descanso' ? 'pausa_inicio'
-        : tipo === 'fin_descanso' ? 'pausa_fin'
         : 'permiso';
 
       // For entrada, use cached GPS if available, otherwise request fresh
@@ -382,8 +380,7 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
       const actualTipoLabel = actualTipo === 'entrada' ? 'Entrada'
         : actualTipo === 'salida' ? 'Salida'
         : actualTipo === 'pausa_inicio' ? 'Descanso iniciado'
-        : actualTipo === 'pausa_fin' ? 'Descanso finalizado'
-        : 'Permiso';
+        : actualTipo === 'pausa_fin' ? 'Descanso finalizado'        : 'Permiso';
       const alternatedMessage = actualTipo !== tipoEvento
         ? `El sistema ha registrado ${actualTipoLabel.toLowerCase()} porque ya había una entrada abierta.`
         : `${actualTipoLabel} registrada`;
@@ -566,8 +563,6 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
 
   const MENU_ACTIONS: { id: JornadaAction; label: string; icon: LucideIcon; color: string; bg: string; border: string }[] = [
     { id: 'entrada',             label: 'Entrada',             icon: Play,        color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' },
-    { id: 'descanso',            label: 'Descanso',            icon: Coffee,      color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
-    { id: 'fin_descanso',        label: 'Fin descanso',        icon: Play,        color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
     { id: 'salida',              label: 'Salida',              icon: Square,      color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
     { id: 'permiso',             label: 'Permiso',             icon: Plane,       color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
     { id: 'vehiculo',            label: 'Vehículo',            icon: Car,         color: '#0F172A', bg: '#F8FAFC', border: '#E2E8F0' },
@@ -676,11 +671,11 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
               )}
               <div className="grid grid-cols-2 gap-2">
                 {MENU_ACTIONS.filter((action) => {
-                  const isFichaje = ['entrada', 'descanso', 'fin_descanso', 'salida', 'permiso'].includes(action.id);
+                  const isFichaje = ['entrada', 'salida', 'permiso'].includes(action.id);
                   return !isFichaje || deviceAuthorized;
                 }).map((action) => {
                   const Icon = action.icon;
-                  const isFichaje = ['entrada', 'descanso', 'fin_descanso', 'salida', 'permiso'].includes(action.id);
+                  const isFichaje = ['entrada', 'salida', 'permiso'].includes(action.id);
                   return (
                     <button
                       key={action.id}

@@ -59,7 +59,7 @@ interface VehicleInfo {
   current_user_id?: string | null;
 }
 
-type JornadaAction = 'entrada' | 'salida' | 'permiso' | 'vehiculo' | 'incidencia_vehiculo' | 'incidencia_fichaje' | 'reserva_vehiculo' | 'inicio_domicilio' | 'fin_domicilio';
+type JornadaAction = 'entrada' | 'salida' | 'permiso' | 'vehiculo' | 'incidencia_vehiculo' | 'reserva_vehiculo' | 'inicio_domicilio' | 'fin_domicilio';
 
 function JornadaModal({ onClose }: { onClose: () => void }) {
   // ── Global steps: pin → menu → sub-flow ──
@@ -618,7 +618,6 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
     { id: 'vehiculo',            label: 'Vehículo',            icon: Car,         color: '#0F172A', bg: '#F8FAFC', border: '#E2E8F0' },
     { id: 'reserva_vehiculo',    label: 'Reserva Vehículo',    icon: Calendar,    color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
     { id: 'incidencia_vehiculo', label: 'Incidencia Vehículo', icon: Wrench,      color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' },
-    { id: 'incidencia_fichaje',  label: 'Incidencia Fichaje',  icon: AlertCircle, color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
   ];
 
   const errBox = error ? (
@@ -743,8 +742,6 @@ function JornadaModal({ onClose }: { onClose: () => void }) {
                         } else if (action.id === 'reserva_vehiculo') {
                           setReservaPlate(''); setReservaVehicleId(null); setReservaDate(''); setReservaShift('turno_1'); setReservaExtraordinary(false); setReservaMotivo('');
                           setStep('reserva_vehiculo');
-                        } else if (action.id === 'incidencia_fichaje') {
-                          setStep('fichaje_form');
                         }
                       }}
                       disabled={loading}
